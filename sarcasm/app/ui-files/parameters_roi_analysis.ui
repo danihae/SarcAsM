@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>576</width>
+    <height>1126</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QFormLayout" name="formLayout">
+   <item row="9" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_6">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Detect ROIs for tracking and analysis of sarcomere motion</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_7">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_36">
+        <property name="toolTip">
+         <string>Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.</string>
+        </property>
+        <property name="text">
+         <string>Timepoint [frame]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSpinBox" name="sb_detect_roi_timepoint">
+        <property name="toolTip">
+         <string>Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.</string>
+        </property>
+        <property name="maximum">
+         <number>1000000000</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_37">
+        <property name="toolTip">
+         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+        </property>
+        <property name="text">
+         <string>Persistence</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_detect_roi_persistence">
+        <property name="toolTip">
+         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+        </property>
+        <property name="maximum">
+         <number>10</number>
+        </property>
+        <property name="value">
+         <number>8</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_38">
+        <property name="toolTip">
+         <string>Maximal distance for nearest neighbor estimation</string>
+        </property>
+        <property name="text">
+         <string>Threshold distance [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_detect_roi_threshold_distance">
+        <property name="toolTip">
+         <string>Maximal distance for nearest neighbor estimation</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.300000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_39">
+        <property name="toolTip">
+         <string>Score threshold for random seeds </string>
+        </property>
+        <property name="text">
+         <string>Score threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <widget class="QCheckBox" name="chk_roi_automatic_score_threshold">
+          <property name="toolTip">
+           <string>If True
+            score_threshold from wavelet analysis is used.</string>
+          </property>
+          <property name="text">
+           <string>auto</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_detect_roi_score_threshold">
+          <property name="toolTip">
+           <string>Score threshold for random seeds (needs to be &lt;=score_threshold from get_points_midline). If automated
+            score_threshold from wavelet analysis is used.</string>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="toolTip">
+         <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+        </property>
+        <property name="text">
+         <string># of sarcomeres</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLabel" name="label_4">
+          <property name="toolTip">
+           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_detect_roi_num_lims_min">
+          <property name="toolTip">
+           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+          </property>
+          <property name="maximum">
+           <number>100000</number>
+          </property>
+          <property name="value">
+           <number>10</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="toolTip">
+           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_detect_roi_num_lims_max">
+          <property name="toolTip">
+           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+          </property>
+          <property name="maximum">
+           <number>100000</number>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_27">
+        <property name="text">
+         <string>Curvature</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_8">
+        <item>
+         <widget class="QLabel" name="label_33">
+          <property name="toolTip">
+           <string> Limits for ROI line mean squared curvature (MSC)</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_detect_roi_msc_limits_min">
+          <property name="toolTip">
+           <string> Limits for ROI line mean squared curvature (MSC)</string>
+          </property>
+          <property name="maximum">
+           <number>1000000</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_32">
+          <property name="toolTip">
+           <string> Limits for ROI line mean squared curvature (MSC)</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_detect_roi_msc_limits_max">
+          <property name="toolTip">
+           <string> Limits for ROI line mean squared curvature (MSC)</string>
+          </property>
+          <property name="maximum">
+           <number>1000000</number>
+          </property>
+          <property name="value">
+           <number>1000</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="label_17">
+        <property name="toolTip">
+         <string>The linkage distance threshold above which, clusters will not be merged.</string>
+        </property>
+        <property name="text">
+         <string>Clustering threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QSpinBox" name="sb_detect_roi_distance_threshold">
+        <property name="toolTip">
+         <string>The linkage distance threshold above which, clusters will not be merged.</string>
+        </property>
+        <property name="maximum">
+         <number>1000000</number>
+        </property>
+        <property name="value">
+         <number>40</number>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="label_19">
+        <property name="toolTip">
+         <string>If int, only n longest ROIs are saved. If None, all are saved.</string>
+        </property>
+        <property name="text">
+         <string>Select # longest ROIs</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="1">
+       <widget class="QSpinBox" name="sb_detect_roi_n_longest">
+        <property name="toolTip">
+         <string>If int, only n longest ROIs are saved. If None, all are saved.</string>
+        </property>
+        <property name="maximum">
+         <number>100000</number>
+        </property>
+        <property name="value">
+         <number>4</number>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="0">
+       <widget class="QLabel" name="label_20">
+        <property name="toolTip">
+         <string>Width of the scan, perpendicular to the line</string>
+        </property>
+        <property name="text">
+         <string>Line width [pixels]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="1">
+       <widget class="QSpinBox" name="sb_detect_roi_line_width">
+        <property name="toolTip">
+         <string>Width of the scan, perpendicular to the line</string>
+        </property>
+        <property name="maximum">
+         <number>10000</number>
+        </property>
+        <property name="value">
+         <number>12</number>
+        </property>
+       </widget>
+      </item>
+      <item row="11" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_detect_rois">
+        <property name="toolTip">
+         <string>Detect ROIs automatically and store them</string>
+        </property>
+        <property name="text">
+         <string>Detect ROIs</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="10" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_5">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Create and store ROI data (all current ROIs)</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_6">
+      <item row="1" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_store_rois">
+        <property name="toolTip">
+         <string>stores all current ROIs, only needed when using manual ROIs</string>
+        </property>
+        <property name="text">
+         <string>Store ROI data</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

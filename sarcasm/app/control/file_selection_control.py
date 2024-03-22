@@ -1,0 +1,252 @@
+import glob
+
+from PyQt5.QtWidgets import QFileDialog
+
+from .popup_export import ExportPopup
+from .application_control import ApplicationControl
+from ..view.file_selection import Ui_Form as FileSelectionWidget
+import platform
+import os
+import subprocess
+
+from sarcasm.ioutils import IOUtils
+
+
+class FileSelectionControl:
+    """
+    The file selection control handles the file selection gui module and its functionality.
+    """
+
+    def __init__(self, file_selection_widget: FileSelectionWidget, main_control: ApplicationControl):
+        self.__file_selection_widget = file_selection_widget
+        self.__main_control = main_control
+
+    @property
+    def __cell(self):
+        return self.__main_control.model.cell
+
+    def bind_events(self):
+        self.__file_selection_widget.btn_export_data.clicked.connect(self.on_btn_export_data)
+        self.__file_selection_widget.btn_search.clicked.connect(self.on_search)
+        self.__file_selection_widget.btn_set_to_default.clicked.connect(self.on_set_to_default)
+        self.__file_selection_widget.btn_open_folder.clicked.connect(self.on_open_cell_folder)
+        self.__file_selection_widget.btn_store_metadata.clicked.connect(self.on_store_meta_data)
+        self.__file_selection_widget.le_cell_file.returnPressed.connect(self.on_return_pressed_cell_file)
+
+        # call the method on editFinished and returnPressed
+        self.__file_selection_widget.le_pixel_size.editingFinished.connect(self.on_return_pressed_framerate_pixelsize)
+        self.__file_selection_widget.le_frame_time.editingFinished.connect(self.on_return_pressed_framerate_pixelsize)
+        self.__file_selection_widget.le_frame_time.returnPressed.connect(self.on_return_pressed_framerate_pixelsize)
+        self.__file_selection_widget.le_pixel_size.returnPressed.connect(self.on_return_pressed_framerate_pixelsize)
+
+        self.__file_selection_widget.btn_search_parameters_file.clicked.connect(self.on_search_parameters_file)
+        self.__file_selection_widget.btn_import_parameters.clicked.connect(self.on_btn_import_parameters)
+        self.__file_selection_widget.btn_export_parameters.clicked.connect(self.on_btn_export_parameters)
+        pass
+
+    def on_set_to_default(self):
+        # set all parameters back to default values
+        self.__main_control.model.set_to_default()
+        pass
+
+    def on_btn_export_data(self):
+        """
+        - time-series of all structure features (if single number per timepoint, so ignore 2D arrays)
+          for motion analysis: z_pos, slen, slen_avg,  delta_slen, delta_slen_avg, vel, vel_avg, start_contr, state, cps_mean, cps_std
+        """
+        # model = self.__main_control.model
+        self.__popup = ExportPopup(self.__main_control.model, self.__main_control)
+        self.__popup.show_popup()
+
+        print('debug')
+        pass
+
+    def on_search_parameters_file(self):
+        f_name = QFileDialog.getOpenFileName(caption='Open Parameters File', filter="Json File (*.json *.JSON)")
+        if f_name is not None:
+            self.__file_selection_widget.le_parameters_file.setText(f_name[0])
+        pass
+
+    def on_btn_import_parameters(self):
+        # todo: import parameters from file, re-bind parameters to ui
+        if self.__file_selection_widget.le_parameters_file.text() != '':
+            self.__main_control.model.parameters.load(self.__file_selection_widget.le_parameters_file.text())
+            self.__main_control.debug('Parameters imported')
+        pass
+
+    def on_btn_export_parameters(self):
+        if self.__file_selection_widget.le_parameters_file.text() != '':
+            self.__main_control.model.parameters.store(self.__file_selection_widget.le_parameters_file.text())
+            self.__main_control.debug(
+                'Parameters exported to:' + self.__file_selection_widget.le_parameters_file.text())
+            pass
+        pass
+
+    def on_search(self):
+        # f_name is a tuple
+        f_name = QFileDialog.getOpenFileName(caption='Open Cell file', filter="Tiff Images (*.tif *.tiff)")
+        if f_name is not None:
+            self.__file_selection_widget.le_cell_file.setText(f_name[0])
+            self.on_return_pressed_cell_file()
+
+    def on_return_pressed_cell_file(self, event=None):
+        if len(self.__file_selection_widget.le_cell_file.text()) == 0:
+            self.__main_control.debug('Empty File-Path')
+            return
+        if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
+            self.__main_control.debug("The file doesn't exist")
+            return
+        self._init_file(self.__file_selection_widget.le_cell_file.text())
+
+    def on_return_pressed_framerate_pixelsize(self, event=None):
+        pixel_size = self.__file_selection_widget.le_pixel_size.text()
+        if pixel_size is not None and pixel_size != '':
+            try:
+                d_pixel_size = float(pixel_size)
+                if d_pixel_size != 0 and d_pixel_size is not None:
+                    self.__main_control.model.cell.metadata['resxy'] = d_pixel_size
+                    self.__file_selection_widget.le_pixel_size.setStyleSheet("")  # reset style (red background)
+            except ValueError:
+                self.__main_control.debug('the value in pixel size is not a number')
+
+        frame_rate = self.__file_selection_widget.le_frame_time.text()
+        if frame_rate is not None and frame_rate != '':
+            try:
+                d_frame_rate = float(frame_rate)
+                if d_frame_rate != 0 and d_frame_rate is not None:
+                    self.__main_control.model.cell.metadata['frametime'] = d_frame_rate
+                    self.__file_selection_widget.le_frame_time.setStyleSheet("")  # QLineEdit{background : lightgreen;}
+            except ValueError:
+                self.__main_control.debug('the value in frame rate is not a number')
+
+    def _init_file(self, file):
+        # todo: on file changed, clean up old files, napari viewer, models, etc.
+        # todo: maybe switch to threaded execution (run_async_new)
+
+        if self.__main_control.model.currentlyProcessing.get_value():
+            self.__main_control.debug('still processing something')
+            return
+
+        self.__main_control.clean_up_on_new_image()
+        self.__main_control.model.currentlyProcessing.set_value(True)
+        self.__main_control.update_progress(10)
+
+        # image = tifffile.imread(file)
+        self.__main_control.viewer.open(file, plugin=None, name='Raw')
+        # self.__main_control.viewer.add_image(image, name='Raw')
+
+        self.__main_control.model.init_cell(file, False)
+        self.__main_control.init_zband_stack()
+        self.__main_control.init_cell_area_stack()
+
+        self.init_line_layer()  # initializes the layer for drawing roi's
+
+        # todo: init or update dictionary
+        if self.__main_control.model.cell.filename not in self.__main_control.model.line_dictionary:
+            self.__main_control.model.line_dictionary[self.__main_control.model.cell.filename] = {}
+            pass
+
+        self._init_roi_from_file()
+        self._init_meta_data()
+
+        self.__main_control.debug('Initialized: ' + file)
+        self.__main_control.update_progress(100)
+        self.__main_control.model.currentlyProcessing.set_value(False)
+
+    def init_line_layer(self):
+        if self.__main_control.viewer.layers.__contains__('ROIs'):
+            layer = self.__main_control.viewer.layers.__getitem__('ROIs')
+            self.__main_control.viewer.layers.remove(layer)
+        # set the pre selected color to red
+        self.__main_control.init_roi_layer(self.__main_control.viewer.add_shapes(name='ROIs', edge_color='#FF0000'))
+
+        # todo: this is how adding lines and reading the data works
+        # note that first coordinate in the point tuples is Y and second is X
+        # points = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
+        # self.__main_control.layer_roi.add_lines(points,edge_width=[10,5],edge_color='red')
+        # self.__main_control.layer_roi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
+        # data=self.__main_control.layer_roi.data
+        # widths=self.__main_control.layer_roi.edge_width
+        # print(data)
+        # print(widths)
+        # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
+        # [10, 5, 15]
+
+        pass
+
+    def on_open_cell_folder(self):
+        if len(self.__file_selection_widget.le_cell_file.text()) == 0:
+            self.__main_control.debug('Empty File-Path')
+            return
+        if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
+            self.__main_control.debug("The path doesn't exist")
+            return
+        str_path = self.__main_control.model.cell.folder
+
+        if platform.system() == 'Windows':
+            os.startfile(str_path)
+        elif platform.system() == 'Linux':
+            subprocess.Popen(["xdg-open", str_path])
+        elif platform.system() == 'Darwin':  # mac device
+            subprocess.Popen(["open", str_path])
+
+    def on_store_meta_data(self):
+        # get values from entries and check if float
+        def isfloat(num):
+            try:
+                float(num)
+                return True
+            except ValueError:
+                return False
+
+        if isfloat(self.__file_selection_widget.le_pixel_size.text()):
+            self.__main_control.model.cell.metadata['pixelsize'] = float(
+                self.__file_selection_widget.le_pixel_size.text())
+        if isfloat(self.__file_selection_widget.le_frame_time.text()):
+            self.__main_control.model.cell.metadata['frametime'] = float(
+                self.__file_selection_widget.le_frame_time.text())
+        self.__main_control.model.cell.store_meta_data(True)  # store meta-data and override if necessary
+        self.__main_control.model.cell.commit()
+
+    def _init_meta_data(self):
+        # set metadata with cut off comma's
+        if ('pixelsize' in self.__main_control.model.cell.metadata and
+                self.__main_control.model.cell.metadata['pixelsize'] is not None):
+            pixel_size = self.__main_control.model.cell.metadata['pixelsize']
+            pixel_size *= 10000
+            pixel_size = int(pixel_size)
+            pixel_size = float(pixel_size) / 10000
+            self.__file_selection_widget.le_pixel_size.setText(str(pixel_size))
+        else:
+            self.__file_selection_widget.le_pixel_size.setPlaceholderText('- enter metadata manually -')
+            self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
+
+        if ('frametime' in self.__main_control.model.cell.metadata and
+                self.__main_control.model.cell.metadata['frametime'] is not None):
+            frame_rate = self.__main_control.model.cell.metadata['frametime']
+            frame_rate *= 10000
+            frame_rate = int(frame_rate)
+            frame_rate = float(frame_rate) / 10000
+            self.__file_selection_widget.le_frame_time.setText(str(frame_rate))
+        else:
+            # no need for marking frame time
+            self.__file_selection_widget.le_frame_time.setPlaceholderText('- enter metadata manually -')
+            # self.__file_selection_widget.le_frame_time.setStyleSheet("QLineEdit{background : red;}")
+        pass
+
+    def _init_roi_from_file(self):
+        # read roi files, store the line data in dictionary and in ui roi list
+
+        roi_files = glob.glob(
+            self.__main_control.model.cell.folder + '*_roi' + self.__main_control.model.file_extension)
+        if len(roi_files) > 0:
+            for roi_file in roi_files:
+                tmp_profile = IOUtils.json_deserialize(roi_file)  # IOUtils.deserialize_profile_data(roi_file)
+
+                line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
+                line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
+                self.__main_control.on_update_roi_list(line_start, line_end,
+                                                       int(tmp_profile["linewidth"]),
+                                                       False)  # add line to roi list and dictionary
+        else:
+            self.__main_control.debug("no roi's found for current image")

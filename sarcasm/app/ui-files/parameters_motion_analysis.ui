@@ -1,0 +1,786 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>481</width>
+    <height>1084</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QFormLayout" name="formLayout">
+   <item row="1" column="0">
+    <widget class="QLabel" name="label_10">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>ROI file</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="0" colspan="2">
+    <widget class="QPushButton" name="btn_analyze_motion">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="toolTip">
+      <string>execute all of the below functions(check the parameters before)</string>
+     </property>
+     <property name="text">
+      <string>Full tracking and analysis of sarcomere motion</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QComboBox" name="cb_roi_file">
+     <property name="toolTip">
+      <string>currently selected ROI to use in analysis</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Detect Z-band positions</string>
+     </property>
+     <property name="flat">
+      <bool>false</bool>
+     </property>
+     <property name="checkable">
+      <bool>false</bool>
+     </property>
+     <layout class="QFormLayout" name="formLayout_2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="toolTip">
+         <string>Threshold for peak finder</string>
+        </property>
+        <property name="text">
+         <string>Detection threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_threshold">
+        <property name="toolTip">
+         <string>Threshold for peak finder</string>
+        </property>
+        <property name="value">
+         <double>0.050000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="toolTip">
+         <string>Minimal distance of z-band peaks in µm</string>
+        </property>
+        <property name="text">
+         <string>Min. distance [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSpinBox" name="sb_detect_peaks_min_distance">
+        <property name="toolTip">
+         <string>Minimal distance of z-band peaks in µm</string>
+        </property>
+        <property name="maximum">
+         <number>5</number>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_12">
+        <property name="toolTip">
+         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
+        </property>
+        <property name="text">
+         <string>Width [px]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_detect_peaks_width">
+        <property name="toolTip">
+         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
+        </property>
+        <property name="minimum">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <number>20</number>
+        </property>
+        <property name="value">
+         <number>7</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_motion_detect_peaks">
+        <property name="toolTip">
+         <string>execute detect peaks on selected roi file</string>
+        </property>
+        <property name="text">
+         <string>Detect Z-band positions</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="3" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+       <weight>50</weight>
+       <bold>false</bold>
+      </font>
+     </property>
+     <property name="title">
+      <string>Track Z-band motion</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_3">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_13">
+        <property name="toolTip">
+         <string>Search range for tracking algorithm (see documentation of trackpy package)</string>
+        </property>
+        <property name="text">
+         <string>Search range [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_motion_track_z_bands">
+        <property name="toolTip">
+         <string>execute track z-bands on selected roi file</string>
+        </property>
+        <property name="text">
+         <string>Track Z-band motion</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_track_z_bands_search_range">
+        <property name="toolTip">
+         <string>Search range for tracking algorithm (see documentation of trackpy package)</string>
+        </property>
+        <property name="minimum">
+         <double>0.100000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>2.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.100000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_36">
+        <property name="toolTip">
+         <string>Memory for tracking algorithm, in frames (see documentation of trackpy package)</string>
+        </property>
+        <property name="text">
+         <string>Memory [frames]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_track_z_bands_memory">
+        <property name="toolTip">
+         <string>Memory for tracking algorithm, in frames (see documentation of trackpy package)</string>
+        </property>
+        <property name="maximum">
+         <number>20</number>
+        </property>
+        <property name="value">
+         <number>10</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_37">
+        <property name="toolTip">
+         <string>Memory (max interval) to interpolate gaps in trajectories, in frames (see documentation of trackpy package)</string>
+        </property>
+        <property name="text">
+         <string>Interpolation [frames]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QSpinBox" name="sb_track_z_band_memory_interp">
+        <property name="toolTip">
+         <string>Memory (max interval) to interpolate gaps in trajectories, in frames (see documentation of trackpy package)</string>
+        </property>
+        <property name="minimum">
+         <number>2</number>
+        </property>
+        <property name="maximum">
+         <number>10</number>
+        </property>
+        <property name="value">
+         <number>5</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="4" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_3">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Predict and analyze contraction cycles</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_4">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="font">
+         <font>
+          <pointsize>11</pointsize>
+         </font>
+        </property>
+        <property name="toolTip">
+         <string>Neural network parameters (.pth file)</string>
+        </property>
+        <property name="text">
+         <string>Network model</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="toolTip">
+         <string>Binary threshold for systole state (0, 1) after prediction</string>
+        </property>
+        <property name="text">
+         <string>Threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_systoles_thresh">
+        <property name="toolTip">
+         <string>Binary threshold for systole state (0, 1) after prediction</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>10000000.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_22">
+        <property name="toolTip">
+         <string>Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN</string>
+        </property>
+        <property name="text">
+         <string>Sarc. length [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <widget class="QLabel" name="label_28">
+          <property name="toolTip">
+           <string>Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_systoles_slen_limits_lower">
+          <property name="toolTip">
+           <string>Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_27">
+          <property name="toolTip">
+           <string>Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_systoles_slen_limits_upper">
+          <property name="toolTip">
+           <string>Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_23">
+        <property name="toolTip">
+         <string>Minimal number of sarcomeres, if lower, systole state is set to 0.</string>
+        </property>
+        <property name="text">
+         <string>Min. sarcomere #</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QSpinBox" name="sb_systoles_n_sarcomere_min">
+        <property name="toolTip">
+         <string>Minimal number of sarcomeres, if lower, systole state is set to 0.</string>
+        </property>
+        <property name="maximum">
+         <number>1000000</number>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_24">
+        <property name="toolTip">
+         <string>Remove contraction cycles / systoles within &quot;buffer_frames&quot; frames to start and end of time-series</string>
+        </property>
+        <property name="text">
+         <string>Buffer [frames]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QSpinBox" name="sb_systoles_buffer_frames">
+        <property name="toolTip">
+         <string>Remove contraction cycles / systoles within &quot;buffer_frames&quot; frames to start and end of time-series</string>
+        </property>
+        <property name="maximum">
+         <number>10000000</number>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_25">
+        <property name="toolTip">
+         <string>Minimal time of systole in seconds. If smaller, systole is removed.</string>
+        </property>
+        <property name="text">
+         <string>Min. contr. time [s] </string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_systoles_contr_time_min">
+        <property name="toolTip">
+         <string>Minimal time of systole in seconds. If smaller, systole is removed.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>100000000.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="label_26">
+        <property name="toolTip">
+         <string>Maximal time between two systoles. If smaller, two systoles are merged to one.</string>
+        </property>
+        <property name="text">
+         <string>Merge threshold [s]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_systoles_merge_time_max">
+        <property name="toolTip">
+         <string>Maximal time between two systoles. If smaller, two systoles are merged to one.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_motion_systoles">
+        <property name="toolTip">
+         <string>execute prediction and analysis of contractions, do not forget to select a contraction weights file</string>
+        </property>
+        <property name="text">
+         <string>Predict and Analyze contraction cycles</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <widget class="QLineEdit" name="le_systoles_weights">
+          <property name="toolTip">
+           <string>Neural network parameters (.pth file)</string>
+          </property>
+          <property name="text">
+           <string>default</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_systoles_search_weights">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="5" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_4">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Calculate and analyze sarcomere trajectories</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_5">
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_14">
+        <property name="toolTip">
+         <string>Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories</string>
+        </property>
+        <property name="text">
+         <string>Smoothing filter Z(t)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLabel" name="label_6">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories</string>
+          </property>
+          <property name="text">
+           <string>window length</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_get_sarc_traj_filter_z_pos_wl">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories</string>
+          </property>
+          <property name="minimum">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <number>15</number>
+          </property>
+          <property name="value">
+           <number>13</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_15">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories</string>
+          </property>
+          <property name="text">
+           <string>polyorder</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_get_sarc_traj_filter_z_pos_po">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>7</number>
+          </property>
+          <property name="value">
+           <number>7</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_16">
+        <property name="toolTip">
+         <string> Lower and upper limits of sarcomere lengths, values outside are set to nan</string>
+        </property>
+        <property name="text">
+         <string>Sarc. length [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QLabel" name="label_18">
+          <property name="toolTip">
+           <string> Lower and upper limits of sarcomere lengths, values outside are set to nan</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_get_sarc_traj_slen_lower">
+          <property name="toolTip">
+           <string> Lower and upper limits of sarcomere lengths, values outside are set to nan</string>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.200000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_17">
+          <property name="toolTip">
+           <string> Lower and upper limits of sarcomere lengths, values outside are set to nan</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_get_sarc_traj_slen_upper">
+          <property name="toolTip">
+           <string> Lower and upper limits of sarcomere lengths, values outside are set to nan</string>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>3.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>Dilation time (in seconds) of systole time-series</string>
+        </property>
+        <property name="text">
+         <string>Dilate contr. [s]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="toolTip">
+         <string>Window length and poly order for Savitky-Golay filter</string>
+        </property>
+        <property name="text">
+         <string>Smoothing filter V(t) </string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QLabel" name="label_8">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter</string>
+          </property>
+          <property name="text">
+           <string>window length</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="dsb_get_sarc_traj_filter_vel_wl">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of delta_slen prior to differentiation
+            to obtain sarcomere velocities</string>
+          </property>
+          <property name="minimum">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <number>15</number>
+          </property>
+          <property name="value">
+           <number>13</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_9">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter</string>
+          </property>
+          <property name="text">
+           <string>polyorder</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="dsb_get_sarc_traj_filter_vel_po">
+          <property name="toolTip">
+           <string>Window length and poly order for Savitky-Golay filter for smoothing of delta_slen prior to differentiation
+            to obtain sarcomere velocities</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>7</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="label_19">
+        <property name="toolTip">
+         <string>Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan</string>
+        </property>
+        <property name="text">
+         <string>Equ. sarc. length [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QLabel" name="label_20">
+          <property name="toolTip">
+           <string>Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_get_sarc_traj_equ_lims_lower">
+          <property name="toolTip">
+           <string>Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan</string>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.500000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_21">
+          <property name="toolTip">
+           <string>Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_get_sarc_traj_equ_lims_upper">
+          <property name="toolTip">
+           <string>Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan</string>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>2.200000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="11" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_motion_get_sarcomere_trajs">
+        <property name="toolTip">
+         <string>execute sarcomere trajectories analysis</string>
+        </property>
+        <property name="text">
+         <string>Calculate and analyze sarcomere trajectories</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_get_sarc_traj_dilate_systoles">
+        <property name="toolTip">
+         <string>Dilation time (in seconds) of systole time-series to shorten time-interval during diastole at which the sarcomere
+            equilibrium lengths are determined</string>
+        </property>
+        <property name="maximum">
+         <double>0.500000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.010000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
