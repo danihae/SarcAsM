@@ -1,0 +1,5 @@
+add it completely into the unet package?
+
+or keep it separate?
+
+Daniel: or publish as a separate small package on PyPI? A wrapper to include tqdm into tkinter could be interesting for some people?
