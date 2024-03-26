@@ -730,7 +730,7 @@ def plot_sarcomere_lengths(ax, sarc_obj, timepoint=0, score_threshold=None, lim=
         The title for the plot. Defaults to None.
     """
 
-    length = sarc_obj.structure['wavelet_length'][timepoint].copy()
+    length = sarc_obj.structure['wavelet_sarcomere_length'][timepoint].copy()
     max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
     if score_threshold is None:
         score_threshold = sarc_obj.structure['params.score_threshold'][timepoint]
@@ -776,7 +776,7 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
         title : str, optional
             The title for the plot. Defaults to None.
         """
-    orientation = sarc_obj.structure['wavelet_orientation'][timepoint].copy()
+    orientation = sarc_obj.structure['wavelet_sarcomere_orientation'][timepoint].copy()
     if not radians:
         orientation = np.degrees(orientation)
     max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
@@ -791,12 +791,13 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
     ax.set_xticks([])
     ax.set_yticks([])
     if colorbar:
-        plt.colorbar(plot, ax=ax, label=r'Angle $\Theta$ [°]', shrink=shrink_colorbar, orientation=orient_colorbar)
+        plt.colorbar(plot, ax=ax, label=r'Angle $\theta$ [°]', shrink=shrink_colorbar, orientation=orient_colorbar)
     ax.set_title(title, fontsize=fontsize)
 
 
-def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple', color_points='darkgreen',
-                           style='half', s_points=0.5, linewidths=0.001, scalebar=True, legend=False, title=None):
+def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple',
+                           color_points='darkgreen', style='half', s_points=0.5, linewidths=0.001, scalebar=True,
+                           legend=False, invert_z_bands=True, alpha_z_bands=1, title=None):
     """
     Plots quiver plot reflecting local sarcomere length and orientation based on
     wavelet analysis result of the sarcomere object.
@@ -823,6 +824,10 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
         Whether to add a scalebar to the plot. Defaults to True.
     legend : bool, optional
         Whether to add a legend to the plot. Defaults to False.
+    invert_z_bands : bool, optional
+        Whether to invert color of Z-bands. Defaults to True.
+    alpha_z_bands : float, optional
+        Alpha value of Z-bands. Defaults to 1.
     title : str, optional
         The title for the plot. Defaults to None.
     """
@@ -834,9 +839,9 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
 
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
     if _timepoints == 'all':
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
+        plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=timepoint)
     else:
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
+        plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=_timepoints[timepoint])
 
     ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
     ax.scatter(points[1], points[0], marker='o', c=color_points, s=s_points, label='Midline points')
