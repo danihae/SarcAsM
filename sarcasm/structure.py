@@ -10,9 +10,9 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from biu import siam_unet as siam
-from biu import unet
-from biu.progress import ProgressNotifier
+from .unets import siam_unet as siam
+from .unets import unet
+from .unets.progress import ProgressNotifier
 from joblib import Parallel, delayed
 from networkx.algorithms import community
 from scipy import ndimage, stats
@@ -367,7 +367,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.15, width=0.5,
-                                        len_lims=(1.5, 2.3), len_step=0.05, orient_lims=(-90, 90), orient_step=15,
+                                        len_lims=(1.4, 2.7), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
                                         score_threshold=90, abs_threshold=False, gating=True, dilation_radius=3,
                                         save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
@@ -444,6 +444,7 @@ class Structure:
         # iterate images
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = convolve_image_with_bank(img_i, bank, gating=gating)
+            #  np.save(self.data_folder + 'wavelet_scores.npy', result_i)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
              wavelet_max_score_i) = argmax_wavelets(result_i,
                                                     len_range,
@@ -1281,7 +1282,6 @@ def analyze_z_bands(image_unet, labels, labels_skel, image_raw, pixelsize, min_l
         # distance of z-band ends
         _z_ends = np.reshape(z_ends, (n_z * 2, 2), order='F')
         D = squareform(pdist(_z_ends, 'euclidean'))
-        links = np.ones_like(D)
         # Set NaNs for specified indices (ends of same objects) and the lower triangle
         indices = np.arange(0, n_z * 2, 2)
         mask = np.ones((n_z * 2, n_z * 2))
@@ -1342,8 +1342,8 @@ def analyze_z_bands(image_unet, labels, labels_skel, image_raw, pixelsize, min_l
         def analyze_linked_groups(connectivity_matrix, distance_matrix, alignment_matrix):
             G = nx.Graph()
 
-            for i in range(n_z):
-                G.add_node(i)
+            for n in range(n_z):
+                G.add_node(n)
 
             # Efficiently add edges based on connectivity and criteria
             for n, (idx_i, end_i, idx_j, end_j) in enumerate(connectivity_matrix.T):
@@ -1512,7 +1512,7 @@ def round_up_to_odd(f):
     return int(np.ceil(f) // 2 * 2 + 1)
 
 
-def create_wavelet_bank(pixelsize, kernel='binary', size=3, sigma=0.15, width=0.5, len_lims=(1.3, 2.5),
+def create_wavelet_bank(pixelsize, kernel='gaussian', size=3, sigma=0.15, width=0.5, len_lims=(1.3, 2.5),
                         len_step=0.025, orient_lims=(-90, 90), orient_step=5):
     """Returns bank of double wavelets
 
