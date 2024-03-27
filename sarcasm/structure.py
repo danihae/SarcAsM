@@ -422,7 +422,7 @@ class Structure:
         print('Start wavelet analysis')
         # create empty arrays
         (points, midline_length_points, midline_id_points, sarcomere_length_points,
-         sarcomere_orientation_points, max_score_points) = [], [], [], [], [], []
+         sarcomere_orientation_points, max_score_points, sarcomere_masks) = [], [], [], [], [], [], []
         sarcomere_length_mean, sarcomere_length_std, sarcomere_length_median = np.zeros(n_imgs) * np.nan, np.zeros(
             n_imgs) * np.nan, np.zeros(
             n_imgs) * np.nan
@@ -484,6 +484,7 @@ class Structure:
             mask_i = sarcomere_mask(points_i, sarcomere_orientation_points_i, sarcomere_length_points_i,
                                     size=self.metadata['size'], pixelsize=self.metadata['pixelsize'],
                                     dilation_radius=dilation_radius)
+            sarcomere_masks.append(mask_i)
             sarcomere_area[i] = np.sum(mask_i) * self.metadata['pixelsize'] ** 2
             if 'cell_area' in self.structure.keys():
                 sarcomere_area_ratio[i] = sarcomere_area[i] / self.structure['cell_area'][i]
@@ -496,7 +497,7 @@ class Structure:
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step, 'params.kernel': kernel,
                         'params.wavelet_timepoints': timepoints, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
-                        'wavelet_max_score': wavelet_max_score,
+                        'wavelet_max_score': wavelet_max_score, 'sarcomere_masks': sarcomere_masks,
                         'points': points, 'sarcomere_length_points': sarcomere_length_points,
                         'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
                         'sarcomere_length': sarcomere_length_points,

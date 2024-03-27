@@ -795,6 +795,43 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
     ax.set_title(title, fontsize=fontsize)
 
 
+def plot_sarcomere_area(ax, sarc_obj, timepoint=0, cmap='viridis', show_z_bands=False, alpha=0.5, invert_z_bands=True,
+                        alpha_z_bands=1):
+    """
+    Plots binary mask of sarcomeres, derived from sarcomere vectors.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to draw the plot on.
+    sarc_obj : object
+        The sarcomere object to plot.
+    timepoint : int, optional
+        The timepoint to plot. Defaults to 0.
+    cmap : str, optional
+        The colormap to use. Defaults to 'viridis'
+    show_z_bands : bool, optional
+        Whether to show Z-bands. If False, the raw image is shown. Defaults to False.
+    alpha : float, optional
+        The transparency of sarcomere mask. Defaults to 0.5.
+    invert_z_bands : bool, optional
+        Whether to invert binary mask of Z-bands. Defaults to True. Only applied if show_z_bands is True.
+    alpha_z_bands : float, optional
+        Alpha value of Z-bands. Defaults to 1.
+    """
+    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    if _timepoints is not 'all':
+        _timepoint = _timepoints[timepoint]
+    else:
+        _timepoint = timepoint
+
+    if show_z_bands:
+        plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=_timepoint)
+    else:
+        plot_image(ax, sarc_obj, timepoint=_timepoint)
+    ax.imshow(sarc_obj.structure['sarcomere_masks'][timepoint], vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+
+
 def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple',
                            color_points='darkgreen', style='half', s_points=0.5, linewidths=0.001, scalebar=True,
                            legend=False, invert_z_bands=True, alpha_z_bands=1, title=None):
