@@ -22,7 +22,7 @@
       </font>
      </property>
      <property name="title">
-      <string>Detect ROIs for tracking and analysis of sarcomere motion</string>
+      <string>Detect LOIs for tracking and analysis of sarcomere motion</string>
      </property>
      <layout class="QFormLayout" name="formLayout_7">
       <item row="1" column="0">
@@ -36,7 +36,7 @@
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QSpinBox" name="sb_detect_roi_timepoint">
+       <widget class="QSpinBox" name="sb_detect_loi_timepoint">
         <property name="toolTip">
          <string>Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.</string>
         </property>
@@ -56,7 +56,7 @@
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QSpinBox" name="sb_detect_roi_persistence">
+       <widget class="QSpinBox" name="sb_detect_loi_persistence">
         <property name="toolTip">
          <string>Persistence of line (average points length and orientation for prior estimation)</string>
         </property>
@@ -79,7 +79,7 @@
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_detect_roi_threshold_distance">
+       <widget class="QDoubleSpinBox" name="dsb_detect_loi_threshold_distance">
         <property name="toolTip">
          <string>Maximal distance for nearest neighbor estimation</string>
         </property>
@@ -107,7 +107,7 @@
       <item row="4" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_5">
         <item>
-         <widget class="QCheckBox" name="chk_roi_automatic_score_threshold">
+         <widget class="QCheckBox" name="chk_loi_automatic_score_threshold">
           <property name="toolTip">
            <string>If True
             score_threshold from wavelet analysis is used.</string>
@@ -121,7 +121,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_detect_roi_score_threshold">
+         <widget class="QDoubleSpinBox" name="dsb_detect_loi_score_threshold">
           <property name="toolTip">
            <string>Score threshold for random seeds (needs to be &lt;=score_threshold from get_points_midline). If automated
             score_threshold from wavelet analysis is used.</string>
@@ -139,7 +139,7 @@
       <item row="6" column="0">
        <widget class="QLabel" name="label_3">
         <property name="toolTip">
-         <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+         <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
         </property>
         <property name="text">
          <string># of sarcomeres</string>
@@ -151,7 +151,7 @@
         <item>
          <widget class="QLabel" name="label_4">
           <property name="toolTip">
-           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+           <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
           </property>
           <property name="text">
            <string>Min:</string>
@@ -159,9 +159,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_detect_roi_num_lims_min">
+         <widget class="QSpinBox" name="sb_detect_loi_num_lims_min">
           <property name="toolTip">
-           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+           <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
           </property>
           <property name="maximum">
            <number>100000</number>
@@ -174,7 +174,7 @@
         <item>
          <widget class="QLabel" name="label_5">
           <property name="toolTip">
-           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+           <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
           </property>
           <property name="text">
            <string>Max:</string>
@@ -182,9 +182,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_detect_roi_num_lims_max">
+         <widget class="QSpinBox" name="sb_detect_loi_num_lims_max">
           <property name="toolTip">
-           <string>Limits of sarcomere numbers in ROI (n_min, n_max)</string>
+           <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
           </property>
           <property name="maximum">
            <number>100000</number>
@@ -208,7 +208,7 @@
         <item>
          <widget class="QLabel" name="label_33">
           <property name="toolTip">
-           <string> Limits for ROI line mean squared curvature (MSC)</string>
+           <string> Limits for LOI mean squared curvature (MSC)</string>
           </property>
           <property name="text">
            <string>Min:</string>
@@ -216,9 +216,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_detect_roi_msc_limits_min">
+         <widget class="QSpinBox" name="sb_detect_loi_msc_limits_min">
           <property name="toolTip">
-           <string> Limits for ROI line mean squared curvature (MSC)</string>
+           <string> Limits for LOI mean squared curvature (MSC)</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -228,7 +228,7 @@
         <item>
          <widget class="QLabel" name="label_32">
           <property name="toolTip">
-           <string> Limits for ROI line mean squared curvature (MSC)</string>
+           <string> Limits for LOI mean squared curvature (MSC)</string>
           </property>
           <property name="text">
            <string>Max:</string>
@@ -236,9 +236,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_detect_roi_msc_limits_max">
+         <widget class="QSpinBox" name="sb_detect_loi_msc_limits_max">
           <property name="toolTip">
-           <string> Limits for ROI line mean squared curvature (MSC)</string>
+           <string> Limits for LOI mean squared curvature (MSC)</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -261,7 +261,7 @@
        </widget>
       </item>
       <item row="8" column="1">
-       <widget class="QSpinBox" name="sb_detect_roi_distance_threshold">
+       <widget class="QSpinBox" name="sb_detect_loi_distance_threshold">
         <property name="toolTip">
          <string>The linkage distance threshold above which, clusters will not be merged.</string>
         </property>
@@ -276,17 +276,17 @@
       <item row="9" column="0">
        <widget class="QLabel" name="label_19">
         <property name="toolTip">
-         <string>If int, only n longest ROIs are saved. If None, all are saved.</string>
+         <string>If int, only n longest LOIs are saved. If None, all are saved.</string>
         </property>
         <property name="text">
-         <string>Select # longest ROIs</string>
+         <string>Select # longest LOIs</string>
         </property>
        </widget>
       </item>
       <item row="9" column="1">
-       <widget class="QSpinBox" name="sb_detect_roi_n_longest">
+       <widget class="QSpinBox" name="sb_detect_loi_n_longest">
         <property name="toolTip">
-         <string>If int, only n longest ROIs are saved. If None, all are saved.</string>
+         <string>If int, only n longest LOIs are saved. If None, all are saved.</string>
         </property>
         <property name="maximum">
          <number>100000</number>
@@ -307,7 +307,7 @@
        </widget>
       </item>
       <item row="10" column="1">
-       <widget class="QSpinBox" name="sb_detect_roi_line_width">
+       <widget class="QSpinBox" name="sb_detect_loi_line_width">
         <property name="toolTip">
          <string>Width of the scan, perpendicular to the line</string>
         </property>
@@ -320,12 +320,12 @@
        </widget>
       </item>
       <item row="11" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_detect_rois">
+       <widget class="QPushButton" name="btn_detect_lois">
         <property name="toolTip">
-         <string>Detect ROIs automatically and store them</string>
+         <string>Detect LOIs automatically and store them</string>
         </property>
         <property name="text">
-         <string>Detect ROIs</string>
+         <string>Detect LOIs</string>
         </property>
        </widget>
       </item>
@@ -340,16 +340,16 @@
       </font>
      </property>
      <property name="title">
-      <string>Create and store ROI data (all current ROIs)</string>
+      <string>Create and store LOI data (all current LOIs)</string>
      </property>
      <layout class="QFormLayout" name="formLayout_6">
       <item row="1" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_store_rois">
+       <widget class="QPushButton" name="btn_store_lois">
         <property name="toolTip">
-         <string>stores all current ROIs, only needed when using manual ROIs</string>
+         <string>stores all current LOIs, only needed when using manual LOIs</string>
         </property>
         <property name="text">
-         <string>Store ROI data</string>
+         <string>Store LOI data</string>
         </property>
        </widget>
       </item>

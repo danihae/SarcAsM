@@ -709,9 +709,9 @@ class Structure:
         if self.auto_save:
             self.store_structure_data()
 
-    def _grow_roi_lines(self, timepoint=0, n_seeds=500, score_threshold=None, persistence=2, threshold_distance=0.5,
+    def _grow_lois(self, timepoint=0, n_seeds=500, score_threshold=None, persistence=2, threshold_distance=0.5,
                         random_seed=None):
-        """Find ROI lines using line growth algorithm. The parameters **lims can be used to filter ROI lines.
+        """Find LOIs (lines of interest) using line growth algorithm. The parameters **lims can be used to filter LOIs.
 
         Parameters
         ----------
@@ -727,15 +727,15 @@ class Structure:
         threshold_distance : float
             Maximal distance for nearest neighbor estimation
         number_lims : tuple(int, int)
-            Limits of sarcomere numbers in ROI (n_min, n_max)
+            Limits of sarcomere numbers in LOI (n_min, n_max)
         length_lims : tuple(float, float)
-            Limits for ROI lengths (in µm)
+            Limits for LOI lengths (in µm)
         sarcomere_mean_length_lims : tuple(float, float)
-            Limits for mean length of sarcomeres in ROI
+            Limits for mean length of sarcomeres in LOI (min, max)
         sarcomere_std_length_lims : tuple(float, float)
-            Limits for standard deviation of sarcomeres in ROI
+            Limits for standard deviation of sarcomeres in LOI (min, max)
         msc_lims : tuple(float, float)
-            Limits for ROI line mean squared curvature (MSC)
+            Limits for LOI line mean squared curvature (MSC)
         random_seed : int, optional
 
         """
@@ -754,108 +754,108 @@ class Structure:
             self.structure['sarcomere_orientation_points'][timepoint], \
             self.structure['max_score_points'][timepoint], \
             self.structure['midline_length_points'][timepoint]
-        roi_data = line_growth(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
+        loi_data = line_growth(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
                                midline_length_points, self.metadata['pixelsize'], n_seeds=n_seeds,
                                random_seed=random_seed, persistence=persistence, threshold_distance=threshold_distance)
-        self.structure['roi_data'] = roi_data
-        rois_points = [self.structure['points'][timepoint].T[roi_i] for roi_i in self.structure['roi_data']['lines']]
-        self.structure['roi_data']['lines_points'] = rois_points
+        self.structure['loi_data'] = loi_data
+        lois_points = [self.structure['points'][timepoint].T[loi_i] for loi_i in self.structure['loi_data']['lines']]
+        self.structure['loi_data']['lines_points'] = lois_points
         if self.auto_save:
             self.store_structure_data()
 
-    def _filter_roi_lines(self, number_lims=(10, 100), length_lims=(0, 200), sarcomere_mean_length_lims=(1, 3),
-                          sarcomere_std_length_lims=(0, 0.4), msc_lims=(0, 1), midline_mean_length_lims=(2, 20),
-                          midline_std_length_lims=(0, 5), midline_min_length_lims=(2, 20), max_orient_change=30):
+    def _filter_lois(self, number_lims=(10, 100), length_lims=(0, 200), sarcomere_mean_length_lims=(1, 3),
+                     sarcomere_std_length_lims=(0, 0.4), msc_lims=(0, 1), midline_mean_length_lims=(2, 20),
+                     midline_std_length_lims=(0, 5), midline_min_length_lims=(2, 20), max_orient_change=30):
         """
-        Filters Regions of Interest (ROI) lines based on various geometric and morphological criteria.
+        Filters Lines of Interest (LOIs) lines based on various geometric and morphological criteria.
 
         Parameters
         ----------
         number_lims : tuple of int
-            Limits of sarcomere numbers in ROI (min, max).
+            Limits of sarcomere numbers in LOI (min, max).
         length_lims : tuple of float
-            Limits for ROI lengths (in µm) (min, max).
+            Limits for LOI lengths (in µm) (min, max).
         sarcomere_mean_length_lims : tuple of float
-            Limits for mean length of sarcomeres in ROI (min, max).
+            Limits for mean length of sarcomeres in LOI (min, max).
         sarcomere_std_length_lims : tuple of float
-            Limits for standard deviation of sarcomere lengths in ROI (min, max).
+            Limits for standard deviation of sarcomere lengths in LOI (min, max).
         msc_lims : tuple of float
-            Limits for ROI line mean squared curvature (MSC) (min, max).
+            Limits for LOI mean squared curvature (MSC) (min, max).
         midline_mean_length_lims : tuple of float
-            Limits for mean length of the midline in ROI (min, max).
+            Limits for mean length of the midline in LOI (min, max).
         midline_std_length_lims : tuple of float
-            Limits for standard deviation of the midline length in ROI (min, max).
+            Limits for standard deviation of the midline length in LOI (min, max).
         midline_min_length_lims : tuple of float
-            Limits for minimum length of the midline in ROI (min, max).
+            Limits for minimum length of the midline in LOI (min, max).
 
         Returns
         -------
         None
-            Updates the 'is_good' field in the ROI data dict to reflect whether each ROI meets the specified criteria.
+            Updates the 'is_good' field in the LOI data dict to reflect whether each LOI meets the specified criteria.
         """
-        # Retrieve ROI lines and their features from the structure dict
-        rois, roi_features = self.structure['roi_data']['lines'], self.structure['roi_data']['line_features']
-        rois_points = self.structure['roi_data']['lines_points']
+        # Retrieve LOIs and their features from the structure dict
+        lois, loi_features = self.structure['loi_data']['lines'], self.structure['loi_data']['line_features']
+        lois_points = self.structure['loi_data']['lines_points']
 
         # Apply filters based on the provided limits
         is_good = (
-                (roi_features['n_points_lines'] >= number_lims[0]) & (roi_features['n_points_lines'] < number_lims[1]) &
-                (roi_features['length_lines'] >= length_lims[0]) & (roi_features['length_lines'] < length_lims[1]) &
-                (roi_features['sarcomere_mean_length_lines'] >= sarcomere_mean_length_lims[0]) &
-                (roi_features['sarcomere_mean_length_lines'] < sarcomere_mean_length_lims[1]) &
-                (roi_features['sarcomere_std_length_lines'] >= sarcomere_std_length_lims[0]) &
-                (roi_features['sarcomere_std_length_lines'] < sarcomere_std_length_lims[1]) &
-                (roi_features['msc_lines'] >= msc_lims[0]) & (roi_features['msc_lines'] < msc_lims[1]) &
-                (roi_features['midline_mean_length_lines'] >= midline_mean_length_lims[0]) &
-                (roi_features['midline_mean_length_lines'] < midline_mean_length_lims[1]) &
-                (roi_features['midline_std_length_lines'] >= midline_std_length_lims[0]) &
-                (roi_features['midline_std_length_lines'] < midline_std_length_lims[1]) &
-                (roi_features['midline_min_length_lines'] >= midline_min_length_lims[0]) &
-                (roi_features['midline_min_length_lines'] < midline_min_length_lims[1]) &
-                (roi_features['max_orient_change_lines'] < np.radians(max_orient_change))
+                (loi_features['n_points_lines'] >= number_lims[0]) & (loi_features['n_points_lines'] < number_lims[1]) &
+                (loi_features['length_lines'] >= length_lims[0]) & (loi_features['length_lines'] < length_lims[1]) &
+                (loi_features['sarcomere_mean_length_lines'] >= sarcomere_mean_length_lims[0]) &
+                (loi_features['sarcomere_mean_length_lines'] < sarcomere_mean_length_lims[1]) &
+                (loi_features['sarcomere_std_length_lines'] >= sarcomere_std_length_lims[0]) &
+                (loi_features['sarcomere_std_length_lines'] < sarcomere_std_length_lims[1]) &
+                (loi_features['msc_lines'] >= msc_lims[0]) & (loi_features['msc_lines'] < msc_lims[1]) &
+                (loi_features['midline_mean_length_lines'] >= midline_mean_length_lims[0]) &
+                (loi_features['midline_mean_length_lines'] < midline_mean_length_lims[1]) &
+                (loi_features['midline_std_length_lines'] >= midline_std_length_lims[0]) &
+                (loi_features['midline_std_length_lines'] < midline_std_length_lims[1]) &
+                (loi_features['midline_min_length_lines'] >= midline_min_length_lims[0]) &
+                (loi_features['midline_min_length_lines'] < midline_min_length_lims[1]) &
+                (loi_features['max_orient_change_lines'] < np.radians(max_orient_change))
         )
 
         # remove bad lines
-        self.structure['roi_data']['lines'] = [roi for i, roi in enumerate(rois) if is_good[i]]
-        self.structure['roi_data']['lines_points'] = [points for i, points in enumerate(rois_points) if is_good[i]]
-        df_features = pd.DataFrame(roi_features)
+        self.structure['loi_data']['lines'] = [loi for i, loi in enumerate(lois) if is_good[i]]
+        self.structure['loi_data']['lines_points'] = [points for i, points in enumerate(lois_points) if is_good[i]]
+        df_features = pd.DataFrame(loi_features)
         filtered_df_features = df_features[is_good].reset_index(drop=True)
-        self.structure['roi_data']['line_features'] = filtered_df_features.to_dict(orient='list')
+        self.structure['loi_data']['line_features'] = filtered_df_features.to_dict(orient='list')
 
-    def _hausdorff_distance_rois(self, symmetry_mode='max'):
-        """Compute Hausdorff distances between all good ROIs
+    def _hausdorff_distance_lois(self, symmetry_mode='max'):
+        """Compute Hausdorff distances between all good LOIs
 
         Parameters
         ----------
         timepoint : int
             Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.
         symmetry_mode : str
-            Choose 'min' or 'max', whether min/max(H(roi_i, roi_j), H(roi_j, roi_i))
+            Choose 'min' or 'max', whether min/max(H(loi_i, loi_j), H(loi_j, loi_i))
         """
-        # get points of roi lines
-        lines_points = self.structure['roi_data']['lines_points']
+        # get points of LOI lines
+        lines_points = self.structure['loi_data']['lines_points']
 
-        # hausdorff distance between ROIs
+        # hausdorff distance between LOIss
         hausdorff_dist_matrix = np.zeros((len(lines_points), len(lines_points)))
-        for i, roi_i in enumerate(lines_points):
-            for j, roi_j in enumerate(lines_points):
+        for i, loi_i in enumerate(lines_points):
+            for j, loi_j in enumerate(lines_points):
                 if symmetry_mode == 'min':
-                    hausdorff_dist_matrix[i, j] = min(directed_hausdorff(roi_i, roi_j)[0],
-                                                      directed_hausdorff(roi_j, roi_i)[0])
+                    hausdorff_dist_matrix[i, j] = min(directed_hausdorff(loi_i, loi_j)[0],
+                                                      directed_hausdorff(loi_j, loi_i)[0])
                 if symmetry_mode == 'max':
-                    hausdorff_dist_matrix[i, j] = max(directed_hausdorff(roi_i, roi_j)[0],
-                                                      directed_hausdorff(roi_j, roi_i)[0])
+                    hausdorff_dist_matrix[i, j] = max(directed_hausdorff(loi_i, loi_j)[0],
+                                                      directed_hausdorff(loi_j, loi_i)[0])
 
-        self.structure['roi_data']['hausdorff_dist_matrix'] = hausdorff_dist_matrix
+        self.structure['loi_data']['hausdorff_dist_matrix'] = hausdorff_dist_matrix
         if self.auto_save:
             self.store_structure_data()
 
-    def _cluster_rois(self, distance_threshold_rois=40, linkage='single'):
-        """Agglomerative clustering of good ROIs using predefined Hausdorff distance matrix using scikit-learn
+    def _cluster_lois(self, distance_threshold_lois=40, linkage='single'):
+        """Agglomerative clustering of good LOIs using predefined Hausdorff distance matrix using scikit-learn
 
         Parameters
         ----------
-        distance_threshold_rois : float, default=40
+        distance_threshold_lois : float, default=40
             The linkage distance threshold above which, clusters will not be merged.
         linkage : {‘complete’, ‘average’, ‘single’}, default='single'
             Which linkage criterion to use. The linkage criterion determines which distance to use between sets of
@@ -864,21 +864,21 @@ class Structure:
             - ‘complete’ or ‘maximum’ linkage uses the maximum distances between all observations of the two sets.
             - ‘single’ uses the minimum of the distances between all observations of the two sets.
         plot : bool
-            If True, graph with clustered good ROIs is shown.
+            If True, graph with clustered good LOIs is shown.
         """
-        if len(self.structure['roi_data']['lines_points']) == 0:
-            self.structure['roi_data']['line_cluster'] = []
-            self.structure['roi_data']['n_lines_clusters'] = 0
-        elif len(self.structure['roi_data']['lines_points']) == 1:
-            self.structure['roi_data']['line_cluster'] = [[0]]
-            self.structure['roi_data']['n_lines_clusters'] = 1
+        if len(self.structure['loi_data']['lines_points']) == 0:
+            self.structure['loi_data']['line_cluster'] = []
+            self.structure['loi_data']['n_lines_clusters'] = 0
+        elif len(self.structure['loi_data']['lines_points']) == 1:
+            self.structure['loi_data']['line_cluster'] = [[0]]
+            self.structure['loi_data']['n_lines_clusters'] = 1
         else:
-            clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold_rois,
+            clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold_lois,
                                                  affinity='precomputed',
                                                  linkage=linkage).fit(
-                self.structure['roi_data']['hausdorff_dist_matrix'])
-            self.structure['roi_data']['line_cluster'] = clustering.labels_
-            self.structure['roi_data']['n_lines_clusters'] = len(np.unique(clustering.labels_))
+                self.structure['loi_data']['hausdorff_dist_matrix'])
+            self.structure['loi_data']['line_cluster'] = clustering.labels_
+            self.structure['loi_data']['n_lines_clusters'] = len(np.unique(clustering.labels_))
         if self.auto_save:
             self.store_structure_data()
 
@@ -890,48 +890,48 @@ class Structure:
         add_length : float
             Elongate line at end with add_length (in length unit)
         n_longest : int
-            If int, only n longest ROIs are saved. If None, all are saved.
+            If int, only n longest LOIs are saved. If None, all are saved.
         """
 
         def linear(x, a, b):
             return a * x + b
 
         points_clusters = []
-        roi_lines = []
-        len_roi_lines = []
+        loi_lines = []
+        len_loi_lines = []
         add_length = add_length / self.metadata['pixelsize']
-        for label_i in range(self.structure['roi_data']['n_lines_clusters']):
+        for label_i in range(self.structure['loi_data']['n_lines_clusters']):
             points_cluster_i = []
-            for k in np.where(self.structure['roi_data']['line_cluster'] == label_i)[0]:
-                points_cluster_i.append(self.structure['roi_data']['lines_points'][k])
+            for k in np.where(self.structure['loi_data']['line_cluster'] == label_i)[0]:
+                points_cluster_i.append(self.structure['loi_data']['lines_points'][k])
             points_clusters.append(np.concatenate(points_cluster_i).T)
             p_i, pcov_i = curve_fit(linear, points_clusters[label_i][1], points_clusters[label_i][0])
             x_range_i = np.linspace(np.min(points_clusters[label_i][1]) - add_length / np.sqrt(1 + p_i[0] ** 2),
                                     np.max(points_clusters[label_i][1]) + add_length / np.sqrt(1 + p_i[0] ** 2), num=2)
             y_i = linear(x_range_i, p_i[0], p_i[1])
             len_i = np.sqrt(np.diff(x_range_i) ** 2 + np.diff(y_i) ** 2)
-            roi_lines.append(np.asarray((x_range_i, y_i)).T)
-            len_roi_lines.append(len_i)
+            loi_lines.append(np.asarray((x_range_i, y_i)).T)
+            len_loi_lines.append(len_i)
 
-        len_roi_lines = np.asarray(len_roi_lines).flatten()
-        roi_lines = np.asarray(roi_lines)
+        len_loi_lines = np.asarray(len_loi_lines).flatten()
+        loi_lines = np.asarray(loi_lines)
 
         # sort lines by length
-        length_idxs = len_roi_lines.argsort()
-        roi_lines = roi_lines[length_idxs[::-1]][:n_longest]
-        len_roi_lines = len_roi_lines[length_idxs[::-1]][:n_longest]
+        length_idxs = len_loi_lines.argsort()
+        loi_lines = loi_lines[length_idxs[::-1]][:n_longest]
+        len_loi_lines = len_loi_lines[length_idxs[::-1]][:n_longest]
 
-        self.structure['roi_data']['roi_lines'] = np.asarray(roi_lines)
-        self.structure['roi_data']['len_roi_lines'] = np.asarray(len_roi_lines)
+        self.structure['loi_data']['loi_lines'] = np.asarray(loi_lines)
+        self.structure['loi_data']['len_loi_lines'] = np.asarray(len_loi_lines)
         if self.auto_save:
             self.store_structure_data()
 
     def _longest_in_cluster(self, n_longest):
-        lines = self.structure['roi_data']['lines']
+        lines = self.structure['loi_data']['lines']
         points = self.structure['points'][0][::-1]
-        lines_cluster = np.asarray(self.structure['roi_data']['line_cluster'])
+        lines_cluster = np.asarray(self.structure['loi_data']['line_cluster'])
         longest_lines = []
-        for label_i in range(self.structure['roi_data']['n_lines_clusters']):
+        for label_i in range(self.structure['loi_data']['n_lines_clusters']):
             lines_cluster_i = [line for i, line in enumerate(lines) if lines_cluster[i] == label_i]
             points_lines_cluster_i = [points[:, line] for i, line in enumerate(lines) if
                                       lines_cluster[i] == label_i]
@@ -943,16 +943,16 @@ class Structure:
         sorted_by_length = sorted(longest_lines, key=lambda x: len(x[1].T), reverse=True)
         if len(longest_lines) < n_longest:
             print(f'Only {len(longest_lines)}<{n_longest} clusters identified.')
-        roi_lines = sorted_by_length[:n_longest]
-        roi_lines = [line.T for line in roi_lines]
-        self.structure['roi_data']['roi_lines'] = roi_lines
-        self.structure['roi_data']['len_roi_lines'] = [len(line.T) for line in roi_lines]
+        loi_lines = sorted_by_length[:n_longest]
+        loi_lines = [line.T for line in loi_lines]
+        self.structure['loi_data']['loi_lines'] = loi_lines
+        self.structure['loi_data']['len_loi_lines'] = [len(line.T) for line in loi_lines]
         if self.auto_save:
             self.store_structure_data()
 
-    def create_roi_data(self, line, linewidth=0.65, order=0, export_raw=False):
+    def create_loi_data(self, line, linewidth=0.65, order=0, export_raw=False):
         """
-        Extract intensity kymograph along ROI and create ROI file from line.
+        Extract intensity kymograph along LOI and create LOI file from line.
 
         Parameters
         ----------
@@ -965,7 +965,7 @@ class Structure:
             image.dtype is bool and 1 otherwise. The order has to be in
             the range 0-5. See `skimage.transform.warp` for detail.
         export_raw : bool
-            If True, intensity kymograph along ROI from raw microscopy image are additionally stored
+            If True, intensity kymograph along LOI from raw microscopy image are additionally stored
         """
         imgs_sarcomeres = tifffile.imread(self.folder + 'sarcomeres.tif')
         profiles = kymograph_movie(imgs_sarcomeres, line, order=order,
@@ -991,25 +991,25 @@ class Structure:
             return np.sum(lengths)
 
         length = __calculate_segmented_line_length(line) * self.metadata['pixelsize']
-        roi_data = {'profiles': profiles, 'profiles_raw': profiles_raw, 'profiles_calcium': profiles_calcium,
+        loi_data = {'profiles': profiles, 'profiles_raw': profiles_raw, 'profiles_calcium': profiles_calcium,
                     'line': line, 'linewidth': linewidth, 'length': length}
-        for key, value in roi_data.items():
+        for key, value in loi_data.items():
             if value is not None:
-                roi_data[key] = np.asarray(value)
-        save_name = self.folder + f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_roi.json'
-        IOUtils.json_serialize(roi_data, save_name)
+                loi_data[key] = np.asarray(value)
+        save_name = self.folder + f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json'
+        IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_rois(self, timepoint=0, n_seeds=1000, persistence=2, threshold_distance=0.3, score_threshold=None,
+    def detect_lois(self, timepoint=0, n_seeds=1000, persistence=2, threshold_distance=0.3, score_threshold=None,
                     mode='longest_in_cluster', random_seed=None, number_lims=(10, 50), length_lims=(0, 200),
                     sarcomere_mean_length_lims=(1, 3), sarcomere_std_length_lims=(0, 1), msc_lims=(0, 1),
                     max_orient_change=30, midline_mean_length_lims=(2, 20), midline_std_length_lims=(0, 5),
-                    midline_min_length_lims=(2, 20), distance_threshold_rois=40, linkage='single', n_longest=4,
+                    midline_min_length_lims=(2, 20), distance_threshold_lois=40, linkage='single', n_longest=4,
                     linewidth=0.65, order=0, export_raw=False):
         """
-        Detects Regions of Interest (ROIs) for tracking sarcomere Z-band motion and creates kymographs.
+        Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
 
-        This method integrates several steps: growing ROI lines based on seed points, filtering ROIs based on
-        specified criteria, clustering ROIs, fitting lines to ROI clusters, and extracting intensity profiles
+        This method integrates several steps: growing LOIs based on seed points, filtering LOIs based on
+        specified criteria, clustering LOIs, fitting lines to LOI clusters, and extracting intensity profiles
         to generate kymographs.
 
         Parameters
@@ -1017,7 +1017,7 @@ class Structure:
         timepoint : int
             The index of the timepoint to select for analysis.
         n_seeds : int
-            Number of seed points for initiating ROI line growth.
+            Number of seed points for initiating LOI growth.
         persistence : int
             Persistence parameter influencing line growth direction and termination.
         threshold_distance : float
@@ -1025,42 +1025,42 @@ class Structure:
         score_threshold : float, optional
             Minimum score threshold for seed points. Uses automated threshold if None.
         mode : str
-            Mode for selecting ROI lines from identified clusters.
+            Mode for selecting LOIs from identified clusters.
             - 'fit_straight_line' fits a straight line to all points in the cluster.
-            - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved ROI lines.
+            - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved LOIs.
         random_seed : int, optional
             Random seed for selection of random starting points for line growth algorithm, for reproducible outcomes.
             If None, no random seed is set, and outcomes in every run will differ.
         number_lims : tuple of int
-            Limits for the number of sarcomeres within an ROI (min, max).
+            Limits for the number of sarcomeres within an LOI (min, max).
         length_lims : tuple of float
-            Length limits for ROIs (in µm) (min, max).
+            Length limits for LOIs (in µm) (min, max).
         sarcomere_mean_length_lims : tuple of float
-            Limits for the mean length of sarcomeres within an ROI (min, max).
+            Limits for the mean length of sarcomeres within an LOI (min, max).
         sarcomere_std_length_lims : tuple of float
-            Limits for the standard deviation of sarcomere lengths within an ROI (min, max).
+            Limits for the standard deviation of sarcomere lengths within an LOI (min, max).
         msc_lims : tuple of float
-            Limits for the mean squared curvature (MSC) of ROI lines (min, max).
+            Limits for the mean squared curvature (MSC) of LOIs (min, max).
         max_orient_change : float
             Maximal change of orientation between adjacent line segments, in degrees.
         midline_mean_length_lims : tuple of float
-            Limits for the mean length of the midline of points in ROI (min, max).
+            Limits for the mean length of the midline of points in LOI (min, max).
         midline_std_length_lims : tuple of float
-            Limits for the standard deviation of the midline length of points in ROI (min, max).
+            Limits for the standard deviation of the midline length of points in LOI (min, max).
         midline_min_length_lims : tuple of float
-            Limits for the minimum length of the midline of points in ROI (min, max).
-        distance_threshold_rois : float
-            Distance threshold for clustering ROIs. Clusters will not be merged above this threshold.
+            Limits for the minimum length of the midline of points in LOI (min, max).
+        distance_threshold_lois : float
+            Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
         linkage : str
             Linkage criterion for clustering ('complete', 'average', 'single').
         n_longest : int
-            Number of longest ROIs to save. Saves all if None.
+            Number of longest LOIs to save. Saves all if None.
         linewidth : float
-            Width of the scan line (in µm), perpendicular to the ROI line.
+            Width of the scan line (in µm), perpendicular to the LOIs.
         order : int
-            Order of spline interpolation for transforming ROI lines (range 0-5).
+            Order of spline interpolation for transforming LOIs (range 0-5).
         export_raw : bool
-            If True, exports raw intensity kymographs along ROI lines.
+            If True, exports raw intensity kymographs along LOIs.
 
         Returns
         -------
@@ -1068,30 +1068,30 @@ class Structure:
         """
         assert 'points' in self.structure.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_length_orient first.')
-        # Grow ROI lines based on seed points and specified parameters
-        self._grow_roi_lines(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
+        # Grow LOIs based on seed points and specified parameters
+        self._grow_loi_lines(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
                              threshold_distance=threshold_distance, score_threshold=score_threshold,
                              random_seed=random_seed)
-        # Filter ROIs based on geometric and morphological criteria
-        self._filter_roi_lines(number_lims=number_lims, length_lims=length_lims,
-                               sarcomere_mean_length_lims=sarcomere_mean_length_lims,
-                               sarcomere_std_length_lims=sarcomere_std_length_lims, msc_lims=msc_lims,
-                               midline_mean_length_lims=midline_mean_length_lims,
-                               midline_std_length_lims=midline_std_length_lims,
-                               midline_min_length_lims=midline_min_length_lims,
-                               max_orient_change=max_orient_change)
-        # Calculate Hausdorff distance between ROI lines and perform clustering
-        self._hausdorff_distance_rois()
-        self._cluster_rois(distance_threshold_rois=distance_threshold_rois, linkage=linkage)
-        # Fit lines to ROI clusters and select ROIs for analysis
+        # Filter LOIs based on geometric and morphological criteria
+        self._filter_lois(number_lims=number_lims, length_lims=length_lims,
+                          sarcomere_mean_length_lims=sarcomere_mean_length_lims,
+                          sarcomere_std_length_lims=sarcomere_std_length_lims, msc_lims=msc_lims,
+                          midline_mean_length_lims=midline_mean_length_lims,
+                          midline_std_length_lims=midline_std_length_lims,
+                          midline_min_length_lims=midline_min_length_lims,
+                          max_orient_change=max_orient_change)
+        # Calculate Hausdorff distance between LOIs and perform clustering
+        self._hausdorff_distance_lois()
+        self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
+        # Fit lines to LOIs clusters and select LOIs for analysis
         if mode == 'fit_straight_line':
             self._fit_straight_line(add_length=2, n_longest=n_longest)
         elif mode == 'longest_in_cluster':
             self._longest_in_cluster(n_longest=n_longest)
 
-        # extract intensity kymographs profiles and save ROI files
-        for line in self.structure['roi_data']['roi_lines']:
-            self.create_roi_data(line, linewidth=linewidth, order=order, export_raw=export_raw)
+        # extract intensity kymographs profiles and save LOI files
+        for line in self.structure['loi_data']['loi_lines']:
+            self.create_loi_data(line, linewidth=linewidth, order=order, export_raw=export_raw)
 
     def full_analysis_structure(self, timepoints='all', save_all=False):
         """Analyze cell structure with default parameters
@@ -2067,7 +2067,7 @@ def line_growth(points_t, sarcomere_length_points_t, sarcomere_orientation_point
     Returns
     -------
     line_data : dict
-        Dictionary with ROI data keys = (lines, line_features)
+        Dictionary with LOI data keys = (lines, line_features)
     """
     # select random origins for line growth
     random.seed(random_seed)

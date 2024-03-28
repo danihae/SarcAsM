@@ -53,9 +53,9 @@ def get_tif_files_in_folder(folder):
     return files
 
 
-def get_rois_of_cell(filename_cell):
+def get_lois_of_cell(filename_cell):
     """
-    Get the region of interests (ROIs) of a specified cell.
+    Get the lines of interests (LOIs) of a specified cell.
 
     Parameters
     ----------
@@ -65,11 +65,11 @@ def get_rois_of_cell(filename_cell):
     Returns
     -------
     list
-        List of tuples, each containing the cell file path and ROI filename.
+        List of tuples, each containing the cell file path and LOI filename.
     """
     cell_dir = filename_cell[:-4] + '/'
-    list_rois = glob.glob(cell_dir + '*.json')
-    return [(filename_cell, os.path.basename(roi)) for roi in list_rois]
+    list_lois = glob.glob(cell_dir + '*.json')
+    return [(filename_cell, os.path.basename(loi)) for loi in list_lois]
 
 
 def open_folder(path):

@@ -22,31 +22,31 @@ from .plots import analyze_noise_filter_plot
 class Motion(SarcAsM):
     """Class for tracking and analysis of sarcomere motion at region of interest"""
 
-    def __init__(self, filename, roi_name, restart=False, auto_save=True):
+    def __init__(self, filename, loi_name, restart=False, auto_save=True):
         """
-        Initialization of SarcomereAnalysis object for single ROI analysis
+        Initialization of SarcomereAnalysis object for single LOI (Line of Interest) analysis
 
         Parameters
         ----------
         filename : str
             Filename of cardiomyocyte tif-movie
-        roi_name : str
-            Filename of ROI (only basename). All ROI files can be found by roi_files = glob.glob(cell.folder + '*.json')
+        loi_name : str
+            Filename of LOI (only basename). All LOI files can be found by loi_files = glob.glob(cell.folder + '*.json')
         restart : bool
-            If True, analysis is started from beginning, and empty ROI dictionary is initialized
+            If True, analysis is started from beginning, and empty LOI dictionary is initialized
         auto_save : bool
-            If True, ROI dictionary is saved at end of processing steps.
+            If True, LOI dictionary is saved at end of processing steps.
         """
-        self.roi_data = {}  # init empty dictionary
-        self.roi_file = os.path.splitext(filename)[0] + '/' + roi_name  # folder for roi data
-        self.roi_name = Motion.get_roi_name_from_file_name(roi_name)  # roi_name is the file name of the json self file
+        self.loi_data = {}  # init empty dictionary
+        self.loi_file = os.path.splitext(filename)[0] + '/' + loi_name  # folder for loi data
+        self.loi_name = Motion.get_loi_name_from_file_name(loi_name)  # loi_name is the file name of the json self file
 
         super().__init__(filename)  # init super SarcAsM object
 
-        # create folder for ROI (sub-folder in cell folder) for analysis
-        self.roi_folder = self.folder + self.roi_name
-        self.roi_folder += '/'
-        os.makedirs(self.roi_folder, exist_ok=True)
+        # create folder for LOI (sub-folder in cell folder) for analysis
+        self.loi_folder = self.folder + self.loi_name
+        self.loi_folder += '/'
+        os.makedirs(self.loi_folder, exist_ok=True)
 
         # flag to automatically save dict after processing
         self.auto_save = auto_save
@@ -56,68 +56,68 @@ class Motion(SarcAsM):
 
     def __load_analysed_data_or_create(self, restart: bool):
         # load data if already analyzed
-        if os.path.exists(self.__get_roi_data_file_name(is_temp_file=False)) and not restart:
-            self.load_roi_data()
+        if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)) and not restart:
+            self.load_loi_data()
         else:
-            print('ROI not yet analyzed.')
+            print('LOI not yet analyzed.')
             # return if the file does not exist
-            if not os.path.exists(self.roi_file):
+            if not os.path.exists(self.loi_file):
                 return
-            self.__create_roi_data()
+            self.__create_loi_data()
 
-    def __create_roi_data(self):
+    def __create_loi_data(self):
         # read file with profiles and get time array
         x_pos, y_int, y_int_raw, y_int_calcium, line, time, line_width = self.read_profile_data()
         # initialize and save dictionary
-        self.roi_data = {'x_pos': x_pos, 'y_int': y_int, 'y_int_raw': y_int_raw, 'y_int_calcium': y_int_calcium,
+        self.loi_data = {'x_pos': x_pos, 'y_int': y_int, 'y_int_raw': y_int_raw, 'y_int_calcium': y_int_calcium,
                          'time': time, 'line': line, 'line_width': line_width}
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     @staticmethod
-    def get_roi_name_from_file_name(filename) -> str:
-        return filename.replace(".temp", "").replace("_roi", "").replace(".json", "").replace(".csv", "")
+    def get_loi_name_from_file_name(filename) -> str:
+        return filename.replace(".temp", "").replace("_loi", "").replace(".json", "").replace(".csv", "")
 
-    def __get_roi_data_file_name(self, is_temp_file=False) -> str:
+    def __get_loi_data_file_name(self, is_temp_file=False) -> str:
         if is_temp_file:
-            return self.data_folder + self.roi_name + "_roi_data.temp.json"
+            return self.data_folder + self.loi_name + "_loi_data.temp.json"
         else:
-            return self.data_folder + self.roi_name + "_roi_data.json"
+            return self.data_folder + self.loi_name + "_loi_data.json"
 
-    def load_roi_data(self):
-        if os.path.exists(self.__get_roi_data_file_name(is_temp_file=False)):
+    def load_loi_data(self):
+        if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)):
             # persistent file exists, try using it
             try:
-                self.roi_data = IOUtils.json_deserialize(self.__get_roi_data_file_name())
+                self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name())
             except:
-                if os.path.exists(self.__get_roi_data_file_name(is_temp_file=True)):
-                    self.roi_data = IOUtils.json_deserialize(self.__get_roi_data_file_name(is_temp_file=True))
+                if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
+                    self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name(is_temp_file=True))
         else:
             # no persistent file exists, look if a temp-file exists
-            if os.path.exists(self.__get_roi_data_file_name(is_temp_file=True)):
-                self.roi_data = IOUtils.json_deserialize(self.__get_roi_data_file_name(is_temp_file=True))
-        if self.roi_data is None or not self.roi_data:
+            if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
+                self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name(is_temp_file=True))
+        if self.loi_data is None or not self.loi_data:
             # self data is empty, reload from self file
-            if os.path.exists(self.__get_roi_data_file_name()):
-                os.remove(self.__get_roi_data_file_name())
-            if not os.path.exists(self.roi_file):
+            if os.path.exists(self.__get_loi_data_file_name()):
+                os.remove(self.__get_loi_data_file_name())
+            if not os.path.exists(self.loi_file):
                 return
-            self.__create_roi_data()
+            self.__create_loi_data()
             if not self.auto_save:
-                self.store_roi_data()
+                self.store_loi_data()
         self.commit()
 
-    def store_roi_data(self):
-        """Save ROI data"""
-        IOUtils.json_serialize(self.roi_data, self.__get_roi_data_file_name())
-        print('ROI data saved!')
+    def store_loi_data(self):
+        """Save LOI data"""
+        IOUtils.json_serialize(self.loi_data, self.__get_loi_data_file_name())
+        print('LOI data saved!')
 
     def commit(self):
         super().commit()
-        if os.path.exists(self.__get_roi_data_file_name(is_temp_file=True)):
-            if os.path.exists(self.__get_roi_data_file_name(is_temp_file=False)):
-                os.remove(self.__get_roi_data_file_name(is_temp_file=False))
-            os.rename(self.__get_roi_data_file_name(is_temp_file=True), self.__get_roi_data_file_name())
+        if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
+            if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)):
+                os.remove(self.__get_loi_data_file_name(is_temp_file=False))
+            os.rename(self.__get_loi_data_file_name(is_temp_file=True), self.__get_loi_data_file_name())
         pass
 
     def read_profile_data(self):
@@ -125,11 +125,11 @@ class Motion(SarcAsM):
         Read z-band profile data
         """
         # return if the file does not exist
-        if not os.path.exists(self.roi_file):
+        if not os.path.exists(self.loi_file):
             return
 
-        elif ".json" in self.roi_file:
-            data = IOUtils.json_deserialize(self.roi_file)
+        elif ".json" in self.loi_file:
+            data = IOUtils.json_deserialize(self.loi_file)
             # x_pos is 0 until line length(included)
             x_pos = np.linspace(0, data['length'] , data['profiles'].shape[1])
             no_frames = len(data['profiles'])
@@ -141,7 +141,7 @@ class Motion(SarcAsM):
             return (x_pos, data['profiles'], data['profiles_raw'], data['profiles_calcium'], data['line'], time,
                     np.int8(data['linewidth']))
         else:
-            raise ValueError('Roi-File is not .json')
+            raise ValueError('LOI-File is not .json')
 
     def detekt_peaks(self, thres=0.05, min_dist=1., width=7, plot=False):
         """
@@ -160,18 +160,18 @@ class Motion(SarcAsM):
 
         """
         peaks = []
-        if not self.roi_data:
-            raise ValueError('roi_data is not initialized, create intensity profiles first')
-        self.roi_data['parameters.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
+        if not self.loi_data:
+            raise ValueError('loi_data is not initialized, create intensity profiles first')
+        self.loi_data['parameters.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
         min_dist_frames = int(min_dist / self.metadata['pixelsize'])
-        for i, y in enumerate(self.roi_data['y_int']):
+        for i, y in enumerate(self.loi_data['y_int']):
 
-            peaks_i = peakdetekt(self.roi_data['x_pos'], y, thres, min_dist_frames, width)
+            peaks_i = peakdetekt(self.loi_data['x_pos'], y, thres, min_dist_frames, width)
             peaks.append(peaks_i[~np.isnan(peaks_i)])
 
             if plot:
                 plt.figure(figsize=(8, 3))
-                plt.plot(self.roi_data['x_pos'], self.roi_data['y_int'][i], c='b')
+                plt.plot(self.loi_data['x_pos'], self.loi_data['y_int'][i], c='b')
                 for peak_pos in peaks_i:
                     plt.axvline(peak_pos, linestyle=':', color='r')
                 plt.ylabel('Intensity')
@@ -180,9 +180,9 @@ class Motion(SarcAsM):
                 plt.show()
 
         # save peaks
-        self.roi_data['peaks'] = peaks
+        self.loi_data['peaks'] = peaks
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def track_z_bands(self, search_range=1, memory_tracking=10, memory_interpol=6, t_range=None, z_range=None,
                       min_length=5, plot=False):
@@ -206,10 +206,10 @@ class Motion(SarcAsM):
         plot : bool
             If True, the z-band trajectories are plotted.
         """
-        self.roi_data['parameters.track_peaks'] = {'search_range': search_range, 'memory_tracking': memory_tracking,
+        self.loi_data['parameters.track_peaks'] = {'search_range': search_range, 'memory_tracking': memory_tracking,
                                                    'memory_interpol': memory_interpol, 't_range': t_range,
                                                    'z_range': z_range}
-        peaks = self.roi_data['peaks'].copy()
+        peaks = self.loi_data['peaks'].copy()
         # make x,y array
         peaks = [np.asarray([p, np.zeros_like(p)]).T for p in peaks]
         # make iterator of peaks
@@ -220,11 +220,11 @@ class Motion(SarcAsM):
         trajs_idx = trajs_idx.to_numpy()
 
         # sort array into z-band trajectories
-        z_pos = np.zeros((len(trajs_idx[0]), len(self.roi_data['time']))) * np.nan
+        z_pos = np.zeros((len(trajs_idx[0]), len(self.loi_data['time']))) * np.nan
         for t, idx in enumerate(trajs_idx):
             for n, j in enumerate(idx):
                 if j < len(trajs_idx[0]):
-                    z_pos[j][t] = self.roi_data['peaks'][t][n]
+                    z_pos[j][t] = self.loi_data['peaks'][t][n]
 
         # interpolate gaps in trajectories (interpolate with pandas)
         z_pos = pd.DataFrame(z_pos)
@@ -238,7 +238,7 @@ class Motion(SarcAsM):
         # set t range and z range
         if t_range is not None:
             z_pos = z_pos[:, t_range[0]:t_range[1]]
-            self.roi_data['time'] = self.roi_data['time'][:t_range[1] - t_range[0]]
+            self.loi_data['time'] = self.loi_data['time'][:t_range[1] - t_range[0]]
         if z_range is not None:
             z_pos = z_pos[z_range[0]:z_range[1], :]
         # calculate sarcomere lengths
@@ -249,17 +249,17 @@ class Motion(SarcAsM):
                      'parameters.track_z_bands': {'search_range': search_range, 'memory_tracking': memory_tracking,
                                                   'memory_interpol': memory_interpol, 't_range': t_range,
                                                   'z_range': z_range, 'min_length': min_length}}
-        self.roi_data.update(dict_temp)
+        self.loi_data.update(dict_temp)
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
         if plot:
             plt.figure(figsize=(4, 2))
-            plt.plot(self.roi_data['time'], self.roi_data['z_pos_raw'].T, c='k')
+            plt.plot(self.loi_data['time'], self.loi_data['z_pos_raw'].T, c='k')
             plt.xlabel('Time [s]')
             plt.ylabel(u'Z-band [µm]')
             plt.tight_layout()
-            plt.savefig(self.roi_folder + '/z_pos_raw.png', format='png', dpi=200)
+            plt.savefig(self.loi_folder + '/z_pos_raw.png', format='png', dpi=200)
             plt.show()
 
     def smooth_z_pos(self, window_length=11, polyorder=5, plot=False):
@@ -277,18 +277,18 @@ class Motion(SarcAsM):
         plot : bool
             If True, the results are plotted
         """
-        self.roi_data['parameters.filter_z_pos'] = {'window_length': window_length, 'polyorder': polyorder}
-        z_pos = self.roi_data['z_pos_raw'].copy()
+        self.loi_data['parameters.filter_z_pos'] = {'window_length': window_length, 'polyorder': polyorder}
+        z_pos = self.loi_data['z_pos_raw'].copy()
         z_pos = np.asarray([nan_sav_golay(z, window_length=window_length, polyorder=polyorder) for z in z_pos])
         # add to dict and save data
-        self.roi_data['z_pos'] = z_pos
-        self.roi_data['slen'] = np.diff(z_pos, axis=0)
+        self.loi_data['z_pos'] = z_pos
+        self.loi_data['slen'] = np.diff(z_pos, axis=0)
 
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
         if plot:
             fig, ax = plt.subplots(figsize=(4, 2))
-            ax.plot(self.roi_data['z_pos_raw'].T, c='k')
+            ax.plot(self.loi_data['z_pos_raw'].T, c='k')
             ax.plot(z_pos.T, c='r')
             ax.set_xlabel('Time [frames]')
             ax.set_ylabel('Z-band [µm]')
@@ -296,7 +296,7 @@ class Motion(SarcAsM):
             p2 = mpatches.Patch(color='r', label=f'Smoothed Z-pos (wl={window_length}, poly={polyorder})')
             plt.legend(handles=[p1, p2])
             plt.tight_layout()
-            fig.savefig(self.roi_folder + 'z_pos_filt.png', dpi=300)
+            fig.savefig(self.loi_folder + 'z_pos_filt.png', dpi=300)
             plt.show()
 
     def analyze_noise_filter(self, i, filter_params=(11, 5), tlim=(0, 8)):
@@ -312,7 +312,7 @@ class Motion(SarcAsM):
         tlim : tuple(float, float)
             Time limits of plots
         """
-        z_pos = self.roi_data['z_pos_raw']
+        z_pos = self.loi_data['z_pos_raw']
         z_pos_filt = np.asarray([savgol_filter(z, filter_params[0], filter_params[1], deriv=0) for z in z_pos])
         slen_filt = np.diff(z_pos_filt, axis=0)
         slen = np.diff(z_pos, axis=0)
@@ -323,8 +323,8 @@ class Motion(SarcAsM):
         mean, std = np.nanmean(residuals), np.nanstd(residuals)
 
         # plot results
-        analyze_noise_filter_plot(i, self.roi_data['time'], z_pos, z_pos_filt, slen, slen_filt, vel, residuals, std,
-                                  tlim, save_folder=self.roi_folder)
+        analyze_noise_filter_plot(i, self.loi_data['time'], z_pos, z_pos_filt, slen, slen_filt, vel, residuals, std,
+                                  tlim, save_folder=self.loi_folder)
 
     def detect_analyze_contractions(self, model=None, threshold=0.33, slen_lims=(1.2, 3),
                                     n_sarcomeres_min=4,
@@ -360,12 +360,12 @@ class Motion(SarcAsM):
         if model is None or model is 'default':
             model = model_dir + 'contraction_model.pth'
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
-        contr = predict_contractions(self.roi_data['z_pos'], self.roi_data['slen'], model,
+        contr = predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
                                      threshold=threshold)
 
         # edit contractions
         # filter sarcomeres by sarcomere lengths and set to 0 if less sarcomeres than n_sarcomere_min
-        slen = np.diff(self.roi_data['z_pos'], axis=0)
+        slen = np.diff(self.loi_data['z_pos'], axis=0)
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
         contr[n_sarcomeres_time < n_sarcomeres_min] = 0
@@ -399,7 +399,7 @@ class Motion(SarcAsM):
         # time of full contraction cycles (equivalent to 1/beating_rate)
         time_cycle = time_contr[:-1] + time_quiet
 
-        # store in ROI dict
+        # store in LOI dict
         dict_temp = {'parameters.detect_analyze_contractions': {'model': model, 'slen_lims': slen_lims,
                                                                 'n_sarcomeres_min': n_sarcomeres_min,
                                                                 'buffer_frames': buffer_frames,
@@ -411,10 +411,10 @@ class Motion(SarcAsM):
                      'time_contr': time_contr, 'time_quiet': time_quiet, 'time_cycle': time_cycle,
                      'n_contr': n_contr, 'n_quiet': n_quiet,
                      'beating_rate_variability': beating_rate_variability, 'beating_rate': beating_rate, }
-        self.roi_data.update(dict_temp)
+        self.loi_data.update(dict_temp)
 
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def get_trajectories(self, filter_params_z_pos=(13, 7), slen_lims=(1.2, 3.),
                          filter_params_vel=(13, 7), dilate_contr=0, equ_lims=(1.5, 2.2)):
@@ -442,7 +442,7 @@ class Motion(SarcAsM):
         """
         # smoothing z-pos, calculate sarcomere lengths
         self.smooth_z_pos(filter_params_z_pos[0], filter_params_z_pos[1])
-        slen = np.diff(self.roi_data['z_pos'], axis=0)
+        slen = np.diff(self.loi_data['z_pos'], axis=0)
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         slen_avg = np.nanmean(slen, axis=0)
         n_sarcomeres = slen.shape[0]
@@ -456,9 +456,9 @@ class Motion(SarcAsM):
         # calculate sarcomere equ length and delta sarcomere length
         dilate_contr = int(dilate_contr * 2 / self.metadata['frametime'])
         if dilate_contr == 0:
-            contr_dilated = self.roi_data['contr']
+            contr_dilated = self.loi_data['contr']
         elif dilate_contr > 0:
-            contr_dilated = binary_dilation(self.roi_data['contr'],
+            contr_dilated = binary_dilation(self.loi_data['contr'],
                                             structure=np.ones(dilate_contr))
         else:
             raise ValueError(f'Parameter dilate_contr={dilate_contr} not valid!')
@@ -472,7 +472,7 @@ class Motion(SarcAsM):
         else:
             ratio_nans = np.nan
 
-        # store data in ROI dictionary
+        # store data in LOI dictionary
         dict_temp = {
             'parameters.get_sarcomere_trajectories': {'slen_lims': slen_lims,
                                                       'filter_params_z_pos': filter_params_z_pos,
@@ -480,17 +480,17 @@ class Motion(SarcAsM):
             'slen': slen, 'slen_avg': slen_avg, 'vel': vel, 'vel_avg': vel_avg, 'n_sarcomeres': n_sarcomeres,
             'n_sarcomeres_time': n_sarcomeres_time, 'equ': equ, 'delta_slen': delta_slen,
             'delta_slen_avg': delta_slen_avg, 'ratio_nans': ratio_nans}
-        self.roi_data.update(dict_temp)
+        self.loi_data.update(dict_temp)
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def analyze_trajectories(self):
         """ Analyze sarcomere single and average trajectories (extrema of sarcomeres contraction and velocity) """
 
         # initialize arrays
         # maximal contraction
-        contr_max = np.zeros((len(self.roi_data['delta_slen']), self.roi_data['n_contr'])) * np.nan
-        contr_max_avg = np.zeros(self.roi_data['n_contr']) * np.nan
+        contr_max = np.zeros((len(self.loi_data['delta_slen']), self.loi_data['n_contr'])) * np.nan
+        contr_max_avg = np.zeros(self.loi_data['n_contr']) * np.nan
         # maximal elongation
         elong_max = np.zeros_like(contr_max) * np.nan
         elong_max_avg = np.zeros_like(contr_max_avg) * np.nan
@@ -507,10 +507,10 @@ class Motion(SarcAsM):
         time_relax_avg = np.zeros_like(contr_max_avg) * np.nan
 
         # iterate single sarcomeres
-        labels_contr = self.roi_data['labels_contr']
-        for j, delta_j in enumerate(self.roi_data['delta_slen']):
-            vel_j = self.roi_data['vel'][j]
-            for i in range(self.roi_data['n_contr']):
+        labels_contr = self.loi_data['labels_contr']
+        for j, delta_j in enumerate(self.loi_data['delta_slen']):
+            vel_j = self.loi_data['vel'][j]
+            for i in range(self.loi_data['n_contr']):
                 # get time-series of one contraction cycle (start to start)
                 delta_i = delta_j[labels_contr == i + 1]
                 vel_i = vel_j[labels_contr == i + 1]
@@ -525,10 +525,10 @@ class Motion(SarcAsM):
                     time_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
 
         # average contraction
-        for i in range(self.roi_data['n_contr']):
+        for i in range(self.loi_data['n_contr']):
             # get time-series of one contraction cycle (start to start)
-            delta_i = self.roi_data['delta_slen_avg'][labels_contr == i + 1]
-            vel_i = self.roi_data['vel_avg'][labels_contr == i + 1]
+            delta_i = self.loi_data['delta_slen_avg'][labels_contr == i + 1]
+            vel_i = self.loi_data['vel_avg'][labels_contr == i + 1]
             # find extrema
             contr_max_avg[i] = np.nanmin(delta_i)
             elong_max_avg[i] = np.nanmax(delta_i)
@@ -542,23 +542,23 @@ class Motion(SarcAsM):
         # calculate surplus motion index
         self.surplus_motion_index()
 
-        # save data in ROI dict
-        self.roi_data.update({'contr_max': contr_max, 'elong_max': elong_max, 'vel_contr_max': vel_contr_max,
+        # save data in LOI dict
+        self.loi_data.update({'contr_max': contr_max, 'elong_max': elong_max, 'vel_contr_max': vel_contr_max,
                               'vel_elong_max': vel_elong_max, 'contr_max_avg': contr_max_avg,
                               'elong_max_avg': elong_max_avg, 'vel_contr_max_avg': vel_contr_max_avg,
                               'vel_elong_max_avg': vel_elong_max_avg, 'time_to_peak': time_to_peak,
                               'time_to_peak_avg': time_to_peak_avg, 'time_relax': time_relax,
                               'time_relax_avg': time_relax_avg})
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def surplus_motion_index(self):
         """Calculate surplus motion index (SMI) for sarcomere motion: average distance traveled by
         individual sarcomeres contractions divided by distance traveled by sarcomere average"""
 
-        vel = self.roi_data['vel']
-        vel_avg = self.roi_data['vel_avg']
-        contr = self.roi_data['contr']
+        vel = self.loi_data['vel']
+        vel_avg = self.loi_data['vel_avg']
+        contr = self.loi_data['contr']
 
         # label contractions
         contraction_labels, n_contr = label(contr)
@@ -578,9 +578,9 @@ class Motion(SarcAsM):
 
         # calculate surplus motion index per contraction cycle and store in dict
         smi = np.nanmean(abs_motion_single) / np.nanmean(abs_motion_avg)
-        self.roi_data['smi'] = smi
+        self.loi_data['smi'] = smi
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def analyze_popping(self, thres_popping=0.25):
         """Analyze sarcomere popping - popping if elongation larger than thres_popping
@@ -591,7 +591,7 @@ class Motion(SarcAsM):
             Threshold above which sarcomere is identified as popping, in µm beyond equilibrium length
         """
         # identify popping events
-        elong_max = self.roi_data['elong_max']
+        elong_max = self.loi_data['elong_max']
         popping = np.zeros_like(elong_max, dtype='bool')
         popping[elong_max > thres_popping] = 1
 
@@ -640,9 +640,9 @@ class Motion(SarcAsM):
                              'popping_ks_tau_pvalue': kstest_result_tau[1],
                              'popping_tau': tau, 'popping_dist': dist})
 
-        self.roi_data.update(dict_popping)
+        self.loi_data.update(dict_popping)
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def correlation_mutual_serial(self):
         """
@@ -650,25 +650,25 @@ class Motion(SarcAsM):
         cycles and between sarcomeres within the same cycle to analyze static and stochastic heterogeneity in sarcomere dynamics.
         It calculates the average serial (r_s) and mutual (r_m) correlation coefficients, and introduces the ratio R of serial
         to mutual correlations to distinguish between static and stochastic heterogeneity. The function updates the instance's
-        roi_data with correlation data, including the calculated R values, and stores the data if auto_save is enabled.
+        loi_data with correlation data, including the calculated R values, and stores the data if auto_save is enabled.
         """
-        if self.roi_data['n_contr'] > 0:
-            time_contr_median = int(np.median(self.roi_data['time_contr']) / self.metadata['frametime'])
+        if self.loi_data['n_contr'] > 0:
+            time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata['frametime'])
 
-            corr_delta_slen = np.zeros((self.roi_data['n_sarcomeres'], self.roi_data['n_sarcomeres'],
-                                        self.roi_data['n_contr'], self.roi_data['n_contr'])) * np.nan
-            corr_vel = np.zeros((self.roi_data['n_sarcomeres'], self.roi_data['n_sarcomeres'],
-                                 self.roi_data['n_contr'], self.roi_data['n_contr'])) * np.nan
+            corr_delta_slen = np.zeros((self.loi_data['n_sarcomeres'], self.loi_data['n_sarcomeres'],
+                                        self.loi_data['n_contr'], self.loi_data['n_contr'])) * np.nan
+            corr_vel = np.zeros((self.loi_data['n_sarcomeres'], self.loi_data['n_sarcomeres'],
+                                 self.loi_data['n_contr'], self.loi_data['n_contr'])) * np.nan
 
-            for i in range(self.roi_data['n_sarcomeres']):
-                for j in range(self.roi_data['n_sarcomeres']):
+            for i in range(self.loi_data['n_sarcomeres']):
+                for j in range(self.loi_data['n_sarcomeres']):
                     if i >= j:
-                        delta_slen_i = self.roi_data['delta_slen'][i]
-                        vel_i = self.roi_data['vel'][i]
-                        delta_slen_j = self.roi_data['delta_slen'][j]
-                        vel_j = self.roi_data['vel'][j]
-                        for k, contr_k in enumerate(self.roi_data['start_contr_frame'][:-1]):
-                            for l, contr_l in enumerate(self.roi_data['start_contr_frame'][:-1]):
+                        delta_slen_i = self.loi_data['delta_slen'][i]
+                        vel_i = self.loi_data['vel'][i]
+                        delta_slen_j = self.loi_data['delta_slen'][j]
+                        vel_j = self.loi_data['vel'][j]
+                        for k, contr_k in enumerate(self.loi_data['start_contr_frame'][:-1]):
+                            for l, contr_l in enumerate(self.loi_data['start_contr_frame'][:-1]):
                                 if k >= l:
                                     if i != j or k != l:
                                         corr_delta_slen[i, j, k, l] = \
@@ -705,10 +705,10 @@ class Motion(SarcAsM):
                      'corr_vel_serial': corr_vel_serial, 'corr_vel_mutual': corr_vel_mutual,
                      'ratio_delta_slen_mutual_serial': ratio_delta_slen_mutual_serial,
                      'ratio_vel_mutual_serial': ratio_vel_mutual_serial}
-        self.roi_data.update(corr_dict)
+        self.loi_data.update(corr_dict)
 
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
     def analyze_oscillations(self, min_scale=6, max_scale=180, num_scales=60, wavelet='morl', freq_thres=2, plot=False):
         """
@@ -736,20 +736,20 @@ class Motion(SarcAsM):
         """
 
         # Analyze oscillation frequencies of average sarcomere length change
-        cfs_avg, frequencies = wavelet_analysis_oscillations(self.roi_data['delta_slen_avg'],
+        cfs_avg, frequencies = wavelet_analysis_oscillations(self.loi_data['delta_slen_avg'],
                                                              self.metadata['frametime'],
                                                              min_scale=min_scale,
                                                              max_scale=max_scale,
                                                              num_scales=num_scales,
                                                              wavelet=wavelet)
 
-        mask = self.roi_data['contr'] != 0
+        mask = self.loi_data['contr'] != 0
         mag_avg = np.nanmean(np.abs(cfs_avg[:, mask]), axis=1)
 
         # Analyze individual sarcomere oscillation frequencies
         cfs = []
         mags = []
-        for d_i in self.roi_data['delta_slen']:
+        for d_i in self.loi_data['delta_slen']:
             cfs_i, _ = wavelet_analysis_oscillations(d_i,
                                                      self.metadata['frametime'],
                                                      min_scale=min_scale,
@@ -762,7 +762,7 @@ class Motion(SarcAsM):
 
         mag_all_mean, mag_all_std = np.nanmean(mags, axis=0), np.nanstd(mags, axis=0)
 
-        freq_thres = max(freq_thres, self.roi_data['beating_rate'] * 2.1)
+        freq_thres = max(freq_thres, self.loi_data['beating_rate'] * 2.1)
 
         # find first peak corresponding to beating rate
         peak_avg = frequencies[np.argmax(mag_avg)]
@@ -796,10 +796,10 @@ class Motion(SarcAsM):
                        'oscill_amp_1_single': amp_1_single,
                        'oscill_amp_2_single': amp_2_single}
 
-        self.roi_data.update(dict_oscill)
+        self.loi_data.update(dict_oscill)
 
         if self.auto_save:
-            self.store_roi_data()
+            self.store_loi_data()
 
         if plot:
             fig, ax = plt.subplots(figsize=(6, 2.5))
@@ -808,7 +808,7 @@ class Motion(SarcAsM):
             ax.fill_between(frequencies, mag_all_mean - mag_all_std,
                             mag_all_mean + mag_all_std, color='k', alpha=0.25)
             ax.plot(frequencies, mag_all_mean, c='k', label='Single')
-            ax.axvline(self.roi_data['beating_rate'], c='k', linestyle='--', label='Beating rate')
+            ax.axvline(self.loi_data['beating_rate'], c='k', linestyle='--', label='Beating rate')
             ax.axvspan(0, freq_thres, zorder=-5, color='silver', alpha=0.5)
             ax.axvline(peak_avg, c='b', linestyle=':', label='Peak avg 1')
             ax.axvline(peak_2_single, c='g', linestyle=':', color='gold', label='Peak 2')
@@ -818,8 +818,8 @@ class Motion(SarcAsM):
             plt.tight_layout()
             plt.show()
 
-    def full_analysis_roi(self):
-        """Full analysis of ROI with default parameters"""
+    def full_analysis_loi(self):
+        """Full analysis of LOI with default parameters"""
         auto_save_ = self.auto_save
         self.auto_save = False
         self.detekt_peaks()
@@ -831,7 +831,7 @@ class Motion(SarcAsM):
         self.correlation_mutual_serial()
         self.analyze_oscillations()
         self.auto_save = auto_save_
-        self.store_roi_data()
+        self.store_loi_data()
 
 
 def predict_contractions(z_pos, slen, weights, threshold=0.33):

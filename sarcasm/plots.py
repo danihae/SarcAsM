@@ -340,9 +340,9 @@ def plot_summary_structure(sarc_obj, save_format='png'):
     plt.show()
 
 
-def plot_roi_summary_motion(motion_obj, number_contr=0, t_lim=(-0.1, 3), filename=None):
+def plot_loi_summary_motion(motion_obj, number_contr=0, t_lim=(-0.1, 3), filename=None):
     """
-    Plots a summary of the motion of the region of interest.
+    Plots a summary of the motion of the line of interest (LOI).
 
     Parameters
     ----------
@@ -364,13 +364,13 @@ def plot_roi_summary_motion(motion_obj, number_contr=0, t_lim=(-0.1, 3), filenam
     """
 
     fig, axs = plt.subplot_mosaic(mosaic, figsize=(width_2cols, width_2cols))
-    title = f'File: {motion_obj.filename}, ROI: {motion_obj.roi_name}'
+    title = f'File: {motion_obj.filename}, LOI: {motion_obj.loi_name}'
     fig.suptitle(title, fontsize=fontsize)
 
-    # A- image cell w/ ROI line
+    # A- image cell w/ LOI
     plot_image(axs['A'], motion_obj)
 
-    # B- U-Net cell w/ ROI line
+    # B- U-Net cell w/ LOI
     plot_z_bands(axs['B'], motion_obj)
 
     # C- kymograph and tracked z-lines
@@ -389,13 +389,13 @@ def plot_roi_summary_motion(motion_obj, number_contr=0, t_lim=(-0.1, 3), filenam
 
     plt.tight_layout()
     if filename is None:
-        filename = motion_obj.roi_folder + 'summary_roi.png'
+        filename = motion_obj.loi_folder + 'summary_loi.png'
     fig.savefig(filename, dpi=dpi)
     plt.show()
 
 
-def plot_roi_detection(sarc_obj, timepoint=0, filepath=None):
-    """Plots all steps of automated ROI line finding algorithm"""
+def plot_loi_detection(sarc_obj, timepoint=0, filepath=None):
+    """Plots all steps of automated LOI finding algorithm"""
     mosaic = """
     a
     b
@@ -418,23 +418,23 @@ def plot_roi_detection(sarc_obj, timepoint=0, filepath=None):
     plot_z_bands(axs['c'], sarc_obj, timepoint=frame, invert=True)
     plot_z_bands(axs['d'], sarc_obj, timepoint=frame, invert=True)
 
-    for i, roi_i in enumerate(sarc_obj.structure['lines']):
+    for i, loi_i in enumerate(sarc_obj.structure['lines']):
         if sarc_obj.structure['quality'][timepoint] == 1:
-            axs['a'].plot(points[1, roi_i], points[0, roi_i], c='r', lw=0.2, alpha=0.6)
+            axs['a'].plot(points[1, loi_i], points[0, loi_i], c='r', lw=0.2, alpha=0.6)
 
     axs['b'].hist(sarc_obj.structure['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k', alpha=0.75, rwidth=0.75)
     axs['b'].set_xlim(0, 400)
     axs['b'].set_xlabel('Hausdorff distance')
-    axs['b'].set_ylabel('# ROI pairs')
+    axs['b'].set_ylabel('# LOI pairs')
 
-    for i, roi_i in enumerate(sarc_obj.structure['good_rois']):
-        label_i = sarc_obj.structure['good_roi_cluster'][i]
-        axs['c'].plot(sarc_obj.structure['good_rois_pos'][i].T[1], sarc_obj.structure['good_rois_pos'][i].T[0],
-                      c=plt.cm.jet(label_i / sarc_obj.structure['num_good_roi_clusters']), lw=0.2)
+    for i, loi_i in enumerate(sarc_obj.structure['good_lois']):
+        label_i = sarc_obj.structure['good_loi_cluster'][i]
+        axs['c'].plot(sarc_obj.structure['good_lois_pos'][i].T[1], sarc_obj.structure['good_lois_pos'][i].T[0],
+                      c=plt.cm.jet(label_i / sarc_obj.structure['num_good_loi_clusters']), lw=0.2)
 
-    for i, line_i in enumerate(sarc_obj.structure['roi_lines']):
+    for i, line_i in enumerate(sarc_obj.structure['loi_lines']):
         axs['d'].plot(line_i.T[0], line_i.T[1], lw=2, label=i)
-    axs['d'].legend(title='ROI line #', bbox_to_anchor=(0.5, -0.75), loc='lower center', borderaxespad=0., ncol=6)
+    axs['d'].legend(title='LOI #', bbox_to_anchor=(0.5, -0.75), loc='lower center', borderaxespad=0., ncol=6)
 
     label_all_panels(axs, offset=(0.05, 0.9))
 
@@ -444,11 +444,11 @@ def plot_roi_detection(sarc_obj, timepoint=0, filepath=None):
     axs['d'].set_title('4. Fit lines through clusters', ha='left', x=0.02, fontsize=fontsize + 1, fontweight='bold')
 
     if filepath is None:
-        fig.savefig(sarc_obj.analysis_folder + 'ROIs.png', dpi=300)
+        fig.savefig(sarc_obj.analysis_folder + 'LOIs.png', dpi=300)
     plt.show()
 
 
-def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scalebar=True, title=None, show_roi=True):
+def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scalebar=True, title=None, show_loi=True):
     """
     Plots microscopy raw image of the sarcomere object.
 
@@ -468,8 +468,8 @@ def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scale
         Whether to add a scalebar to the plot. Defaults to True.
     title : str, optional
         The title for the plot. Defaults to None.
-    show_roi : bool, optional
-        Whether to show the region of interest. Defaults to True.
+    show_loi : bool, optional
+        Whether to show the line of interest (LOI). Defaults to True.
     """
 
     img = tifffile.imread(sarc_obj.file_images, key=timepoint)
@@ -478,8 +478,8 @@ def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scale
     img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
     img = 1 - img / np.max(img)
     plot = ax.imshow(img, cmap='Greys')
-    if hasattr(sarc_obj, 'roi_data') and show_roi:
-        line = sarc_obj.roi_data['line']
+    if hasattr(sarc_obj, 'loi_data') and show_loi:
+        line = sarc_obj.loi_data['line']
         if rotate:
             ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
         else:
@@ -494,7 +494,7 @@ def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scale
 
 
 def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1, scalebar=True, title=None,
-                 show_roi=True):
+                 show_loi=True):
     """
     Plots the Z-bands of the sarcomere object.
 
@@ -516,8 +516,8 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
         Whether to add a scalebar to the plot. Defaults to True.
     title : str, optional
         The title for the plot. Defaults to None.
-    show_roi : bool, optional
-        Whether to show the region of interest. Defaults to True.
+    show_loi : bool, optional
+        Whether to show the line of interest (LOI). Defaults to True.
     """
     img = tifffile.imread(sarc_obj.file_sarcomeres, key=timepoint)
     if invert:
@@ -525,8 +525,8 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
     if rotate:
         img = img.T
     ax.imshow(img, cmap='gray', alpha=alpha)
-    if hasattr(sarc_obj, 'roi_data') and show_roi:
-        line = sarc_obj.roi_data['line']
+    if hasattr(sarc_obj, 'loi_data') and show_loi:
+        line = sarc_obj.loi_data['line']
         if rotate:
             ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
         else:
@@ -991,7 +991,7 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
         plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
     else:
         plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
-    rois = sarc_obj.structure['myof_lines'][timepoint]
+    lois = sarc_obj.structure['myof_lines'][timepoint]
     points = sarc_obj.structure['points'][timepoint]
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
@@ -999,19 +999,19 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
-    for i, roi_i in enumerate(rois):
-        ax.plot(points[1, roi_i], points[0, roi_i], c='r', alpha=alpha, lw=linewidth)
+    for i, loi_i in enumerate(lois):
+        ax.plot(points[1, loi_i], points[0, loi_i], c='r', alpha=alpha, lw=linewidth)
     ax.set_title(title, fontsize=fontsize)
 
 
-def plot_roi_lines(ax, sarc_obj, color='g', linewidth=2):
+def plot_lois(ax, sarc_obj, color='g', linewidth=2):
     """
-    Plot ROI lines.
+    Plot LOI lines.
 
     Parameters
     ----------
     ax : matplotlib axis
-        Axis on which to plot the ROI lines
+        Axis on which to plot the LOI lines
     sarc_obj : SarcAsM object
         Object of SarcAsM class
     color : str
@@ -1019,9 +1019,9 @@ def plot_roi_lines(ax, sarc_obj, color='g', linewidth=2):
     linewidth : float
         Width of lines
     """
-    roi_lines = sarc_obj.structure['roi_data']['roi_lines']
+    loi_lines = sarc_obj.structure['loi_data']['loi_lines']
 
-    for line in roi_lines:
+    for line in loi_lines:
         ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth)
 
 
@@ -1175,23 +1175,23 @@ def plot_z_pos(ax, motion_obj, number_contr=None, show_contr=True, show_kymograp
         The y limits for the plot. Defaults to (None, None).
     """
     # plot limits and params
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
-        start_contr_t = motion_obj.roi_data['start_contr'][number_contr]
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
+        start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
         tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
         idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
     else:
         tlim, idxlim = (None, None), (None, None)
 
     if show_kymograph:
-        ax.pcolorfast(motion_obj.roi_data['time'], motion_obj.roi_data['x_pos'], motion_obj.roi_data['y_int'].T,
+        ax.pcolorfast(motion_obj.loi_data['time'], motion_obj.loi_data['x_pos'], motion_obj.loi_data['y_int'].T,
                       cmap='Greys')
     # get data
-    time = motion_obj.roi_data['time']
-    z_pos = motion_obj.roi_data['z_pos']
+    time = motion_obj.loi_data['time']
+    z_pos = motion_obj.loi_data['z_pos']
     # plot contraction cycles
     if show_contr:
-        for start_i, end_i in zip(motion_obj.roi_data['start_contr'][:-1],
-                                  motion_obj.roi_data['start_quiet']):
+        for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
+                                  motion_obj.loi_data['start_quiet']):
             if number_contr is not None:
                 start_i -= tlim[0]
                 end_i -= tlim[0]
@@ -1199,7 +1199,7 @@ def plot_z_pos(ax, motion_obj, number_contr=None, show_contr=True, show_kymograp
                              transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
 
     # plot trajectories
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
         ax.plot(time[:idxlim[1] - idxlim[0]], z_pos.T[idxlim[0]:idxlim[1]], linewidth=0.75, c=color)
         ax.set_xlim(0, tlim[1] - tlim[0])
     else:
@@ -1234,15 +1234,15 @@ def plot_delta_slen(ax, motion_obj, tlim=(0, 12), ylim=(-0.3, 0.4), n_rows=6, n_
         Whether to show the systoles. Defaults to True.
     """
     yticks = [-0.2, 0, 0.2]
-    delta_slen = motion_obj.roi_data['delta_slen']
+    delta_slen = motion_obj.loi_data['delta_slen']
     list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
     for i, y in enumerate(list_y):
         ax_i = ax.inset_axes([0., y, 1, 1 / n_rows - 0.02])
-        ax_i.plot(motion_obj.roi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
+        ax_i.plot(motion_obj.loi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
         ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
         if show_contr:
-            for start_j, end_j in zip(motion_obj.roi_data['start_contr'][:-1],
-                                      motion_obj.roi_data['start_quiet']):
+            for start_j, end_j in zip(motion_obj.loi_data['start_contr'][:-1],
+                                      motion_obj.loi_data['start_quiet']):
                 ax_i.fill_betweenx([-1, 1], [start_j, start_j], [end_j, end_j], color='lavender')
         if i > 0:
             ax_i.set_xticks([])
@@ -1250,8 +1250,8 @@ def plot_delta_slen(ax, motion_obj, tlim=(0, 12), ylim=(-0.3, 0.4), n_rows=6, n_
         ax_i.set_xlim(tlim)
         ax_i.set_yticks(yticks)
         if show_contr:
-            for start_i, end_i in zip(motion_obj.roi_data['start_contr'][:-1],
-                                      motion_obj.roi_data['start_quiet']):
+            for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
+                                      motion_obj.loi_data['start_quiet']):
                 ax.fill_betweenx([0, 1], [start_i, start_i], [end_i, end_i], color='lavender',
                                  transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
         if i > 0:
@@ -1286,20 +1286,20 @@ def plot_overlay_delta_slen(ax, motion_obj, number_contr=None, t_lim=(0, 1), y_l
         Whether to show the contractions. Defaults to True.
     """
     # plot limits and params
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
-        start_contr_t = motion_obj.roi_data['start_contr'][number_contr]
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
+        start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
         tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
         idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
     else:
         tlim, idxlim = (None, None), (None, None)
     # get data
-    time = motion_obj.roi_data['time']
-    delta_slen = motion_obj.roi_data['delta_slen']
-    delta_slen_avg = motion_obj.roi_data['delta_slen_avg']
+    time = motion_obj.loi_data['time']
+    delta_slen = motion_obj.loi_data['delta_slen']
+    delta_slen_avg = motion_obj.loi_data['delta_slen_avg']
     # plot contraction cycles
     if show_contr:
-        for start_i, end_i in zip(motion_obj.roi_data['start_contr'][:-1],
-                                  motion_obj.roi_data['start_quiet']):
+        for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
+                                  motion_obj.loi_data['start_quiet']):
             if number_contr is not None:
                 start_i -= tlim[0]
                 end_i -= tlim[0]
@@ -1311,7 +1311,7 @@ def plot_overlay_delta_slen(ax, motion_obj, number_contr=None, t_lim=(0, 1), y_l
     ax.set_prop_cycle('color', list(cm))
 
     # plot single and average trajectories
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
         ax.plot(time[:idxlim[1] - idxlim[0]], delta_slen.T[idxlim[0]:idxlim[1]], linewidth=0.5)
         ax.plot(time[:idxlim[1] - idxlim[0]], delta_slen_avg[idxlim[0]:idxlim[1]], c='k', linewidth=2,
                 linestyle='-')
@@ -1348,21 +1348,21 @@ def plot_overlay_velocity(ax, motion_obj, number_contr=None, t_lim=(0, 0.9), y_l
         Whether to show the contractions. Defaults to True.
     """
     # plot limits and params
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
-        start_contr_t = motion_obj.roi_data['start_contr'][number_contr]
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
+        start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
         tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
         idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
     else:
         tlim, idxlim = (None, None), (None, None)
     # get data
-    time = motion_obj.roi_data['time']
-    vel = motion_obj.roi_data['vel']
-    vel_avg = motion_obj.roi_data['vel_avg']
+    time = motion_obj.loi_data['time']
+    vel = motion_obj.loi_data['vel']
+    vel_avg = motion_obj.loi_data['vel_avg']
 
     # plot contraction cycles
     if show_contr:
-        for start_i, end_i in zip(motion_obj.roi_data['start_contr'][:-1],
-                                  motion_obj.roi_data['start_quiet']):
+        for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
+                                  motion_obj.loi_data['start_quiet']):
             if number_contr is not None:
                 start_i -= tlim[0]
                 end_i -= tlim[0]
@@ -1374,7 +1374,7 @@ def plot_overlay_velocity(ax, motion_obj, number_contr=None, t_lim=(0, 0.9), y_l
     ax.set_prop_cycle('color', list(cm))
 
     # plot single and average trajectories
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
         ax.plot(time[:idxlim[1] - idxlim[0]], vel.T[idxlim[0]:idxlim[1]], linewidth=0.5)
         ax.plot(time[:idxlim[1] - idxlim[0]], vel_avg[idxlim[0]:idxlim[1]], c='k', linewidth=2,
                 linestyle='-')
@@ -1411,16 +1411,16 @@ def plot_phase_space(ax, motion_obj, t_lim=(0, 4), number_contr=None):
         The number of contractions to overlay. If None, all contractions are overlaid. Defaults to None.
     """
     # get data
-    delta_slen = motion_obj.roi_data['delta_slen']
-    vel = motion_obj.roi_data['vel']
-    delta_slen_avg = motion_obj.roi_data['delta_slen_avg']
-    vel_avg = motion_obj.roi_data['vel_avg']
+    delta_slen = motion_obj.loi_data['delta_slen']
+    vel = motion_obj.loi_data['vel']
+    delta_slen_avg = motion_obj.loi_data['delta_slen_avg']
+    vel_avg = motion_obj.loi_data['vel_avg']
     # colormap
     cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(delta_slen)))
     ax.set_prop_cycle('color', list(cm))
     # plot limits and params
-    if number_contr is not None and motion_obj.roi_data['n_contr'] > 0:
-        start_contr_t = motion_obj.roi_data['start_contr'][number_contr]
+    if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
+        start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
         tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
         idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
     else:
@@ -1448,9 +1448,9 @@ def plot_popping_events(motion_obj, save_name=None):
     save_name : str, optional
         The name to save the plot as. If None, the plot is not saved. Defaults to None.
     """
-    popping_events = motion_obj.roi_data['popping_events']
-    prob_time = motion_obj.roi_data['popping_freq_time']
-    prob_sarcomeres = motion_obj.roi_data['popping_freq_sarcomeres']
+    popping_events = motion_obj.loi_data['popping_events']
+    prob_time = motion_obj.loi_data['popping_freq_time']
+    prob_sarcomeres = motion_obj.loi_data['popping_freq_sarcomeres']
 
     left, width = 0.1, 0.65
     bottom, height = 0.1, 0.65
@@ -1483,6 +1483,6 @@ def plot_popping_events(motion_obj, save_name=None):
     ax.grid()
 
     if save_name is None:
-        fig_events.savefig(motion_obj.roi_folder + 'popping_events.pdf')
+        fig_events.savefig(motion_obj.loi_folder + 'popping_events.pdf')
     else:
         fig_events.savefig(save_name)

@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QPr
 from .control.application_control import ApplicationControl
 from .control.file_selection_control import FileSelectionControl
 from .control.motion_analysis_control import MotionAnalysisControl
-from .control.roi_analysis_control import RoiAnalysisControl
+from .control.loi_analysis_control import LOIAnalysisControl
 from .control.structure_analysis_control import StructureAnalysisControl
 from .model import ApplicationModel
 from .view.file_selection import Ui_Form as FileSelectionWidget
@@ -58,7 +58,7 @@ class Application:
         self.__file_selection_control = FileSelectionControl(self.__file_selection, self.__control)
         self.__structure_analysis_control = StructureAnalysisControl(self.__structure_analysis_parameters,
                                                                      self.__control)
-        self.__roi_analysis_control = RoiAnalysisControl(self.__roi_analysis, self.__control)
+        self.__roi_analysis_control = LOIAnalysisControl(self.__roi_analysis, self.__control)
         self.__motion_analysis_control = MotionAnalysisControl(self.__motion_analysis, self.__control)
 
     def __disable_scroll_on_spinbox(self):

@@ -30,10 +30,10 @@ class ApplicationControl:
         self._window = window
         self._model = model
         self._viewer = None  # napari.Viewer(title='Image Window(napari)')  # the napari viewer object
-        self.__layer_roi: Shapes = None
+        self.__layer_loi: Shapes = None
         self.__debug_action = None
         self.__worker_thread = None
-        self.__callback_roi_list_updated = None
+        self.__callback_loi_list_updated = None
 
         self.progress_notifier = ProgressNotifier()
         self.progress_notifier.set_progress_report(lambda p: self.update_progress(p * 100))
@@ -60,15 +60,15 @@ class ApplicationControl:
     def set_debug_action(self, debug_action):
         self.__debug_action = debug_action
 
-    def set_callback_roi_list_updated(self, callback):
-        self.__callback_roi_list_updated = callback
+    def set_callback_loi_list_updated(self, callback):
+        self.__callback_loi_list_updated = callback
 
     @property
-    def layer_roi(self):
-        return self.__layer_roi
+    def layer_loi(self):
+        return self.__layer_loi
 
-    def init_roi_layer(self, layer):
-        self.__layer_roi = layer
+    def init_loi_layer(self, layer):
+        self.__layer_loi = layer
 
     @property
     def model(self):
@@ -115,16 +115,16 @@ class ApplicationControl:
         # np.array([[[100, 100], [200, 200]], [[300, 300], [400, 300]]])
 
         points = np.array([[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]])
-        self.layer_roi.add_lines(points, edge_width=line_to_draw[2], edge_color='red')
-        # self.__main_control.layer_roi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
-        # data=self.__main_control.layer_roi.data
-        # widths=self.__main_control.layer_roi.edge_width
+        self.layer_loi.add_lines(points, edge_width=line_to_draw[2], edge_color='red')
+        # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
+        # data=self.__main_control.layer_loi.data
+        # widths=self.__main_control.layer_loi.edge_width
         # print(data)
         # print(widths)
         # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
         # [10, 5, 15]
 
-    def on_update_roi_list(self, line_start, line_end=None, line_thickness=None, drawn_by_user=True):
+    def on_update_loi_list(self, line_start, line_end=None, line_thickness=None, drawn_by_user=True):
         # add handling for bad input
 
         if self.model.cell is None or line_start is None or line_end is None or len(line_start) != 2 or len(
@@ -134,7 +134,7 @@ class ApplicationControl:
         line = (line_start, line_end, line_thickness)
         list_entry = self.get_entry_key_for_line(line)
         if list_entry in self.model.line_dictionary[self.model.cell.filename]:  # if element already contained, ignore
-            # if its inside and its currently selected, reload the sarcomere (for up to date roi info)
+            # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
             if 'last' in self.model.line_dictionary[self.model.cell.filename] and line == self.model.line_dictionary[self.model.cell.filename]['last']:
                 file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filename, 'last')
                 self.model.init_sarcomere(file_name)
@@ -147,17 +147,17 @@ class ApplicationControl:
 
         # todo: update combo box on motion analysis parameters page
         # todo: should be done via callback method
-        if self.__callback_roi_list_updated is not None:
-            self.__callback_roi_list_updated(self.model.line_dictionary[self.model.cell.filename])
+        if self.__callback_loi_list_updated is not None:
+            self.__callback_loi_list_updated(self.model.line_dictionary[self.model.cell.filename])
 
         # select the element if it was drawn by user
         if drawn_by_user:
             # set selection to last item
             # entries = len(self.model.line_dictionary[self._cell.filename]) - 1  # remove the last entry from count
-            # self.gui.listBoxRoi.select_clear(0, "end")  # clear selection
-            # self.gui.listBoxRoi.selection_set(first=entries - 1, last=None)  # counting starts at 0
+            # self.gui.listBoxLoi.select_clear(0, "end")  # clear selection
+            # self.gui.listBoxLoi.selection_set(first=entries - 1, last=None)  # counting starts at 0
             # trigger event manually
-            # self.on_selection_changed_roi_list(None)
+            # self.on_selection_changed_loi_list(None)
             pass
 
     @staticmethod
@@ -176,7 +176,7 @@ class ApplicationControl:
                               scan_line[1][0],
                               scan_line[1][1],
                               scan_line[2])
-        file_name += "_roi" + self.model.file_extension
+        file_name += "_loi" + self.model.file_extension
         return file_name, scan_line
 
     def init_zband_stack(self):

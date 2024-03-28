@@ -19,9 +19,9 @@ class MotionAnalysisControl:
         self.__popup = None
         pass
 
-    def __chk_roi_file_selected(self):
+    def __chk_loi_file_selected(self):
         if self.__main_control.model.sarcomere is None:
-            self.__main_control.debug('no roi is selected')
+            self.__main_control.debug('no loi is selected')
             return False
         return True
         pass
@@ -38,7 +38,7 @@ class MotionAnalysisControl:
             return False
         return True
 
-    def __on_roi_selection_changed(self, txt):
+    def __on_loi_selection_changed(self, txt):
         print(txt)
         if txt is None or txt == '':  # exit method on empty selection
             return
@@ -48,40 +48,40 @@ class MotionAnalysisControl:
         file_name, scan_line = self.__main_control.get_file_name_from_scheme(self.__main_control.model.cell.filename,
                                                                              txt)
         if self.__main_control.model.sarcomere is None or \
-                self.__main_control.model.sarcomere.roi_name != Motion.get_roi_name_from_file_name(file_name):
+                self.__main_control.model.sarcomere.loi_name != Motion.get_loi_name_from_file_name(file_name):
             self.__main_control.model.init_sarcomere(file_name)
             print('sarcomere reloaded:' + txt)
             pass
-        # get selection and change color of selected sarcomere-roi-line
+        # get selection and change color of selected sarcomere-loi
 
-        roi_layer = self.__main_control.layer_roi
-        lines = np.array(roi_layer.data)
-        widths = np.array(roi_layer.edge_width)
+        loi_layer = self.__main_control.layer_loi
+        lines = np.array(loi_layer.data)
+        widths = np.array(loi_layer.edge_width)
 
-        roi_layer.data.clear()
-        roi_layer.edge_width.clear()
-        roi_layer.edge_color = []
+        loi_layer.data.clear()
+        loi_layer.edge_width.clear()
+        loi_layer.edge_color = []
 
         for index, line_data in enumerate(lines):
             if line_data[0][0] == line[0][1] and line_data[0][1] == line[0][0] and line_data[1][0] == line[1][1] and \
-                    line_data[1][1] == line[1][0] and line[2] == roi_layer.edge_width[index]:
-                roi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='yellow')
+                    line_data[1][1] == line[1][0] and line[2] == loi_layer.edge_width[index]:
+                loi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='yellow')
                 pass
             else:
-                roi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='red')
+                loi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='red')
                 pass
             pass
         pass
 
-    def __update_roi_combo_box(self, lines):
-        self.__motion_analysis_widget.cb_roi_file.clear()
-        self.__motion_analysis_widget.cb_roi_file.addItems(lines.keys())
+    def __update_loi_combo_box(self, lines):
+        self.__motion_analysis_widget.cb_loi_file.clear()
+        self.__motion_analysis_widget.cb_loi_file.addItems(lines.keys())
         pass
 
     def on_btn_detect_peaks(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_roi_file_selected():
+        if not self.__chk_loi_file_selected():
             return
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
@@ -102,7 +102,7 @@ class MotionAnalysisControl:
     def on_btn_track_z_bands(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_roi_file_selected():
+        if not self.__chk_loi_file_selected():
             return
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=lambda w, m: m.sarcomere.track_z_bands(
@@ -122,7 +122,7 @@ class MotionAnalysisControl:
     def on_btn_predict_analyze_contractions(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_roi_file_selected():
+        if not self.__chk_loi_file_selected():
             return
         if not self.__chk_contraction_weights():
             return
@@ -154,7 +154,7 @@ class MotionAnalysisControl:
     def on_btn_get_sarcomere_trajs(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_roi_file_selected():
+        if not self.__chk_loi_file_selected():
             return
         worker = self.__main_control.run_async_new(
             parameters=self.__main_control.model,
@@ -201,7 +201,7 @@ class MotionAnalysisControl:
     def on_analyze_motion(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_roi_file_selected():
+        if not self.__chk_loi_file_selected():
             return
         if not self.__chk_contraction_weights():
             return
@@ -223,8 +223,8 @@ class MotionAnalysisControl:
         self.__motion_analysis_widget.btn_motion_systoles.clicked.connect(self.on_btn_predict_analyze_contractions)
         self.__motion_analysis_widget.btn_systoles_search_weights.clicked.connect(self.on_btn_systoles_search_weights)
 
-        self.__main_control.set_callback_roi_list_updated(self.__update_roi_combo_box)
-        self.__motion_analysis_widget.cb_roi_file.currentTextChanged.connect(self.__on_roi_selection_changed)
+        self.__main_control.set_callback_loi_list_updated(self.__update_loi_combo_box)
+        self.__motion_analysis_widget.cb_loi_file.currentTextChanged.connect(self.__on_loi_selection_changed)
 
         self.__main_control.model.parameters.get_parameter(name='motion.detect_peaks.threshold').connect(
             self.__motion_analysis_widget.dsb_detect_peaks_threshold)

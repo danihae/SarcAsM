@@ -93,43 +93,43 @@ class MultiStructureAnalysis:
                                   'Set load_data=False.')
 
 
-class MultiROIAnalysis:
+class MultiLOIAnalysis:
     """
-    Class for multi-ROI comparison
+    Class for multi-LOI comparison
 
     Parameters:
-    - list_rois (list): List of tuples containing tif file paths and ROI names
+    - list_lois (list): List of tuples containing tif file paths and LOI names
     - folder (str): Path to a folder to store data and results
     - load_data (bool, optional): Whether to load the dataframe from previous analysis from the folder
     - **conditions: Keyword arguments with regex functions to extract information from the filename
 
     Attributes:
     - folder (str): Path to the folder with data and results
-    - rois (list): List of tuples containing tif file paths and ROI names
+    - lois (list): List of tuples containing tif file paths and LOI names
     - conditions (dict): Keyword arguments with regex functions to extract information from the filename
     - data (pandas.DataFrame): DataFrame to store the motion data
 
     Methods:
-    - get_data(roi_keys=None, meta_keys=None): Iterate files and get motion data
+    - get_data(loi_keys=None, meta_keys=None): Iterate files and get motion data
     - save_data(): Save the DataFrame to the folder
     - load_data(): Load the DataFrame from the folder
     """
 
-    def __init__(self, list_rois, folder, load_data=False, **conditions):
+    def __init__(self, list_lois, folder, load_data=False, **conditions):
         self.folder = folder
-        self.rois = list_rois
+        self.lois = list_lois
         self.conditions = conditions
         self.data = None
 
         if load_data:
             self.load_data()
 
-    def get_data(self, roi_keys=None, meta_keys=None):
+    def get_data(self, loi_keys=None, meta_keys=None):
         """
         Iterate files and get motion data
 
         Parameters:
-        - roi_keys (list, optional): List of keys to extract motion data
+        - loi_keys (list, optional): List of keys to extract motion data
         - meta_keys (list, optional): List of keys to extract metadata
 
         Returns:
@@ -137,13 +137,13 @@ class MultiROIAnalysis:
         """
 
         self.data = []
-        for tif_file, roi_name in tqdm(self.rois):
+        for tif_file, loi_name in tqdm(self.lois):
             try:
-                motion_obj = Motion(tif_file, roi_name)
-                dict_i = get_motion_dict(motion_obj, meta_keys, roi_keys, **self.conditions)
+                motion_obj = Motion(tif_file, loi_name)
+                dict_i = get_motion_dict(motion_obj, meta_keys, loi_keys, **self.conditions)
                 self.data.append(dict_i)
             except Exception as e:
-                print(f'{tif_file}, {roi_name} failed!')
+                print(f'{tif_file}, {loi_name} failed!')
                 print(repr(e))
 
         self.data = pd.DataFrame.from_records(self.data)
@@ -212,37 +212,37 @@ def get_structure_dict(sarc_obj: SarcAsM, meta_keys=None, structure_keys=None, *
 
 
 # function to create structure dataframe for SarcAsM object
-def get_motion_dict(motion_obj: Motion, meta_keys=None, roi_keys=None, concat=False, **conditions):
+def get_motion_dict(motion_obj: Motion, meta_keys=None, loi_keys=None, concat=False, **conditions):
     """Create dictionary of motion features and metadata from Motion object, additionally accepts keyword args for
     condition
 
     Parameters
     ----------
     motion_obj : Motion
-        Object of Motion class for ROI analysis
+        Object of Motion class for LOI analysis
     meta_keys : list
         List of metadata keys
-    roi_keys : list
-        List of ROI keys
+    loi_keys : list
+        List of LOI keys
     concat : bool
         If True, all 2D arrays will be concatenated to 1D arrays
     conditions : kwargs
         Keyword arguments to add to dictionary, can be any information, e.g., drug='ABC'
     """
     # get data from metadata and structure dicts
-    if roi_keys is None:
-        roi_keys = roi_keys_default
+    if loi_keys is None:
+        loi_keys = loi_keys_default
     if meta_keys is None:
         meta_keys = meta_keys_default
     missing_meta_keys = [key for key in meta_keys if key not in motion_obj.metadata]
     if missing_meta_keys:
         print('Missing metadata keys: ', missing_meta_keys)
     dict_metadata_select = {key: motion_obj.metadata[key] if key in motion_obj.metadata else np.nan for key in meta_keys}
-    missing_roi_keys = [key for key in roi_keys if key not in motion_obj.roi_data]
-    if missing_roi_keys:
-        print('Missing ROI keys: ', missing_roi_keys)
-    dict_roi_select = {key: motion_obj.roi_data[key] if key in motion_obj.roi_data else np.nan for key in roi_keys}
-    dict_ = {**dict_metadata_select, **dict_roi_select, 'roi_name': motion_obj.roi_name}
+    missing_loi_keys = [key for key in loi_keys if key not in motion_obj.loi_data]
+    if missing_loi_keys:
+        print('Missing loi keys: ', missing_loi_keys)
+    dict_loi_select = {key: motion_obj.loi_data[key] if key in motion_obj.loi_data else np.nan for key in loi_keys}
+    dict_ = {**dict_metadata_select, **dict_loi_select, 'loi_name': motion_obj.loi_name}
     # add keyword args with experimental conditions, also accepts functions
     for condition, value in conditions.items():
         if isinstance(value, types.FunctionType):
@@ -303,7 +303,7 @@ structure_keys_default = ['avg_intensity', 'cell_area', 'cell_area_ratio', 'doma
                           'z_straightness_mean', 'z_straightness_std']
 
 
-roi_keys_default = ['beating_rate', 'beating_rate_variability', 'contr_max', 'contr_max_avg', 'elong_max',
+loi_keys_default = ['beating_rate', 'beating_rate_variability', 'contr_max', 'contr_max_avg', 'elong_max',
                     'elong_max_avg', 'equ', 'time', 'vel_contr_max', 'vel_contr_max_avg', 'vel_elong_max',
                     'vel_elong_max_avg', 'n_sarcomeres', 'n_contr', 'ratio_nans', 'popping_freq_time',
                     'popping_freq_sarcomeres', 'popping_freq', 'popping_events', 'popping_dist', 'popping_tau',

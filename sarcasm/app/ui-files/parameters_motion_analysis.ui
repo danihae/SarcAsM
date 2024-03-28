@@ -22,7 +22,7 @@
       </font>
      </property>
      <property name="text">
-      <string>ROI file</string>
+      <string>LOI file</string>
      </property>
     </widget>
    </item>
@@ -42,9 +42,9 @@
     </widget>
    </item>
    <item row="1" column="1">
-    <widget class="QComboBox" name="cb_roi_file">
+    <widget class="QComboBox" name="cb_loi_file">
      <property name="toolTip">
-      <string>currently selected ROI to use in analysis</string>
+      <string>currently selected LOI to use in analysis</string>
      </property>
     </widget>
    </item>
@@ -137,7 +137,7 @@
       <item row="3" column="0" colspan="2">
        <widget class="QPushButton" name="btn_motion_detect_peaks">
         <property name="toolTip">
-         <string>execute detect peaks on selected roi file</string>
+         <string>execute detect peaks on selected LOI file</string>
         </property>
         <property name="text">
          <string>Detect Z-band positions</string>
@@ -173,7 +173,7 @@
       <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="btn_motion_track_z_bands">
         <property name="toolTip">
-         <string>execute track z-bands on selected roi file</string>
+         <string>execute track z-bands on selected LOI file</string>
         </property>
         <property name="text">
          <string>Track Z-band motion</string>
