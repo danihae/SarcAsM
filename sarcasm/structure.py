@@ -21,8 +21,8 @@ from scipy.spatial import ConvexHull, cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology
 from skimage.draw import disk as draw_disk, line
-from skimage.measure import label, regionprops_table, regionprops, profile_line
-from skimage.morphology import skeletonize, binary_closing, disk, binary_dilation
+from skimage.measure import label, regionprops_table, regionprops
+from skimage.morphology import skeletonize, disk, binary_dilation
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm as tqdm
@@ -710,7 +710,7 @@ class Structure:
             self.store_structure_data()
 
     def _grow_lois(self, timepoint=0, n_seeds=500, score_threshold=None, persistence=2, threshold_distance=0.5,
-                        random_seed=None):
+                   random_seed=None):
         """Find LOIs (lines of interest) using line growth algorithm. The parameters **lims can be used to filter LOIs.
 
         Parameters
@@ -765,7 +765,7 @@ class Structure:
 
     def _filter_lois(self, number_lims=(10, 100), length_lims=(0, 200), sarcomere_mean_length_lims=(1, 3),
                      sarcomere_std_length_lims=(0, 0.4), msc_lims=(0, 1), midline_mean_length_lims=(2, 20),
-                     midline_std_length_lims=(0, 5), midline_min_length_lims=(2, 20), max_orient_change=30):
+                     midline_std_length_lims=(0, 5), midline_min_length_lims=(2, 20), max_orient_change=30.):
         """
         Filters Lines of Interest (LOIs) lines based on various geometric and morphological criteria.
 
@@ -882,14 +882,14 @@ class Structure:
         if self.auto_save:
             self.store_structure_data()
 
-    def _fit_straight_line(self, add_length=2, n_longest=None):
+    def _fit_straight_line(self, add_length=2, n_lois=None):
         """Fit linear lines to cluster points
 
         Parameters
         ----------
         add_length : float
             Elongate line at end with add_length (in length unit)
-        n_longest : int
+        n_lois : int
             If int, only n longest LOIs are saved. If None, all are saved.
         """
 
@@ -918,35 +918,45 @@ class Structure:
 
         # sort lines by length
         length_idxs = len_loi_lines.argsort()
-        loi_lines = loi_lines[length_idxs[::-1]][:n_longest]
-        len_loi_lines = len_loi_lines[length_idxs[::-1]][:n_longest]
+        loi_lines = loi_lines[length_idxs[::-1]][:n_lois]
+        len_loi_lines = len_loi_lines[length_idxs[::-1]][:n_lois]
 
         self.structure['loi_data']['loi_lines'] = np.asarray(loi_lines)
         self.structure['loi_data']['len_loi_lines'] = np.asarray(len_loi_lines)
         if self.auto_save:
             self.store_structure_data()
 
-    def _longest_in_cluster(self, n_longest):
+    def _longest_in_cluster(self, n_lois):
         lines = self.structure['loi_data']['lines']
         points = self.structure['points'][0][::-1]
         lines_cluster = np.asarray(self.structure['loi_data']['line_cluster'])
         longest_lines = []
         for label_i in range(self.structure['loi_data']['n_lines_clusters']):
-            lines_cluster_i = [line for i, line in enumerate(lines) if lines_cluster[i] == label_i]
-            points_lines_cluster_i = [points[:, line] for i, line in enumerate(lines) if
-                                      lines_cluster[i] == label_i]
-            length_lines_cluster_i = [len(line) for line in lines_cluster_i]
+            lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
+            points_lines_cluster_i = [points[:, line_j] for j, line_j in enumerate(lines) if
+                                      lines_cluster[j] == label_i]
+            length_lines_cluster_i = [len(line_j) for line_j in lines_cluster_i]
             longest_line = points_lines_cluster_i[np.argmax(length_lines_cluster_i)]
             longest_lines.append(longest_line)
         # get n longest lines
-        len_longest_lines = [line.shape for line in longest_lines]
         sorted_by_length = sorted(longest_lines, key=lambda x: len(x[1].T), reverse=True)
-        if len(longest_lines) < n_longest:
-            print(f'Only {len(longest_lines)}<{n_longest} clusters identified.')
-        loi_lines = sorted_by_length[:n_longest]
-        loi_lines = [line.T for line in loi_lines]
+        if len(longest_lines) < n_lois:
+            print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
+        loi_lines = sorted_by_length[:n_lois]
+        loi_lines = [line_i.T for line_i in loi_lines]
         self.structure['loi_data']['loi_lines'] = loi_lines
-        self.structure['loi_data']['len_loi_lines'] = [len(line.T) for line in loi_lines]
+        self.structure['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        if self.auto_save:
+            self.store_structure_data()
+
+    def _random_lois(self, n_lois):
+        lines = self.structure['loi_data']['lines']
+        points = self.structure['points'][0][::-1]
+        loi_lines = random.sample(lines, n_lois)
+        loi_lines = [points[:, line_i].T for line_i in loi_lines]
+        print(loi_lines)
+        self.structure['loi_data']['loi_lines'] = loi_lines
+        self.structure['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
         if self.auto_save:
             self.store_structure_data()
 
@@ -1003,7 +1013,7 @@ class Structure:
                     mode='longest_in_cluster', random_seed=None, number_lims=(10, 50), length_lims=(0, 200),
                     sarcomere_mean_length_lims=(1, 3), sarcomere_std_length_lims=(0, 1), msc_lims=(0, 1),
                     max_orient_change=30, midline_mean_length_lims=(2, 20), midline_std_length_lims=(0, 5),
-                    midline_min_length_lims=(2, 20), distance_threshold_lois=40, linkage='single', n_longest=4,
+                    midline_min_length_lims=(2, 20), distance_threshold_lois=40, linkage='single', n_lois=4,
                     linewidth=0.65, order=0, export_raw=False):
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
@@ -1053,8 +1063,8 @@ class Structure:
             Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
         linkage : str
             Linkage criterion for clustering ('complete', 'average', 'single').
-        n_longest : int
-            Number of longest LOIs to save. Saves all if None.
+        n_lois : int
+            Number of LOIs to save.
         linewidth : float
             Width of the scan line (in µm), perpendicular to the LOIs.
         order : int
@@ -1069,9 +1079,9 @@ class Structure:
         assert 'points' in self.structure.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_length_orient first.')
         # Grow LOIs based on seed points and specified parameters
-        self._grow_loi_lines(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
-                             threshold_distance=threshold_distance, score_threshold=score_threshold,
-                             random_seed=random_seed)
+        self._grow_lois(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
+                        threshold_distance=threshold_distance, score_threshold=score_threshold,
+                        random_seed=random_seed)
         # Filter LOIs based on geometric and morphological criteria
         self._filter_lois(number_lims=number_lims, length_lims=length_lims,
                           sarcomere_mean_length_lims=sarcomere_mean_length_lims,
@@ -1080,18 +1090,23 @@ class Structure:
                           midline_std_length_lims=midline_std_length_lims,
                           midline_min_length_lims=midline_min_length_lims,
                           max_orient_change=max_orient_change)
-        # Calculate Hausdorff distance between LOIs and perform clustering
-        self._hausdorff_distance_lois()
-        self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
-        # Fit lines to LOIs clusters and select LOIs for analysis
-        if mode == 'fit_straight_line':
-            self._fit_straight_line(add_length=2, n_longest=n_longest)
-        elif mode == 'longest_in_cluster':
-            self._longest_in_cluster(n_longest=n_longest)
+        if mode == 'fit_straight_line' or mode == 'longest_in_cluster':
+            # Calculate Hausdorff distance between LOIs and perform clustering
+            self._hausdorff_distance_lois()
+            self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
+            # Fit lines to LOIs clusters and select LOIs for analysis
+            if mode == 'fit_straight_line':
+                self._fit_straight_line(add_length=2, n_lois=n_lois)
+            elif mode == 'longest_in_cluster':
+                self._longest_in_cluster(n_lois=n_lois)
+        elif mode == 'random_line':
+            self._random_lois(n_lois=n_lois)
+        else:
+            raise ValueError(f'mode {mode} not valid.')
 
         # extract intensity kymographs profiles and save LOI files
-        for line in self.structure['loi_data']['loi_lines']:
-            self.create_loi_data(line, linewidth=linewidth, order=order, export_raw=export_raw)
+        for line_i in self.structure['loi_data']['loi_lines']:
+            self.create_loi_data(line_i, linewidth=linewidth, order=order, export_raw=export_raw)
 
     def full_analysis_structure(self, timepoints='all', save_all=False):
         """Analyze cell structure with default parameters
