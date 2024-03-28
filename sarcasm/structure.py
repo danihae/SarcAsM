@@ -15,7 +15,7 @@ from .unets import unet
 from .unets.progress import ProgressNotifier
 from joblib import Parallel, delayed
 from networkx.algorithms import community
-from scipy import ndimage, stats
+from scipy import ndimage, stats, sparse
 from scipy.optimize import curve_fit
 from scipy.spatial import ConvexHull, cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
@@ -77,6 +77,8 @@ class Structure:
 
     def store_structure_data(self, override=True):
         """ Store structure data in json file """
+        # make sparse arrays json-serializable
+
         # only store if path doesn't exist or override is true
         if override or (not os.path.exists(self.__get_structure_data_file(is_temp_file=False))):
             IOUtils.json_serialize(self.structure, self.__get_structure_data_file(is_temp_file=True))
@@ -227,7 +229,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_z_bands(self, timepoints='all', threshold=0.1, min_length=1., end_radius=0.75, theta_phi_min=0.25,
-                        d_max=5., d_min=0.25, save_all=False):
+                        d_max=5., d_min=0.25):
         """Segment and analyze sarcomere z-bands
 
         Parameters
@@ -249,8 +251,6 @@ class Structure:
             (->for lateral alignment and distance analysis)
         d_min : float
             Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
-        save_all : bool
-            If True, z_labels and lateral distance and alignment matrices are stored (large storage), if False not.
         """
         assert self.file_sarcomeres is not None, ("Z-band mask not found. Please run predict_z_bands first.")
         if timepoints == 'all':
@@ -282,11 +282,7 @@ class Structure:
         z_lat_size_groups_mean, z_lat_size_groups_std = (nan_arrays() for _ in range(2))
         z_lat_length_groups_mean, z_lat_length_groups_std = (nan_arrays(), nan_arrays())
         z_lat_alignment_groups_mean, z_lat_alignment_groups_std = (nan_arrays() for _ in range(2))
-
-        if save_all:
-            z_labels, z_ends, z_links, z_lat_groups = ([] for _ in range(4))
-        else:
-            z_labels = z_ends = z_links = z_lat_groups = None
+        z_labels, z_ends, z_links, z_lat_groups = ([] for _ in range(4))
 
         # iterate images
         print('Start z-band analysis!')
@@ -318,11 +314,10 @@ class Structure:
             z_lat_alignment_groups.append(z_lat_alignment_groups_i)
             z_ratio_intensity[i], avg_intensity[i], z_oop[i] = z_ratio_intensity_i, avg_intensity_i, z_oop_i
 
-            if save_all:
-                z_labels.append(labels_i)
-                z_links.append(z_links_i)
-                z_ends.append(z_ends_i)
-                z_lat_groups.append(z_lat_groups_i)
+            z_labels.append(sparse.coo_matrix(labels_i))
+            z_links.append(z_links_i)
+            z_ends.append(z_ends_i)
+            z_lat_groups.append(z_lat_groups_i)
 
             # calculate mean and std of z-band features
             if len(z_length_i) > 0:
@@ -1110,7 +1105,7 @@ class Structure:
             If True, all intermediary data is saved. Can take up large storage, and is only recommended for visualizing
             data.
         """
-        self.analyze_z_bands(timepoints=timepoints, save_all=save_all)
+        self.analyze_z_bands(timepoints=timepoints)
         self.analyze_sarcomere_length_orient(timepoints=timepoints, save_all=save_all)
         self.analyze_myofibrils(timepoints=timepoints)
         self.analyze_sarcomere_domains(timepoints=timepoints)

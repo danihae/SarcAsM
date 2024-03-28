@@ -4,6 +4,7 @@ import json
 import pickle
 import numpy as np
 from numpy import ndarray
+from scipy import sparse
 
 
 class IOUtils:
@@ -11,18 +12,14 @@ class IOUtils:
     # region JSON Serialization --- works with top1.csv
     @staticmethod
     def __serialize_field(field):
-
-        if isinstance(field, ndarray):
-            return {'type': 'ndarray', 'values': np.array(field).tolist()}
+        if sparse.issparse(field):  # Check if the field is a sparse matrix
+            return {'type': 'sparse_matrix', 'values': IOUtils.__sparse_to_json_serializable(field)}
+        elif isinstance(field, np.ndarray):
+            return {'type': 'ndarray', 'values': field.tolist()}
         elif isinstance(field, list):
-            list_new = []
-            for val in field:
-                list_new.append(IOUtils.__serialize_field(val))
-            return list_new
+            return [IOUtils.__serialize_field(val) for val in field]
         elif isinstance(field, dict):
-            for key in field:
-                field[key] = IOUtils.__serialize_field(field[key])
-            return field
+            return {key: IOUtils.__serialize_field(value) for key, value in field.items()}
         elif isinstance(field, np.generic):
             return {'value': field.item(), 'type': field.dtype.name}
         else:
@@ -30,26 +27,18 @@ class IOUtils:
 
     @staticmethod
     def __deserialize_field(field):
-
         if isinstance(field, list):
-            list_new = []
-            for val in field:
-                list_new.append(IOUtils.__deserialize_field(val))
-            return list_new
-        elif isinstance(field, dict) and 'type' in field and ('value' in field or 'values' in field):
-            if 'values' in field:
+            return [IOUtils.__deserialize_field(val) for val in field]
+        elif isinstance(field, dict) and 'type' in field:
+            if field['type'] == 'ndarray':
                 return np.array(field['values'])
+            elif field['type'] == 'sparse_matrix':
+                return IOUtils.__json_serializable_to_sparse(field['values'])
             else:
-                if field['type'] == 'int32':
-                    return np.int32(field['value'])
-                elif field['type'] == 'float32':
-                    return np.float32(field['value'])
-                elif field['type'] == 'float64':
-                    return np.float64(field['value'])
+                dtype = np.dtype(field['type'])
+                return np.array(field['value'], dtype=dtype)
         elif isinstance(field, dict):
-            for key in field:
-                field[key] = IOUtils.__deserialize_field(field[key])
-            return field
+            return {key: IOUtils.__deserialize_field(value) for key, value in field.items()}
         else:
             return field
 
@@ -64,8 +53,6 @@ class IOUtils:
         obj = json.load(codecs.open(file_path, 'r', encoding='utf-8'))
         obj = IOUtils.__deserialize_field(obj)
         return obj
-
-    # endregion
 
     @staticmethod
     def serialize_profile_data(start, end, profiles, line_width, file_path):
@@ -100,3 +87,37 @@ class IOUtils:
             "profiles": profiles  # tolist is used because numpy arrays are not serializable by json
         }
         IOUtils.serialize_pickle(result_obj, file_path)
+
+    @staticmethod
+    def __sparse_to_json_serializable(sparse_matrix):
+        """
+        Converts a sparse matrix to a JSON-serializable dictionary.
+        """
+        # Convert to COO format
+        sparse_coo = sparse_matrix.tocoo()
+
+        # Prepare a serializable object
+        serializable_data = {
+            "data": sparse_coo.data.tolist(),
+            "row": sparse_coo.row.tolist(),
+            "col": sparse_coo.col.tolist(),
+            "shape": sparse_coo.shape
+        }
+
+        return json.dumps(serializable_data)
+
+    @staticmethod
+    def __json_serializable_to_sparse(json_data):
+        """
+        Converts a JSON-serializable dictionary back to a COO sparse matrix.
+        """
+        data = json.loads(json_data)
+
+        # Extract data for COO sparse matrix creation
+        coo_data = np.array(data["data"])
+        row = np.array(data["row"])
+        col = np.array(data["col"])
+        shape = tuple(data["shape"])
+
+        # Create and return the COO sparse matrix
+        return sparse.coo_matrix((coo_data, (row, col)), shape=shape)

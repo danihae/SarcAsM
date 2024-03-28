@@ -595,7 +595,7 @@ def plot_z_segmentation(ax, sarc_obj, timepoint=0, scalebar=True, shuffle=True, 
     title : str, optional
         The title for the plot. Defaults to None.
     """
-    labels = sarc_obj.structure['z_labels'][timepoint]
+    labels = sarc_obj.structure['z_labels'][timepoint].toarray()
     if shuffle:
         labels = shuffle_labels(labels)
     labels_plot = labels.astype('float16')
@@ -635,7 +635,7 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
         The title for the plot. Defaults to None.
     """
 
-    labels = sarc_obj.structure['z_labels'][timepoint]
+    labels = sarc_obj.structure['z_labels'][timepoint].toarray()
     if shuffle:
         labels = shuffle_labels(labels)
     z_ends = sarc_obj.structure['z_ends'][timepoint] / sarc_obj.metadata['pixelsize']
