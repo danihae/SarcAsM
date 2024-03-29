@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -13,7 +14,6 @@ import torch.nn.functional as F
 from .unets import siam_unet as siam
 from .unets import unet
 from .unets.progress import ProgressNotifier
-from joblib import Parallel, delayed
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
 from scipy.optimize import curve_fit
@@ -34,7 +34,7 @@ from .utils import map_array, analyze_orientations, model_dir, convert_lists_to_
 if torch.has_cuda:
     device = torch.device('cuda:0')
 elif hasattr(torch, 'has_mps'):  # only for apple m1/m2/...
-    if torch.has_mps:
+    if torch.backends.mps.is_built():
         device = torch.device('mps')
     else:
         device = torch.device('cpu')
@@ -362,7 +362,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.15, width=0.5,
-                                        len_lims=(1.4, 2.7), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
+                                        len_lims=(1.4, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
                                         score_threshold=90, abs_threshold=False, gating=True, dilation_radius=3,
                                         save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
@@ -414,7 +414,6 @@ class Structure:
             imgs = np.expand_dims(imgs, 0)
         n_imgs = len(imgs)
 
-        print('Start wavelet analysis')
         # create empty arrays
         (points, midline_length_points, midline_id_points, sarcomere_length_points,
          sarcomere_orientation_points, max_score_points, sarcomere_masks) = [], [], [], [], [], [], []
@@ -435,19 +434,15 @@ class Structure:
                                                             size=size, sigma=sigma, width=width, len_lims=len_lims,
                                                             len_step=len_step, orient_lims=orient_lims,
                                                             orient_step=orient_step)
-
+        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=torch.float32)
+        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=torch.float32)
         # iterate images
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = convolve_image_with_bank(img_i, bank, gating=gating)
-            #  np.save(self.data_folder + 'wavelet_scores.npy', result_i)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
              wavelet_max_score_i) = argmax_wavelets(result_i,
-                                                    len_range,
-                                                    orient_range)
-            if save_all:
-                wavelet_sarcomere_length.append(wavelet_sarcomere_length_i)
-                wavelet_sarcomere_orientation.append(wavelet_sarcomere_orientation_i)
-                wavelet_max_score.append(wavelet_max_score_i)
+                                                    len_range_tensor,
+                                                    orient_range_tensor)
 
             # evaluate wavelet results at sarcomere midlines
             (points_i, midline_id_points_i, midline_length_points_i, sarcomere_length_points_i,
@@ -464,6 +459,11 @@ class Structure:
             sarcomere_orientation_points.append(sarcomere_orientation_points_i)
             max_score_points.append(max_score_points_i)
             score_thresholds[i] = score_threshold_i
+
+            if save_all:
+                wavelet_sarcomere_length.append(wavelet_sarcomere_length_i)
+                wavelet_sarcomere_orientation.append(wavelet_sarcomere_orientation_i)
+                wavelet_max_score.append(wavelet_max_score_i)
 
             # calculate mean and std of sarcomere length and orientation
             sarcomere_length_mean[i], sarcomere_length_std[i], sarcomere_length_median[i] = np.mean(
@@ -1510,8 +1510,8 @@ def gaussian_kernel(dist, sigma, width, orient, size, pixelsize, mode='both'):
     kernel1 = (1 / (2 * np.pi * sigma * width) * np.exp(
         -((x_mesh + dist / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
     # rotate kernels
-    kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=1)
-    kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=1)
+    kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=2)
+    kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=2)
     if mode == 'separate':
         return kernel0, kernel1
     elif mode == 'both':
@@ -1565,56 +1565,82 @@ def create_wavelet_bank(pixelsize, kernel='gaussian', size=3, sigma=0.15, width=
     return bank, len_range, orient_range
 
 
-def custom_convolve(image, filters):
-    """2D convolution of image with custom kernel/weights
-
-    Parameters
-    ----------
-    image : ndarray
-        2D image
-    filters : ndarray
-        2D convolution kernels
-    """
-    image_torch = torch.from_numpy(image.astype('float32')).to(device).view(1, 1, image.shape[0], image.shape[1])
-    filters_torch = torch.from_numpy(filters.astype('float32')).to(device).view(filters.shape[0] * filters.shape[1], 1,
-                                                                                filters.shape[2], filters.shape[3])
-    result = F.conv2d(image_torch, filters_torch, padding='same').cpu().numpy()
-    return result.reshape(filters.shape[0], filters.shape[1], image.shape[0], image.shape[1])
-
-
 def convolve_image_with_bank(image, bank, gating=True):
-    """AND-gated double-wavelet convolution of image using kernels from filter bank"""
+    """AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality."""
+    # Convert image to float16 and normalize
+    image_torch = torch.from_numpy((image / 255).astype('float16')).to(device).view(1, 1, image.shape[0],
+                                                                                    image.shape[1])
+
     if gating:
-        res0 = custom_convolve(image / 255, filters=bank[:, :, 0])
-        res1 = custom_convolve(image / 255, filters=bank[:, :, 1])
-        return res0 * res1
+        # Convert filters to float32
+        bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
+        filters_torch_0 = torch.from_numpy(bank_0.astype('float16')).to(device).view(
+            bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
+        filters_torch_1 = torch.from_numpy(bank_1.astype('float16')).to(device).view(
+            bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
+
+        # Perform convolutions
+        res0 = F.conv2d(image_torch, filters_torch_0, padding='same')
+        res1 = F.conv2d(image_torch, filters_torch_1, padding='same')
+
+        # Multiply results as torch tensors
+        result = res0 * res1
     else:
-        res = custom_convolve(image / 255, filters=bank[:, :, 0] + bank[:, :, 1])
-        return res
+        # Combine filters and convert to float16
+        combined_filters = bank[:, :, 0] + bank[:, :, 1]
+        filters_torch = torch.from_numpy(combined_filters.astype('float16')).to(device).view(
+            combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
+            combined_filters.shape[3])
+
+        # Perform convolution
+        result = F.conv2d(image_torch, filters_torch, padding='same')
+
+    # reshape
+    return result.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
 
 
 def argmax_wavelets(result, len_range, orient_range):
-    """Argmax of wavelet convolution result to get length, orientation and max max_score map
+    """
+    Compute the argmax of wavelet convolution results to extract length, orientation, and maximum score map.
+
+    This function processes the result of a wavelet convolution operation to determine the optimal
+    length and orientation for each position in the input image. It leverages GPU acceleration for
+    efficient computation and returns the results as NumPy arrays.
 
     Parameters
     ----------
-    result : ndarray
-        Result from convolve_image_with_bank function
-    len_range : ndarray
-        List of lengths used for bank
-    orient_range : ndarray
-        List of orientation angles used for bank
-    """
-    result_ = torch.from_numpy(np.transpose(result, [2, 3, 0, 1]))
-    result_ = result_.view((result.shape[2] * result.shape[3], -1))
-    max_score, argmax = torch.max(result_, 1)
-    max_score = max_score.view(result.shape[2], result.shape[3]).cpu().numpy()
-    argmax = argmax.cpu().numpy()
-    indices = np.unravel_index(argmax, (result.shape[0], result.shape[1]))
-    length = len_range[indices[0]].reshape(result.shape[2], result.shape[3])
-    orient = orient_range[indices[1]].reshape(result.shape[2], result.shape[3])
+    result : torch.Tensor
+        The result tensor from a wavelet convolution operation, expected to be on a GPU device.
+        Shape is expected to be (num_orientations, num_lengths, height, width).
+    len_range : torch.Tensor
+        A tensor containing the different lengths used in the wavelet bank. Shape: (num_lengths,).
+    orient_range : torch.Tensor
+        A tensor containing the different orientation angles used in the wavelet bank, in degrees.
+        Shape: (num_orientations,).
 
-    return length, np.radians(orient), max_score
+    Returns
+    -------
+    length_np : ndarray
+        A 2D array of the optimal length for each position in the input image. Shape: (height, width).
+    orient_np : ndarray
+        A 2D array of the optimal orientation (in radians) for each position in the input image.
+        Shape: (height, width).
+    max_score_np : ndarray
+        A 2D array of the maximum convolution score for each position in the input image.
+        Shape: (height, width).
+    """
+    # Keep the reshaping and max operation on the GPU
+    result_reshaped = result.permute(2, 3, 0, 1).view(result.shape[2] * result.shape[3], -1)
+    max_score, argmax = torch.max(result_reshaped, 1)
+    max_score = max_score.view(result.shape[2], result.shape[3])
+
+    # Calculate indices for lengths and orientations using PyTorch
+    len_indices = argmax // result.shape[1]
+    orient_indices = argmax % result.shape[1]
+    length = len_range[len_indices].view(result.shape[2], result.shape[3])
+    orient = orient_range[orient_indices].view(result.shape[2], result.shape[3])
+
+    return length.to('cpu').numpy(), orient.to('cpu').numpy(), max_score.to('cpu').numpy()
 
 
 def get_points_midline(length, orientation, max_score, score_threshold=90., abs_threshold=False):
