@@ -413,9 +413,9 @@ class Structure:
         # create empty arrays
         (points, midline_length_points, midline_id_points, sarcomere_length_points,
          sarcomere_orientation_points, max_score_points, sarcomere_masks) = [], [], [], [], [], [], []
-        sarcomere_length_mean, sarcomere_length_std, sarcomere_length_median = np.zeros(n_imgs) * np.nan, np.zeros(
-            n_imgs) * np.nan, np.zeros(
-            n_imgs) * np.nan
+        (sarcomere_length_mean, sarcomere_length_std, sarcomere_length_median,
+         weighted_sarcomere_length_variability) = (np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan,
+                                                   np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan)
         sarcomere_orientation_mean, sarcomere_orientation_std = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
         oop, mean_angle, sarcomere_area, sarcomere_area_ratio = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, \
                                                                 np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
@@ -446,6 +446,19 @@ class Structure:
                 wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i, len_range,
                 score_threshold=score_threshold,
                 abs_threshold=abs_threshold)
+
+            # weighted sarcomere length variability
+            weighted_std = 0
+            total_weight = 0
+            midline_ids = np.unique(midline_id_points_i)
+            for j, midline_id in enumerate(midline_ids):
+                sarcomere_length_points_j = sarcomere_length_points_i[midline_id_points_i == midline_id]
+                std_i = sarcomere_length_points_j.std()
+                weight_i = len(sarcomere_length_points_j)
+                weighted_std += std_i * weight_i
+                total_weight += weight_i
+            weighted_std /= total_weight if total_weight > 0 else np.nan
+            weighted_sarcomere_length_variability[i] = weighted_std
 
             # write in list
             points.append(points_i)
@@ -506,6 +519,7 @@ class Structure:
                         'sarcomere_length_median': sarcomere_length_median,
                         'sarcomere_orientation_mean': sarcomere_orientation_mean,
                         'sarcomere_orientation_std': sarcomere_orientation_std,
+                        'weighted_sarcomere_length_variability': weighted_sarcomere_length_variability,
                         'sarcomere_oop': oop, 'sarcomere_mean_angle': mean_angle,
                         'params.score_threshold': score_thresholds, 'params.abs_threshold': abs_threshold,
                         'params.sarcomere_area_closing_radius': dilation_radius}
