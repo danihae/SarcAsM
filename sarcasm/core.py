@@ -16,7 +16,7 @@ class SarcAsM(Structure):
     Base class for sarcomere structural and functional analysis
     """
 
-    def __init__(self, filename, restart=False, correct_phase_leica=False, calcium=False, auto_save=True, use_gui=False,
+    def __init__(self, filename, restart=False, channel=None, correct_phase_leica=False, auto_save=True, use_gui=False,
                  **info):
         """
         Initialize cell object
@@ -27,10 +27,10 @@ class SarcAsM(Structure):
             Filename of tif-file
         restart : bool
             If True, all previous data is deleted. If False, previous analysis is loaded.
+        channel : int
+            Choose channel with sarcomeres in multi-color stacks. If None, all channels are loaded.
         correct_phase_leica : bool
             If True, the phase of the confocal image is corrected (only for bidirectional scan function in Leica scopes)
-        calcium : bool
-            Set True if second channel of tif file is calcium channel.
         auto_save : bool
             If True, analysis results are stored in dictionary after each step.
         use_gui : bool
@@ -43,8 +43,8 @@ class SarcAsM(Structure):
         self.metadata = None
         self.filename = filename
         self.auto_save = auto_save
+        self.channel = channel
         self.correct_phase_leica = correct_phase_leica
-        self.calcium = calcium
         self.use_gui = use_gui
         self.info = info
         # create folders
@@ -77,26 +77,12 @@ class SarcAsM(Structure):
         # check whether metadata file already exists
         if os.path.exists(self.__get_meta_data_file()) and not restart:
             self._load_meta_data()
-            if calcium:
-                self.file_images = self.folder + 'imgs_sarcomeres.tif'
-            else:
-                self.file_images = self.filename
 
         else:
             # correct phase for bidirectional confocal scanner (Leica confocal microscopes)
             if self.correct_phase_leica:
                 correct_phase_confocal(self.filename)
-            if self.calcium:
-                imgs = tifffile.imread(self.filename)
-                imgs_sarcomeres = imgs[:, 0]
-                imgs_calcium = imgs[:, 1]
-                self.file_images = self.folder + 'imgs_sarcomeres.tif'
-                self.file_calcium = self.folder + 'imgs_calcium.tif'
-                tifffile.imwrite(self.file_images, imgs_sarcomeres)
-                tifffile.imwrite(self.file_calcium, imgs_calcium)
-            else:
-                self.file_images = self.filename
-                self.file_calcium = None
+
             # create metadata dict
             self.create_meta_data()
 
@@ -105,7 +91,7 @@ class SarcAsM(Structure):
         Leica and Yokogawa microscopes) """
 
         def __get_shape_from_file(file):
-            _data = tifffile.imread(file)
+            _data = self.read_imgs()
             if len(_data.shape) == 2:
                 frames = 1
                 size = _data.shape
@@ -231,12 +217,11 @@ class SarcAsM(Structure):
             time = None
         # get info from filename
         file_name, date, days_culture, well, substrate, measurement_id, file_id = self.__get_info_from_filename()
-        # if calcium two-channel movie, split data
         # create dictionary for meta data and info (keyword args)
         self.metadata = {'file_name': file_name, 'size': size, 'pixelsize': pixelsize, 'frametime': frametime,
                          'frames': frames, 'file_path': self.filename, 'substrate': substrate, 'date': date,
                          'days_culture': days_culture, 'phase_corrected': self.correct_phase_leica, 'time': time,
-                         'well': well, 'measurement_id': measurement_id, 'file_id': file_id, 'calcium': self.calcium,
+                         'well': well, 'measurement_id': measurement_id, 'file_id': file_id,
                          'timestamps': timestamps}
         self.metadata.update(self.info)
         self.store_meta_data(override=True)
@@ -247,6 +232,19 @@ class SarcAsM(Structure):
         if override or (not os.path.exists(self.__get_meta_data_file())):
             IOUtils.json_serialize(self.metadata, self.__get_meta_data_file())
             self.commit()
+
+    def read_imgs(self, timepoint=None):
+        """Load tif file, and optionally select channel"""
+        if timepoint is None:
+            data = tifffile.imread(self.filename)
+        else:
+            data = tifffile.imread(self.filename, key=timepoint)
+        if self.channel is not None:
+            if data.ndim == 3:
+                data = data[:, :, self.channel]
+            elif data.ndim == 4:
+                data = data[:, :, :, self.channel]
+        return data
 
     def commit(self):
         """
