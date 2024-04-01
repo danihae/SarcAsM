@@ -864,6 +864,9 @@ def plot_sarcomere_area(ax, sarc_obj, timepoint=0, cmap='viridis', show_z_bands=
     alpha_z_bands : float, optional
         Alpha value of Z-bands. Defaults to 1.
     """
+    if sarc_obj.structure['sarcomere_masks'] is None:
+        raise ValueError('No sarcomere masks stored. Run sarc_obj.analyze_sarcomere_length_orient '
+                         'with save_all=True')
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
     if _timepoints is not 'all':
         _timepoint = _timepoints[timepoint]
