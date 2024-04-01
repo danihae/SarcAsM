@@ -31,13 +31,10 @@ from .ioutils import *
 from .utils import map_array, analyze_orientations, model_dir, convert_lists_to_arrays_in_dict, max_orientation_change
 
 # select device
-if torch.has_cuda:
+if torch.backends.cuda.is_built():
     device = torch.device('cuda:0')
-elif hasattr(torch, 'has_mps'):  # only for apple m1/m2/...
-    if torch.backends.mps.is_built():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
+elif torch.backends.mps.is_built():  # only for apple m1/m2/...
+    device = torch.device('mps')
 else:
     device = torch.device('cpu')
 if device.type == 'cpu':
@@ -361,9 +358,9 @@ class Structure:
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.15, width=0.5,
-                                        len_lims=(1.4, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
-                                        score_threshold=90, abs_threshold=False, gating=True, dilation_radius=3,
+    def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.08, width=0.4,
+                                        len_lims=(1.3, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
+                                        score_threshold=0.2, abs_threshold=True, gating=True, dilation_radius=3,
                                         save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
 
@@ -471,7 +468,8 @@ class Structure:
                 sarcomere_length_points_i), np.median(sarcomere_length_points_i)
             sarcomere_orientation_mean[i], sarcomere_orientation_std[i] = np.mean(
                 sarcomere_orientation_points_i), np.std(sarcomere_orientation_points_i)
-            # orientational order parameter
+
+            # orientation order parameter
             if len(sarcomere_orientation_points_i) > 0:
                 oop[i], mean_angle[i] = analyze_orientations(sarcomere_orientation_points_i)
 
@@ -495,7 +493,7 @@ class Structure:
                         'wavelet_max_score': wavelet_max_score, 'sarcomere_masks': sarcomere_masks,
                         'points': points, 'sarcomere_length_points': sarcomere_length_points,
                         'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
-                        'sarcomere_length': sarcomere_length_points,
+                        'sarcomere_length': sarcomere_length_points, 'wavelet_bank': bank if save_all else None,
                         'sarcomere_orientation_points': sarcomere_orientation_points,
                         'sarcomere_orientation': sarcomere_orientation_points, 'max_score_points': max_score_points,
                         'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
@@ -1509,6 +1507,9 @@ def gaussian_kernel(dist, sigma, width, orient, size, pixelsize, mode='both'):
         -((x_mesh - dist / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
     kernel1 = (1 / (2 * np.pi * sigma * width) * np.exp(
         -((x_mesh + dist / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
+    # normalize
+    kernel0 = kernel0 / np.sum(kernel0)
+    kernel1 = kernel1 / np.sum(kernel1)
     # rotate kernels
     kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=2)
     kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=2)
@@ -1640,7 +1641,7 @@ def argmax_wavelets(result, len_range, orient_range):
     length = len_range[len_indices].view(result.shape[2], result.shape[3])
     orient = orient_range[orient_indices].view(result.shape[2], result.shape[3])
 
-    return length.to('cpu').numpy(), orient.to('cpu').numpy(), max_score.to('cpu').numpy()
+    return length.cpu().numpy(), orient.cpu().numpy(), max_score.cpu().numpy()
 
 
 def get_points_midline(length, orientation, max_score, score_threshold=90., abs_threshold=False):
@@ -1682,28 +1683,21 @@ def get_points_midline(length, orientation, max_score, score_threshold=90., abs_
         * **midline** (ndarray): The binarized midline mask.
         * **score_threshold** (float): The final threshold value used.
     """
-    # threshold sarcomere length and orientation array
-    length_thres = length.copy().astype('float')
-    orientation_thres = orientation.copy().astype('float')
-    max_score_ = max_score.copy()
     # rough thresholding of sarcomere structures to better identify adaptive threshold
-    max_score_[max_score <= np.percentile(max_score, 1)] = np.nan
     # determine adaptive threshold from value distribution
     if not abs_threshold:
-        score_threshold = np.nanpercentile(max_score_, score_threshold)
-    length_thres[max_score < score_threshold] = np.nan
-    orientation_thres[max_score < score_threshold] = np.nan
+        score_threshold_val = max_score.max() * score_threshold
+    else:
+        score_threshold_val = score_threshold
 
     # binarize midline
-    midline = np.zeros_like(max_score)
-    midline[max_score < score_threshold] = 0
-    midline[max_score >= score_threshold] = 1
+    midline = max_score >= score_threshold_val
 
     # skeletonize
     midline_skel = morphology.skeletonize(midline)
 
     # label midlines
-    midline_labels = ndimage.label(midline_skel, ndimage.generate_binary_structure(2, 2))[0]
+    midline_labels, n_midlines = ndimage.label(midline_skel, ndimage.generate_binary_structure(2, 2))
 
     # iterate midlines and create additional list with labels and midline length (approximated by max. Feret diameter)
     props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
@@ -1724,8 +1718,8 @@ def get_points_midline(length, orientation, max_score, score_threshold=90., abs_
     sarcomere_orientation_points = orientation[points[0], points[1]]
     max_score_points = max_score[points[0], points[1]]
 
-    return (points, midline_id_points, midline_length_points, sarcomere_length_points, sarcomere_orientation_points,
-            max_score_points, midline, score_threshold)
+    return (points, midline_id_points, midline_length_points, sarcomere_length_points,
+            sarcomere_orientation_points, max_score_points, midline, score_threshold)
 
 
 def cluster_sarcomeres_old(points_t, sarcomere_length_points_t, sarcomere_orientation_points_t, max_score_points_t,
