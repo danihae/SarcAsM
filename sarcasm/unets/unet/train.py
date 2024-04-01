@@ -10,16 +10,17 @@ from .predict import Predict
 from .unet import Unet
 from .baby_unet import BabyUnet
 
+
 # select device
-if torch.has_cuda:
+if torch.backends.cuda.is_built():
     device = torch.device('cuda:0')
-elif hasattr(torch, 'has_mps'):  # only for apple m1/m2/...
-    if torch.has_mps:
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
+elif torch.backends.mps.is_built():  # only for apple m1/m2/...
+    device = torch.device('mps')
 else:
     device = torch.device('cpu')
+if device.type == 'cpu':
+    print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, "
+          "which might be slower.")
 
 
 class Trainer:

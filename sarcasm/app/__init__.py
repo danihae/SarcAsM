@@ -14,7 +14,7 @@ from .control.structure_analysis_control import StructureAnalysisControl
 from .model import ApplicationModel
 from .view.file_selection import Ui_Form as FileSelectionWidget
 from .view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
-from .view.parameter_roi_analysis import Ui_Form as RoiAnalysisWidget
+from .view.parameter_loi_analysis import Ui_Form as RoiAnalysisWidget
 from .view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
 
 

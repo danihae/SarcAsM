@@ -6,9 +6,8 @@ import tifffile
 import torch
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit
-sys.path.insert(0, '../../bio-image-unet/')
 
-from biu.progress import ProgressNotifier
+from ...unets.progress import ProgressNotifier
 from napari.layers import Shapes
 import traceback
 

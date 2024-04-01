@@ -4,23 +4,24 @@ import os
 import torch
 import torch.optim as optim
 from barbar import Bar
-from biu.siam_unet import BCEDiceLoss
+from .losses import BCEDiceLoss
 from torch.utils.data import DataLoader, random_split
 
 from . import logcoshTverskyLoss, TverskyLoss, weightedBCELoss
 from .predict import Predict
 from .siam_unet import Siam_UNet
 
+
 # select device
-if torch.has_cuda:
+if torch.backends.cuda.is_built():
     device = torch.device('cuda:0')
-elif hasattr(torch, 'has_mps'):  # only for apple m1/m2/...
-    if torch.has_mps:
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
+elif torch.backends.mps.is_built():  # only for apple m1/m2/...
+    device = torch.device('mps')
 else:
     device = torch.device('cpu')
+if device.type == 'cpu':
+    print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, "
+          "which might be slower.")
 
 
 class Trainer:

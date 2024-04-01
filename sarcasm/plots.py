@@ -28,7 +28,7 @@ width_1cols = 3.5
 width_1p5cols = 5
 width_2cols = 7.1
 plt.rcParams.update({'font.size': fontsize, 'axes.labelpad': labelpad, 'font.family': 'arial'})
-if 'seaborn-v0_8-paper' in  mpl.style.available:
+if 'seaborn-v0_8-paper' in mpl.style.available:
     plt.style.use('seaborn-v0_8-paper')
 
 
@@ -658,6 +658,51 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
     ax.set_title(title, fontsize=fontsize)
 
 
+def plot_wavelet_bank(ax, sarc_obj, gap=0.005):
+    """
+    Plots a wavelet filter bank with two channels (red and blue) on a given axes.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes on which to plot the wavelet bank.
+    sarc_obj : object
+        An SarcAsM object containing the wavelet bank in its 'structure' dict.
+    gap : float, optional
+        The gap size between individual plots as a fraction of figure size. Default is 0.005.
+
+    Returns
+    -------
+    None
+    """
+    bank = sarc_obj.structure['wavelet_bank']
+    if bank is None:
+        raise ValueError('Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_length_orient with save_all=True.')
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.axis('off')
+
+    rows, cols = bank.shape[:2]
+    for i in range(rows):
+        for j in range(cols):
+            # Calculate bounds for the inset axes, including gaps
+            x = j / cols + gap / 2
+            y = 1 - (i + 1) / rows + gap / 2  # Inverting y to start from top left
+            width = 1 / cols - gap
+            height = 1 / rows - gap
+
+            # Create an inset axis for each filter
+            inset = ax.inset_axes([x, y, width, height])
+
+            # Plot the filter
+            kernel_0, kernel_1 = bank[i, j, 0], bank[i, j, 1]
+
+            inset.imshow(kernel_0 - kernel_1, cmap='seismic', aspect='equal')
+            inset.set_xticks([])
+            inset.set_yticks([])
+
+
 def plot_wavelet_score(ax, sarc_obj, timepoint=0, score_threshold=None, lim=(1.6, 2.1), scalebar=True, colorbar=True,
                        shrink_colorbar=0.7, title=None):
     """
@@ -1023,31 +1068,6 @@ def plot_lois(ax, sarc_obj, color='g', linewidth=2):
 
     for line in loi_lines:
         ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth)
-
-
-def plot_wavelet_bank(bank, filename=None):
-    """
-    Plots the wavelet bank in array.
-
-    Parameters
-    ----------
-    bank : array-like
-        The wavelet bank to plot.
-    filename : str, optional
-        The filename to save the plot as. If None, the plot is not saved. Defaults to None.
-    """
-    fig, ax = plt.subplots(figsize=(bank.shape[1], bank.shape[0]), nrows=bank.shape[0], ncols=bank.shape[1])
-    for i in range(bank.shape[0]):
-        for j in range(bank.shape[1]):
-            bank_0, bank_1 = bank[i, j, 0], bank[i, j, 1]
-            bank_0[bank_0 < 0.01] = np.nan
-            bank_1[bank_1 < 0.01] = np.nan
-            ax[i, j].imshow(bank_0, cmap='Greys', vmin=0, vmax=1)
-            ax[i, j].imshow(bank_1, cmap='Reds', vmin=0, vmax=1)
-            ax[i, j].set_xticks([])
-            ax[i, j].set_yticks([])
-    if filename is not None:
-        fig.savefig(filename, dpi=600)
 
 
 def plot_histogram_structure(ax, sarc_obj, feature, timepoint=0, label=None, bins=20, range=None):
