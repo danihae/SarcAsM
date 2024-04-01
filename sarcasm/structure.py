@@ -443,7 +443,7 @@ class Structure:
             # evaluate wavelet results at sarcomere midlines
             (points_i, midline_id_points_i, midline_length_points_i, sarcomere_length_points_i,
              sarcomere_orientation_points_i, max_score_points_i, midline_i, score_threshold_i) = get_points_midline(
-                wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i,
+                wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i, len_range,
                 score_threshold=score_threshold,
                 abs_threshold=abs_threshold)
 
@@ -476,8 +476,8 @@ class Structure:
             # calculate sarcomere area
             if len(points_i) > 0:
                 mask_i = sarcomere_mask(points_i, sarcomere_orientation_points_i, sarcomere_length_points_i,
-                                    size=self.metadata['size'], pixelsize=self.metadata['pixelsize'],
-                                    dilation_radius=dilation_radius)
+                                        size=self.metadata['size'], pixelsize=self.metadata['pixelsize'],
+                                        dilation_radius=dilation_radius)
             else:
                 mask_i = np.zeros(self.metadata['size'], dtype='bool')
             sarcomere_masks.append(mask_i)
@@ -491,7 +491,8 @@ class Structure:
         wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_sigma': sigma, 'params.wavelet_width': width,
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step, 'params.kernel': kernel,
-                        'params.wavelet_timepoints': timepoints, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
+                        'params.wavelet_timepoints': timepoints, 'params.len_range': len_range[1:-2],
+                        'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
                         'sarcomere_masks': np.asarray(sarcomere_masks) if save_all else None,
@@ -1554,7 +1555,7 @@ def create_wavelet_bank(pixelsize, kernel='gaussian', size=3, sigma=0.15, width=
         Step size in degree
     """
 
-    len_range = np.arange(len_lims[0], len_lims[1], len_step, dtype='float32')
+    len_range = np.arange(len_lims[0] - len_step, len_lims[1] + len_step, len_step, dtype='float32')
     orient_range = np.arange(orient_lims[0], orient_lims[1], orient_step, dtype='float32')
     size_pixel = round_up_to_odd(size / pixelsize)
 
@@ -1648,7 +1649,7 @@ def argmax_wavelets(result, len_range, orient_range):
     return length.cpu().numpy(), orient.cpu().numpy(), max_score.cpu().numpy()
 
 
-def get_points_midline(length, orientation, max_score, score_threshold=90., abs_threshold=False):
+def get_points_midline(length, orientation, max_score, len_range, score_threshold=90., abs_threshold=False):
     """
     Extracts points on sarcomere midlines and calculates sarcomere length and orientation at these points.
 
@@ -1668,6 +1669,8 @@ def get_points_midline(length, orientation, max_score, score_threshold=90., abs_
         Sarcomere orientation angle map obtained from wavelet analysis.
     max_score : ndarray
         Map of maximal wavelet scores.
+    len_range : torch.Tensor
+        An array containing the different lengths used in the wavelet bank.
     score_threshold : float, optional
         Threshold for filtering detected sarcomeres. Can be either an absolute value (if abs_threshold=True) or
         a percentile value for adaptive thresholding (if abs_threshold=False). Default is 90.
@@ -1722,6 +1725,15 @@ def get_points_midline(length, orientation, max_score, score_threshold=90., abs_
         sarcomere_length_points = length[points[0], points[1]]
         sarcomere_orientation_points = orientation[points[0], points[1]]
         max_score_points = max_score[points[0], points[1]]
+
+        # remove points outside range of sarcomere lengths in wavelet bank
+        ids_in = (sarcomere_length_points >= len_range[1]) & (sarcomere_length_points <= len_range[-2])
+        points = points[:, ids_in]
+        midline_length_points = midline_length_points[ids_in]
+        midline_id_points = midline_id_points[ids_in]
+        sarcomere_length_points = sarcomere_length_points[ids_in]
+        sarcomere_orientation_points = sarcomere_orientation_points[ids_in]
+        max_score_points = max_score_points[ids_in]
     else:
         sarcomere_length_points, sarcomere_orientation_points, max_score_points = [], [], []
 
