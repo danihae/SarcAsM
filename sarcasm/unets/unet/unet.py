@@ -16,7 +16,7 @@ class Unet(nn.Module):
         """
         super().__init__()
         # encode
-        self.encode1 = self.conv(1, n_filter)
+        self.encode1 = self.conv(in_channels=1, out_channels=n_filter)
         self.encode2 = self.conv(n_filter, n_filter)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.encode3 = self.conv(n_filter, 2 * n_filter)
@@ -46,19 +46,18 @@ class Unet(nn.Module):
         self.up4 = nn.ConvTranspose2d(2 * n_filter, 1 * n_filter, kernel_size=2, stride=2)
         self.decode7 = self.conv(2 * n_filter, 1 * n_filter)
         self.decode8 = self.conv(1 * n_filter, 1 * n_filter)
-        self.decode9 = self.conv(1 * n_filter, 1)
+        self.decode9 = self.conv(1 * n_filter, n_filter)
         self.final = nn.Sequential(
-            nn.Conv2d(1, 1, kernel_size=1, padding=0),
+            nn.Conv2d(n_filter, out_channels=1, kernel_size=1, padding=0),
         )
 
-    def conv(self, in_channels, out_channels, kernel_size=3, dropout=0.0):
-        block = nn.Sequential(
-            nn.Conv2d(kernel_size=kernel_size, in_channels=in_channels, out_channels=out_channels, padding=1),
+    def conv(self, in_channels, out_channels, kernel_size=3, dropout=0.):
+        layers = [
+            nn.Conv2d(in_channels, out_channels, kernel_size, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            nn.Dropout2d(dropout)
-        )
-        return block
+            nn.LeakyReLU(negative_slope=0.1, inplace=True),  # Using LeakyReLU
+            nn.Dropout2d(dropout)]
+        return nn.Sequential(*layers)
 
     def concat(self, x1, x2):
         if x1.shape == x2.shape:
@@ -103,3 +102,9 @@ class Unet(nn.Module):
         d9 = self.decode9(d8)
         logits = self.final(d9)
         return torch.sigmoid(logits), logits
+
+
+# Initialize weights
+def init_weights(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, nonlinearity='leaky_relu')  # He initialization

@@ -24,7 +24,6 @@ def save_as_tif(imgs, filename, normalize=False):
         imgs *= 255
     imgs = imgs.astype('uint8')
     tifffile.imwrite(filename, imgs)
-    print('Saving prediction results as %s' % filename)
 
 
 class AddBias(nn.Module):

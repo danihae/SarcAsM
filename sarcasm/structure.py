@@ -1,6 +1,5 @@
 import os
 import random
-import time
 from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
@@ -124,13 +123,13 @@ class Structure:
         if siam_unet:
             if model_path is None or model_path == 'generalist':
                 model_path = model_dir + 'siam_unet_sarcomeres.pth'
-            _ = siam.Predict(self.file_images, self.folder + 'sarcomeres.tif', model_params=model_path,
+            _ = siam.Predict(self.read_imgs(), self.folder + 'sarcomeres.tif', model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode,
                              clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         else:
             if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_sarcomeres_generalist.pth'
-            _ = unet.Predict(self.file_images, self.folder + 'sarcomeres.tif', model_params=model_path,
+                model_path = model_dir + 'unet_z_bands_generalist.pth'
+            _ = unet.Predict(self.read_imgs(), self.folder + 'sarcomeres.tif', model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode,
                              clip_threshold=clip_thres, normalize_result=True,
                              progress_notifier=progress_notifier)
@@ -167,14 +166,14 @@ class Structure:
         print('Predicting binary mask of cells ...')
         if siam_unet:
             if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_cell_area_generalist.pth'
-            _ = siam.Predict(self.file_images, self.folder + 'cell_mask.tif', model_params=model_path,
+                model_path = model_dir + 'unet_cell_mask_generalist.pth'
+            _ = siam.Predict(self.read_imgs(), self.folder + 'cell_mask.tif', model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode, clip_threshold=clip_thres,
                              normalize_result=True)
         else:
             if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_cell_area_generalist.pth'
-            _ = unet.Predict(self.file_images, self.folder + 'cell_mask.tif', model_params=model_path,
+                model_path = model_dir + 'unet_cell_mask_generalist.pth'
+            _ = unet.Predict(self.read_imgs(), self.folder + 'cell_mask.tif', model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode,
                              clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         self.file_cell_mask = self.folder + 'cell_mask.tif'
@@ -252,10 +251,10 @@ class Structure:
         assert self.file_sarcomeres is not None, ("Z-band mask not found. Please run predict_z_bands first.")
         if timepoints == 'all':
             imgs = tifffile.imread(self.file_sarcomeres)
-            imgs_raw = tifffile.imread(self.file_images)
+            imgs_raw = self.read_imgs()
         elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
             imgs = tifffile.imread(self.folder + 'sarcomeres.tif', key=timepoints)
-            imgs_raw = tifffile.imread(self.file_sarcomeres, key=timepoints)
+            imgs_raw = self.read_imgs(timepoint=timepoints)
         else:
             ValueError('timepoints argument not valid')
         if len(imgs.shape) == 2:
@@ -431,8 +430,8 @@ class Structure:
                                                             size=size, sigma=sigma, width=width, len_lims=len_lims,
                                                             len_step=len_step, orient_lims=orient_lims,
                                                             orient_step=orient_step)
-        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=torch.float32)
-        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=torch.float32)
+        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=torch.float16)
+        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=torch.float16)
         # iterate images
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = convolve_image_with_bank(img_i, bank, gating=gating)
@@ -450,7 +449,8 @@ class Structure:
 
             # write in list
             points.append(points_i)
-            midline_length_points.append(midline_length_points_i * self.metadata['pixelsize'])
+            midline_length_points.append(midline_length_points_i * self.metadata['pixelsize'] if
+                                         any(midline_id_points_i) else [])
             midline_id_points.append(midline_id_points_i)
             sarcomere_length_points.append(sarcomere_length_points_i)
             sarcomere_orientation_points.append(sarcomere_orientation_points_i)
@@ -474,9 +474,12 @@ class Structure:
                 oop[i], mean_angle[i] = analyze_orientations(sarcomere_orientation_points_i)
 
             # calculate sarcomere area
-            mask_i = sarcomere_mask(points_i, sarcomere_orientation_points_i, sarcomere_length_points_i,
+            if len(points_i) > 0:
+                mask_i = sarcomere_mask(points_i, sarcomere_orientation_points_i, sarcomere_length_points_i,
                                     size=self.metadata['size'], pixelsize=self.metadata['pixelsize'],
                                     dilation_radius=dilation_radius)
+            else:
+                mask_i = np.zeros(self.metadata['size'], dtype='bool')
             sarcomere_masks.append(mask_i)
             sarcomere_area[i] = np.sum(mask_i) * self.metadata['pixelsize'] ** 2
             if 'cell_area' in self.structure.keys():
@@ -490,7 +493,8 @@ class Structure:
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step, 'params.kernel': kernel,
                         'params.wavelet_timepoints': timepoints, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
-                        'wavelet_max_score': wavelet_max_score, 'sarcomere_masks': sarcomere_masks,
+                        'wavelet_max_score': wavelet_max_score,
+                        'sarcomere_masks': np.asarray(sarcomere_masks) if save_all else None,
                         'points': points, 'sarcomere_length_points': sarcomere_length_points,
                         'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
                         'sarcomere_length': sarcomere_length_points, 'wavelet_bank': bank if save_all else None,
@@ -1704,19 +1708,22 @@ def get_points_midline(length, orientation, max_score, score_threshold=90., abs_
     list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
 
     points, midline_id_points, midline_length_points = [], [], []
-    for i, (label_i, coords_i, length_midline_i) in enumerate(zip(list_labels, coords_midlines, length_midlines)):
-        points.append(coords_i)
-        midline_length_points.append(np.ones(coords_i.shape[0]) * length_midline_i)
-        midline_id_points.append(np.ones(coords_i.shape[0]) * label_i)
+    if n_midlines > 0:
+        for i, (label_i, coords_i, length_midline_i) in enumerate(zip(list_labels, coords_midlines, length_midlines)):
+            points.append(coords_i)
+            midline_length_points.append(np.ones(coords_i.shape[0]) * length_midline_i)
+            midline_id_points.append(np.ones(coords_i.shape[0]) * label_i)
 
-    points = np.concatenate(points, axis=0).T
-    midline_id_points = np.concatenate(midline_id_points)
-    midline_length_points = np.concatenate(midline_length_points)
+        points = np.concatenate(points, axis=0).T
+        midline_id_points = np.concatenate(midline_id_points)
+        midline_length_points = np.concatenate(midline_length_points)
 
-    # get sarcomere orientation and distance at points, additionally filter score
-    sarcomere_length_points = length[points[0], points[1]]
-    sarcomere_orientation_points = orientation[points[0], points[1]]
-    max_score_points = max_score[points[0], points[1]]
+        # get sarcomere orientation and distance at points, additionally filter score
+        sarcomere_length_points = length[points[0], points[1]]
+        sarcomere_orientation_points = orientation[points[0], points[1]]
+        max_score_points = max_score[points[0], points[1]]
+    else:
+        sarcomere_length_points, sarcomere_orientation_points, max_score_points = [], [], []
 
     return (points, midline_id_points, midline_length_points, sarcomere_length_points,
             sarcomere_orientation_points, max_score_points, midline, score_threshold)

@@ -472,7 +472,7 @@ def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scale
         Whether to show the line of interest (LOI). Defaults to True.
     """
 
-    img = tifffile.imread(sarc_obj.file_images, key=timepoint)
+    img = sarc_obj.read_imgs(timepoint=timepoint)
     if rotate:
         img = img.T
     img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))

@@ -1,6 +1,7 @@
 import glob
 import os
 
+import tifffile
 import torch.optim as optim
 from barbar import Bar
 from torch.utils.data import DataLoader, random_split
@@ -172,6 +173,7 @@ class Trainer:
                 print('Predicting test data...')
                 files = glob.glob(test_data_path + '*.tif')
                 for i, file in enumerate(files):
-                    Predict(file, result_path + os.path.basename(file) + f'epoch_{epoch}.tif',
+                    img = tifffile.imread(file)
+                    Predict(img, result_path + os.path.basename(file) + f'epoch_{epoch}.tif',
                             self.save_dir + '/' + f'model_epoch_{epoch}.pth', self.network, resize_dim=test_resize_dim,
-                            invert=False)
+                            invert=False, progress_bar=False)

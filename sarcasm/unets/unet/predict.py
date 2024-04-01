@@ -23,7 +23,7 @@ if device.type == 'cpu':
 
 class Predict:
     """Class for prediction of movies and images with U-Net"""
-    def __init__(self, tif_file, result_name, model_params, network=Unet, resize_dim=(512, 512),
+    def __init__(self, imgs, result_name, model_params, network=Unet, resize_dim=(512, 512),
                  invert=False, frame_lim=None, normalization_mode='single', clip_threshold=(0., 99.8), add_tile=0,
                  normalize_result=False, progress_bar=True,
                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
@@ -37,8 +37,8 @@ class Predict:
 
         Parameters
         ----------
-        tif_file : str
-            path of tif file
+        imgs : ndarray
+            images to predict
         result_name : str
             path for result
         model_params : str
@@ -63,7 +63,6 @@ class Predict:
         progress_notifier:
             Wrapper to show tqdm progress notifier in gui
         """
-        self.tif_file = tif_file
         self.resize_dim = resize_dim
         self.add_tile = add_tile
         self.normalize_result = normalize_result
@@ -75,7 +74,7 @@ class Predict:
         self.progress_bar = progress_bar
 
         # read, preprocess and split data
-        imgs = self.__read_data()
+        imgs = self.__reshape_data(imgs)
         imgs = self.__preprocess(imgs)
         patches = self.__split(imgs)
         del imgs
@@ -94,8 +93,7 @@ class Predict:
         # save as .tif file
         save_as_tif(imgs_result, self.result_name, normalize=normalize_result)
 
-    def __read_data(self):
-        imgs = tifffile.imread(self.tif_file)
+    def __reshape_data(self, imgs):
         if self.frame_lim is not None:
             imgs = imgs[self.frame_lim[0]:self.frame_lim[1]]
         self.imgs_shape = imgs.shape
@@ -148,7 +146,6 @@ class Predict:
         self.N_y = int(np.ceil(self.imgs_shape[2] / self.resize_dim[1])) + self.add_tile
         self.N_per_img = self.N_x * self.N_y
         self.N = self.N_x * self.N_y * self.imgs_shape[0]  # total number of patches
-        print('Resizing into each %s patches ...' % self.N_per_img)
 
         # define array for prediction
         patches = np.zeros((self.N, 1, self.resize_dim[0], self.resize_dim[1]), dtype='uint8')
@@ -190,9 +187,9 @@ class Predict:
 
     def __predict(self, patches, progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         result_patches = np.zeros(patches.shape, dtype='uint8')
-        print('Predicting data ...')
-        with torch.no_grad():
-            for i, patch_i in enumerate(progress_notifier.iterator(patches)):
+        with (torch.no_grad()):
+            _progress_notifier = enumerate(progress_notifier.iterator(patches)) if self.progress_bar else enumerate(patches)
+            for i, patch_i in _progress_notifier:
                 patch_i = torch.from_numpy(patch_i.astype('float32') / 255).to(device).view((1, 1, self.resize_dim[0],
                                                                                              self.resize_dim[1]))
                 res_i, logits_i = self.model(patch_i)
@@ -202,7 +199,6 @@ class Predict:
         return result_patches
 
     def __stitch(self, result_patches):
-        print('Stitching patches back together ...')
         # create array
         imgs_result = np.zeros((self.imgs_shape[0], np.max((self.resize_dim[0], self.imgs_shape[1])),
                                 np.max((self.resize_dim[1], self.imgs_shape[2]))), dtype='uint8')

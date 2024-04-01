@@ -235,7 +235,7 @@ class SarcAsM(Structure):
 
     def read_imgs(self, timepoint=None):
         """Load tif file, and optionally select channel"""
-        if timepoint is None:
+        if timepoint is None or timepoint == 'all':
             data = tifffile.imread(self.filename)
         else:
             data = tifffile.imread(self.filename, key=timepoint)
