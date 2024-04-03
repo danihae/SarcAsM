@@ -281,7 +281,7 @@ class Structure:
         z_labels, z_ends, z_links, z_lat_groups = ([] for _ in range(4))
 
         # iterate images
-        print('Start z-band analysis!')
+        print('Starting Z-band analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
             # segment z-bands
             labels_i, labels_skel_i = segment_z_bands(img_i)
@@ -359,7 +359,7 @@ class Structure:
 
     def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.08, width=0.4,
                                         len_lims=(1.3, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
-                                        score_threshold=0.2, abs_threshold=True, gating=True, dilation_radius=3,
+                                        score_threshold=0.25, abs_threshold=True, gating=True, dilation_radius=3,
                                         save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
 
@@ -433,6 +433,7 @@ class Structure:
         len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=torch.float16)
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=torch.float16)
         # iterate images
+        print('Starting sarcomere length and orientation analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = convolve_image_with_bank(img_i, bank, gating=gating)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
@@ -527,7 +528,7 @@ class Structure:
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_myofibrils(self, timepoints=None, n_seeds=500, score_threshold=None, persistence=3,
+    def analyze_myofibrils(self, timepoints=None, n_seeds=1000, score_threshold=None, persistence=3,
                            threshold_distance=0.3, n_min=5):
         """Estimate myofibril lines by line growth algorithm and analyze length and curvature
 
@@ -582,7 +583,7 @@ class Structure:
         myof_lines, lengths, msc = [], [], []
 
         # iterate timepoints
-        print('Start myofibril line analysis!')
+        print('Starting myofibril line analysis...')
         for i, (points_i, sarcomere_length_points_i, sarcomere_orientation_points_i, max_score_points_i,
                 midline_length_points_i) in enumerate(
             tqdm(
@@ -676,7 +677,7 @@ class Structure:
         domains, domain_area, domain_slen, domain_slen_std, domain_oop, domain_orientation = [], [], [], [], [], []
 
         # iterate timepoints
-        print('Start sarcomere domain analysis!')
+        print('Starting sarcomere domain analysis...')
         for t, (points_t, sarcomere_length_points_t, sarcomere_orientation_points_t,
                 max_score_points_t, midline_id_points_i) in enumerate(
             tqdm(
@@ -2139,7 +2140,8 @@ def line_growth(points_t, sarcomere_length_points_t, sarcomere_orientation_point
     """
     # select random origins for line growth
     random.seed(random_seed)
-    seed_idx = random.sample(range(len(points_t.T)), n_seeds)
+    n_points = len(points_t.T)
+    seed_idx = random.sample(range(n_points), min(n_seeds, n_points))
 
     # Precompute Nearest Neighbors
     nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t.T)

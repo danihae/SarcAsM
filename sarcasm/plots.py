@@ -1039,7 +1039,7 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
         plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
     else:
         plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
-    lois = sarc_obj.structure['myof_lines'][timepoint]
+    lines = sarc_obj.structure['myof_lines'][timepoint]
     points = sarc_obj.structure['points'][timepoint]
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
@@ -1047,8 +1047,8 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
-    for i, loi_i in enumerate(lois):
-        ax.plot(points[1, loi_i], points[0, loi_i], c='r', alpha=alpha, lw=linewidth)
+    for i, line_i in enumerate(lines):
+        ax.plot(points[1, line_i], points[0, line_i], c='r', alpha=alpha, lw=linewidth)
     ax.set_title(title, fontsize=fontsize)
 
 
