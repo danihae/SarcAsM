@@ -115,21 +115,17 @@ class DataProcess(Dataset):
         # create image data
         files_image = glob.glob(self.source_dir[0] + '*')
         for file_i in files_image:
-            img_i = tifffile.imread(file_i)
+            img_i = tifffile.imread(file_i).astype(np.float32)
             # clip and normalize (0,255)
-            img_i_nan = np.copy(img_i).astype('float32')
-            img_i_nan[img_i == 0] = np.nan
-            img_i = np.clip(img_i, a_min=np.nanpercentile(img_i_nan, self.clip_threshold[0]),
-                            a_max=np.percentile(img_i_nan, self.clip_threshold[1]))
-            img_i = img_i - np.min(img_i)
-            img_i = img_i / np.max(img_i) * 255
-            img_i[np.isnan(img_i_nan)] = 0
+            img_i = np.clip(img_i, a_min=np.nanpercentile(img_i, self.clip_threshold[0]),
+                            a_max=np.percentile(img_i, self.clip_threshold[1]))
+            img_i = (img_i - np.nanmin(img_i)) / (np.nanmax(img_i) - np.nanmin(img_i)) * 255
             if self.rescale is not None:
                 img_i = transform.rescale(img_i, self.rescale)
             img_i = img_i.astype('uint8')
             save_i = os.path.splitext(os.path.basename(file_i))[0]
             save_i = save_i.replace(' ', '_')
-            tifffile.imsave(self.image_path + save_i + '.tif', img_i)
+            tifffile.imwrite(self.image_path + save_i + '.tif', img_i)
         # create masks
         files_mask = glob.glob(self.source_dir[1] + '*')
         print('%s files found' % len(files_mask))
@@ -158,7 +154,7 @@ class DataProcess(Dataset):
             mask_i = mask_i.astype('uint8')
             save_i = os.path.splitext(os.path.basename(file_i))[0]
             save_i = save_i.replace(' ', '_')
-            tifffile.imsave(self.mask_path + save_i + '.tif', mask_i.astype('int8'))
+            tifffile.imwrite(self.mask_path + save_i + '.tif', mask_i.astype('int8'))
 
     def __merge_images(self):
         self.mask_files = glob.glob(self.data_path + '/mask/*.tif')

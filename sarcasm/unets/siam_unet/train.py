@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader, random_split
 
 from . import logcoshTverskyLoss, TverskyLoss, weightedBCELoss
 from .predict import Predict
-from .siam_unet import Siam_UNet
-
+from .siam_unet import Siam_UNet, init_weights
 
 # select device
 if torch.backends.cuda.is_built():
@@ -62,7 +61,7 @@ class Trainer:
         """
 
         self.model = Siam_UNet(n_filter=n_filter, mode=mode).to(device)
-
+        self.model.apply(init_weights)
         self.data = dataset
         self.num_epochs = num_epochs
         self.batch_size = batch_size
@@ -172,4 +171,4 @@ class Trainer:
                 for i, file in enumerate(files):
                     Predict(file, result_path + os.path.basename(file) + f'epoch_{epoch}.tif',
                             self.save_dir + '/' + f'model_epoch_{epoch}.pth', resize_dim=test_resize_dim,
-                            invert=False)
+                            invert=False, progress_bar=False)

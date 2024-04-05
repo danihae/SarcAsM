@@ -25,8 +25,11 @@ class Siam_UNet(nn.Module):
         self.maxpool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # middle
+        if mode == 'concat':
+            self.conv_concat = self.conv(16 * n_filter, 8 * n_filter)
         self.middle_conv1 = self.conv(8 * n_filter, 16 * n_filter)
         self.middle_conv2 = self.conv(16 * n_filter, 16 * n_filter, dropout=0.5)
+
 
         # decode
         self.up1 = nn.ConvTranspose2d(16 * n_filter, 8 * n_filter, kernel_size=2, stride=2)
@@ -41,19 +44,17 @@ class Siam_UNet(nn.Module):
         self.up4 = nn.ConvTranspose2d(2 * n_filter, 1 * n_filter, kernel_size=2, stride=2)
         self.decode7 = self.conv(2 * n_filter, 1 * n_filter)
         self.decode8 = self.conv(1 * n_filter, 1 * n_filter)
-        self.decode9 = self.conv(1 * n_filter, 1)
+        self.decode9 = self.conv(1 * n_filter, n_filter)
         self.final = nn.Sequential(
-            nn.Conv2d(1, 1, kernel_size=1, padding=0),
-        )
+            nn.Conv2d(n_filter, 1, kernel_size=1, padding=0))
 
-    def conv(self, in_channels, out_channels, kernel_size=3, dropout=0.0):
-        block = nn.Sequential(
-            nn.Conv2d(kernel_size=kernel_size, in_channels=in_channels, out_channels=out_channels, padding=1),
+    def conv(self, in_channels, out_channels, kernel_size=3, dropout=0.):
+        layers = [
+            nn.Conv2d(in_channels, out_channels, kernel_size, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            nn.Dropout2d(dropout)
-        )
-        return block
+            nn.LeakyReLU(negative_slope=0.1, inplace=True),  # Using LeakyReLU
+            nn.Dropout2d(dropout)]
+        return nn.Sequential(*layers)
 
     def concat(self, x1, x2):
         if x1.shape == x2.shape:
@@ -104,11 +105,17 @@ class Siam_UNet(nn.Module):
 
         # depth-wise cross-correlation or element-wise maximum
         if self.mode == 'corr':
-            corr = self.depthwise_xcorr(m4, mm4)
+            join = self.depthwise_xcorr(m4, mm4)
         elif self.mode == 'max':
-            corr = torch.maximum(m4, mm4)
+            join = torch.maximum(m4, mm4)
+        elif self.mode == 'concat':
+            conc = self.concat(m4, mm4)
+            join = self.conv_concat(conc)
+        elif self.mode == 'control':
+            join = m4
+
         # mid layer
-        mid1 = self.middle_conv1(corr)
+        mid1 = self.middle_conv1(join)
         mid2 = self.middle_conv2(mid1)
 
         # decoder
@@ -131,3 +138,9 @@ class Siam_UNet(nn.Module):
         d9 = self.decode9(d8)
         logits = self.final(d9)
         return torch.sigmoid(logits), logits
+
+
+# Initialize weights
+def init_weights(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, nonlinearity='leaky_relu')  # He initialization

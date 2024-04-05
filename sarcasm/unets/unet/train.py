@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, random_split
 
 from .losses import *
 from .predict import Predict
-from .unet import Unet
+from .unet import Unet, init_weights
 from .baby_unet import BabyUnet
 
 
@@ -62,6 +62,7 @@ class Trainer:
         """
         self.network = network
         self.model = network(n_filter=n_filter).to(device)
+        self.model.apply(init_weights)
         self.data = dataset
         self.num_epochs = num_epochs
         self.batch_size = batch_size

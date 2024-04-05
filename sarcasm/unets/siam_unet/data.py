@@ -13,10 +13,10 @@ from torch.utils.data import Dataset
 
 
 class DataProcess(Dataset):
-    def __init__(self, source_dir, dim_out=(256, 256), aug_factor=10, data_path='../data/', threshold_masks=50,
-                 dilate_mask=0, dilate_kernel='disk', val_split=0.2, invert_masks=False, skeletonize=False, create=True,
-                 clip_threshold=(0.2, 99.8), shiftscalerotate=(0, 0, 0), noise_amp=10, brightness_contrast=(0.25, 0.25),
-                 rescale=None):
+    def __init__(self, source_dir, dim_out=(256, 256), aug_factor=10, data_path='../data/', file_ext='.tif',
+                 threshold_masks=50, dilate_mask=0, dilate_kernel='disk', val_split=0.2, invert_masks=False,
+                 skeletonize=False, create=True, clip_threshold=(0.2, 99.8), shiftscalerotate=(0, 0, 0), noise_amp=10,
+                 brightness_contrast=(0.25, 0.25), rescale=None):
         """
         Create training data object for network training
 
@@ -36,6 +36,8 @@ class DataProcess(Dataset):
             Factor of image augmentation
         data_path : str
             Base path of directories for training data
+        file_ext : str
+            Extension of image files. Defaults to '.tif'
         threshold_masks : int
             Threshold to binarize masks [0-255]
         dilate_mask
@@ -64,6 +66,7 @@ class DataProcess(Dataset):
         self.source_dir = source_dir
         self.create = create
         self.data_path = data_path
+        self.file_ext = file_ext
         self.dim_out = dim_out
         self.threshold_masks = threshold_masks
         self.skeletonize = skeletonize
@@ -122,17 +125,13 @@ class DataProcess(Dataset):
 
     def __move_and_edit(self):
         # create image data
-        files_image = glob.glob(self.source_dir[0] + '*')
+        files_image = glob.glob(self.source_dir[0] + '*' + self.file_ext)
         for file_i in files_image:
-            img_i = tifffile.imread(file_i)
+            img_i = tifffile.imread(file_i).astype('float32')
             # clip and normalize (0,255)
-            img_i_nan = np.copy(img_i).astype('float32')
-            img_i_nan[img_i == 0] = np.nan
-            img_i = np.clip(img_i, a_min=np.nanpercentile(img_i_nan, self.clip_threshold[0]),
-                            a_max=np.percentile(img_i_nan, self.clip_threshold[1]))
-            img_i = img_i - np.min(img_i)
-            img_i = img_i / np.max(img_i) * 255
-            img_i[np.isnan(img_i_nan)] = 0
+            img_i = np.clip(img_i, a_min=np.nanpercentile(img_i, self.clip_threshold[0]),
+                            a_max=np.percentile(img_i, self.clip_threshold[1]))
+            img_i = (img_i - np.nanmin(img_i)) / (np.nanmax(img_i) - np.nanmin(img_i)) * 255
             if self.rescale is not None:
                 img_i = transform.rescale(img_i, self.rescale)
             img_i = img_i.astype('uint8')
@@ -150,11 +149,11 @@ class DataProcess(Dataset):
                 infer_img = img_i[1]
             else:
                 raise ValueError('Unknown data structure of input images.')
-            tifffile.imsave(self.prev_image_path + save_i + '.tif', prev_img)
-            tifffile.imsave(self.image_path + save_i + '.tif', infer_img)
+            tifffile.imwrite(self.prev_image_path + save_i + '.tif', prev_img)
+            tifffile.imwrite(self.image_path + save_i + '.tif', infer_img)
 
         # create masks
-        files_mask = glob.glob(self.source_dir[1] + '*')
+        files_mask = glob.glob(self.source_dir[1] + '*' + self.file_ext)
         print('%s files found' % len(files_mask))
         for file_i in files_mask:
             mask_i = tifffile.imread(file_i)
