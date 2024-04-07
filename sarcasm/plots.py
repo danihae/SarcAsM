@@ -483,8 +483,6 @@ def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar
     ...                  img_filename='output.png', figsize=(8, 8), scalebar=True)
     """
 
-    import matplotlib.pyplot as plt
-
     # create matplotlib figure
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
