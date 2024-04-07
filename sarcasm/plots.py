@@ -1,3 +1,4 @@
+import os.path
 import random
 from random import shuffle
 
@@ -30,7 +31,6 @@ width_2cols = 7.1
 plt.rcParams.update({'font.size': fontsize, 'axes.labelpad': labelpad, 'font.family': 'arial'})
 if 'seaborn-v0_8-paper' in mpl.style.available:
     plt.style.use('seaborn-v0_8-paper')
-
 
 # dict with feature names
 feature_names = {'z_intensity': 'Z-band intensity [a.u.]', 'z_intensity_mean': 'Z-band intensity [a.u.]',
@@ -330,7 +330,8 @@ def plot_summary_structure(sarc_obj, save_format='png'):
     plot_histogram_structure(axs['H'], sarc_obj, feature='z_intensity', label='Z-band intensity [a.u.]')
     plot_histogram_structure(axs['I'], sarc_obj, feature='z_straightness', label='Z-band straightness [a.u.]')
     plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_points', label='Sarcomere lengths [µm]')
-    plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_points', label='Sarcomere orientation [°]')
+    plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_points',
+                             label='Sarcomere orientation [°]')
     plot_histogram_structure(axs['L'], sarc_obj, feature='myof_line_lengths', label='Myofibril lengths [µm]')
 
     label_all_panels(axs)
@@ -519,6 +520,9 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
     show_loi : bool, optional
         Whether to show the line of interest (LOI). Defaults to True.
     """
+    assert os.path.exists(sarc_obj.file_sarcomeres), ('Z-band mask not found. Run predict_z_bands first.')
+
+
     img = tifffile.imread(sarc_obj.file_sarcomeres, key=timepoint)
     if invert:
         img = 255 - img
@@ -561,6 +565,8 @@ def plot_cell_area(ax, sarc_obj, timepoint=0, rotate=False, invert=False, scaleb
     title : str, optional
         The title for the plot. Defaults to None.
     """
+    assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_area first.')
+
     img = tifffile.imread(sarc_obj.file_cell_mask, key=timepoint)
     if invert:
         img = 255 - img
@@ -595,6 +601,9 @@ def plot_z_segmentation(ax, sarc_obj, timepoint=0, scalebar=True, shuffle=True, 
     title : str, optional
         The title for the plot. Defaults to None.
     """
+    assert 'z_labels' in sarc_obj.structure.keys(), ('Z-bands not yet analyzed. '
+                                                     'Run analyze_z_bands first.')
+
     labels = sarc_obj.structure['z_labels'][timepoint].toarray()
     if shuffle:
         labels = shuffle_labels(labels)
@@ -634,6 +643,8 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
     title : str, optional
         The title for the plot. Defaults to None.
     """
+    assert 'z_labels' in sarc_obj.structure.keys(), ('Z-bands not yet analyzed. '
+                                                     'Run analyze_z_bands first.')
 
     labels = sarc_obj.structure['z_labels'][timepoint].toarray()
     if shuffle:
@@ -675,6 +686,10 @@ def plot_wavelet_bank(ax, sarc_obj, gap=0.005):
     -------
     None
     """
+    assert 'wavelet_bank' in sarc_obj.structure.keys(), ('No wavelet bank stored. '
+                                                         'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                         'with save_all=True.')
+
     bank = sarc_obj.structure['wavelet_bank']
     if bank is None:
         raise ValueError('Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_length_orient with save_all=True.')
@@ -729,6 +744,9 @@ def plot_wavelet_score(ax, sarc_obj, timepoint=0, score_threshold=None, lim=(1.6
         title : str, optional
             The title for the plot. Defaults to None.
         """
+    assert 'wavelet_max_score' in sarc_obj.structure.keys(), ('No wavelet stors map stored. '
+                                                              'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                              'with save_all=True.')
 
     max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
     if score_threshold is None:
@@ -774,6 +792,9 @@ def plot_sarcomere_lengths(ax, sarc_obj, timepoint=0, score_threshold=None, lim=
     title : str, optional
         The title for the plot. Defaults to None.
     """
+    assert 'wavelet_sarcomere_length' in sarc_obj.structure.keys(), ('No sarcomere length map stored. '
+                                                                     'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                                     'with save_all=True.')
 
     length = sarc_obj.structure['wavelet_sarcomere_length'][timepoint].copy()
     max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
@@ -821,6 +842,10 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
         title : str, optional
             The title for the plot. Defaults to None.
         """
+    assert 'wavelet_sarcomere_orientation' in sarc_obj.structure.keys(), ('No sarcomere orientation map stored. '
+                                                                          'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                                          'with save_all=True.')
+
     orientation = sarc_obj.structure['wavelet_sarcomere_orientation'][timepoint].copy()
     if not radians:
         orientation = np.degrees(orientation)
@@ -864,9 +889,10 @@ def plot_sarcomere_area(ax, sarc_obj, timepoint=0, cmap='viridis', show_z_bands=
     alpha_z_bands : float, optional
         Alpha value of Z-bands. Defaults to 1.
     """
-    if sarc_obj.structure['sarcomere_masks'] is None:
-        raise ValueError('No sarcomere masks stored. Run sarc_obj.analyze_sarcomere_length_orient '
-                         'with save_all=True')
+    assert 'sarcomere_masks' in sarc_obj.structure.keys(), ('No sarcomere masks stored. '
+                                                            'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                            'with save_all=True.')
+
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
     if _timepoints is not 'all':
         _timepoint = _timepoints[timepoint]
@@ -916,6 +942,8 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
     title : str, optional
         The title for the plot. Defaults to None.
     """
+    assert 'points' in sarc_obj.structure.keys(), ('Sarcomere vectors not yet calculated, '
+                                                   'run analyze_sarcomere_length_orient first.')
 
     points = sarc_obj.structure['points'][timepoint]
     sarcomere_orientation_points = sarc_obj.structure['sarcomere_orientation_points'][timepoint]
@@ -981,6 +1009,8 @@ def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, scalebar=True, markersize=
         The title for the plot. Defaults to None.
 
     """
+    assert 'n_domains' in sarc_obj.structure.keys(), ('Sarcomere domains not analyzed. '
+                                                      'Run analyze_sarcomere_domains first.')
 
     n_domains = sarc_obj.structure['n_domains'][timepoint]
     domains = sarc_obj.structure['domains'][timepoint]
@@ -1034,6 +1064,9 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
     title : str, optional
         The titlefor the plot. Defaults to None.
     """
+    assert 'myof_lines' in sarc_obj.structure.keys(), ('Myofibrils not analyzed. '
+                                                      'Run analyze_myofibrils first.')
+
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
     if _timepoints == 'all':
         plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
