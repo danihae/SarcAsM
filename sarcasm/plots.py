@@ -449,6 +449,58 @@ def plot_loi_detection(sarc_obj, timepoint=0, filepath=None):
     plt.show()
 
 
+def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar=False, dpi=300):
+    """
+    Generates a plot using a specified plotting function and saves it as an image file.
+
+    Parameters
+    ----------
+    sarc_obj : object
+        The sarcomere object containing data to be plotted.
+    plot_func : function
+        The plotting function that takes an Axes object, a sarcomere object, and a boolean indicating
+        whether to include a scalebar. It should plot the data onto the provided Axes object.
+    img_filename : str
+        The filename (including path) where the image will be saved.
+    figsize : tuple of int or float, optional
+        The size of the figure (width, height) in inches. Default is (6, 6).
+    scalebar : bool, optional
+        Indicates whether a scalebar should be included in the plot. Default is False.
+    dpi : int, optional
+        Quality of the plot. Default is 300.
+
+    Returns
+    -------
+    None
+        The function does not return any value. It saves the generated plot as an image file.
+
+    Examples
+    --------
+    >>> def example_plot_func(ax, sarc_obj, scalebar):
+    ...     # Example plotting code that uses ax to plot something
+    ...     pass
+    >>> plot_func_to_img(sarc_obj=my_sarc_obj, plot_func=example_plot_func,
+    ...                  img_filename='output.png', figsize=(8, 8), scalebar=True)
+    """
+
+    import matplotlib.pyplot as plt
+
+    # create matplotlib figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # create plot with plot_func
+    plot_func(ax=ax, sarc_obj=sarc_obj, scalebar=scalebar)
+
+    # Remove axes
+    ax.axis('off')
+
+    # Save the figure without edges or padding
+    fig.savefig(img_filename, bbox_inches='tight', pad_inches=0)
+
+    # Close the figure
+    plt.close(fig)
+
+
 def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scalebar=True, title=None, show_loi=True):
     """
     Plots microscopy raw image of the sarcomere object.
