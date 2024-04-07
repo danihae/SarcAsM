@@ -486,7 +486,7 @@ def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar
     import matplotlib.pyplot as plt
 
     # create matplotlib figure
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
     # create plot with plot_func
     plot_func(ax=ax, sarc_obj=sarc_obj, scalebar=scalebar)
@@ -495,7 +495,7 @@ def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar
     ax.axis('off')
 
     # Save the figure without edges or padding
-    fig.savefig(img_filename, bbox_inches='tight', pad_inches=0)
+    fig.savefig(img_filename, bbox_inches='tight', pad_inches=0, dpi=dpi)
 
     # Close the figure
     plt.close(fig)
