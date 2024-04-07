@@ -4,7 +4,7 @@ from .application_control import ApplicationControl
 from ..view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
 
 
-class LoiAnalysisControl:
+class LOIAnalysisControl:
     """
     The LOIAnalysisControl handles the connection between loi-analysis-backend and the view.
     """
