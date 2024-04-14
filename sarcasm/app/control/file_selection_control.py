@@ -158,7 +158,7 @@ class FileSelectionControl:
             layer = self.__main_control.viewer.layers.__getitem__('ROIs')
             self.__main_control.viewer.layers.remove(layer)
         # set the pre selected color to red
-        self.__main_control.init_roi_layer(self.__main_control.viewer.add_shapes(name='ROIs', edge_color='#FF0000'))
+        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='ROIs', edge_color='#FF0000'))
 
         # todo: this is how adding lines and reading the data works
         # note that first coordinate in the point tuples is Y and second is X

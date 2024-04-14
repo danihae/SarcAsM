@@ -56,8 +56,8 @@ class ApplicationModel:
         self.__cell_file_name = cell_file
         self._cell = SarcAsM(cell_file, correct_phase_leica=correct_phase_leica, use_gui=True)
 
-    def init_sarcomere(self, roi_name):
-        self.__sarcomere = Motion(self.__cell_file_name, roi_name=roi_name)
+    def init_sarcomere(self, loi_name):
+        self.__sarcomere = Motion(self.__cell_file_name, loi_name=loi_name)
 
     def is_initialized(self):
         # check if file is loaded, check if viewer is active(not closed)
@@ -127,20 +127,20 @@ class ApplicationModel:
         # endregion
 
         # region roi parameters
-        self.__parameters.get_parameter(name='roi.detect.timepoint').set_value(0)
-        self.__parameters.get_parameter(name='roi.detect.persistence').set_value(8)
-        self.__parameters.get_parameter(name='roi.detect.threshold_distance').set_value(0.3)
-        self.__parameters.get_parameter(name='roi.detect.score_threshold').set_value(10000.0)
-        self.__parameters.get_parameter(name='roi.detect.score_threshold_automatic').set_value(True)
-        self.__parameters.get_parameter(name='roi.detect.number_limits_lower').set_value(10)
-        self.__parameters.get_parameter(name='roi.detect.number_limits_upper').set_value(50)
-        self.__parameters.get_parameter(name='roi.detect.msc_limits_lower').set_value(0)
-        self.__parameters.get_parameter(name='roi.detect.msc_limits_upper').set_value(1000)
-        self.__parameters.get_parameter(name='roi.detect.distance_threshold_rois').set_value(40)
-        self.__parameters.get_parameter(name='roi.detect.n_longest').set_value(4)
-        self.__parameters.get_parameter(name='roi.detect.line_width').set_value(12)
-        self.__parameters.get_parameter(name='roi.detect.plot').set_value(False)
-        self.__parameters.get_parameter(name='roi.detect.export_raw').set_value(False)
+        self.__parameters.get_parameter(name='loi.detect.timepoint').set_value(0)
+        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
+        self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
+        self.__parameters.get_parameter(name='loi.detect.score_threshold').set_value(10000.0)
+        self.__parameters.get_parameter(name='loi.detect.score_threshold_automatic').set_value(True)
+        self.__parameters.get_parameter(name='loi.detect.number_limits_lower').set_value(10)
+        self.__parameters.get_parameter(name='loi.detect.number_limits_upper').set_value(50)
+        self.__parameters.get_parameter(name='loi.detect.msc_limits_lower').set_value(0)
+        self.__parameters.get_parameter(name='loi.detect.msc_limits_upper').set_value(1000)
+        self.__parameters.get_parameter(name='loi.detect.distance_threshold_lois').set_value(40)
+        self.__parameters.get_parameter(name='loi.detect.n_longest').set_value(4)
+        self.__parameters.get_parameter(name='loi.detect.line_width').set_value(12)
+        self.__parameters.get_parameter(name='loi.detect.plot').set_value(False)
+        self.__parameters.get_parameter(name='loi.detect.export_raw').set_value(False)
         # endregion
 
         # region motion parameters
@@ -174,6 +174,12 @@ class ApplicationModel:
             1)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower').set_value(1.5)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper').set_value(2.2)
+        # endregion
+
+        # region batch processing parameters
+        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0)
+        self.__parameters.get_parameter(name='batch.frame.time').set_value(0)
+        self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         # endregion
 
         pass
@@ -230,20 +236,20 @@ class ApplicationModel:
         # endregion
 
         # region roi parameters
-        self.__parameters.set_parameter(name='roi.detect.timepoint')
-        self.__parameters.set_parameter(name='roi.detect.persistence')
-        self.__parameters.set_parameter(name='roi.detect.threshold_distance')
-        self.__parameters.set_parameter(name='roi.detect.score_threshold')
-        self.__parameters.set_parameter(name='roi.detect.score_threshold_automatic')
-        self.__parameters.set_parameter(name='roi.detect.number_limits_lower')
-        self.__parameters.set_parameter(name='roi.detect.number_limits_upper')
-        self.__parameters.set_parameter(name='roi.detect.msc_limits_lower')
-        self.__parameters.set_parameter(name='roi.detect.msc_limits_upper')
-        self.__parameters.set_parameter(name='roi.detect.distance_threshold_rois')
-        self.__parameters.set_parameter(name='roi.detect.n_longest')
-        self.__parameters.set_parameter(name='roi.detect.line_width')
-        self.__parameters.set_parameter(name='roi.detect.plot')
-        self.__parameters.set_parameter(name='roi.detect.export_raw')
+        self.__parameters.set_parameter(name='loi.detect.timepoint')
+        self.__parameters.set_parameter(name='loi.detect.persistence')
+        self.__parameters.set_parameter(name='loi.detect.threshold_distance')
+        self.__parameters.set_parameter(name='loi.detect.score_threshold')
+        self.__parameters.set_parameter(name='loi.detect.score_threshold_automatic')
+        self.__parameters.set_parameter(name='loi.detect.number_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.number_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.msc_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.msc_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.distance_threshold_lois')
+        self.__parameters.set_parameter(name='loi.detect.n_longest')
+        self.__parameters.set_parameter(name='loi.detect.line_width')
+        self.__parameters.set_parameter(name='loi.detect.plot')
+        self.__parameters.set_parameter(name='loi.detect.export_raw')
         # endregion
 
         # region motion parameters
@@ -273,4 +279,10 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.filter_params_vel.polyorder')
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower')
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper')
+        # endregion
+
+        # region batch processing parameters
+        self.__parameters.set_parameter(name='batch.pixel.size')
+        self.__parameters.set_parameter(name='batch.frame.time')
+        self.__parameters.set_parameter(name='batch.force.override')
         # endregion

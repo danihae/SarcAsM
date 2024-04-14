@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>865</width>
+    <height>742</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="3" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title">
+      <string>Batch Processing</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Root directory</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QLineEdit" name="le_root_directory">
+          <property name="placeholderText">
+           <string>path of the root directory used for batch processing</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_search">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="toolTip">
+         <string>pixel size in [µm], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+        </property>
+        <property name="text">
+         <string>Pixel size [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_pixel_size">
+        <property name="toolTip">
+         <string>pixel size in [µm], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="toolTip">
+         <string>frame time in [s], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+        </property>
+        <property name="text">
+         <string>Frame time [s]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_frame_time">
+        <property name="toolTip">
+         <string>frame time in [s], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="toolTip">
+         <string>if set the values in pixel size and frame time will be forced upon all images which are processed during this batch</string>
+        </property>
+        <property name="text">
+         <string>Force Override</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QCheckBox" name="chk_force_override">
+        <property name="toolTip">
+         <string>if set the values in pixel size and frame time will be forced upon all images which are processed during this batch</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_batch_processing_structure">
+        <property name="toolTip">
+         <string>Start batch processing structure</string>
+        </property>
+        <property name="text">
+         <string>Batch Processing Structure</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_batch_processing_motion">
+        <property name="toolTip">
+         <string>Start batch processing motion</string>
+        </property>
+        <property name="text">
+         <string>Batch Processing Motion</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QFileDialog
-from biu.progress import ProgressNotifier
+from ...unets.progress import ProgressNotifier
 
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl

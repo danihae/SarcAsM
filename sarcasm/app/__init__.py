@@ -11,11 +11,13 @@ from .control.file_selection_control import FileSelectionControl
 from .control.motion_analysis_control import MotionAnalysisControl
 from .control.loi_analysis_control import LOIAnalysisControl
 from .control.structure_analysis_control import StructureAnalysisControl
+from .control.batch_processing_control import BatchProcessingControl
 from .model import ApplicationModel
 from .view.file_selection import Ui_Form as FileSelectionWidget
 from .view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
 from .view.parameter_loi_analysis import Ui_Form as RoiAnalysisWidget
 from .view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
+from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
 
 class Application:
@@ -48,6 +50,7 @@ class Application:
         self.__structure_analysis_parameters = StructureAnalysisWidget()
         self.__roi_analysis = RoiAnalysisWidget()
         self.__motion_analysis = MotionAnalysisWidget()
+        self.__batch_processing = BatchProcessingWidget()
         self.__progress_bar = QProgressBar()
         self.__text_debug = QTextEdit()
         self.__text_debug.setObjectName("messageArea")
@@ -60,6 +63,7 @@ class Application:
                                                                      self.__control)
         self.__roi_analysis_control = LOIAnalysisControl(self.__roi_analysis, self.__control)
         self.__motion_analysis_control = MotionAnalysisControl(self.__motion_analysis, self.__control)
+        self.__batch_processing_control = BatchProcessingControl(self.__batch_processing, self.__control)
 
     def __disable_scroll_on_spinbox(self):
         opts = Qt.FindChildrenRecursively
@@ -88,9 +92,13 @@ class Application:
         widget_motion_analysis = QWidget()
         self.__motion_analysis.setupUi(widget_motion_analysis)
 
+        widget_batch_processing = QWidget()
+        self.__batch_processing.setupUi(widget_batch_processing)
+
         widget_parameter_toolbox.addItem(widget_structure_parameters, 'Structure Analysis')
         widget_parameter_toolbox.addItem(widget_roi_analysis, 'ROI Finder')
         widget_parameter_toolbox.addItem(widget_motion_analysis, 'Motion Analysis')
+        widget_parameter_toolbox.addItem(widget_batch_processing, 'Batch Processing')
 
         scroll_area_layout.addWidget(widget_parameter_toolbox)
         widget_parameter_scrollbox.setLayout(scroll_area_layout)
@@ -102,6 +110,7 @@ class Application:
         self.__structure_analysis_control.bind_events()
         self.__roi_analysis_control.bind_events()
         self.__motion_analysis_control.bind_events()
+        self.__batch_processing_control.bind_events()
 
         print()  # in this method the binding to gui buttons should be handled
 
@@ -142,7 +151,8 @@ class Application:
 
         # in case of idle -> the label should display IDLE with green background
         # in case of busy -> the label should display BUSY with red background
-        self.__control.model.currentlyProcessing.connect(ui_element=lambda new_value: self.__update_busy_label(new_value))
+        self.__control.model.currentlyProcessing.connect(
+            ui_element=lambda new_value: self.__update_busy_label(new_value))
         pass
 
     def init_gui(self):
