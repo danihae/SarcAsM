@@ -541,7 +541,7 @@ class Structure:
             Score threshold for random seeds (needs to be <=score_threshold from get_points_midline). If None,
             score_threshold from previous wavelet midline analysis is used.
         persistence : int
-            Persistence of line (average points length and orientation for prior estimation)
+            Persistence of line (average points length and orientation for prior estimation), needs to be > 0.
         threshold_distance : float
             Maximal distance for nearest neighbor estimation (in micrometer)
         n_min : int
@@ -1884,8 +1884,8 @@ def cluster_sarcomeres_old(points_t, sarcomere_length_points_t, sarcomere_orient
 
 
 def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_points, midline_id_points,
-                       dist_threshold_ends=0.5, dist_threshold_midline_points=0.5, louvain_resolution=0.05,
-                       louvain_seed=2, area_min=50):
+                       pixelsize, dist_threshold_ends=0.5, dist_threshold_midline_points=0.5, louvain_resolution=0.05,
+                       louvain_seed=2, area_min=50, dilation_radius=3):
     """
     This function clusters sarcomeres into domains based on their spatial and orientational properties
     using the Louvain method for community detection. It considers sarcomere lengths, orientations,
@@ -1904,6 +1904,8 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
         List of midline point sarcomere orientations, in radians
     midline_id_points : ndarray
         List of midline point indices, points of the same midline have same index.
+    pixelsize : float
+        Pixel size in µm
     dist_threshold_ends : float
         Max. distance threshold for connecting / creating network edge for adjacent sarcomere vector ends.
         Only the ends with the smallest distance are connected.
@@ -1914,9 +1916,11 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
         Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
         Greater resolution favors smaller domains.
     louvain_seed : int
-                Random seed for Louvain algorithm, to ensure reproducibility.
+        Random seed for Louvain algorithm, to ensure reproducibility.
     area_min : float
-        Minimal area of domains / clusters (in µm^2). Area is calculated by convex hull.
+        Minimal area of domains / clusters (in µm^2).
+    dilation_radius : int
+        Dilation radius to refine calculation of domain areas (in pixels).
 
     Returns
     -------
@@ -2000,16 +2004,21 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
         domains = list(communities_generator)
         n_domains = len(domains)
         # shuffle domains
+        random.seed(123)
         random.shuffle(domains)
 
-        # convex hull to estimate domain areas and remove small domains
+        # calculate domain areas and remove small domains
         _area_domains = np.zeros(n_domains) * np.nan
         _indices_to_remove = []
         for i, domain_i in enumerate(domains):
-            points_i = points[:, list(domain_i)].T
-            if len(points_i) > 10:
-                hull_i = ConvexHull(points_i)
-                area_i = hull_i.volume
+            points_i = points[:, list(domain_i)]
+            orientations_i = sarcomere_orientation_points[list(domain_i)]
+            lengths_i = sarcomere_length_points[list(domain_i)]
+            if points_i.shape[1] > 10:
+                size_i = (int(points_i[0].max()) + 30, int(points_i[1].max()) + 30)
+                mask_i = sarcomere_mask(points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
+                                        dilation_radius=dilation_radius)
+                area_i = np.sum(mask_i) * pixelsize ** 2
                 _area_domains[i] = area_i
                 if area_i <= area_min:
                     _indices_to_remove.append(i)
@@ -2025,11 +2034,14 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
             n_domains)
         area_domains = np.zeros(n_domains)
         for i, domain_i in enumerate(domains):
-            points_i = points[:, list(domain_i)].T
+            points_i = points[:, list(domain_i)]
             lengths_i = sarcomere_length_points[list(domain_i)]
             orientations_i = sarcomere_orientation_points[list(domain_i)]
-            hull_i = ConvexHull(points_i)
-            area_domains[i] = hull_i.volume
+            size_i = (int(points_i[0].max()) + 30, int(points_i[1].max()) + 30)
+            mask_i = sarcomere_mask(points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
+                                    dilation_radius=dilation_radius)
+            area_i = np.sum(mask_i) * pixelsize ** 2
+            area_domains[i] = area_i
             sarcomere_length_mean_domains[i] = np.mean(lengths_i)
             sarcomere_length_std_domains[i] = np.std(lengths_i)
             oop, angle = analyze_orientations(orientations_i)
@@ -2059,22 +2071,14 @@ def _grow_line(seed, points_t, sarcomere_length_points_t, sarcomere_orientation_
         elif n_i > 1:
             if not stop_left:
                 end_left = points_t[:, line_i[0]]
-                if persistence > 1:
-                    length_left = np.mean(sarcomere_length_points_t[line_i[:persistence]]) / pixelsize
-                    orientation_left = stats.circmean(
-                        sarcomere_orientation_points_t[line_i[:persistence]])
-                else:
-                    length_left = sarcomere_length_points_t[line_i[0]] / pixelsize
-                    orientation_left = sarcomere_orientation_points_t[line_i[0]]
+                length_left = np.mean(sarcomere_length_points_t[line_i[:persistence]]) / pixelsize
+                orientation_left = stats.circmean(
+                    sarcomere_orientation_points_t[line_i[:persistence]])
             if not stop_right:
                 end_right = points_t[:, line_i[-1]]
-                if persistence > 1:
-                    length_right = np.mean(sarcomere_length_points_t[line_i[-persistence:]]) / pixelsize
-                    orientation_right = stats.circmean(
-                        sarcomere_orientation_points_t[line_i[-persistence:]])
-                else:
-                    length_right = sarcomere_length_points_t[line_i[-1]] / pixelsize
-                    orientation_right = sarcomere_orientation_points_t[line_i[-1]]
+                length_right = np.mean(sarcomere_length_points_t[line_i[-persistence:]]) / pixelsize
+                orientation_right = stats.circmean(
+                    sarcomere_orientation_points_t[line_i[-persistence:]])
 
         # grow left
         if not stop_left:
