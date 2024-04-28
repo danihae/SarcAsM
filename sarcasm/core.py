@@ -7,8 +7,10 @@ import PIL
 import tifffile
 
 from .ioutils import *
+from .meta_data_extractor import MetaDataExtractor
 from .structure import Structure
 from .utils import correct_phase_confocal
+from .exceptions import MetaDataError
 
 
 class SarcAsM(Structure):
@@ -210,7 +212,11 @@ class SarcAsM(Structure):
         """Create metadata for tif-file"""
         print('Creating metadata...')
         # get metadata from tif file
-        frames, size, pixelsize, frametime, timestamps = self.__get_meta_data_from_tif()
+        # todo: if this part is tested, remove the whole metadata reading stuff from this class
+        frames, size, pixelsize, frametime, timestamps = MetaDataExtractor.extract_meta_data(tif_file=self.filename,
+                                                                                             channel=self.channel,
+                                                                                             use_gui=self.use_gui,
+                                                                                             info=self.info)  # self.__get_meta_data_from_tif()
         # create time array
         if frametime is not None:
             time = np.arange(0, frames * frametime, frametime)
@@ -281,8 +287,3 @@ class SarcAsM(Structure):
                 self.store_meta_data()
             # commit changes
             self.commit()
-
-
-# exception if extraction of metadata from tif-file fails
-class MetaDataError(Exception):
-    pass
