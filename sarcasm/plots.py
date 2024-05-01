@@ -572,7 +572,6 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
     """
     assert os.path.exists(sarc_obj.file_sarcomeres), ('Z-band mask not found. Run predict_z_bands first.')
 
-
     img = tifffile.imread(sarc_obj.file_sarcomeres, key=timepoint)
     if invert:
         img = 255 - img
@@ -1034,8 +1033,9 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
     ax.set_title(title, fontsize=fontsize)
 
 
-def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, scalebar=True, markersize=1, plot_raw_data=False, show_oop=True,
-                           title=None):
+def plot_sarcomere_domains_points(ax, sarc_obj, timepoint=0, scalebar=True, markersize=1, plot_raw_data=False,
+                                  show_oop=True,
+                                  title=None):
     """
     Plots the sarcomere domains of the sarcomere object.
 
@@ -1093,6 +1093,56 @@ def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, scalebar=True, markersize=
     ax.set_title(title, fontsize=fontsize)
 
 
+def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, alpha=0.5, cmap='gist_rainbow',
+                           scalebar=True, plot_raw_data=False, title=None):
+    """
+    Plots the sarcomere domains of the sarcomere object.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to draw the plot on.
+    sarc_obj : object
+        The sarcomere object to plot.
+    timepoint : int, optional
+        The timepoint to plot. Defaults to 0.
+    alpha : float, optional
+        The transparency of the domain masks. Defaults to 0.3.
+    cmap : str, optional
+        The colormap to use. Defaults to 'gist_rainbow'.
+    scalebar : bool, optional
+        Whether to add a scalebar to the plot. Defaults to True.
+    plot_raw_data : bool, optional
+        Whether to plot the raw data. Defaults to False.
+    title : str, optional
+        The title for the plot. Defaults to None.
+
+    """
+    assert 'n_domains' in sarc_obj.structure.keys(), ('Sarcomere domains not analyzed. '
+                                                      'Run analyze_sarcomere_domains first.')
+
+    domain_mask = sarc_obj.structure['domain_mask'][timepoint].toarray().astype(float)
+    domain_mask[domain_mask == 0] = np.nan
+
+    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    if _timepoints == 'all':
+        timepoint_plot = timepoint
+    else:
+        timepoint_plot = _timepoints[timepoint]
+    if plot_raw_data:
+        plot_image(ax, sarc_obj, timepoint=timepoint_plot)
+    else:
+        plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint_plot)
+
+    ax.imshow(domain_mask, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
+
+    if scalebar:
+        ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                               height_fraction=0.04, location='lower right', scale_loc='top',
+                               font_properties={'size': fontsize - 1}))
+    ax.set_title(title, fontsize=fontsize)
+
+
 def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=True, title=None):
     """
     Plots result of myofibril line growth algorithm of the sarcomere object.
@@ -1115,7 +1165,7 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
         The titlefor the plot. Defaults to None.
     """
     assert 'myof_lines' in sarc_obj.structure.keys(), ('Myofibrils not analyzed. '
-                                                      'Run analyze_myofibrils first.')
+                                                       'Run analyze_myofibrils first.')
 
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
     if _timepoints == 'all':

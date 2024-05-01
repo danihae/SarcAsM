@@ -489,7 +489,7 @@ class Structure:
 
             # calculate sarcomere area
             if len(points_i) > 0:
-                mask_i = sarcomere_mask(points_i, sarcomere_orientation_points_i, sarcomere_length_points_i,
+                mask_i = sarcomere_mask(points_i * self.metadata['pixelsize'], sarcomere_orientation_points_i, sarcomere_length_points_i,
                                         size=self.metadata['size'], pixelsize=self.metadata['pixelsize'],
                                         dilation_radius=dilation_radius)
             else:
@@ -618,7 +618,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_domains(self, timepoints=None, dist_threshold_ends=0.5, dist_threshold_midline_points=0.5,
-                                  louvain_resolution=0.05, louvain_seed=2, area_min=50):
+                                  louvain_resolution=0.05, louvain_seed=2, area_min=50, dilation_radius=3):
         """
             This function clusters sarcomeres into domains based on their spatial and orientational properties
             using the Louvain method for community detection.
@@ -640,7 +640,9 @@ class Structure:
             louvain_seed : int
                 Random seed for Louvain algorithm, to ensure reproducibility.
             area_min : float
-                Minimal area of domains / clusters (in µm^2). Area is calculated by convex hull.
+                Minimal area of domains / clusters (in µm^2).
+            dilation_radius : int
+                Dilation radius for refining domain area masks.
             """
         assert 'points' in self.structure.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_length_orient first.')
@@ -674,7 +676,8 @@ class Structure:
         domain_oop_mean, domain_oop_median, domain_oop_std = np.zeros(n_imgs) * np.nan, np.zeros(
             n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
 
-        domains, domain_area, domain_slen, domain_slen_std, domain_oop, domain_orientation = [], [], [], [], [], []
+        (domains, domain_area, domain_slen, domain_slen_std,
+         domain_oop, domain_orientation, domain_mask) = [], [], [], [], [], [], []
 
         # iterate timepoints
         print('Starting sarcomere domain analysis...')
@@ -684,10 +687,14 @@ class Structure:
                 zip(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points, midline_id_points),
                 total=len(points))):
             cluster_data_t = cluster_sarcomeres(points_t, sarcomere_length_points_t, sarcomere_orientation_points_t,
-                                                midline_id_points_i, dist_threshold_ends, dist_threshold_midline_points,
-                                                louvain_resolution, louvain_seed=louvain_seed, area_min=area_min)
+                                                midline_id_points_i, pixelsize=self.metadata['pixelsize'],
+                                                size=self.metadata['size'],
+                                                dist_threshold_ends=dist_threshold_ends,
+                                                dist_threshold_midline_points=dist_threshold_midline_points,
+                                                louvain_resolution=louvain_resolution, louvain_seed=louvain_seed,
+                                                area_min=area_min, dilation_radius=dilation_radius)
             (n_domains[t], domains_t, area_domains_t, sarcomere_length_mean_domains_t, sarcomere_length_std_domains_t,
-             sarcomere_oop_domains_t, sarcomere_orientation_domains_t) = cluster_data_t
+             sarcomere_oop_domains_t, sarcomere_orientation_domains_t, domain_mask_t) = cluster_data_t
 
             # write single domain / cluster in lists
             domains.append(domains_t)
@@ -696,6 +703,7 @@ class Structure:
             domain_slen_std.append(sarcomere_length_std_domains_t)
             domain_oop.append(sarcomere_oop_domains_t)
             domain_orientation.append(sarcomere_orientation_domains_t)
+            domain_mask.append(sparse.coo_matrix(domain_mask_t))
 
             # calculate mean, median and std of domains
             domain_area_mean[t], domain_area_median[t], domain_area_std[t] = np.mean(area_domains_t), np.median(
@@ -716,7 +724,7 @@ class Structure:
                        'domain_slen_median': domain_slen_median, 'domain_slen_std': domain_slen_std,
                        'domain_oop': domain_oop, 'domain_oop_mean': domain_oop_mean,
                        'domain_oop_median': domain_oop_mean, 'domain_oop_std': domain_oop_std,
-                       'domain_orientation': domain_orientation,
+                       'domain_orientation': domain_orientation, 'domain_mask': domain_mask,
                        'params.domain_timepoints': timepoints,
                        'params.dist_threshold_ends': dist_threshold_ends,
                        'params.dist_threshold_midline_points': dist_threshold_midline_points,
@@ -972,7 +980,6 @@ class Structure:
         points = self.structure['points'][0][::-1]
         loi_lines = random.sample(lines, n_lois)
         loi_lines = [points[:, line_i].T for line_i in loi_lines]
-        print(loi_lines)
         self.structure['loi_data']['loi_lines'] = loi_lines
         self.structure['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
         if self.auto_save:
@@ -1056,6 +1063,7 @@ class Structure:
             Mode for selecting LOIs from identified clusters.
             - 'fit_straight_line' fits a straight line to all points in the cluster.
             - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved LOIs.
+            - 'random_line' selects a set of random lines that fulfil the filtering criteria
         random_seed : int, optional
             Random seed for selection of random starting points for line growth algorithm, for reproducible outcomes.
             If None, no random seed is set, and outcomes in every run will differ.
@@ -1589,15 +1597,15 @@ def create_wavelet_bank(pixelsize, kernel='gaussian', size=3, sigma=0.15, width=
 def convolve_image_with_bank(image, bank, gating=True):
     """AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality."""
     # Convert image to float16 and normalize
-    image_torch = torch.from_numpy((image / 255).astype('float16')).to(device).view(1, 1, image.shape[0],
+    image_torch = torch.from_numpy((image / 255).astype('float32')).to(device).view(1, 1, image.shape[0],
                                                                                     image.shape[1])
 
     if gating:
         # Convert filters to float32
         bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
-        filters_torch_0 = torch.from_numpy(bank_0.astype('float16')).to(device).view(
+        filters_torch_0 = torch.from_numpy(bank_0.astype('float32')).to(device).view(
             bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
-        filters_torch_1 = torch.from_numpy(bank_1.astype('float16')).to(device).view(
+        filters_torch_1 = torch.from_numpy(bank_1.astype('float32')).to(device).view(
             bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
 
         # Perform convolutions
@@ -1609,7 +1617,7 @@ def convolve_image_with_bank(image, bank, gating=True):
     else:
         # Combine filters and convert to float16
         combined_filters = bank[:, :, 0] + bank[:, :, 1]
-        filters_torch = torch.from_numpy(combined_filters.astype('float16')).to(device).view(
+        filters_torch = torch.from_numpy(combined_filters.astype('float32')).to(device).view(
             combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
             combined_filters.shape[3])
 
@@ -1884,7 +1892,7 @@ def cluster_sarcomeres_old(points_t, sarcomere_length_points_t, sarcomere_orient
 
 
 def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_points, midline_id_points,
-                       pixelsize, dist_threshold_ends=0.5, dist_threshold_midline_points=0.5, louvain_resolution=0.05,
+                       pixelsize, size, dist_threshold_ends=0.5, dist_threshold_midline_points=0.5, louvain_resolution=0.05,
                        louvain_seed=2, area_min=50, dilation_radius=3):
     """
     This function clusters sarcomeres into domains based on their spatial and orientational properties
@@ -1906,6 +1914,8 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
         List of midline point indices, points of the same midline have same index.
     pixelsize : float
         Pixel size in µm
+    size : tuple(int, int)
+        Shape of the image in pixels.
     dist_threshold_ends : float
         Max. distance threshold for connecting / creating network edge for adjacent sarcomere vector ends.
         Only the ends with the smallest distance are connected.
@@ -1936,6 +1946,8 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
         Orientational order parameter of sarcomeres in each domains
     orientation_domains : list
         Main orientation of domains
+    mask_domains : ndarray
+        Masks of domains with value representing domain label
     """
 
     if len(points.T) > 10:
@@ -2015,8 +2027,16 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
             orientations_i = sarcomere_orientation_points[list(domain_i)]
             lengths_i = sarcomere_length_points[list(domain_i)]
             if points_i.shape[1] > 10:
-                size_i = (int(points_i[0].max()) + 30, int(points_i[1].max()) + 30)
-                mask_i = sarcomere_mask(points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
+                # bounding box
+                min_i = (
+                max(int((points_i[0].min() - 3) // pixelsize), 0), max(int((points_i[1].min() - 3) // pixelsize), 0))
+                max_i = (min(int((points_i[0].max() + 3) // pixelsize), size[0]),
+                         min(int((points_i[1].max() + 3) // pixelsize), size[1]))
+                size_i = (max_i[0] - min_i[0], max_i[1] - min_i[1])
+                _points_i = points_i.copy()
+                _points_i[0] -= min_i[0] * pixelsize
+                _points_i[1] -= min_i[1] * pixelsize
+                mask_i = sarcomere_mask(_points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
                                         dilation_radius=dilation_radius)
                 area_i = np.sum(mask_i) * pixelsize ** 2
                 _area_domains[i] = area_i
@@ -2033,13 +2053,24 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
          sarcomere_length_std_domains) = np.zeros(n_domains), np.zeros(n_domains), np.zeros(n_domains), np.zeros(
             n_domains)
         area_domains = np.zeros(n_domains)
+        mask_domains = np.zeros(size, dtype='uint16')
         for i, domain_i in enumerate(domains):
             points_i = points[:, list(domain_i)]
             lengths_i = sarcomere_length_points[list(domain_i)]
             orientations_i = sarcomere_orientation_points[list(domain_i)]
-            size_i = (int(points_i[0].max()) + 30, int(points_i[1].max()) + 30)
-            mask_i = sarcomere_mask(points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
+            # bounding box
+            min_i = (max(int((points_i[0].min() - 3) // pixelsize), 0), max(int((points_i[1].min() - 3) // pixelsize), 0))
+            max_i = (min(int((points_i[0].max() + 3) // pixelsize), size[0]),
+                     min(int((points_i[1].max() + 3) // pixelsize), size[1]))
+            size_i = (max_i[0] - min_i[0], max_i[1] - min_i[1])
+            _points_i = points_i.copy()
+            _points_i[0] -= min_i[0] * pixelsize
+            _points_i[1] -= min_i[1] * pixelsize
+            mask_i = sarcomere_mask(_points_i, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
                                     dilation_radius=dilation_radius)
+            ind_i = np.where(mask_i)
+            ind_i = (ind_i[0] + min_i[0], ind_i[1] + min_i[1])
+            mask_domains[ind_i] = i
             area_i = np.sum(mask_i) * pixelsize ** 2
             area_domains[i] = area_i
             sarcomere_length_mean_domains[i] = np.mean(lengths_i)
@@ -2048,7 +2079,7 @@ def cluster_sarcomeres(points, sarcomere_length_points, sarcomere_orientation_po
             sarcomere_oop_domains[i] = oop
             sarcomere_orientation_domains[i] = angle
         return (n_domains, domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
-                sarcomere_oop_domains, sarcomere_orientation_domains)
+                sarcomere_oop_domains, sarcomere_orientation_domains, mask_domains)
     else:
         return 0, [], [], [], [], [], []
 
@@ -2296,15 +2327,15 @@ def _curved_line_profile_coordinates(points, linewidth=10):
     return np.stack([final_perp_rows, final_perp_cols])
 
 
-def sarcomere_mask(points, sarcomere_orientation_points, sarcomere_length_points, size, pixelsize,
-                   dilation_radius=3):
+def sarcomere_mask(points, sarcomere_orientation_points, sarcomere_length_points, size,
+                   pixelsize, dilation_radius=3):
     """
     Calculates a binary mask of areas with sarcomeres.
 
     Parameters
     ----------
     points : ndarray
-        Position of sarcomere vectors
+        Position of sarcomere vectors in µm
     sarcomere_orientation_points : ndarray
         Orientations of sarcomere vectors
     sarcomere_length_points : ndarray
@@ -2325,7 +2356,6 @@ def sarcomere_mask(points, sarcomere_orientation_points, sarcomere_length_points
     orientation_vectors = np.asarray([-np.sin(sarcomere_orientation_points),
                                       np.cos(sarcomere_orientation_points)])
     # Calculate the ends of the vectors based on their orientation and length
-    points = points * pixelsize
     ends_0 = points + orientation_vectors * sarcomere_length_points / 2  # End point 1 of each vector
     ends_1 = points - orientation_vectors * sarcomere_length_points / 2  # End point 2 of each vector
     ends_0, ends_1 = ends_0 / pixelsize, ends_1 / pixelsize
