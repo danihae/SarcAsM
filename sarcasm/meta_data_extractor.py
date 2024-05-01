@@ -24,7 +24,7 @@ class MetaDataExtractor:
         pass
 
     @staticmethod
-    def extract_meta_data(tif_file: str, channel=None, use_gui=False, **info):
+    def extract_meta_data(tif_file: str, channel=None, use_gui=False, info={}):
         # attempt to extract metadata from tif file
         with tifffile.TiffFile(tif_file) as tif:
             if hasattr(tif, 'imagej_metadata'):
