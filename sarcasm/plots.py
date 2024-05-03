@@ -468,19 +468,6 @@ def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar
         Indicates whether a scalebar should be included in the plot. Default is False.
     dpi : int, optional
         Quality of the plot. Default is 300.
-
-    Returns
-    -------
-    None
-        The function does not return any value. It saves the generated plot as an image file.
-
-    Examples
-    --------
-    >>> def example_plot_func(ax, sarc_obj, scalebar):
-    ...     # Example plotting code that uses ax to plot something
-    ...     pass
-    >>> plot_func_to_img(sarc_obj=my_sarc_obj, plot_func=example_plot_func,
-    ...                  img_filename='output.png', figsize=(8, 8), scalebar=True)
     """
 
     # create matplotlib figure
@@ -586,7 +573,7 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
             ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k' if invert else 'w',
-                               sep=1, height_fraction=0.08, location='lower right', scale_loc='top',
+                               sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -624,7 +611,7 @@ def plot_cell_area(ax, sarc_obj, timepoint=0, rotate=False, invert=False, scaleb
     ax.imshow(img, cmap='gray')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -661,7 +648,7 @@ def plot_z_segmentation(ax, sarc_obj, timepoint=0, scalebar=True, shuffle=True, 
     ax.imshow(labels_plot, cmap='prism')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -711,7 +698,7 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
     ax.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='o', s=markersize, zorder=3)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -804,7 +791,7 @@ def plot_wavelet_score(ax, sarc_obj, timepoint=0, score_threshold=None, lim=(1.6
     plot = ax.imshow(max_score, vmin=lim[0], vmax=lim[1], cmap='gray')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -853,7 +840,7 @@ def plot_sarcomere_lengths(ax, sarc_obj, timepoint=0, score_threshold=None, lim=
     plot = ax.imshow(length, vmin=lim[0], vmax=lim[1], cmap='viridis')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -905,7 +892,7 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
     plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -1025,7 +1012,7 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
         ax.legend(loc=3, fontsize=fontsize - 2)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -1088,7 +1075,7 @@ def plot_sarcomere_domains_points(ax, sarc_obj, timepoint=0, scalebar=True, mark
                     s=np.round(domain_oop[i], 3), fontsize=fontsize, weight='bold')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.04, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_title(title, fontsize=fontsize)
 
@@ -1143,7 +1130,7 @@ def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, alpha=0.5, cmap='gist_rain
     ax.set_title(title, fontsize=fontsize)
 
 
-def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=True, title=None):
+def plot_myofibrils(ax, sarc_obj, timepoint=0, show_z_bands=True, linewidth=1, alpha=0.2, scalebar=True, title=None):
     """
     Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1155,6 +1142,8 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
         The sarcomere object to plot.
     timepoint : int, optional
         The timepoint to plot. Defaults to 0.
+    show_z_bands : bool
+        Whether or not to show Z-bands. Defaults to True
     linewidth : int, optional
         The width of the lines. Defaults to 1.
     alpha : float, optional
@@ -1168,15 +1157,16 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
                                                        'Run analyze_myofibrils first.')
 
     _timepoints = sarc_obj.structure['params.wavelet_timepoints']
-    if _timepoints == 'all':
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
-    else:
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
+    if show_z_bands:
+        if _timepoints == 'all':
+            plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
+        else:
+            plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
     lines = sarc_obj.structure['myof_lines'][timepoint]
     points = sarc_obj.structure['points'][timepoint]
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.04, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
