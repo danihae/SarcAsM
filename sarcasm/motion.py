@@ -37,15 +37,14 @@ class Motion(SarcAsM):
         auto_save : bool
             If True, LOI dictionary is saved at end of processing steps.
         """
-        self.loi_data = {}  # init empty dictionary
-        self.loi_file = os.path.splitext(filename)[0] + '/' + loi_name  # folder for loi data
-        self.loi_name = Motion.get_loi_name_from_file_name(loi_name)  # loi_name is the file name of the json self file
-
         super().__init__(filename)  # init super SarcAsM object
 
+        self.loi_data = {}  # init empty dictionary
+        self.loi_file = os.path.join(os.path.splitext(filename)[0], loi_name)  # folder for loi data
+        self.loi_name = Motion.get_loi_name_from_file_name(loi_name)  # loi_name is the file name of the json self file
+
         # create folder for LOI (sub-folder in cell folder) for analysis
-        self.loi_folder = self.folder + self.loi_name
-        self.loi_folder += '/'
+        self.loi_folder = os.path.join(self.folder, self.loi_name)
         os.makedirs(self.loi_folder, exist_ok=True)
 
         # flag to automatically save dict after processing
@@ -67,9 +66,9 @@ class Motion(SarcAsM):
 
     def __create_loi_data(self):
         # read file with profiles and get time array
-        x_pos, y_int, y_int_raw, y_int_calcium, line, time, line_width = self.read_profile_data()
+        x_pos, y_int, y_int_raw, line, time, line_width = self.read_profile_data()
         # initialize and save dictionary
-        self.loi_data = {'x_pos': x_pos, 'y_int': y_int, 'y_int_raw': y_int_raw, 'y_int_calcium': y_int_calcium,
+        self.loi_data = {'x_pos': x_pos, 'y_int': y_int, 'y_int_raw': y_int_raw,
                          'time': time, 'line': line, 'line_width': line_width}
         if self.auto_save:
             self.store_loi_data()
@@ -80,9 +79,9 @@ class Motion(SarcAsM):
 
     def __get_loi_data_file_name(self, is_temp_file=False) -> str:
         if is_temp_file:
-            return self.data_folder + self.loi_name + "_loi_data.temp.json"
+            return os.path.join(self.data_folder, self.loi_name + "_loi_data.temp.json")
         else:
-            return self.data_folder + self.loi_name + "_loi_data.json"
+            return os.path.join(self.data_folder, self.loi_name + "_loi_data.json")
 
     def load_loi_data(self):
         if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)):
@@ -113,7 +112,6 @@ class Motion(SarcAsM):
         print('LOI data saved!')
 
     def commit(self):
-        super().commit()
         if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
             if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)):
                 os.remove(self.__get_loi_data_file_name(is_temp_file=False))
@@ -131,14 +129,12 @@ class Motion(SarcAsM):
         elif ".json" in self.loi_file:
             data = IOUtils.json_deserialize(self.loi_file)
             # x_pos is 0 until line length(included)
-            x_pos = np.linspace(0, data['length'] , data['profiles'].shape[1])
+            x_pos = np.linspace(0, data['length'], data['profiles'].shape[1])
             no_frames = len(data['profiles'])
             time = np.arange(0, no_frames * self.metadata['frametime'], self.metadata['frametime'])
             if 'profiles_raw' not in data.keys():
                 data['profiles_raw'] = None
-            if 'profiles_calcium' not in data.keys():
-                data['profiles_calcium'] = None
-            return (x_pos, data['profiles'], data['profiles_raw'], data['profiles_calcium'], data['line'], time,
+            return (x_pos, data['profiles'], data['profiles_raw'], data['line'], time,
                     np.int8(data['linewidth']))
         else:
             raise ValueError('LOI-File is not .json')
