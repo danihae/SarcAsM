@@ -1,5 +1,6 @@
 napari~=0.4.18
 torch>=2.0.0
+bio-image-unet==1.0.0a2
 matplotlib>=3.4.3
 matplotlib_scalebar
 xmltodict~=0.13.0
