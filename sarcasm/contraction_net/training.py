@@ -1,33 +1,23 @@
-import glob
 import os
 
-import tifffile
+import torch
 import torch.optim as optim
-from barbar import Bar
 from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
 
-from .losses import *
-from .predict import Predict
-from .unet import Unet, init_weights
-from .baby_unet import BabyUnet
-
+from .losses import BCEDiceLoss, SmoothnessLoss
+from .contraction_net import ContractionNet
+from .utils import get_device
 
 # select device
-if torch.backends.cuda.is_built():
-    device = torch.device('cuda:0')
-elif torch.backends.mps.is_built():  # only for apple m1/m2/...
-    device = torch.device('mps')
-else:
-    device = torch.device('cpu')
-if device.type == 'cpu':
-    print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, "
-          "which might be slower.")
+device = get_device(print_device=True)
 
 
 class Trainer:
-    def __init__(self, dataset, num_epochs, network=Unet, batch_size=4, lr=1e-3, n_filter=64, val_split=0.2,
-                 save_dir='./', save_name='model.pth', save_iter=False, load_weights=False, loss_function='BCEDice',
-                 loss_params=(0.5, 0.5)):
+    def __init__(self, dataset, num_epochs, network=ContractionNet, in_channels=1, out_channels=2,
+                 batch_size=16, lr=1e-3, n_filter=64, val_split=0.2,
+                 save_dir='./', save_name='model.pth', save_iter=False, loss_function='BCEDice',
+                 loss_params=(1, 1)):
         """
         Class for training of neural network. Creates trainer object, training is started with .start().
 
@@ -39,6 +29,10 @@ class Trainer:
             Number of training epochs
         network
             Network class (Default Unet)
+        in_channels : int
+            Number of input channels
+        out_channels : int
+            Number of output channels
         batch_size : int
             Batch size for training
         lr : float
@@ -61,9 +55,10 @@ class Trainer:
             Parameter of loss function, depends on chosen loss function
         """
         self.network = network
-        self.model = network(n_filter=n_filter).to(device)
-        self.model.apply(init_weights)
+        self.model = network(n_filter=n_filter, in_channels=in_channels, out_channels=out_channels).to(device)
         self.data = dataset
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.lr = lr
@@ -75,106 +70,100 @@ class Trainer:
         # split training and validation data
         num_val = int(len(dataset) * val_split)
         num_train = len(dataset) - num_val
-        self.dim = dataset.dim_out
-        train_data, val_data = random_split(dataset, [num_train, num_val])
-        self.train_loader = DataLoader(train_data, batch_size=self.batch_size, pin_memory=True, drop_last=True)
-        self.val_loader = DataLoader(val_data, batch_size=self.batch_size, pin_memory=True, drop_last=True)
+        self.dim = dataset.input_len
+        self.train_data, self.val_data = random_split(dataset, [num_train, num_val])
+        self.train_loader = DataLoader(self.train_data, batch_size=self.batch_size, pin_memory=True, drop_last=True)
+        self.val_loader = DataLoader(self.val_data, batch_size=self.batch_size, pin_memory=True, drop_last=True)
         if loss_function == 'BCEDice':
-            self.criterion = BCEDiceLoss(loss_params[0], loss_params[1])
-        elif loss_function == 'Tversky':
-            self.criterion = TverskyLoss(loss_params[0], loss_params[1])
-        elif loss_function == 'logcoshTversky':
-            self.criterion = logcoshTverskyLoss(loss_params[0], loss_params[1])
+            self.criterion = BCEDiceLoss(loss_params)
         else:
             raise ValueError(f'Loss "{loss_function}" not defined!')
+        self.smooth_loss = SmoothnessLoss(alpha=0.01)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=4, factor=0.1)
         self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
         self.save_name = save_name
-        if load_weights:
-            self.state = torch.load(self.save_dir + '/' + self.save_name)
-            self.model.load_state_dict(self.state['state_dict'])
 
     def __iterate(self, epoch, mode):
         if mode == 'train':
             print('\nStarting training epoch %s ...' % epoch)
-            for i, batch_i in enumerate(Bar(self.train_loader)):
-                x_i = batch_i['image'].view(self.batch_size, 1, self.dim[0], self.dim[1]).to(device)
-                y_i = batch_i['mask'].view(self.batch_size, 1, self.dim[0], self.dim[0]).to(device)
+            for i, batch_i in tqdm(enumerate(self.train_loader), total=len(self.train_loader), unit='batch'):
+                x_i = batch_i['input'].view(self.batch_size, self.in_channels, self.dim).to(device)
+                y_i = batch_i['target'].view(self.batch_size, 1, self.dim).to(device)
+                d_i = batch_i['distance'].view(self.batch_size, 1, self.dim).to(device)
                 # Forward pass: Compute predicted y by passing x to the model
                 y_pred, y_logits = self.model(x_i)
-
-                # Compute and print loss
-                loss = self.criterion(y_logits, y_i)
-
+                # Split the tensor into 2 chunks along the second dimension
+                y_1, y_2 = torch.chunk(y_logits, chunks=2, dim=1)
+                # Compute loss
+                contr_loss = self.criterion(y_1, y_i)
+                dist_loss = self.criterion(y_2, d_i)
+                smooth_loss = self.smooth_loss(y_2)
+                loss = contr_loss + dist_loss
                 # Zero gradients, perform a backward pass, and update the weights.
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+            return loss
 
         elif mode == 'val':
             loss_list = []
             print('\nStarting validation epoch %s ...' % epoch)
             with torch.no_grad():
-                for i, batch_i in enumerate(Bar(self.val_loader)):
-                    x_i = batch_i['image'].view(self.batch_size, 1, self.dim[0], self.dim[1]).to(device)
-                    y_i = batch_i['mask'].view(self.batch_size, 1, self.dim[0], self.dim[1]).to(device)
+                for i, batch_i in enumerate(self.val_loader):
+                    x_i = batch_i['input'].view(self.batch_size, self.in_channels, self.dim).to(device)
+                    y_i = batch_i['target'].view(self.batch_size, 1, self.dim).to(device)
+                    d_i = batch_i['distance'].view(self.batch_size, 1, self.dim).to(device)
                     # Forward pass: Compute predicted y by passing x to the model
                     y_pred, y_logits = self.model(x_i)
-                    loss = self.criterion(y_logits, y_i)
+
+                    # Compute loss
+                    loss = self.criterion(y_logits[:, 0], y_i[:, 0]) + self.criterion(y_logits[:, 1], d_i[:, 0])
                     loss_list.append(loss.detach())
             val_loss = torch.stack(loss_list).mean()
             return val_loss
 
-        torch.cuda.empty_cache()
-
-    def start(self, test_data_path=None, result_path=None, test_resize_dim=(512, 512)):
+    def start(self):
         """
         Start network training. Optional: predict small test sample after each epoch.
-
-        Parameters
-        ----------
-        test_data_path : str
-            Path of folder with test tif files
-        result_path : str
-            Path for saving prediction results of test data
-        test_resize_dim: tuple
-            Resize dimensions for prediction of test movies
         """
+        train_loss = []
+        val_loss = []
         for epoch in range(self.num_epochs):
-            self.__iterate(epoch, 'train')
+            train_loss_i = self.__iterate(epoch, 'train')
+            train_loss.append(train_loss_i)
             self.state = {
                 'epoch': epoch,
+                'train_loss': train_loss,
+                'val_loss': val_loss,
                 'best_loss': self.best_loss,
                 'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'lr': self.lr,
                 'loss_function': self.loss_function,
                 'loss_params': self.loss_params,
+                'in_channels': self.in_channels,
+                'out_channels': self.out_channels,
                 'n_filter': self.n_filter,
+                'batch_size': self.batch_size,
                 'augmentation': self.data.aug_factor,
-                'clip_threshold': self.data.clip_threshold,
                 'noise_amp': self.data.noise_amp,
-                'brightness_contrast': self.data.brightness_contrast,
-                'shiftscalerotate': self.data.shiftscalerotate,
+                'random_offset': self.data.random_offset,
+                'random_drift': self.data.random_drift,
+                'random_outlier': self.data.random_outlier,
+                'random_subsampling': self.data.random_subsampling,
+                'random_swap': self.data.random_swap,
             }
             with torch.no_grad():
-                val_loss = self.__iterate(epoch, 'val')
-                self.scheduler.step(val_loss)
-            if val_loss < self.best_loss:
+                val_loss_i = self.__iterate(epoch, 'val')
+                val_loss.append(val_loss_i)
+                self.scheduler.step(val_loss_i)
+            if val_loss_i < self.best_loss:
                 print('\nValidation loss improved from %s to %s - saving model state' % (
-                    round(self.best_loss.item(), 5), round(val_loss.item(), 5)))
-                self.state['best_loss'] = self.best_loss = val_loss
+                    round(self.best_loss.item(), 5), round(val_loss_i.item(), 5)))
+                self.state['best_loss'] = self.best_loss = val_loss_i
                 torch.save(self.state, self.save_dir + '/' + self.save_name)
             if self.save_iter:
                 torch.save(self.state, self.save_dir + '/' + f'model_epoch_{epoch}.pth')
 
-            if test_data_path is not None:
-                print('Predicting test data...')
-                files = glob.glob(test_data_path + '*.tif')
-                for i, file in enumerate(files):
-                    img = tifffile.imread(file)
-                    Predict(img, result_path + os.path.basename(file) + f'epoch_{epoch}.tif',
-                            self.save_dir + '/' + f'model_epoch_{epoch}.pth', self.network, resize_dim=test_resize_dim,
-                            invert=False, progress_bar=False)
