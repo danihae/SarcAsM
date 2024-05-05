@@ -513,6 +513,8 @@ class Structure:
                     'pixelsize'] ** 2
                 sarcomere_area_ratio[i] = sarcomere_area[i] / area
 
+        tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
+
         wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_sigma': sigma, 'params.wavelet_width': width,
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step, 'params.kernel': kernel,
@@ -520,7 +522,6 @@ class Structure:
                         'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
-                        'sarcomere_masks': np.asarray(sarcomere_masks) if save_all else None,
                         'points': points, 'sarcomere_length_points': sarcomere_length_points,
                         'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
                         'sarcomere_length': sarcomere_length_points, 'wavelet_bank': bank if save_all else None,
