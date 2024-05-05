@@ -13,7 +13,7 @@ from scipy.stats import kstest, geom
 from skimage.segmentation import clear_border
 
 from .utils import peakdetekt, nan_sav_golay, custom_diff, model_dir
-from .contraction_cnn import predict_contractions as predict_contractions_cnn
+from .contraction_net.prediction import predict_contractions as contraction_net
 from .core import SarcAsM
 from .ioutils import IOUtils
 from .plots import analyze_noise_filter_plot
@@ -129,9 +129,10 @@ class Motion(SarcAsM):
         elif ".json" in self.loi_file:
             data = IOUtils.json_deserialize(self.loi_file)
             if 'length' not in data.keys():
-                data['length'] = np.sqrt((data['line_start_x']-data['line_end_x'])**2 +
-                                         (data['line_start_y']-data['line_end_y'])**2) * self.metadata['pixelsize']
-                data['line'] = np.asarray([[data['line_start_x'], data['line_start_y']], [data['line_end_x'], data['line_end_y']]])
+                data['length'] = np.sqrt((data['line_start_x'] - data['line_end_x']) ** 2 +
+                                         (data['line_start_y'] - data['line_end_y']) ** 2) * self.metadata['pixelsize']
+                data['line'] = np.asarray(
+                    [[data['line_start_x'], data['line_start_y']], [data['line_end_x'], data['line_end_y']]])
             # x_pos is 0 until line length(included)
             x_pos = np.linspace(0, data['length'], data['profiles'].shape[1])
             no_frames = len(data['profiles'])
@@ -185,7 +186,7 @@ class Motion(SarcAsM):
             self.store_loi_data()
 
     def track_z_bands(self, search_range=1, memory_tracking=10, memory_interpol=6, t_range=None, z_range=None,
-                      min_length=5, plot=False):
+                      min_length=5, filter_params=(13, 5)):
         """
         Track peaks of intensity profile over time with Crocker-Grier algorithm from TrackPy package
 
@@ -203,8 +204,8 @@ class Motion(SarcAsM):
             If not None, select range of z-bands
         min_length : float
             Minimal length of z-band trajectory in seconds. Shorter trajectories will not be deleted but set to np.nan.
-        plot : bool
-            If True, the z-band trajectories are plotted.
+        filter_params : tuple(float, float)
+            Parameters window length and poly order of Savitzky-Golay filter to smooth z position
         """
         self.loi_data['parameters.track_peaks'] = {'search_range': search_range, 'memory_tracking': memory_tracking,
                                                    'memory_interpol': memory_interpol, 't_range': t_range,
@@ -216,7 +217,7 @@ class Motion(SarcAsM):
         peaks_iter = iter(peaks)
 
         # Crocker-Grier linking algorithm
-        trajs_idx = pd.DataFrame(trackpy.link_iter(peaks_iter, search_range=search_range, memory=memory_tracking))[1]
+        trajs_idx = pd.DataFrame(trackpy.link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
         trajs_idx = trajs_idx.to_numpy()
 
         # sort array into z-band trajectories
@@ -241,63 +242,24 @@ class Motion(SarcAsM):
             self.loi_data['time'] = self.loi_data['time'][:t_range[1] - t_range[0]]
         if z_range is not None:
             z_pos = z_pos[z_range[0]:z_range[1], :]
+
+        # filter z positions
+        z_pos_filt = z_pos.copy()
+        z_pos_filt = nan_sav_golay(z_pos_filt, window_length=filter_params[0], polyorder=filter_params[1])
+
         # calculate sarcomere lengths
-        slen = np.diff(z_pos, axis=0)
+        slen = np.diff(z_pos_filt, axis=0)
 
         # save data
-        dict_temp = {'z_pos_raw': z_pos, 'z_pos': z_pos, 'slen': slen,
+        dict_temp = {'z_pos_raw': z_pos, 'z_pos': z_pos_filt, 'slen': slen,
                      'parameters.track_z_bands': {'search_range': search_range, 'memory_tracking': memory_tracking,
                                                   'memory_interpol': memory_interpol, 't_range': t_range,
-                                                  'z_range': z_range, 'min_length': min_length}}
+                                                  'z_range': z_range, 'min_length': min_length,
+                                                  'filter_params': filter_params}}
+
         self.loi_data.update(dict_temp)
         if self.auto_save:
             self.store_loi_data()
-
-        if plot:
-            plt.figure(figsize=(4, 2))
-            plt.plot(self.loi_data['time'], self.loi_data['z_pos_raw'].T, c='k')
-            plt.xlabel('Time [s]')
-            plt.ylabel(u'Z-band [µm]')
-            plt.tight_layout()
-            plt.savefig(self.loi_folder + '/z_pos_raw.png', format='png', dpi=200)
-            plt.show()
-
-    def smooth_z_pos(self, window_length=11, polyorder=5, plot=False):
-        """
-        Smoothing of z-band time-series (Savitzky-Golay filter)
-
-        Parameters
-        ----------
-        window_length : int
-            The length of the filter window (i.e., the number of coefficients).
-            `window_length` must be a positive odd integer.
-        polyorder : int
-            The order of the polynomial used to fit the samples.
-            `polyorder` must be less than `window_length`.
-        plot : bool
-            If True, the results are plotted
-        """
-        self.loi_data['parameters.filter_z_pos'] = {'window_length': window_length, 'polyorder': polyorder}
-        z_pos = self.loi_data['z_pos_raw'].copy()
-        z_pos = np.asarray([nan_sav_golay(z, window_length=window_length, polyorder=polyorder) for z in z_pos])
-        # add to dict and save data
-        self.loi_data['z_pos'] = z_pos
-        self.loi_data['slen'] = np.diff(z_pos, axis=0)
-
-        if self.auto_save:
-            self.store_loi_data()
-        if plot:
-            fig, ax = plt.subplots(figsize=(4, 2))
-            ax.plot(self.loi_data['z_pos_raw'].T, c='k')
-            ax.plot(z_pos.T, c='r')
-            ax.set_xlabel('Time [frames]')
-            ax.set_ylabel('Z-band [µm]')
-            p1 = mpatches.Patch(color='k', label='Raw data')
-            p2 = mpatches.Patch(color='r', label=f'Smoothed Z-pos (wl={window_length}, poly={polyorder})')
-            plt.legend(handles=[p1, p2])
-            plt.tight_layout()
-            fig.savefig(self.loi_folder + 'z_pos_filt.png', dpi=300)
-            plt.show()
 
     def analyze_noise_filter(self, i, filter_params=(11, 5), tlim=(0, 8)):
         """Analysis of noise level before and after filtering. Plots time-series of z-bands, sarcomeres and velocities
@@ -328,7 +290,7 @@ class Motion(SarcAsM):
 
     def detect_analyze_contractions(self, model=None, threshold=0.33, slen_lims=(1.2, 3),
                                     n_sarcomeres_min=4,
-                                    buffer_frames=10, contr_time_min=0.2, merge_time_max=0.05):
+                                    buffer_frames=3, contr_time_min=0.2, merge_time_max=0.05):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
 
@@ -358,11 +320,10 @@ class Motion(SarcAsM):
 
         # select weights for convolutional neural network
         if model is None or model is 'default':
-            model = model_dir + 'contraction_model.pth'
+            model = model_dir + 'model_ContractionNet.pth'
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
-        contr = predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
-                                     threshold=threshold)
-
+        contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
+                                          threshold=threshold)
         # edit contractions
         # filter sarcomeres by sarcomere lengths and set to 0 if less sarcomeres than n_sarcomere_min
         slen = np.diff(self.loi_data['z_pos'], axis=0)
@@ -416,32 +377,27 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def get_trajectories(self, filter_params_z_pos=(13, 7), slen_lims=(1.2, 3.),
-                         filter_params_vel=(13, 7), dilate_contr=0, equ_lims=(1.5, 2.2)):
+    def get_trajectories(self, slen_lims=(1.2, 3.), filter_params_vel=(13, 5), dilate_contr=0, equ_lims=(1.5, 2.2)):
         """
-        1. Smoothing of z-band trajectories with Savitzky-Golay filter (filter_params_z_pos)
-        2. Calculate sarcomere lengths (single and avg) and filter too large and too small values (slen_lims).
-        3. Calculate sarcomere velocities (single and avg), prior smoothing of s'lengths with Savitky-Golay filter
+        1. Calculate sarcomere lengths (single and avg) and filter too large and too small values (slen_lims).
+        2. Calculate sarcomere velocities (single and avg), prior smoothing of s'lengths with Savitzky-Golay filter
             (filter_params_vel)
-        4. Calculate sarcomere equilibrium lengths (equ) and delta_slen
+        3. Calculate sarcomere equilibrium lengths (equ) and delta_slen
 
         Parameters
         ----------
-        filter_params_z_pos : tuple[int, int]
-            Window length and poly order for Savitky-Golay filter for smoothing of z-band trajectories
-        slen_lims : tuple[float, float]
+        slen_lims : tuple(float, float)
             Lower and upper limits of sarcomere lengths, values outside are set to nan
-        filter_params_vel : tuple[int, int]
+        filter_params_vel : tuple(int, int)
             Window length and poly order for Savitky-Golay filter for smoothing of delta_slen prior to differentiation
             to obtain sarcomere velocities
         dilate_contr : float
             Dilation time (in seconds) of contraction time-series to shorten time-interval during diastole at which the sarcomere
             equilibrium lengths are determined
-        equ_lims : tuple[float, float]
+        equ_lims : tuple(float, float)
             Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan
         """
-        # smoothing z-pos, calculate sarcomere lengths
-        self.smooth_z_pos(filter_params_z_pos[0], filter_params_z_pos[1])
+        # calculate sarcomere lengths
         slen = np.diff(self.loi_data['z_pos'], axis=0)
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         slen_avg = np.nanmean(slen, axis=0)
@@ -475,7 +431,6 @@ class Motion(SarcAsM):
         # store data in LOI dictionary
         dict_temp = {
             'parameters.get_sarcomere_trajectories': {'slen_lims': slen_lims,
-                                                      'filter_params_z_pos': filter_params_z_pos,
                                                       'filter_params_vel': filter_params_vel},
             'slen': slen, 'slen_avg': slen_avg, 'vel': vel, 'vel_avg': vel_avg, 'n_sarcomeres': n_sarcomeres,
             'n_sarcomeres_time': n_sarcomeres_time, 'equ': equ, 'delta_slen': delta_slen,
@@ -736,12 +691,12 @@ class Motion(SarcAsM):
         """
 
         # Analyze oscillation frequencies of average sarcomere length change
-        cfs_avg, frequencies = wavelet_analysis_oscillations(self.loi_data['delta_slen_avg'],
-                                                             self.metadata['frametime'],
-                                                             min_scale=min_scale,
-                                                             max_scale=max_scale,
-                                                             num_scales=num_scales,
-                                                             wavelet=wavelet)
+        cfs_avg, frequencies = self.wavelet_analysis_oscillations(self.loi_data['delta_slen_avg'],
+                                                                  self.metadata['frametime'],
+                                                                  min_scale=min_scale,
+                                                                  max_scale=max_scale,
+                                                                  num_scales=num_scales,
+                                                                  wavelet=wavelet)
 
         mask = self.loi_data['contr'] != 0
         mag_avg = np.nanmean(np.abs(cfs_avg[:, mask]), axis=1)
@@ -750,12 +705,12 @@ class Motion(SarcAsM):
         cfs = []
         mags = []
         for d_i in self.loi_data['delta_slen']:
-            cfs_i, _ = wavelet_analysis_oscillations(d_i,
-                                                     self.metadata['frametime'],
-                                                     min_scale=min_scale,
-                                                     max_scale=max_scale,
-                                                     num_scales=num_scales,
-                                                     wavelet=wavelet)
+            cfs_i, _ = self.wavelet_analysis_oscillations(d_i,
+                                                          self.metadata['frametime'],
+                                                          min_scale=min_scale,
+                                                          max_scale=max_scale,
+                                                          num_scales=num_scales,
+                                                          wavelet=wavelet)
             mag_i = np.nanmean(np.abs(cfs_i[:, mask]), axis=1)
             cfs.append(cfs_i)
             mags.append(mag_i)
@@ -823,71 +778,67 @@ class Motion(SarcAsM):
         auto_save_ = self.auto_save
         self.auto_save = False
         self.detekt_peaks()
-        self.track_z_bands(plot=False)
+        self.track_z_bands()
         self.detect_analyze_contractions()
         self.get_trajectories()
         self.analyze_trajectories()
         self.analyze_popping()
-        self.correlation_mutual_serial()
-        self.analyze_oscillations()
         self.auto_save = auto_save_
         self.store_loi_data()
 
+    @staticmethod
+    def predict_contractions(z_pos, slen, weights, threshold=0.33):
+        """Predict contractions from motion of z-bands and sarcomere lengths, then calculate mean state and threshold to
+        get more accurate estimation of contractions
 
-def predict_contractions(z_pos, slen, weights, threshold=0.33):
-    """Predict contractions from motion of z-bands and sarcomere lengths, then calculate mean state and threshold to
-    get more accurate estimation of contractions
+        Parameters
+        ----------
+        z_pos : ndarray
+            Time-series of Z-band positions
+        slen : ndarray
+            Time-series of sarcomere lengths
+        weights : str
+            Neural network parameters (.pth file)
+        threshold : float
+            Binary threshold for contraction state (0, 1)
+        """
+        data = np.concatenate([z_pos, slen])
+        contr_all = np.asarray([contraction_net(d, weights)[0] for d in data])
+        contr_mean = np.nanmean(contr_all, axis=0)
+        return contr_mean > threshold
 
-    Parameters
-    ----------
-    z_pos : ndarray
-        Time-series of Z-band positions
-    slen : ndarray
-        Time-series of sarcomere lengths
-    weights : str
-        Neural network parameters (.pth file)
-    threshold : float
-        Binary threshold for contraction state (0, 1)
-    """
-    data = np.concatenate([z_pos, slen])
-    contr_all = np.asarray([predict_contractions_cnn(d, weights) for d in data])
-    contr_mean = np.nanmean(contr_all, axis=0)
-    contr = np.zeros_like(contr_mean)
-    contr[contr_mean > threshold] = 1
-    return contr
+    @staticmethod
+    def wavelet_analysis_oscillations(data, frametime, min_scale=6, max_scale=150, num_scales=100, wavelet='morl'):
+        """
+        Perform a wavelet transform of the data.
 
+        Parameters
+        ----------
+        data : array_like
+            1-D input signal.
+        frametime : float
+            Sampling period of the signal.
+        min_scale : float, optional
+            Minimum scale to use for the wavelet transform (default is 6).
+        max_scale : float, optional
+            Maximum scale to use for the wavelet transform (default is 150).
+        num_scales : int, optional
+            Number of scales to use for the wavelet transform (default is 200).
+        wavelet : str, optional
+            Type of wavelet to use for the wavelet transform (default is 'morl').
 
-def wavelet_analysis_oscillations(data, frametime, min_scale=6, max_scale=150, num_scales=100, wavelet='morl'):
-    """
-    Perform a wavelet transform of the data.
+        Returns
+        -------
+        cfs : ndarray
+            Continuous wavelet transform coefficients.
+        frequencies : ndarray
+            Corresponding frequencies for each scale.
 
-    Parameters
-    ----------
-    data : array_like
-        1-D input signal.
-    frametime : float
-        Sampling period of the signal.
-    min_scale : float, optional
-        Minimum scale to use for the wavelet transform (default is 6).
-    max_scale : float, optional
-        Maximum scale to use for the wavelet transform (default is 150).
-    num_scales : int, optional
-        Number of scales to use for the wavelet transform (default is 200).
-    wavelet : str, optional
-        Type of wavelet to use for the wavelet transform (default is 'morl').
+        """
+        # Generate a range of scales that are logarithmically spaced
+        scales = np.geomspace(min_scale, max_scale, num=num_scales)
 
-    Returns
-    -------
-    cfs : ndarray
-        Continuous wavelet transform coefficients.
-    frequencies : ndarray
-        Corresponding frequencies for each scale.
+        # Perform the wavelet transform
+        cfs, frequencies = pywt.cwt(data, scales, wavelet, sampling_period=frametime)
 
-    """
-    # Generate a range of scales that are logarithmically spaced
-    scales = np.geomspace(min_scale, max_scale, num=num_scales)
-
-    # Perform the wavelet transform
-    cfs, frequencies = pywt.cwt(data, scales, wavelet, sampling_period=frametime)
-
-    return cfs, frequencies
+        return cfs, frequencies

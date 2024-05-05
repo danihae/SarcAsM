@@ -10,9 +10,8 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from .unets import siam_unet as siam
-from .unets import unet
-from .unets.progress import ProgressNotifier
+from biu import unet3d as unet3d
+from biu.progress import ProgressNotifier
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
 from scipy.optimize import curve_fit
@@ -113,14 +112,14 @@ class Structure:
                 data = data[:, :, :, self.sarc_obj.channel]
         return data
 
-    def predict_z_bands(self, siam_unet=False, model_path=None, size=(1024, 1024),
+    def predict_z_bands(self, time_consistent=False, model_path=None, size=(1024, 1024),
                         normalization_mode='all', clip_thres=(0., 99.8),
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """Predict sarcomere z-bands with U-Net or Siam-U-Net
 
         Parameters
         ----------
-        siam_unet : bool
+        time_consistent : bool
             If True, the temporally more consistent Siam-U-Net is used.
         model_path : str
             Path of trained network weights for U-Net or Siam-U-Net
@@ -135,36 +134,35 @@ class Structure:
             Progress notifier for inclusion in GUI
         """
         print('Predicting sarcomere z-bands ...')
-        if siam_unet:
-            if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'siam_unet_sarcomeres.pth'
-            _ = siam.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
-                             resize_dim=size, normalization_mode=normalization_mode,
-                             clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+        if time_consistent:
+            if model_path is None:
+                model_path = os.path.join(model_dir, 'unet3d_z_bands.pth')
+            assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
+            _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
+                               resize_dim=size, normalization_mode=normalization_mode,
+                               clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         else:
             if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_z_bands_generalist.pth'
+                model_path = os.path.join(model_dir, 'unet_z_bands_generalist.pth')
             _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode,
                              clip_threshold=clip_thres, normalize_result=True,
                              progress_notifier=progress_notifier)
         _dict = {'params.predict_z_bands_model': model_path,
-                 'params.predict_z_bands_siam_unet': siam_unet,
+                 'params.predict_z_bands_time_consistent': time_consistent,
                  'params.predict_z_bands_normalization_mode': normalization_mode,
                  'params.predict_z_bands_clip_threshold': clip_thres}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def predict_cell_area(self, siam_unet=False, model_path=None, size=(1024, 1024), normalization_mode='all',
+    def predict_cell_area(self, model_path=None, size=(1024, 1024), normalization_mode='all',
                           clip_thres=(0., 99.8),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """Predict binary mask of cells vs. background with U-Net or Siam-U-Net
 
         Parameters
         ----------
-        siam_unet : bool
-            If True, the temporally more consistent Siam-U-Net is used.
         model_path : str
             Path of trained network weights for U-Net or Siam-U-Net
         size : tuple[int, int]
@@ -178,20 +176,13 @@ class Structure:
             Progress notifier for inclusion in GUI
         """
         print('Predicting binary mask of cells ...')
-        if siam_unet:
-            if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_cell_mask_generalist.pth'
-            _ = siam.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
-                             resize_dim=size, normalization_mode=normalization_mode, clip_threshold=clip_thres,
-                             normalize_result=True)
-        else:
-            if model_path is None or model_path == 'generalist':
-                model_path = model_dir + 'unet_cell_mask_generalist.pth'
-            _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
-                             resize_dim=size, normalization_mode=normalization_mode,
-                             clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+
+        if model_path is None or model_path == 'generalist':
+            model_path = model_dir + 'unet_cell_mask_generalist.pth'
+        _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
+                         resize_dim=size, normalization_mode=normalization_mode,
+                         clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         _dict = {'params.predict_cell_area_model': model_path,
-                 'params.predict_cell_area_siam_unet': siam_unet,
                  'params.predict_cell_area_normalization_mode': normalization_mode,
                  'params.predict_cell_area_clip_threshold': clip_thres}
         self.data.update(_dict)
@@ -908,7 +899,7 @@ class Structure:
             self.data['loi_data']['n_lines_clusters'] = 1
         else:
             clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold_lois,
-                                                 affinity='precomputed',
+                                                 metric='precomputed',
                                                  linkage=linkage).fit(
                 self.data['loi_data']['hausdorff_dist_matrix'])
             self.data['loi_data']['line_cluster'] = clustering.labels_
@@ -1010,7 +1001,7 @@ class Structure:
         export_raw : bool
             If True, intensity kymograph along LOI from raw microscopy image are additionally stored
         """
-        imgs_sarcomeres = tifffile.imread(self.sarc_obj.folder + 'sarcomeres.tif')
+        imgs_sarcomeres = tifffile.imread(self.sarc_obj.file_sarcomeres)
         profiles = self.kymograph_movie(imgs_sarcomeres, line, order=order,
                                         linewidth=int(linewidth / self.sarc_obj.metadata['pixelsize']))
         profiles = np.asarray(profiles)
@@ -1039,8 +1030,8 @@ class Structure:
     def detect_lois(self, timepoint=0, n_seeds=1000, persistence=2, threshold_distance=0.3, score_threshold=None,
                     mode='longest_in_cluster', random_seed=None, number_lims=(10, 50), length_lims=(0, 200),
                     sarcomere_mean_length_lims=(1, 3), sarcomere_std_length_lims=(0, 1), msc_lims=(0, 1),
-                    max_orient_change=30, midline_mean_length_lims=(2, 20), midline_std_length_lims=(0, 5),
-                    midline_min_length_lims=(2, 20), distance_threshold_lois=40, linkage='single', n_lois=4,
+                    max_orient_change=30, midline_mean_length_lims=(0, 20), midline_std_length_lims=(0, 5),
+                    midline_min_length_lims=(0, 20), distance_threshold_lois=40, linkage='single', n_lois=4,
                     linewidth=0.65, order=0, export_raw=False):
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
@@ -1850,7 +1841,7 @@ class Structure:
             # accumulative clustering
             if dist.shape[0] > 20:
                 clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold,
-                                                     affinity='precomputed',
+                                                     metric='precomputed',
                                                      linkage='single').fit(dist)
                 labels_clusters = clustering.labels_
                 n_clusters = clustering.n_clusters_
