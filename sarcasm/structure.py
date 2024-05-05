@@ -181,7 +181,7 @@ class Structure:
         if model_path is None or model_path == 'generalist':
             model_path = model_dir + 'unet_cell_mask_generalist.pth'
         _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
-                         resize_dim=size, normalization_mode=normalization_mode,
+                         resize_dim=size, normalization_mode=normalization_mode, network='AttentionUnet',
                          clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         _dict = {'params.predict_cell_area_model': model_path,
                  'params.predict_cell_area_normalization_mode': normalization_mode,
