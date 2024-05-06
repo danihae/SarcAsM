@@ -1,17 +1,14 @@
 import os.path
-import random
-from random import shuffle
 
+import matplotlib as mpl
 import numpy as np
+import statsmodels.api as sm
 from matplotlib import pyplot as plt, transforms
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
-import matplotlib as mpl
-from scipy.spatial import ConvexHull
 from scipy.stats import gaussian_kde
 from tifffile import tifffile
-import statsmodels.api as sm
 
 from .utils import shuffle_labels
 
@@ -406,34 +403,34 @@ def plot_loi_detection(sarc_obj, timepoint=0, filepath=None):
 
     fig, axs = plt.subplot_mosaic(mosaic, figsize=(width_1cols, 4.6), constrained_layout=True, dpi=300)
 
-    points = sarc_obj.structure['points'][timepoint]
+    points = sarc_obj.structure.data['points'][timepoint]
 
-    if isinstance(sarc_obj.structure['params.wavelet_timepoints'], int):
-        frame = sarc_obj.structure['params.wavelet_timepoints']
-    elif sarc_obj.structure['params.wavelet_timepoints'] == 'all':
+    if isinstance(sarc_obj.structure.data['params.wavelet_timepoints'], int):
+        frame = sarc_obj.structure.data['params.wavelet_timepoints']
+    elif sarc_obj.structure.data['params.wavelet_timepoints'] == 'all':
         frame = timepoint
     else:
-        frame = sarc_obj.structure['params.wavelet_timepoints'][timepoint]
+        frame = sarc_obj.structure.data['params.wavelet_timepoints'][timepoint]
 
     plot_z_bands(axs['a'], sarc_obj, timepoint=frame, invert=True)
     plot_z_bands(axs['c'], sarc_obj, timepoint=frame, invert=True)
     plot_z_bands(axs['d'], sarc_obj, timepoint=frame, invert=True)
 
-    for i, loi_i in enumerate(sarc_obj.structure['lines']):
-        if sarc_obj.structure['quality'][timepoint] == 1:
+    for i, loi_i in enumerate(sarc_obj.structure.data['lines']):
+        if sarc_obj.structure.data['quality'][timepoint] == 1:
             axs['a'].plot(points[1, loi_i], points[0, loi_i], c='r', lw=0.2, alpha=0.6)
 
-    axs['b'].hist(sarc_obj.structure['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k', alpha=0.75, rwidth=0.75)
+    axs['b'].hist(sarc_obj.structure.data['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k', alpha=0.75, rwidth=0.75)
     axs['b'].set_xlim(0, 400)
     axs['b'].set_xlabel('Hausdorff distance')
     axs['b'].set_ylabel('# LOI pairs')
 
-    for i, loi_i in enumerate(sarc_obj.structure['good_lois']):
-        label_i = sarc_obj.structure['good_loi_cluster'][i]
-        axs['c'].plot(sarc_obj.structure['good_lois_pos'][i].T[1], sarc_obj.structure['good_lois_pos'][i].T[0],
-                      c=plt.cm.jet(label_i / sarc_obj.structure['num_good_loi_clusters']), lw=0.2)
+    for i, loi_i in enumerate(sarc_obj.structure.data['good_lois']):
+        label_i = sarc_obj.structure.data['good_loi_cluster'][i]
+        axs['c'].plot(sarc_obj.structure.data['good_lois_pos'][i].T[1], sarc_obj.structure.data['good_lois_pos'][i].T[0],
+                      c=plt.cm.jet(label_i / sarc_obj.structure.data['num_good_loi_clusters']), lw=0.2)
 
-    for i, line_i in enumerate(sarc_obj.structure['loi_lines']):
+    for i, line_i in enumerate(sarc_obj.structure.data['loi_lines']):
         axs['d'].plot(line_i.T[0], line_i.T[1], lw=2, label=i)
     axs['d'].legend(title='LOI #', bbox_to_anchor=(0.5, -0.75), loc='lower center', borderaxespad=0., ncol=6)
 
@@ -468,19 +465,6 @@ def plot_func_to_img(sarc_obj, plot_func, img_filename, figsize=(6, 6), scalebar
         Indicates whether a scalebar should be included in the plot. Default is False.
     dpi : int, optional
         Quality of the plot. Default is 300.
-
-    Returns
-    -------
-    None
-        The function does not return any value. It saves the generated plot as an image file.
-
-    Examples
-    --------
-    >>> def example_plot_func(ax, sarc_obj, scalebar):
-    ...     # Example plotting code that uses ax to plot something
-    ...     pass
-    >>> plot_func_to_img(sarc_obj=my_sarc_obj, plot_func=example_plot_func,
-    ...                  img_filename='output.png', figsize=(8, 8), scalebar=True)
     """
 
     # create matplotlib figure
@@ -523,7 +507,7 @@ def plot_image(ax, sarc_obj, timepoint=0, clip_thrs=(1, 99), rotate=False, scale
         Whether to show the line of interest (LOI). Defaults to True.
     """
 
-    img = sarc_obj.read_imgs(timepoint=timepoint)
+    img = sarc_obj.structure.read_imgs(timepoint=timepoint)
     if rotate:
         img = img.T
     img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
@@ -586,7 +570,7 @@ def plot_z_bands(ax, sarc_obj, timepoint=0, rotate=False, invert=False, alpha=1,
             ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k' if invert else 'w',
-                               sep=1, height_fraction=0.08, location='lower right', scale_loc='top',
+                               sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -624,7 +608,7 @@ def plot_cell_area(ax, sarc_obj, timepoint=0, rotate=False, invert=False, scaleb
     ax.imshow(img, cmap='gray')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -650,10 +634,10 @@ def plot_z_segmentation(ax, sarc_obj, timepoint=0, scalebar=True, shuffle=True, 
     title : str, optional
         The title for the plot. Defaults to None.
     """
-    assert 'z_labels' in sarc_obj.structure.keys(), ('Z-bands not yet analyzed. '
+    assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                      'Run analyze_z_bands first.')
 
-    labels = sarc_obj.structure['z_labels'][timepoint].toarray()
+    labels = sarc_obj.structure.data['z_labels'][timepoint].toarray()
     if shuffle:
         labels = shuffle_labels(labels)
     labels_plot = labels.astype('float16')
@@ -661,7 +645,7 @@ def plot_z_segmentation(ax, sarc_obj, timepoint=0, scalebar=True, shuffle=True, 
     ax.imshow(labels_plot, cmap='prism')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -692,14 +676,14 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
     title : str, optional
         The title for the plot. Defaults to None.
     """
-    assert 'z_labels' in sarc_obj.structure.keys(), ('Z-bands not yet analyzed. '
+    assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                      'Run analyze_z_bands first.')
 
-    labels = sarc_obj.structure['z_labels'][timepoint].toarray()
+    labels = sarc_obj.structure.data['z_labels'][timepoint].toarray()
     if shuffle:
         labels = shuffle_labels(labels)
-    z_ends = sarc_obj.structure['z_ends'][timepoint] / sarc_obj.metadata['pixelsize']
-    z_links = sarc_obj.structure['z_links'][timepoint]
+    z_ends = sarc_obj.structure.data['z_ends'][timepoint] / sarc_obj.metadata['pixelsize']
+    z_links = sarc_obj.structure.data['z_links'][timepoint]
     labels_plot = labels.copy().astype('float32')
     labels_plot[labels == 0] = np.nan
     ax.imshow(labels_plot, cmap='prism')
@@ -711,7 +695,7 @@ def plot_z_dist_alignment(ax, sarc_obj, timepoint=0, scalebar=True, markersize=5
     ax.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='o', s=markersize, zorder=3)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -735,11 +719,11 @@ def plot_wavelet_bank(ax, sarc_obj, gap=0.005):
     -------
     None
     """
-    assert 'wavelet_bank' in sarc_obj.structure.keys(), ('No wavelet bank stored. '
+    assert 'wavelet_bank' in sarc_obj.structure.data.keys(), ('No wavelet bank stored. '
                                                          'Run sarc_obj.analyze_sarcomere_length_orient '
                                                          'with save_all=True.')
 
-    bank = sarc_obj.structure['wavelet_bank']
+    bank = sarc_obj.structure.data['wavelet_bank']
     if bank is None:
         raise ValueError('Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_length_orient with save_all=True.')
 
@@ -793,18 +777,18 @@ def plot_wavelet_score(ax, sarc_obj, timepoint=0, score_threshold=None, lim=(1.6
         title : str, optional
             The title for the plot. Defaults to None.
         """
-    assert 'wavelet_max_score' in sarc_obj.structure.keys(), ('No wavelet stors map stored. '
+    assert 'wavelet_max_score' in sarc_obj.structure.data.keys(), ('No wavelet stors map stored. '
                                                               'Run sarc_obj.analyze_sarcomere_length_orient '
                                                               'with save_all=True.')
 
-    max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
+    max_score = sarc_obj.structure.data['wavelet_max_score'][timepoint].copy()
     if score_threshold is None:
-        score_threshold = sarc_obj.structure['params.score_threshold'][timepoint]
+        score_threshold = sarc_obj.structure.data['params.score_threshold'][timepoint]
     max_score[max_score < score_threshold] = np.nan
     plot = ax.imshow(max_score, vmin=lim[0], vmax=lim[1], cmap='gray')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -841,19 +825,19 @@ def plot_sarcomere_lengths(ax, sarc_obj, timepoint=0, score_threshold=None, lim=
     title : str, optional
         The title for the plot. Defaults to None.
     """
-    assert 'wavelet_sarcomere_length' in sarc_obj.structure.keys(), ('No sarcomere length map stored. '
+    assert 'wavelet_sarcomere_length' in sarc_obj.structure.data.keys(), ('No sarcomere length map stored. '
                                                                      'Run sarc_obj.analyze_sarcomere_length_orient '
                                                                      'with save_all=True.')
 
-    length = sarc_obj.structure['wavelet_sarcomere_length'][timepoint].copy()
-    max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
+    length = sarc_obj.structure.data['wavelet_sarcomere_length'][timepoint].copy()
+    max_score = sarc_obj.structure.data['wavelet_max_score'][timepoint].copy()
     if score_threshold is None:
-        score_threshold = sarc_obj.structure['params.score_threshold'][timepoint]
+        score_threshold = sarc_obj.structure.data['params.score_threshold'][timepoint]
     length[max_score < score_threshold] = np.nan
     plot = ax.imshow(length, vmin=lim[0], vmax=lim[1], cmap='viridis')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -891,21 +875,21 @@ def plot_sarcomere_orientations(ax, sarc_obj, timepoint=0, score_threshold=None,
         title : str, optional
             The title for the plot. Defaults to None.
         """
-    assert 'wavelet_sarcomere_orientation' in sarc_obj.structure.keys(), ('No sarcomere orientation map stored. '
+    assert 'wavelet_sarcomere_orientation' in sarc_obj.structure.data.keys(), ('No sarcomere orientation map stored. '
                                                                           'Run sarc_obj.analyze_sarcomere_length_orient '
                                                                           'with save_all=True.')
 
-    orientation = sarc_obj.structure['wavelet_sarcomere_orientation'][timepoint].copy()
+    orientation = sarc_obj.structure.data['wavelet_sarcomere_orientation'][timepoint].copy()
     if not radians:
         orientation = np.degrees(orientation)
-    max_score = sarc_obj.structure['wavelet_max_score'][timepoint].copy()
+    max_score = sarc_obj.structure.data['wavelet_max_score'][timepoint].copy()
     if score_threshold is None:
-        score_threshold = sarc_obj.structure['params.score_threshold'][timepoint]
+        score_threshold = sarc_obj.structure.data['params.score_threshold'][timepoint]
     orientation[max_score < score_threshold] = np.nan
     plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -938,21 +922,22 @@ def plot_sarcomere_area(ax, sarc_obj, timepoint=0, cmap='viridis', show_z_bands=
     alpha_z_bands : float, optional
         Alpha value of Z-bands. Defaults to 1.
     """
-    assert 'sarcomere_masks' in sarc_obj.structure.keys(), ('No sarcomere masks stored. '
-                                                            'Run sarc_obj.analyze_sarcomere_length_orient '
-                                                            'with save_all=True.')
+    assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
+                                                          'Run sarc_obj.analyze_sarcomere_length_orient ')
 
-    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    _timepoints = sarc_obj.structure.data['params.wavelet_timepoints']
     if _timepoints is not 'all':
         _timepoint = _timepoints[timepoint]
     else:
         _timepoint = timepoint
 
+    sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=timepoint)
+
     if show_z_bands:
         plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=_timepoint)
     else:
         plot_image(ax, sarc_obj, timepoint=_timepoint)
-    ax.imshow(sarc_obj.structure['sarcomere_masks'][timepoint], vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+    ax.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
 
 
 def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple',
@@ -991,15 +976,15 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
     title : str, optional
         The title for the plot. Defaults to None.
     """
-    assert 'points' in sarc_obj.structure.keys(), ('Sarcomere vectors not yet calculated, '
+    assert 'points' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                    'run analyze_sarcomere_length_orient first.')
 
-    points = sarc_obj.structure['points'][timepoint]
-    sarcomere_orientation_points = sarc_obj.structure['sarcomere_orientation_points'][timepoint]
-    sarcomere_length_points = sarc_obj.structure['sarcomere_length_points'][timepoint] / sarc_obj.metadata['pixelsize']
+    points = sarc_obj.structure.data['points'][timepoint]
+    sarcomere_orientation_points = sarc_obj.structure.data['sarcomere_orientation_points'][timepoint]
+    sarcomere_length_points = sarc_obj.structure.data['sarcomere_length_points'][timepoint] / sarc_obj.metadata['pixelsize']
     orientation_vectors = np.asarray([np.cos(sarcomere_orientation_points), np.sin(sarcomere_orientation_points)])
 
-    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    _timepoints = sarc_obj.structure.data['params.wavelet_timepoints']
     if _timepoints == 'all':
         plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=timepoint)
     else:
@@ -1025,7 +1010,7 @@ def plot_sarcomere_vectors(ax, sarc_obj, timepoint=0, color_arrows='mediumpurple
         ax.legend(loc=3, fontsize=fontsize - 2)
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.08, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -1059,15 +1044,15 @@ def plot_sarcomere_domains_points(ax, sarc_obj, timepoint=0, scalebar=True, mark
         The title for the plot. Defaults to None.
 
     """
-    assert 'n_domains' in sarc_obj.structure.keys(), ('Sarcomere domains not analyzed. '
+    assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
                                                       'Run analyze_sarcomere_domains first.')
 
-    n_domains = sarc_obj.structure['n_domains'][timepoint]
-    domains = sarc_obj.structure['domains'][timepoint]
-    domain_oop = sarc_obj.structure['domain_oop'][timepoint]
-    points = sarc_obj.structure['points'][timepoint]
+    n_domains = sarc_obj.structure.data['n_domains'][timepoint]
+    domains = sarc_obj.structure.data['domains'][timepoint]
+    domain_oop = sarc_obj.structure.data['domain_oop'][timepoint]
+    points = sarc_obj.structure.data['points'][timepoint]
 
-    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    _timepoints = sarc_obj.structure.data['params.wavelet_timepoints']
     if _timepoints == 'all':
         timepoint_plot = timepoint
     else:
@@ -1088,7 +1073,7 @@ def plot_sarcomere_domains_points(ax, sarc_obj, timepoint=0, scalebar=True, mark
                     s=np.round(domain_oop[i], 3), fontsize=fontsize, weight='bold')
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.04, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_title(title, fontsize=fontsize)
 
@@ -1118,13 +1103,13 @@ def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, alpha=0.5, cmap='gist_rain
         The title for the plot. Defaults to None.
 
     """
-    assert 'n_domains' in sarc_obj.structure.keys(), ('Sarcomere domains not analyzed. '
+    assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
                                                       'Run analyze_sarcomere_domains first.')
 
-    domain_mask = sarc_obj.structure['domain_mask'][timepoint].toarray().astype(float)
+    domain_mask = sarc_obj.structure.data['domain_mask'][timepoint].toarray().astype(float)
     domain_mask[domain_mask == 0] = np.nan
 
-    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
+    _timepoints = sarc_obj.structure.data['params.wavelet_timepoints']
     if _timepoints == 'all':
         timepoint_plot = timepoint
     else:
@@ -1143,7 +1128,7 @@ def plot_sarcomere_domains(ax, sarc_obj, timepoint=0, alpha=0.5, cmap='gist_rain
     ax.set_title(title, fontsize=fontsize)
 
 
-def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=True, title=None):
+def plot_myofibrils(ax, sarc_obj, timepoint=0, show_z_bands=True, linewidth=1, alpha=0.2, scalebar=True, title=None):
     """
     Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1155,6 +1140,8 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
         The sarcomere object to plot.
     timepoint : int, optional
         The timepoint to plot. Defaults to 0.
+    show_z_bands : bool
+        Whether or not to show Z-bands. Defaults to True
     linewidth : int, optional
         The width of the lines. Defaults to 1.
     alpha : float, optional
@@ -1164,19 +1151,20 @@ def plot_myofibrils(ax, sarc_obj, timepoint=0, linewidth=1, alpha=0.2, scalebar=
     title : str, optional
         The titlefor the plot. Defaults to None.
     """
-    assert 'myof_lines' in sarc_obj.structure.keys(), ('Myofibrils not analyzed. '
+    assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                        'Run analyze_myofibrils first.')
 
-    _timepoints = sarc_obj.structure['params.wavelet_timepoints']
-    if _timepoints == 'all':
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
-    else:
-        plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
-    lines = sarc_obj.structure['myof_lines'][timepoint]
-    points = sarc_obj.structure['points'][timepoint]
+    _timepoints = sarc_obj.structure.data['params.wavelet_timepoints']
+    if show_z_bands:
+        if _timepoints == 'all':
+            plot_z_bands(ax, sarc_obj, invert=True, timepoint=timepoint)
+        else:
+            plot_z_bands(ax, sarc_obj, invert=True, timepoint=_timepoints[timepoint])
+    lines = sarc_obj.structure.data['myof_lines'][timepoint]
+    points = sarc_obj.structure.data['points'][timepoint]
     if scalebar:
         ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                               height_fraction=0.04, location='lower right', scale_loc='top',
+                               height_fraction=0.07, location='lower right', scale_loc='top',
                                font_properties={'size': fontsize - 1}))
     ax.set_xticks([])
     ax.set_yticks([])
@@ -1200,7 +1188,7 @@ def plot_lois(ax, sarc_obj, color='g', linewidth=2):
     linewidth : float
         Width of lines
     """
-    loi_lines = sarc_obj.structure['loi_data']['loi_lines']
+    loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
 
     for line in loi_lines:
         ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth)
@@ -1227,7 +1215,7 @@ def plot_histogram_structure(ax, sarc_obj, feature, timepoint=0, label=None, bin
     range : tuple, optional
         The range for the histogram. Defaults to None.
     """
-    data = sarc_obj.structure[feature][timepoint]
+    data = sarc_obj.structure.data[feature][timepoint]
     if len(data.shape) > 1:
         data = data.flatten()
     data = data[~np.isnan(data)]

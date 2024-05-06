@@ -9,6 +9,7 @@ import datetime
 import numpy as np
 import peakutils
 import tifffile
+import torch
 from scipy import signal
 import statsmodels.api as sm
 from scipy.signal import correlate
@@ -19,6 +20,34 @@ warnings.filterwarnings("ignore")
 
 # default path of models (U-Net, contraction CNN)
 model_dir = str(pathlib.Path(__file__).resolve().parent.parent / 'models/') + '/'
+
+
+def get_device(print_device=False, no_cuda_warning=False):
+    """
+    Determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
+
+    Parameters:
+    - print_device (bool): If True, prints the device being used.
+    - no_cuda_warning (bool): If True, prints a warning if neither CUDA nor MPS is available.
+
+    Returns:
+    - torch.device: The selected device for PyTorch operations.
+    """
+    # Check for CUDA support
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    # Check for MPS support (Apple Silicon)
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+        if no_cuda_warning:
+            print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, which might be slower.")
+
+    if print_device:
+        print(f"Using device: {device}")
+
+    return device
 
 
 def today_date():

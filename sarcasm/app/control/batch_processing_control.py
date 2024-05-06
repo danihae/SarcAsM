@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QFileDialog
 from multiprocessing import Pool
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from .application_control import ApplicationControl
-from ... import SarcAsM, MetaDataExtractor, ProgressNotifier
+from ... import SarcAsM, MetaDataHandler, ProgressNotifier
 
 
 class BatchProcessingControl:
@@ -137,14 +137,14 @@ class BatchProcessingControl:
 
         # initialize SarcAsM object
         # todo check for metadata
-        has_metadata = MetaDataExtractor.check_meta_data_exists(file)
+        has_metadata = MetaDataHandler.check_meta_data_exists(file)
         sarc_obj = SarcAsM(file, use_gui=True)
 
         if not has_metadata or force_override:
             sarc_obj.metadata['pixelsize'] = pixel_size
             sarc_obj.metadata['frametime'] = frame_time
-            sarc_obj.store_meta_data(True)  # store meta-data and override if necessary
-            sarc_obj.commit()
+            sarc_obj.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
+            sarc_obj.meta_data_handler.commit()
             pass
 
         timepoints = 'all'
@@ -152,23 +152,23 @@ class BatchProcessingControl:
         #todo: need to use parameters from model
 
         # predict sarcomere z-bands and cell area
-        sarc_obj.predict_z_bands(size=(2048, 2048))
-        sarc_obj.predict_cell_area(size=(2048, 2048))
+        sarc_obj.structure.predict_z_bands(size=(2048, 2048))
+        sarc_obj.structure.predict_cell_area(size=(2048, 2048))
 
         # analyze cell area and sarcomere area
-        sarc_obj.analyze_cell_area(timepoints=timepoints)
+        sarc_obj.structure.analyze_cell_area(timepoints=timepoints)
         # analyze sarcomere structures
-        sarc_obj.analyze_z_bands(timepoints=timepoints)
+        sarc_obj.structure.analyze_z_bands(timepoints=timepoints)
 
         # this method here takes very big amount of memory ~25GB,
         # at least with the current images used for testing (maybe get some other images)
         # on test image real_data_E5_frame0_to29.tif it seems to freeze on sarcomere_length_orient,
         # at least tqdm hasn't shown any progress during a long time period
-        sarc_obj.analyze_sarcomere_length_orient(timepoints=timepoints)
+        sarc_obj.structure.analyze_sarcomere_length_orient(timepoints=timepoints)
 
-        sarc_obj.analyze_myofibrils(timepoints=timepoints)
-        sarc_obj.analyze_sarcomere_domains(timepoints=timepoints)
-        sarc_obj.store_structure_data()
+        sarc_obj.structure.analyze_myofibrils(timepoints=timepoints)
+        sarc_obj.structure.analyze_sarcomere_domains(timepoints=timepoints)
+        sarc_obj.structure.store_structure_data()
 
     def on_search(self):
         # f_name is a tuple
