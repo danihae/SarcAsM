@@ -34,12 +34,16 @@ class BatchProcessingControl:
 
         pass
 
+    #todo: 2024-05-06 use all parameters from ui in batchprocessing!
+
+
     # todo: implement batch processing functionality
     def on_btn_batch_processing_structure(self):
 
         tif_files = glob.glob(self.__batch_processing_widget.le_root_directory.text() + '*/*.tif')
         print(len(tif_files))
 
+        # todo: call synchronous (with freezing ui) for testing if there is some issue with threading
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_structure_async,
                                                    start_message='Start batch processing structure ',
@@ -105,6 +109,26 @@ class BatchProcessingControl:
     pass
 
     def on_btn_batch_processing_motion(self):
+
+
+
+
+
+        pass
+
+
+    def __batch_process_motion_async(self,worker,model):
+
+
+
+
+        pass
+
+    def __single_motion_analysis(self):
+
+
+
+
         pass
 
     def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, force_override: bool):
@@ -124,6 +148,8 @@ class BatchProcessingControl:
             pass
 
         timepoints = 'all'
+
+        #todo: need to use parameters from model
 
         # predict sarcomere z-bands and cell area
         sarc_obj.predict_z_bands(size=(2048, 2048))
