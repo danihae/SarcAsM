@@ -142,13 +142,17 @@ class Structure:
             _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
                                resize_dim=size, normalization_mode=normalization_mode,
                                clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+            del _
         else:
             if model_path is None or model_path == 'generalist':
-                model_path = os.path.join(model_dir, 'unet_z_bands_generalist.pth')
+                model_path = os.path.join(model_dir, 'unet_z_bands_generalist_v0.pth')
             _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
-                             resize_dim=size, normalization_mode=normalization_mode,
+                             resize_dim=size, normalization_mode=normalization_mode, network='Unet_v0',
                              clip_threshold=clip_thres, normalize_result=True,
                              progress_notifier=progress_notifier)
+            del _
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         _dict = {'params.predict_z_bands_model': model_path,
                  'params.predict_z_bands_time_consistent': time_consistent,
                  'params.predict_z_bands_normalization_mode': normalization_mode,
@@ -183,6 +187,9 @@ class Structure:
         _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
                          resize_dim=size, normalization_mode=normalization_mode, network='AttentionUnet',
                          clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+        del _
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         _dict = {'params.predict_cell_area_model': model_path,
                  'params.predict_cell_area_normalization_mode': normalization_mode,
                  'params.predict_cell_area_clip_threshold': clip_thres}
@@ -366,7 +373,7 @@ class Structure:
     def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.08, width=0.4,
                                         len_lims=(1.3, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
                                         score_threshold=0.25, abs_threshold=True, gating=True, dilation_radius=3,
-                                        save_all=False):
+                                        dtype='auto', save_memory=False, save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
 
         Parameters
@@ -399,7 +406,13 @@ class Structure:
             If True, AND-gated wavelet filtering is used. If False, both wavelets filters are applied jointly.
         dilation_radius : int
             Radius of dilation for sarcomere area calculation, in pixels.
-        save_all : bool
+        dtype : torch.dtype/str, optional
+            Specify torch data type (torch.float32 or torch.float16), 'auto' chooses float16 for cuda and mps,
+            and float32 for cpu. Default: 'auto'
+        save_memory : bool, optional
+            Whether to save GPU memory by performing only conv2d on GPU memory, which is slower but allows processing
+            larger images or larger wavelet banks.
+        save_all : bool, optional
             If True, the wavelet filter results (wavelet_length_i, wavelet_orientation_i, wavelet_max_score) are stored.
             If False, only the points on the midlines are stored (recommended).
         """
@@ -415,6 +428,13 @@ class Structure:
         if len(imgs.shape) == 2:
             imgs = np.expand_dims(imgs, 0)
         n_imgs = len(imgs)
+
+        # choose dtype depending on device
+        if dtype == 'auto':
+            if device == torch.device('cpu'):
+                dtype = torch.float32
+            else:
+                dtype = torch.float16
 
         # create empty arrays
         (points, midline_length_points, midline_id_points, sarcomere_length_points,
@@ -437,12 +457,12 @@ class Structure:
                                                                  size=size, sigma=sigma, width=width, len_lims=len_lims,
                                                                  len_step=len_step, orient_lims=orient_lims,
                                                                  orient_step=orient_step)
-        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=torch.float16)
-        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=torch.float16)
+        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=dtype)
+        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=dtype)
         # iterate images
         print('Starting sarcomere length and orientation analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
-            result_i = self.convolve_image_with_bank(img_i, bank, gating=gating)
+            result_i = self.convolve_image_with_bank(img_i, bank, gating=gating, dtype=dtype, save_memory=save_memory)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
              wavelet_max_score_i) = self.argmax_wavelets(result_i,
                                                          len_range_tensor,
@@ -455,6 +475,16 @@ class Structure:
                 wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i, len_range,
                 score_threshold=score_threshold,
                 abs_threshold=abs_threshold)
+
+            # empty memory
+            del result_i, img_i
+            if save_all:
+                wavelet_sarcomere_length.append(wavelet_sarcomere_length_i)
+                wavelet_sarcomere_orientation.append(wavelet_sarcomere_orientation_i)
+                wavelet_max_score.append(wavelet_max_score_i)
+            del wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             # weighted sarcomere length variability
             weighted_std = 0
@@ -479,10 +509,7 @@ class Structure:
             max_score_points.append(max_score_points_i)
             score_thresholds[i] = score_threshold_i
 
-            if save_all:
-                wavelet_sarcomere_length.append(wavelet_sarcomere_length_i)
-                wavelet_sarcomere_orientation.append(wavelet_sarcomere_orientation_i)
-                wavelet_max_score.append(wavelet_max_score_i)
+
 
             # calculate mean and std of sarcomere length and orientation
             sarcomere_length_mean[i], sarcomere_length_std[i], sarcomere_length_median[i] = np.mean(
@@ -1590,35 +1617,46 @@ class Structure:
         return bank, len_range, orient_range
 
     @staticmethod
-    def convolve_image_with_bank(image, bank, gating=True):
+    def convolve_image_with_bank(image, bank, gating=True, dtype=torch.float16, save_memory=False):
         """AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality."""
-        # Convert image to float16 and normalize
-        image_torch = torch.from_numpy((image / 255).astype('float32')).to(device).view(1, 1, image.shape[0],
-                                                                                        image.shape[1])
+        # Convert image to dtype and normalize
+        image_torch = torch.from_numpy((image / 255)).to(dtype=dtype).to(device).view(1, 1, image.shape[0],
+                                                                                      image.shape[1])
+        with torch.no_grad():
+            if gating:
+                # Convert filters to float32
+                bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
+                filters_torch_0 = torch.from_numpy(bank_0).to(dtype=dtype).to(device).view(
+                    bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
+                filters_torch_1 = torch.from_numpy(bank_1).to(dtype=dtype).to(device).view(
+                    bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
 
-        if gating:
-            # Convert filters to float32
-            bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
-            filters_torch_0 = torch.from_numpy(bank_0.astype('float32')).to(device).view(
-                bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
-            filters_torch_1 = torch.from_numpy(bank_1.astype('float32')).to(device).view(
-                bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
+                # Perform convolutions
+                if save_memory:
+                    res0 = F.conv2d(image_torch, filters_torch_0, padding='same').to('cpu')
+                    del filters_torch_0
+                    res1 = F.conv2d(image_torch, filters_torch_1, padding='same').to('cpu')
+                    del filters_torch_1
+                else:
+                    res0 = F.conv2d(image_torch, filters_torch_0, padding='same')
+                    del filters_torch_0
+                    res1 = F.conv2d(image_torch, filters_torch_1, padding='same')
+                    del filters_torch_1
 
-            # Perform convolutions
-            res0 = F.conv2d(image_torch, filters_torch_0, padding='same')
-            res1 = F.conv2d(image_torch, filters_torch_1, padding='same')
+                # Multiply results as torch tensors
+                result = res0 * res1
+            else:
+                # Combine filters
+                combined_filters = bank[:, :, 0] + bank[:, :, 1]
+                filters_torch = torch.from_numpy(combined_filters).to(dtype=dtype).to(device).view(
+                    combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
+                    combined_filters.shape[3])
 
-            # Multiply results as torch tensors
-            result = res0 * res1
-        else:
-            # Combine filters and convert to float16
-            combined_filters = bank[:, :, 0] + bank[:, :, 1]
-            filters_torch = torch.from_numpy(combined_filters.astype('float32')).to(device).view(
-                combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
-                combined_filters.shape[3])
-
-            # Perform convolution
-            result = F.conv2d(image_torch, filters_torch, padding='same')
+                # Perform convolution
+                if save_memory:
+                    result = F.conv2d(image_torch, filters_torch, padding='same').to('cpu')
+                else:
+                    result = F.conv2d(image_torch, filters_torch, padding='same')
 
         # reshape
         return result.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
