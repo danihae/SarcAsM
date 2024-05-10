@@ -1,6 +1,8 @@
 import os
+import pathlib
 import shutil
 
+from .utils import Utils
 from .meta_data_handler import MetaDataHandler
 from .structure import Structure
 
@@ -16,7 +18,7 @@ class SarcAsM:
     restart : bool, optional
         If True, deletes existing analysis and starts fresh. Defaults to False.
     channel : int or None, optional
-        Specifies the channel with sarcomeres in multi-color stacks. Defaults to None.
+        Specifies the channel with sarcomeres in multicolor stacks. Defaults to None.
     auto_save : bool, optional
         If True, automatically saves analysis results. Defaults to True.
     use_gui : bool, optional
@@ -31,7 +33,7 @@ class SarcAsM:
     auto_save : bool
         Whether to save analysis results automatically.
     channel : int or None
-        Channel containing sarcomeres in multi-channel images/movies.
+        Channel containing sarcomeres in multichannel images/movies.
     use_gui : bool
         Whether SarcAsM is used through GUI.
     info : dict
@@ -50,7 +52,7 @@ class SarcAsM:
         Path to the sarcomere mask file, if exists.
     """
 
-    def __init__(self, filename, restart=False, channel=None, auto_save=True, use_gui=False, **info):
+    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, **info):
         """
         Initializes a SarcAsM object with specified parameters and directory structure.
         """
@@ -83,3 +85,8 @@ class SarcAsM:
         self.metadata = self.meta_data_handler.metadata
         self.structure = Structure(self)
 
+        # default path of models (U-Net, contraction CNN)
+        self.model_dir = str(pathlib.Path(__file__).resolve().parent.parent / 'models/') + '/'
+
+        # determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
+        self.device = Utils.get_device(print_device=True)
