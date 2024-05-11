@@ -78,7 +78,7 @@ class SarcAsM:
 
         self.file_sarcomeres = os.path.join(self.folder, 'sarcomeres.tif')
         self.file_cell_mask = os.path.join(self.folder, 'cell_mask.tif')
-        self.file_sarcomere_mask = os.path.join(self.folder + 'sarcomere_mask.tif')
+        self.file_sarcomere_mask = os.path.join(self.folder, 'sarcomere_mask.tif')
 
         # Initialize MetaDataHandler and Structure (Assuming these are defined elsewhere)
         self.meta_data_handler = MetaDataHandler(self)
