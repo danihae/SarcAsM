@@ -1,3 +1,4 @@
+import glob
 import os
 import random
 from multiprocessing import Pool
@@ -254,7 +255,7 @@ class Structure:
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             imgs_raw = self.read_imgs()
         elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.folder + 'sarcomeres.tif', key=timepoints)
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=timepoints)
             imgs_raw = self.read_imgs(timepoint=timepoints)
         else:
             raise ValueError('timepoints argument not valid')
@@ -498,8 +499,6 @@ class Structure:
             sarcomere_orientation_points.append(sarcomere_orientation_points_i)
             max_score_points.append(max_score_points_i)
             score_thresholds[i] = score_threshold_i
-
-
 
             # calculate mean and std of sarcomere length and orientation
             sarcomere_length_mean[i], sarcomere_length_std[i], sarcomere_length_median[i] = np.mean(
@@ -1037,11 +1036,12 @@ class Structure:
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, timepoint=0, n_seeds=1000, persistence=2, threshold_distance=0.3, score_threshold=None,
+    def detect_lois(self, timepoint=0, n_lois=4, n_seeds=200, persistence=2, threshold_distance=0.3,
+                    score_threshold=None,
                     mode='longest_in_cluster', random_seed=None, number_lims=(10, 50), length_lims=(0, 200),
                     sarcomere_mean_length_lims=(1, 3), sarcomere_std_length_lims=(0, 1), msc_lims=(0, 1),
                     max_orient_change=30, midline_mean_length_lims=(0, 20), midline_std_length_lims=(0, 5),
-                    midline_min_length_lims=(0, 20), distance_threshold_lois=40, linkage='single', n_lois=4,
+                    midline_min_length_lims=(0, 20), distance_threshold_lois=40, linkage='single',
                     linewidth=0.65, order=0, export_raw=False):
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
@@ -1054,6 +1054,8 @@ class Structure:
         ----------
         timepoint : int
             The index of the timepoint to select for analysis.
+        n_lois : int
+            Number of LOIs.
         n_seeds : int
             Number of seed points for initiating LOI growth.
         persistence : int
@@ -1092,8 +1094,6 @@ class Structure:
             Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
         linkage : str
             Linkage criterion for clustering ('complete', 'average', 'single').
-        n_lois : int
-            Number of LOIs to save.
         linewidth : float
             Width of the scan line (in µm), perpendicular to the LOIs.
         order : int
@@ -1107,6 +1107,7 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
+
         # Grow LOIs based on seed points and specified parameters
         self._grow_lois(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
                         threshold_distance=threshold_distance, score_threshold=score_threshold,
@@ -1136,6 +1137,13 @@ class Structure:
         # extract intensity kymographs profiles and save LOI files
         for line_i in self.data['loi_data']['loi_lines']:
             self.create_loi_data(line_i, linewidth=linewidth, order=order, export_raw=export_raw)
+
+    def delete_lois(self):
+        """Delete all LOIs"""
+        _ = self.data.pop('loi_data', 'No existing LOIs found.')
+        loi_files = glob.glob(self.sarc_obj.folder + '/*loi.json')
+        for loi_file in loi_files:
+            os.remove(loi_file)
 
     def full_analysis_structure(self, timepoints='all', save_all=False):
         """Analyze cell structure with default parameters
@@ -2159,15 +2167,16 @@ class Structure:
         return np.asarray(line_i)
 
     @staticmethod
-    def line_growth(points_t, sarcomere_length_points_t, sarcomere_orientation_points_t, max_score_points_t,
-                    midline_length_points_t, pixelsize, n_seeds=5000, random_seed=None, persistence=4,
-                    threshold_distance=0.3, n_min=5):
+    def line_growth(points_t: np.ndarray, sarcomere_length_points_t: np.ndarray,
+                    sarcomere_orientation_points_t: np.ndarray, max_score_points_t: np.ndarray,
+                    midline_length_points_t: np.ndarray, pixelsize: float, n_seeds: int = 5000, random_seed=None,
+                    persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5):
         """
         Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
 
         Parameters
         ----------
-        points_t : ndarray
+        points_t : np.ndarray
             List of midline point positions
         sarcomere_length_points_t : list
             Sarcomere length at midline points
@@ -2196,6 +2205,7 @@ class Structure:
             Dictionary with LOI data keys = (lines, line_features)
         """
         # select random origins for line growth
+        points_t = np.asarray(points_t)
         random.seed(random_seed)
         n_points = len(points_t.T)
         seed_idx = random.sample(range(n_points), min(n_seeds, n_points))
