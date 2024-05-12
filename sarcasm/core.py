@@ -2,6 +2,8 @@ import os
 import pathlib
 import shutil
 
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 from .utils import Utils
 from .meta_data_handler import MetaDataHandler
 from .structure import Structure
@@ -23,6 +25,8 @@ class SarcAsM:
         If True, automatically saves analysis results. Defaults to True.
     use_gui : bool, optional
         Indicates if SarcAsM is used through a GUI. Defaults to False.
+    device : torch.device, optional
+        Device on which to run Pytorch computations. Defaults to 'auto', which selects CUDA or MPS device if available.
     **info : dict
         Additional metadata for analysis as kwargs (e.g. cell_line='wt').
 
@@ -52,7 +56,7 @@ class SarcAsM:
         Path to the sarcomere mask file, if exists.
     """
 
-    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, **info):
+    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, device='auto', **info):
         """
         Initializes a SarcAsM object with specified parameters and directory structure.
         """
@@ -89,4 +93,7 @@ class SarcAsM:
         self.model_dir = str(pathlib.Path(__file__).resolve().parent.parent / 'models/') + '/'
 
         # determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
-        self.device = Utils.get_device(print_device=True)
+        if device == 'auto':
+            self.device = Utils.get_device(print_device=True)
+        else:
+            self.device = device
