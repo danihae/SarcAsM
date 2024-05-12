@@ -258,7 +258,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def detect_analyze_contractions(self, model=None, threshold=0.33, slen_lims=(1.2, 3),
+    def detect_analyze_contractions(self, model=None, threshold=0.6, slen_lims=(1.2, 3),
                                     n_sarcomeres_min=4,
                                     buffer_frames=3, contr_time_min=0.2, merge_time_max=0.05):
         """
