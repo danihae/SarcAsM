@@ -162,7 +162,8 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(-0.1, 3), filename=None):
+    def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
+                                filename=None):
         """
         Plots a summary of the motion of the line of interest (LOI).
 
@@ -173,50 +174,52 @@ class Plots:
         number_contr : int, optional
             The number of contractions to plot. Defaults to 0.
         t_lim : tuple of float, optional
-            The time limits for the plot. Defaults to (0, 0.9).
+            The time limits for the plot in seconds. Defaults to (0, 12).
+        t_lim_overlay : tuple of float, optional
+            The time limits for the overlay plots in seconds. Defaults to (-0.1, 2.9)
         filename : str, optional
             The filename to save the plot. Defaults to None.
         """
 
         mosaic = """
-        ACC
-        BCC
-        DDE
-        DDF
+        aaaccc
+        bbbccc
+        dddeee
+        dddfff
         """
 
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
-        title = f'File: {motion_obj.filename}, LOI: {motion_obj.loi_name}'
+        title = f'File: {motion_obj.filename}, \nLOI: {motion_obj.loi_name}'
         fig.suptitle(title, fontsize=PlotUtils.fontsize)
 
         # A- image cell w/ LOI
-        Plots.plot_image(axs['A'], motion_obj)
+        Plots.plot_image(axs['a'], motion_obj)
 
         # B- U-Net cell w/ LOI
-        Plots.plot_z_bands(axs['B'], motion_obj)
+        Plots.plot_z_bands(axs['b'], motion_obj)
 
         # C- kymograph and tracked z-lines
-        Plots.plot_z_pos(axs['C'], motion_obj)
+        Plots.plot_z_pos(axs['c'], motion_obj, t_lim=t_lim)
 
         # D- single sarcomere trajs (vel and delta slen)
-        Plots.plot_delta_slen(axs['D'], motion_obj)
+        Plots.plot_delta_slen(axs['d'], motion_obj, t_lim=t_lim)
 
         # E- overlay delta slen
-        Plots.plot_overlay_delta_slen(axs['E'], motion_obj, number_contr=number_contr, t_lim=t_lim)
+        Plots.plot_overlay_delta_slen(axs['e'], motion_obj, number_contr=number_contr, t_lim=t_lim_overlay)
 
         # F- overlay velocity
-        Plots.plot_overlay_velocity(axs['F'], motion_obj, number_contr=number_contr, t_lim=t_lim)
+        Plots.plot_overlay_velocity(axs['f'], motion_obj, number_contr=number_contr, t_lim=t_lim_overlay)
 
         PlotUtils.label_all_panels(axs)
 
         plt.tight_layout()
         if filename is None:
-            filename = motion_obj.loi_folder + 'summary_loi.png'
+            filename = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
         fig.savefig(filename, dpi=PlotUtils.dpi)
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: Union[SarcAsM, Motion], timepoint=0, filepath=None):
+    def plot_loi_detection(sarc_obj: Union[SarcAsM, Motion], timepoint: int = 0, filepath: str = None):
         """
         Plots all steps of automated LOI finding algorithm
 
@@ -224,7 +227,7 @@ class Plots:
         ----------
         sarc_obj : SarcAsM or Motion
             Instance of SarcAsM or Motion class
-        timepoint: 0
+        timepoint: int
             The time point to plot.
         filepath: str
             Path to save the plot. If None, plot is not saved.
@@ -236,9 +239,7 @@ class Plots:
         d
         """
 
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_1cols, 4.6), constrained_layout=True, dpi=300)
-
-        points = sarc_obj.structure.data['points'][timepoint]
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_1cols, 4.6), constrained_layout=True)
 
         if isinstance(sarc_obj.structure.data['params.wavelet_timepoints'], int):
             frame = sarc_obj.structure.data['params.wavelet_timepoints']
@@ -251,36 +252,36 @@ class Plots:
         Plots.plot_z_bands(axs['c'], sarc_obj, timepoint=frame, invert=True)
         Plots.plot_z_bands(axs['d'], sarc_obj, timepoint=frame, invert=True)
 
-        for i, loi_i in enumerate(sarc_obj.structure.data['lines']):
-            if sarc_obj.structure.data['quality'][timepoint] == 1:
-                axs['a'].plot(points[1, loi_i], points[0, loi_i], c='r', lw=0.2, alpha=0.6)
+        for i, points_i in enumerate(sarc_obj.structure.data['loi_data']['lines_points']):
+            axs['a'].plot(points_i[:, 1], points_i[:, 0], c='r', lw=0.2, alpha=0.6)
 
-        axs['b'].hist(sarc_obj.structure.data['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k', alpha=0.75,
+        axs['b'].hist(sarc_obj.structure.data['loi_data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
+                      alpha=0.75,
                       rwidth=0.75)
         axs['b'].set_xlim(0, 400)
         axs['b'].set_xlabel('Hausdorff distance')
         axs['b'].set_ylabel('# LOI pairs')
 
-        for i, loi_i in enumerate(sarc_obj.structure.data['good_lois']):
-            label_i = sarc_obj.structure.data['good_loi_cluster'][i]
-            axs['c'].plot(sarc_obj.structure.data['good_lois_pos'][i].T[1],
-                          sarc_obj.structure.data['good_lois_pos'][i].T[0],
-                          c=plt.cm.jet(label_i / sarc_obj.structure.data['num_good_loi_clusters']), lw=0.2)
+        for i, (points_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_points'],
+                                                    sarc_obj.structure.data['loi_data']['line_cluster'])):
+            axs['c'].plot(points_i[:, 1], points_i[:, 0],
+                          c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
 
-        for i, line_i in enumerate(sarc_obj.structure.data['loi_lines']):
+        for i, line_i in enumerate(sarc_obj.structure.data['loi_data']['loi_lines']):
             axs['d'].plot(line_i.T[0], line_i.T[1], lw=2, label=i)
-        axs['d'].legend(title='LOI #', bbox_to_anchor=(0.5, -0.75), loc='lower center', borderaxespad=0., ncol=6)
+        axs['d'].legend(bbox_to_anchor=(0.5, -0.5), loc='lower center', borderaxespad=0., ncol=6, fontsize='xx-small')
 
         PlotUtils.label_all_panels(axs, offset=(0.05, 0.9))
 
         axs['a'].set_title('1. Line growth', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
         axs['b'].set_title('2. Pair-wise Hausdorff distance', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1,
                            fontweight='bold')
-        axs['c'].set_title('3. Agglomerative clustering', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
-        axs['d'].set_title('4. Fit lines through clusters', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
+        axs['c'].set_title('3. Agglomerative clustering', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1,
+                           fontweight='bold')
+        axs['d'].set_title('4. LOI lines', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
 
-        if filepath is None:
-            fig.savefig(sarc_obj.analysis_folder + 'LOIs.png', dpi=300)
+        if filepath is not None:
+            fig.savefig(filepath, dpi=300)
         plt.show()
 
     @staticmethod
@@ -1102,8 +1103,8 @@ class Plots:
         PlotUtils.polish_xticks(ax, 2, 1)
 
     @staticmethod
-    def plot_delta_slen(ax: Axes, motion_obj: Motion, tlim=(0, 12), ylim=(-0.3, 0.4), n_rows=6, n_start=1,
-                        show_contr=True):
+    def plot_delta_slen(ax: Axes, motion_obj: Motion, timepoint=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
+                        n_start=1, show_contr=True):
         """
         Plots the change in sarcomere length over time for a motion object.
 
@@ -1113,9 +1114,11 @@ class Plots:
             The axes to draw the plot on.
         motion_obj : Motion
             The motion object to plot.
-        tlim : tuple, optional
+        timepoint : int or None, optional
+            Show timepoint with vertical dashed line, in frames. Defaults to None.
+        t_lim : tuple, optional
             The time limits for the plot. Defaults to (0, 12).
-        ylim : tuple, optional
+        y_lim : tuple, optional
             The y limits for the plot. Defaults to (-0.3, 0.4).
         n_rows : int, optional
             The number of rows for the plot. Defaults to 6.
@@ -1137,16 +1140,14 @@ class Plots:
                     ax_i.fill_betweenx([-1, 1], [start_j, start_j], [end_j, end_j], color='lavender')
             if i > 0:
                 ax_i.set_xticks([])
-            ax_i.set_ylim(ylim)
-            ax_i.set_xlim(tlim)
+            else:
+                PlotUtils.polish_xticks(ax_i, 1, 0.5)
+            if timepoint is not None:
+                ax_i.axvline(motion_obj.loi_data['time'][timepoint], linestyle='--', c='k')
+            ax_i.set_ylim(y_lim)
+            ax_i.set_xlim(t_lim)
             ax_i.set_yticks(yticks)
-            if show_contr:
-                for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
-                                          motion_obj.loi_data['start_quiet']):
-                    ax.fill_betweenx([0, 1], [start_i, start_i], [end_i, end_i], color='lavender',
-                                     transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
-            if i > 0:
-                ax_i.set_xticks([])
+            ax_i.set_yticklabels(yticks, fontsize='x-small')
 
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('$\Delta$SL [µm]')
@@ -1157,7 +1158,7 @@ class Plots:
         ax.tick_params(axis='y', colors='w')
 
     @staticmethod
-    def plot_overlay_delta_slen(ax: Axes, motion_obj: Motion, number_contr=None, t_lim=(0, 1), y_lim=(-0.35, 0.45),
+    def plot_overlay_delta_slen(ax: Axes, motion_obj: Motion, number_contr=None, t_lim=(0, 1), y_lim=(-0.35, 0.5),
                                 show_contr=True):
         """
         Plots the sarcomere length change over time for a motion object, overlaying multiple trajectories.
@@ -1220,7 +1221,7 @@ class Plots:
         PlotUtils.polish_xticks(ax, 0.5, 0.25)
 
     @staticmethod
-    def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, 0.9), y_lim=(-7, 10),
+    def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, 0.9), y_lim=(-9, 12),
                               show_contr=True):
         """
         Plots overlay of sarcomere velocity time series of the motion object

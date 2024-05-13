@@ -130,7 +130,7 @@ class Structure:
                 model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pth')
             assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
             _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
-                               resize_dim=size, normalization_mode=normalization_mode,
+                               resize_dim=size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
                                clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
             del _
         else:
@@ -138,7 +138,7 @@ class Structure:
                 model_path = os.path.join(self.sarc_obj.model_dir, 'unet_z_bands_generalist_v0.pth')
             _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode, network='Unet_v0',
-                             clip_threshold=clip_thres, normalize_result=True,
+                             clip_threshold=clip_thres, normalize_result=True, device=self.sarc_obj.device,
                              progress_notifier=progress_notifier)
             del _
         if torch.cuda.is_available():
@@ -176,6 +176,7 @@ class Structure:
             model_path = self.sarc_obj.model_dir + 'unet_cell_mask_generalist.pth'
         _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
                          resize_dim=size, normalization_mode=normalization_mode, network='AttentionUnet',
+                         device=self.sarc_obj.device,
                          clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         del _
         if torch.cuda.is_available():
@@ -944,6 +945,7 @@ class Structure:
                                     np.max(points_clusters[label_i][1]) + add_length / np.sqrt(1 + p_i[0] ** 2), num=2)
             y_i = linear(x_range_i, p_i[0], p_i[1])
             len_i = np.sqrt(np.diff(x_range_i) ** 2 + np.diff(y_i) ** 2)
+            x_range_i, y_i = np.round(x_range_i, 1), np.round(y_i, 1)
             loi_lines.append(np.asarray((x_range_i, y_i)).T)
             len_loi_lines.append(len_i)
 
@@ -978,6 +980,25 @@ class Structure:
             print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
         loi_lines = sorted_by_length[:n_lois]
         loi_lines = [line_i.T for line_i in loi_lines]
+        self.data['loi_data']['loi_lines'] = loi_lines
+        self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        if self.sarc_obj.auto_save:
+            self.store_structure_data()
+
+    def _random_from_cluster(self, n_lois):
+        lines = self.data['loi_data']['lines']
+        points = self.data['points'][0][::-1]
+        lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
+        random_lines = []
+        for label_i in range(self.data['loi_data']['n_lines_clusters']):
+            lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
+            points_lines_cluster_i = [points[:, line_j] for j, line_j in enumerate(lines) if
+                                      lines_cluster[j] == label_i]
+            random_line = random.choice(points_lines_cluster_i)
+            random_lines.append(random_line)
+        # select clusters randomly
+        random_lines = random.sample(random_lines, n_lois)
+        loi_lines = [line_i.T for line_i in random_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
         self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
         if self.sarc_obj.auto_save:
@@ -1068,7 +1089,8 @@ class Structure:
             Mode for selecting LOIs from identified clusters.
             - 'fit_straight_line' fits a straight line to all points in the cluster.
             - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved LOIs.
-            - 'random_line' selects a set of random lines that fulfil the filtering criteria
+            - 'random_from_cluster' selects a random line from each cluster, also allowing curved LOIs.
+            - 'random_line' selects a set of random lines that fulfil the filtering criteria.
         random_seed : int, optional
             Random seed for selection of random starting points for line growth algorithm, for reproducible outcomes.
             If None, no random seed is set, and outcomes in every run will differ.
@@ -1120,7 +1142,7 @@ class Structure:
                           midline_std_length_lims=midline_std_length_lims,
                           midline_min_length_lims=midline_min_length_lims,
                           max_orient_change=max_orient_change)
-        if mode == 'fit_straight_line' or mode == 'longest_in_cluster':
+        if mode == 'fit_straight_line' or mode == 'longest_in_cluster' or mode == 'random_from_cluster':
             # Calculate Hausdorff distance between LOIs and perform clustering
             self._hausdorff_distance_lois()
             self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
@@ -1129,6 +1151,8 @@ class Structure:
                 self._fit_straight_line(add_length=2, n_lois=n_lois)
             elif mode == 'longest_in_cluster':
                 self._longest_in_cluster(n_lois=n_lois)
+            elif mode == 'random_from_cluster':
+                self._random_from_cluster(n_lois=n_lois)
         elif mode == 'random_line':
             self._random_lois(n_lois=n_lois)
         else:
