@@ -46,8 +46,6 @@ class PlotUtils:
             color (str, optional): The color of the labels. Defaults to 'k' (black).
         """
         for key in axs.keys():
-            if not key.isupper():
-                continue
             PlotUtils.label_panel(axs[key], key, offset=offset, color=color)
 
     @staticmethod
