@@ -20,7 +20,7 @@ class Motion(SarcAsM):
 
     def __init__(self, filename, loi_name, restart=False, auto_save=True):
         """
-        Initialization of SarcomereAnalysis object for single LOI (Line of Interest) analysis
+        Initialization of a Motion object for single LOI (Line of Interest) analysis
 
         Parameters
         ----------
@@ -258,8 +258,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def detect_analyze_contractions(self, model=None, threshold=0.6, slen_lims=(1.2, 3),
-                                    n_sarcomeres_min=4,
+    def detect_analyze_contractions(self, model=None, threshold=0.6, slen_lims=(1.2, 3), n_sarcomeres_min=4,
                                     buffer_frames=3, contr_time_min=0.2, merge_time_max=0.05):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
