@@ -12,8 +12,7 @@ import statsmodels.api as sm
 import tifffile
 import torch
 from numpy import ndarray, dtype
-from scipy import signal
-from scipy.signal import correlate
+from scipy.signal import correlate, savgol_filter, hilbert, butter, filtfilt
 from scipy.stats import stats
 
 warnings.filterwarnings("ignore")
@@ -149,29 +148,53 @@ class Utils:
         return p_values, significance
 
     @staticmethod
-    def nan_sav_golay(data: np.ndarray, window_length: int, polyorder: int) -> np.ndarray:
+    @staticmethod
+    def nan_sav_golay(data: np.ndarray, window_length: int, polyorder: int, axis: int = 0) -> np.ndarray:
         """
-        Apply a Savitzky-Golay filter to data with NaN values.
+        Apply a Savitzky-Golay filter to data with NaN values along the specified axis.
 
         Parameters
         ----------
         data : array-like
             Input data.
         window_length : int
-            Length of the filter window.
+            Length of the filter window, must be odd and greater than polyorder.
         polyorder : int
             Order of the polynomial used for the filtering.
+        axis : int, optional
+            The axis along which to apply the filter. The default is 0 (first axis).
 
         Returns
         -------
         array-like
             Filtered data with NaN values preserved.
         """
-        data_filt = np.zeros(data.shape) * np.nan
-        idx_no_nan = np.where(~np.isnan(data))[0]
-        if len(idx_no_nan) > window_length:
-            data_filt[idx_no_nan] = signal.savgol_filter(data[idx_no_nan], window_length, polyorder)
-        return data_filt
+
+        # Ensure window_length is odd and > polyorder
+        if window_length % 2 == 0:
+            window_length += 1
+
+        # Placeholder for filtered data
+        filtered_data = np.full(data.shape, np.nan)
+
+        # Function to apply filter on 1D array
+        def filter_1d(segment):
+            not_nan_indices = np.where(~np.isnan(segment))[0]
+            split_indices = np.split(not_nan_indices, np.where(np.diff(not_nan_indices) != 1)[0] + 1)
+            for indices in split_indices:
+                if len(indices) >= window_length:
+                    segment[indices] = savgol_filter(segment[indices], window_length, polyorder)
+            return segment
+
+        # Apply filter along the specified axis
+        if axis == -1 or axis == data.ndim - 1:
+            for i in range(data.shape[axis]):
+                filtered_data[..., i] = filter_1d(data[..., i])
+        else:
+            for i in range(data.shape[axis]):
+                filtered_data[i] = filter_1d(data[i])
+
+        return filtered_data
 
     @staticmethod
     def hpfilter(data: np.ndarray, lamb=1600) -> Tuple[np.ndarray, np.ndarray]:
@@ -220,7 +243,7 @@ class Utils:
         dat_hilbert = np.zeros(data.shape, dtype=complex) * np.nan
         idx_no_nan = np.where(~np.isnan(data))[0]
         if len(idx_no_nan) >= min_len:
-            dat_hilbert[idx_no_nan] = signal.hilbert(data[idx_no_nan])
+            dat_hilbert[idx_no_nan] = hilbert(data[idx_no_nan])
         return dat_hilbert
 
     @staticmethod
@@ -248,8 +271,8 @@ class Utils:
         x_filt = np.zeros(x.shape) * np.nan
         idx_no_nan = np.where(~np.isnan(x))[0]
         if len(idx_no_nan) >= min_len:
-            b, a = signal.butter(N, crit_freq)
-            x_filt[idx_no_nan] = signal.filtfilt(b, a, x[idx_no_nan])
+            b, a = butter(N, crit_freq)
+            x_filt[idx_no_nan] = filtfilt(b, a, x[idx_no_nan])
         return x_filt
 
     @staticmethod
