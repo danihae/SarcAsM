@@ -4,13 +4,14 @@ from PyQt5.QtWidgets import QFileDialog
 from sarcasm.app.control.chain_execution import ChainExecution
 from sarcasm.app import ApplicationControl
 from sarcasm.app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
-from sarcasm import Motion
+from ... import Motion
 
 
 class MotionAnalysisControl:
     """
     The MotionAnalysisControl handles all the motion analysis functions on the ui.
     """
+
     def __init__(self, motion_analysis_widget: MotionAnalysisWidget, main_control: ApplicationControl):
         self.__motion_analysis_widget = motion_analysis_widget
         self.__main_control = main_control
@@ -131,19 +132,19 @@ class MotionAnalysisControl:
             call_lambda=lambda w, m: m.sarcomere.detect_analyze_contractions(model=m.parameters.get_parameter(
                 'motion.systoles.weights').get_value(),
                                                                              threshold=m.parameters.get_parameter(
-                                                                             'motion.systoles.threshold').get_value(),
+                                                                                 'motion.systoles.threshold').get_value(),
                                                                              slen_lims=(m.parameters.get_parameter(
-                                                                             'motion.systoles.slen_limits.lower').get_value(),
-                                                                                    m.parameters.get_parameter(
-                                                                                        'motion.systoles.slen_limits.upper').get_value()),
+                                                                                 'motion.systoles.slen_limits.lower').get_value(),
+                                                                                        m.parameters.get_parameter(
+                                                                                            'motion.systoles.slen_limits.upper').get_value()),
                                                                              n_sarcomeres_min=m.parameters.get_parameter(
-                                                                             'motion.systoles.n_sarcomeres_min').get_value(),
+                                                                                 'motion.systoles.n_sarcomeres_min').get_value(),
                                                                              buffer_frames=m.parameters.get_parameter(
-                                                                             'motion.systoles.buffer_frames').get_value(),
+                                                                                 'motion.systoles.buffer_frames').get_value(),
                                                                              contr_time_min=m.parameters.get_parameter(
-                                                                             'motion.systoles.contr_time_min').get_value(),
+                                                                                 'motion.systoles.contr_time_min').get_value(),
                                                                              merge_time_max=m.parameters.get_parameter(
-                                                                             'motion.systoles.merge_time_max').get_value()),
+                                                                                 'motion.systoles.merge_time_max').get_value()),
             start_message='Starting Detect and Analyze Contractions',
             finished_message='Finished Detect and Analyze Contractions',
             finished_successful_action=self.__main_control.model.sarcomere.commit)
@@ -169,10 +170,6 @@ class MotionAnalysisControl:
     @staticmethod
     def __on_btn_get_and_analyze_sarcomere_trajectories(w, m):
         m.sarcomere.get_trajectories(
-            filter_params_z_pos=(m.parameters.get_parameter(
-                'motion.get_sarcomere_trajectories.filter_params_z_pos.window_length').get_value(),
-                                 m.parameters.get_parameter(
-                                     'motion.get_sarcomere_trajectories.filter_params_z_pos.polyorder').get_value()),
             slen_lims=(m.parameters.get_parameter(
                 'motion.get_sarcomere_trajectories.s_length_limits_lower').get_value(),
                        m.parameters.get_parameter(
@@ -205,7 +202,7 @@ class MotionAnalysisControl:
             return
         if not self.__chk_contraction_weights():
             return
-        chain = ChainExecution(self.__main_control.model.currentlyProcessing,self.__main_control.debug)
+        chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_detect_peaks)
         chain.add_step(self.on_btn_track_z_bands)
         chain.add_step(self.on_btn_predict_analyze_contractions)

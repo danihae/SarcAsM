@@ -125,7 +125,7 @@
         </property>
        </widget>
       </item>
-      <item row="6" column="0" colspan="2">
+      <item row="7" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_structure">
         <property name="toolTip">
          <string>Start batch processing structure</string>
@@ -135,7 +135,7 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="0" colspan="2">
+      <item row="8" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_motion">
         <property name="toolTip">
          <string>Start batch processing motion</string>
@@ -169,6 +169,26 @@
         </property>
         <property name="wordWrap">
          <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="toolTip">
+         <string>If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)</string>
+        </property>
+        <property name="text">
+         <string>Calculate Requirements for LOIs for Motion</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QCheckBox" name="chk_calc_rois">
+        <property name="toolTip">
+         <string>If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)</string>
+        </property>
+        <property name="text">
+         <string/>
         </property>
        </widget>
       </item>

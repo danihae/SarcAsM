@@ -177,11 +177,12 @@ class ApplicationModel:
         # region batch processing parameters
         # todo: currently set values here for testing (default values, matching the test data i'm using for batch processing ui tests)
         # todo: remove those values when finished with testing
-        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.053)
+        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.13)
         self.__parameters.get_parameter(name='batch.frame.time').set_value(0.1)
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.root').set_value('D:\\Test\\SarcasmTestBatch')
+        self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(True)
         # endregion
 
         pass
@@ -291,4 +292,5 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.force.override')
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.root')
+        self.__parameters.set_parameter(name='batch.recalculate.for.motion')
         # endregion

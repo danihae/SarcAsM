@@ -5,7 +5,6 @@ from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
-from sarcasm.utils import model_dir
 
 
 class StructureAnalysisControl:
@@ -49,8 +48,6 @@ class StructureAnalysisControl:
                                                  model.parameters.get_parameter(
                                                      'structure.predict.clip_thresh_max').get_value()
                                              ))
-
-        model.cell.structure.analyze_sarcomere_area()  # todo: find the correct method here, or remove it
         pass
 
     def __cell_area_predict_call(self, worker, model):

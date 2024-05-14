@@ -64,10 +64,10 @@ class Ui_Form(object):
         self.formLayout.setWidget(5, QtWidgets.QFormLayout.FieldRole, self.chk_force_override)
         self.btn_batch_processing_structure = QtWidgets.QPushButton(self.groupBox)
         self.btn_batch_processing_structure.setObjectName("btn_batch_processing_structure")
-        self.formLayout.setWidget(6, QtWidgets.QFormLayout.SpanningRole, self.btn_batch_processing_structure)
+        self.formLayout.setWidget(7, QtWidgets.QFormLayout.SpanningRole, self.btn_batch_processing_structure)
         self.btn_batch_processing_motion = QtWidgets.QPushButton(self.groupBox)
         self.btn_batch_processing_motion.setObjectName("btn_batch_processing_motion")
-        self.formLayout.setWidget(7, QtWidgets.QFormLayout.SpanningRole, self.btn_batch_processing_motion)
+        self.formLayout.setWidget(8, QtWidgets.QFormLayout.SpanningRole, self.btn_batch_processing_motion)
         self.label_5 = QtWidgets.QLabel(self.groupBox)
         self.label_5.setObjectName("label_5")
         self.formLayout.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.label_5)
@@ -80,6 +80,13 @@ class Ui_Form(object):
         self.label_6.setWordWrap(True)
         self.label_6.setObjectName("label_6")
         self.formLayout.setWidget(0, QtWidgets.QFormLayout.SpanningRole, self.label_6)
+        self.label_7 = QtWidgets.QLabel(self.groupBox)
+        self.label_7.setObjectName("label_7")
+        self.formLayout.setWidget(6, QtWidgets.QFormLayout.LabelRole, self.label_7)
+        self.chk_calc_rois = QtWidgets.QCheckBox(self.groupBox)
+        self.chk_calc_rois.setText("")
+        self.chk_calc_rois.setObjectName("chk_calc_rois")
+        self.formLayout.setWidget(6, QtWidgets.QFormLayout.FieldRole, self.chk_calc_rois)
         self.gridLayout.addWidget(self.groupBox, 3, 0, 1, 2)
 
         self.retranslateUi(Form)
@@ -107,6 +114,9 @@ class Ui_Form(object):
         self.btn_batch_processing_motion.setText(_translate("Form", "Batch Processing Motion"))
         self.label_5.setText(_translate("Form", "Thread Pool Size"))
         self.label_6.setText(_translate("Form", "Batch processing will use the parameters set in the different sections of the program, you can try for example different settings with a single image and if they are good enough for your use case, you can use the batch processing."))
+        self.label_7.setToolTip(_translate("Form", "If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)"))
+        self.label_7.setText(_translate("Form", "Calculate Requirements for LOIs for Motion"))
+        self.chk_calc_rois.setToolTip(_translate("Form", "If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)"))
 
 
 if __name__ == "__main__":
