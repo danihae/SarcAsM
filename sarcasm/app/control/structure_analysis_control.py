@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import QFileDialog
-from ...unets.progress import ProgressNotifier
+from biu.progress import ProgressNotifier
 
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
+from ..model import ApplicationModel
 from sarcasm.utils import model_dir
 
 
@@ -19,7 +20,7 @@ class StructureAnalysisControl:
         self.__worker = None
 
     @staticmethod
-    def __predict_call(worker, model):
+    def __predict_call(worker, model: ApplicationModel):
 
         progress_notifier = ProgressNotifier()
         progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
@@ -32,19 +33,24 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
 
-        model.cell.predict_z_bands(progress_notifier=progress_notifier,
-                                   model_path=network_model,
-                                   siam_unet=model.parameters.get_parameter('structure.predict.siam_unet').get_value(),
-                                   size=(
-                                       model.parameters.get_parameter('structure.predict.size_width').get_value(),
-                                       model.parameters.get_parameter('structure.predict.size_height').get_value()
-                                   ),
-                                   clip_thres=(
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()
-                                   ))
+        model.cell.structure.predict_z_bands(progress_notifier=progress_notifier,
+                                             model_path=network_model,
+                                             time_consistent=model.parameters.get_parameter(
+                                                 'structure.predict.time_consistent').get_value(),
+                                             size=(
+                                                 model.parameters.get_parameter(
+                                                     'structure.predict.size_width').get_value(),
+                                                 model.parameters.get_parameter(
+                                                     'structure.predict.size_height').get_value()
+                                             ),
+                                             clip_thres=(
+                                                 model.parameters.get_parameter(
+                                                     'structure.predict.clip_thresh_min').get_value(),
+                                                 model.parameters.get_parameter(
+                                                     'structure.predict.clip_thresh_max').get_value()
+                                             ))
 
-        model.cell.analyze_sarcomere_area()
+        model.cell.structure.analyze_sarcomere_area()  # todo: find the correct method here, or remove it
         pass
 
     def __cell_area_predict_call(self, worker, model):
@@ -58,25 +64,24 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
 
-        model.cell.predict_cell_area(progress_notifier=progress_notifier,
-                                     model_path=network_model,
-                                     siam_unet=False,
-                                     size=(
-                                         model.parameters.get_parameter(
-                                             'structure.predict.cell_area.size_width').get_value(),
-                                         model.parameters.get_parameter(
-                                             'structure.predict.cell_area.size_height').get_value()
-                                     ),
-                                     clip_thres=(
-                                         model.parameters.get_parameter(
-                                             'structure.predict.cell_area.clip_thresh_min').get_value(),
-                                         model.parameters.get_parameter(
-                                             'structure.predict.cell_area.clip_thresh_max').get_value()
-                                     ))
-        model.cell.analyze_cell_area()
+        model.cell.structure.predict_cell_area(progress_notifier=progress_notifier,
+                                               model_path=network_model,
+                                               size=(
+                                                   model.parameters.get_parameter(
+                                                       'structure.predict.cell_area.size_width').get_value(),
+                                                   model.parameters.get_parameter(
+                                                       'structure.predict.cell_area.size_height').get_value()
+                                               ),
+                                               clip_thres=(
+                                                   model.parameters.get_parameter(
+                                                       'structure.predict.cell_area.clip_thresh_min').get_value(),
+                                                   model.parameters.get_parameter(
+                                                       'structure.predict.cell_area.clip_thresh_max').get_value()
+                                               ))
+        model.cell.structure.analyze_cell_area()
         pass
 
-    def __chk_prediction_network(self):  #todo rename to zband_prediction or similar
+    def __chk_prediction_network(self):  # todo rename to zband_prediction or similar
         if self.__main_control.model.parameters.get_parameter('structure.predict.network_path').get_value() == '':
             self.__main_control.debug('no network file was chosen for prediction')
             return False
@@ -114,7 +119,7 @@ class StructureAnalysisControl:
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=f'Z-bands detected and saved in {self.__main_control.model.cell.folder}',
                                                    finished_action=self.__predict_finished,
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
 
@@ -129,7 +134,7 @@ class StructureAnalysisControl:
                                                    start_message='Start prediction of cell area',
                                                    finished_message='Finished prediction of cell area',
                                                    finished_action=self.__predict_cell_area_finished,
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
 
@@ -154,7 +159,7 @@ class StructureAnalysisControl:
             return
         if not self.__chk_timepoints():
             return
-        call_lambda = lambda w, m: m.cell.analyze_z_bands(
+        call_lambda = lambda w, m: m.cell.structure.analyze_z_bands(
             timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
             threshold=m.parameters.get_parameter('structure.z_band_analysis.threshold').get_value(),
             min_length=m.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
@@ -162,7 +167,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    start_message='Start Z-band Analysis',
                                                    finished_message='Finished Z-band Analysis',
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
 
@@ -171,7 +176,7 @@ class StructureAnalysisControl:
             return
         if not self.__chk_timepoints():
             return
-        call_lambda = lambda w, m: m.cell.analyze_sarcomere_length_orient(
+        call_lambda = lambda w, m: m.cell.structure.analyze_sarcomere_length_orient(
             timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
             size=m.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
             sigma=m.parameters.get_parameter('structure.wavelet.sigma').get_value(),
@@ -193,7 +198,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    finished_message='Finished wavelet analysis',
                                                    start_message='Start wavelet analysis',
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
         # AND-gated double wavelet analysis of sarcomere structure to locally obtain length and angle
@@ -211,8 +216,8 @@ class StructureAnalysisControl:
         if not self.__chk_timepoints():
             return
         # estimate myofibril lengths using line-growth algorithm
-        # cell.get_myofibril_lengths(plot=True)
-        call_lambda = lambda w, m: m.cell.analyze_myofibrils(
+        # cell.structure.get_myofibril_lengths(plot=True)
+        call_lambda = lambda w, m: m.cell.structure.analyze_myofibrils(
             timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
             n_seeds=m.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
             score_threshold=None if m.parameters.get_parameter(
@@ -225,7 +230,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    start_message='Start myofibril analysis',
                                                    finished_message='Finished myofibril analysis',
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
         pass
@@ -239,7 +244,7 @@ class StructureAnalysisControl:
         if not self.__chk_timepoints():
             return
 
-        call_lambda = lambda w, m: m.cell.analyze_sarcomere_domains(
+        call_lambda = lambda w, m: m.cell.structure.analyze_sarcomere_domains(
             timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
             score_threshold=m.parameters.get_parameter('structure.domain.analysis.score_threshold').get_value(),
             reduce=m.parameters.get_parameter('structure.domain.analysis.reduce').get_value(),
@@ -250,7 +255,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    start_message='Start sarcomere domains analysis',
                                                    finished_message='Finished sarcomere domains analysis',
-                                                   finished_successful_action=self.__main_control.model.cell.commit)
+                                                   finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
 
@@ -346,7 +351,7 @@ class StructureAnalysisControl:
         widget = self.__structure_parameters_widget
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
-        parameters.get_parameter(name='structure.predict.siam_unet').connect(widget.chk_siam_unet)
+        parameters.get_parameter(name='structure.predict.time_consistent').connect(widget.chk_time_consistent)
         parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_min)
         parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_max)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_clip_thresh_min)

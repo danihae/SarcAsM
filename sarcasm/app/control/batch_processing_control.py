@@ -5,7 +5,8 @@ from PyQt5.QtWidgets import QFileDialog
 from multiprocessing import Pool
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from .application_control import ApplicationControl
-from ... import SarcAsM, MetaDataHandler, ProgressNotifier
+from ... import SarcAsM, MetaDataHandler
+from biu.progress import ProgressNotifier
 
 
 class BatchProcessingControl:

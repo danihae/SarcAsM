@@ -24,7 +24,7 @@ class LOIAnalysisControl:
     def __call_detect_lois(w, m):
         print('start detect lois')
 
-        m.cell.detect_lois(timepoint=m.parameters.get_parameter('loi.detect.timepoint').get_value(),
+        m.cell.structure.detect_lois(timepoint=m.parameters.get_parameter('loi.detect.timepoint').get_value(),
                            persistence=m.parameters.get_parameter('loi.detect.persistence').get_value(),
                            threshold_distance=m.parameters.get_parameter('loi.detect.threshold_distance').get_value(),
                            score_threshold=None if m.parameters.get_parameter(
@@ -50,11 +50,11 @@ class LOIAnalysisControl:
 
         #  WARNING: Traceback (most recent call last):
         #  File "D:\Development\PycharmProjects\sarcomere_analysis\dist\distribution\sarcasm_old\app\control\loi_analysis_control.py", line 52, in _finished_detect_lois
-        #  for line in self.__main_control.model.cell.structure['loi_lines']:
+        #  for line in self.__main_control.model.cell.structure.data['loi_lines']:
         #        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
         #  KeyError: 'loi_lines'
 
-        for line in self.__main_control.model.cell.structure['loi_lines']:
+        for line in self.__main_control.model.cell.structure.data['loi_lines']:
             start, end = np.round(line).astype('int')
             self.__main_control.on_update_loi_list(line_start=start,
                                                    line_end=end,
@@ -72,7 +72,7 @@ class LOIAnalysisControl:
                                                           start_message='Starting loi detection',
                                                           finished_message='Finished loi detection',
                                                           finished_action=self._finished_detect_lois,
-                                                          finished_successful_action=self.__main_control.model.cell.commit)
+                                                          finished_successful_action=self.__main_control.model.cell.structure.commit)
 
     @staticmethod
     def __store_lois(w, p):
@@ -98,7 +98,7 @@ class LOIAnalysisControl:
                                                      line_thickness=width)
                 # extract intensity profiles and save LOI files
                 p['cell'].create_loi_data(line2, linewidth=width)
-                # todo: add the lines to self.__main_control.model.cell.structure['loi_lines']?
+                # todo: add the lines to self.__main_control.model.cell.structure.data['loi_lines']?
                 pass
             w.progress.emit(10 + index * step)
             pass

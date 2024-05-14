@@ -7,9 +7,11 @@ import torch
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit
 
-from ...unets.progress import ProgressNotifier
+from biu.progress import ProgressNotifier
 from napari.layers import Shapes
 import traceback
+from ..model import ApplicationModel
+
 
 # from app.model import ApplicationModel
 
@@ -19,6 +21,7 @@ class ApplicationControl:
     Main application control.
     It contains some public utility methods and handles parts of the general application flow.
     """
+
     def __init__(self, window: QWidget, model):
         """
         window: QWidget
@@ -70,7 +73,7 @@ class ApplicationControl:
         self.__layer_loi = layer
 
     @property
-    def model(self):
+    def model(self) -> ApplicationModel:
         return self._model
 
     @property
@@ -134,7 +137,8 @@ class ApplicationControl:
         list_entry = self.get_entry_key_for_line(line)
         if list_entry in self.model.line_dictionary[self.model.cell.filename]:  # if element already contained, ignore
             # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
-            if 'last' in self.model.line_dictionary[self.model.cell.filename] and line == self.model.line_dictionary[self.model.cell.filename]['last']:
+            if 'last' in self.model.line_dictionary[self.model.cell.filename] and line == \
+                    self.model.line_dictionary[self.model.cell.filename]['last']:
                 file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filename, 'last')
                 self.model.init_sarcomere(file_name)
             return
@@ -188,7 +192,7 @@ class ApplicationControl:
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, )
 
     def init_cell_area_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.folder+'cell_mask.tif'):
+        if self.model.cell is not None and os.path.exists(self.model.cell.folder + 'cell_mask.tif'):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
@@ -196,7 +200,6 @@ class ApplicationControl:
             tmp = tifffile.imread(self.model.cell.folder + 'cell_mask.tif').astype('uint8')
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
         pass
-
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):
