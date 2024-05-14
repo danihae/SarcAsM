@@ -1,22 +1,18 @@
-import math
 import os
-import numpy as np
 
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-import pywt
-import trackpy
+from pywt import cwt
 from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
-from scipy.signal import savgol_filter
 from scipy.stats import kstest, geom
 from skimage.segmentation import clear_border
+from trackpy import link_iter
 
-from .utils import peakdetekt, nan_sav_golay, custom_diff, model_dir
 from .contraction_net.prediction import predict_contractions as contraction_net
 from .core import SarcAsM
 from .ioutils import IOUtils
-from .plots import analyze_noise_filter_plot
+from .utils import Utils
 
 
 class Motion(SarcAsM):
@@ -24,7 +20,7 @@ class Motion(SarcAsM):
 
     def __init__(self, filename, loi_name, restart=False, auto_save=True):
         """
-        Initialization of SarcomereAnalysis object for single LOI (Line of Interest) analysis
+        Initialization of a Motion object for single LOI (Line of Interest) analysis
 
         Parameters
         ----------
@@ -167,7 +163,7 @@ class Motion(SarcAsM):
         min_dist_frames = int(min_dist / self.metadata['pixelsize'])
         for i, y in enumerate(self.loi_data['y_int']):
 
-            peaks_i = peakdetekt(self.loi_data['x_pos'], y, thres, min_dist_frames, width)
+            peaks_i = Utils.peakdetekt(self.loi_data['x_pos'], y, thres, min_dist_frames, width)
             peaks.append(peaks_i[~np.isnan(peaks_i)])
 
             if plot:
@@ -217,7 +213,8 @@ class Motion(SarcAsM):
         peaks_iter = iter(peaks)
 
         # Crocker-Grier linking algorithm
-        trajs_idx = pd.DataFrame(trackpy.link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
+        trajs_idx = pd.DataFrame(
+            link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
         trajs_idx = trajs_idx.to_numpy()
 
         # sort array into z-band trajectories
@@ -245,7 +242,7 @@ class Motion(SarcAsM):
 
         # filter z positions
         z_pos_filt = z_pos.copy()
-        z_pos_filt = nan_sav_golay(z_pos_filt, window_length=filter_params[0], polyorder=filter_params[1])
+        z_pos_filt = Utils.nan_sav_golay(z_pos_filt, window_length=filter_params[0], polyorder=filter_params[1])
 
         # calculate sarcomere lengths
         slen = np.diff(z_pos_filt, axis=0)
@@ -261,35 +258,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def analyze_noise_filter(self, i, filter_params=(11, 5), tlim=(0, 8)):
-        """Analysis of noise level before and after filtering. Plots time-series of z-bands, sarcomeres and velocities
-        and analyzes residuals with histogram and qq-plot.
-
-        Parameters
-        ----------
-        i : int
-            Index of sarcomere
-        filter_params : tuple(int, int)
-            Parameters Savitzky-Golay filter (window_length, polyorder)
-        tlim : tuple(float, float)
-            Time limits of plots
-        """
-        z_pos = self.loi_data['z_pos_raw']
-        z_pos_filt = np.asarray([savgol_filter(z, filter_params[0], filter_params[1], deriv=0) for z in z_pos])
-        slen_filt = np.diff(z_pos_filt, axis=0)
-        slen = np.diff(z_pos, axis=0)
-        vel = custom_diff(slen_filt, self.metadata['frametime'])
-
-        residuals = z_pos - z_pos_filt
-        residuals = residuals.flatten()
-        mean, std = np.nanmean(residuals), np.nanstd(residuals)
-
-        # plot results
-        analyze_noise_filter_plot(i, self.loi_data['time'], z_pos, z_pos_filt, slen, slen_filt, vel, residuals, std,
-                                  tlim, save_folder=self.loi_folder)
-
-    def detect_analyze_contractions(self, model=None, threshold=0.33, slen_lims=(1.2, 3),
-                                    n_sarcomeres_min=4,
+    def detect_analyze_contractions(self, model=None, threshold=0.6, slen_lims=(1.2, 3), n_sarcomeres_min=4,
                                     buffer_frames=3, contr_time_min=0.2, merge_time_max=0.05):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
@@ -320,7 +289,7 @@ class Motion(SarcAsM):
 
         # select weights for convolutional neural network
         if model is None or model is 'default':
-            model = model_dir + 'model_ContractionNet.pth'
+            model = self.model_dir + 'model_ContractionNet.pth'
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
                                           threshold=threshold)
@@ -406,7 +375,7 @@ class Motion(SarcAsM):
         frametime = self.metadata['frametime']
 
         # smooth slen with sav. golay filter and calculate velocity
-        vel = custom_diff(nan_sav_golay(slen, filter_params_vel[0], filter_params_vel[1]), frametime)
+        vel = Utils.custom_diff(Utils.nan_sav_golay(slen, filter_params_vel[0], filter_params_vel[1]), frametime)
         vel_avg = np.nanmean(vel, axis=0)
 
         # calculate sarcomere equ length and delta sarcomere length
@@ -839,6 +808,6 @@ class Motion(SarcAsM):
         scales = np.geomspace(min_scale, max_scale, num=num_scales)
 
         # Perform the wavelet transform
-        cfs, frequencies = pywt.cwt(data, scales, wavelet, sampling_period=frametime)
+        cfs, frequencies = cwt(data, scales, wavelet, sampling_period=frametime)
 
         return cfs, frequencies

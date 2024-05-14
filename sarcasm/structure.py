@@ -1,17 +1,18 @@
+import glob
 import os
 import random
 from multiprocessing import Pool
 
+import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import pandas as pd
 import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from biu import unet3d as unet3d
 from biu import unet
+from biu import unet3d as unet3d
 from biu.progress import ProgressNotifier
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
@@ -26,19 +27,8 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm as tqdm
 
-from .ioutils import *
-from .utils import map_array, analyze_orientations, model_dir, convert_lists_to_arrays_in_dict, max_orientation_change
-
-# select device
-if torch.backends.cuda.is_built():
-    device = torch.device('cuda:0')
-elif torch.backends.mps.is_built():  # only for apple m1/m2/...
-    device = torch.device('mps')
-else:
-    device = torch.device('cpu')
-if device.type == 'cpu':
-    print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, "
-          "which might be slower.")
+from .ioutils import IOUtils
+from .utils import Utils
 
 
 class Structure:
@@ -137,18 +127,18 @@ class Structure:
         print('Predicting sarcomere z-bands ...')
         if time_consistent:
             if model_path is None:
-                model_path = os.path.join(model_dir, 'unet3d_z_bands.pth')
+                model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pth')
             assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
             _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
-                               resize_dim=size, normalization_mode=normalization_mode,
+                               resize_dim=size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
                                clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
             del _
         else:
             if model_path is None or model_path == 'generalist':
-                model_path = os.path.join(model_dir, 'unet_z_bands_generalist_v0.pth')
+                model_path = os.path.join(self.sarc_obj.model_dir, 'unet_z_bands_generalist_v0.pth')
             _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_sarcomeres, model_params=model_path,
                              resize_dim=size, normalization_mode=normalization_mode, network='Unet_v0',
-                             clip_threshold=clip_thres, normalize_result=True,
+                             clip_threshold=clip_thres, normalize_result=True, device=self.sarc_obj.device,
                              progress_notifier=progress_notifier)
             del _
         if torch.cuda.is_available():
@@ -183,9 +173,10 @@ class Structure:
         print('Predicting binary mask of cells ...')
 
         if model_path is None or model_path == 'generalist':
-            model_path = model_dir + 'unet_cell_mask_generalist.pth'
+            model_path = self.sarc_obj.model_dir + 'unet_cell_mask_generalist.pth'
         _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
                          resize_dim=size, normalization_mode=normalization_mode, network='AttentionUnet',
+                         device=self.sarc_obj.device,
                          clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
         del _
         if torch.cuda.is_available():
@@ -265,7 +256,7 @@ class Structure:
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             imgs_raw = self.read_imgs()
         elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.folder + 'sarcomeres.tif', key=timepoints)
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=timepoints)
             imgs_raw = self.read_imgs(timepoint=timepoints)
         else:
             raise ValueError('timepoints argument not valid')
@@ -431,7 +422,7 @@ class Structure:
 
         # choose dtype depending on device
         if dtype == 'auto':
-            if device == torch.device('cpu'):
+            if self.sarc_obj.device == torch.device('cpu'):
                 dtype = torch.float32
             else:
                 dtype = torch.float16
@@ -457,12 +448,13 @@ class Structure:
                                                                  size=size, sigma=sigma, width=width, len_lims=len_lims,
                                                                  len_step=len_step, orient_lims=orient_lims,
                                                                  orient_step=orient_step)
-        len_range_tensor = torch.from_numpy(len_range).to(device).to(dtype=dtype)
-        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(device).to(dtype=dtype)
+        len_range_tensor = torch.from_numpy(len_range).to(self.sarc_obj.device).to(dtype=dtype)
+        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
         print('Starting sarcomere length and orientation analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
-            result_i = self.convolve_image_with_bank(img_i, bank, gating=gating, dtype=dtype, save_memory=save_memory)
+            result_i = self.convolve_image_with_bank(img_i, bank, device=self.sarc_obj.device, gating=gating,
+                                                     dtype=dtype, save_memory=save_memory)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
              wavelet_max_score_i) = self.argmax_wavelets(result_i,
                                                          len_range_tensor,
@@ -509,8 +501,6 @@ class Structure:
             max_score_points.append(max_score_points_i)
             score_thresholds[i] = score_threshold_i
 
-
-
             # calculate mean and std of sarcomere length and orientation
             sarcomere_length_mean[i], sarcomere_length_std[i], sarcomere_length_median[i] = np.mean(
                 sarcomere_length_points_i), np.std(
@@ -520,7 +510,7 @@ class Structure:
 
             # orientation order parameter
             if len(sarcomere_orientation_points_i) > 0:
-                oop[i], mean_angle[i] = analyze_orientations(sarcomere_orientation_points_i)
+                oop[i], mean_angle[i] = Utils.analyze_orientations(sarcomere_orientation_points_i)
 
             # calculate sarcomere area
             if len(points_i) > 0:
@@ -568,8 +558,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_myofibrils(self, timepoints=None, n_seeds=1000, score_threshold=None, persistence=3,
-                           threshold_distance=0.3, n_min=5):
+    def analyze_myofibrils(self, timepoints=None, n_seeds=1000, persistence=3, threshold_distance=0.3, n_min=5):
         """Estimate myofibril lines by line growth algorithm and analyze length and curvature
 
         timepoints : int/list/str
@@ -577,9 +566,6 @@ class Structure:
             selected frames), If None, timepoints from wavelet analysis are used.
         n_seeds : int
             Number of random seeds for line growth
-        score_threshold : float
-            Score threshold for random seeds (needs to be <=score_threshold from get_points_midline). If None,
-            score_threshold from previous wavelet midline analysis is used.
         persistence : int
             Persistence of line (average points length and orientation for prior estimation), needs to be > 0.
         threshold_distance : float
@@ -589,11 +575,6 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        if score_threshold is None:
-            if 'params.score_threshold' in self.data.keys():
-                score_threshold = self.data['params.score_threshold']
-            else:
-                raise ValueError('To use score_threshold from wavelet analysis, run wavelet analysis first!')
         if timepoints is None:
             if 'params.wavelet_timepoints' in self.data.keys():
                 timepoints = self.data['params.wavelet_timepoints']
@@ -964,6 +945,7 @@ class Structure:
                                     np.max(points_clusters[label_i][1]) + add_length / np.sqrt(1 + p_i[0] ** 2), num=2)
             y_i = linear(x_range_i, p_i[0], p_i[1])
             len_i = np.sqrt(np.diff(x_range_i) ** 2 + np.diff(y_i) ** 2)
+            x_range_i, y_i = np.round(x_range_i, 1), np.round(y_i, 1)
             loi_lines.append(np.asarray((x_range_i, y_i)).T)
             len_loi_lines.append(len_i)
 
@@ -998,6 +980,25 @@ class Structure:
             print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
         loi_lines = sorted_by_length[:n_lois]
         loi_lines = [line_i.T for line_i in loi_lines]
+        self.data['loi_data']['loi_lines'] = loi_lines
+        self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        if self.sarc_obj.auto_save:
+            self.store_structure_data()
+
+    def _random_from_cluster(self, n_lois):
+        lines = self.data['loi_data']['lines']
+        points = self.data['points'][0][::-1]
+        lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
+        random_lines = []
+        for label_i in range(self.data['loi_data']['n_lines_clusters']):
+            lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
+            points_lines_cluster_i = [points[:, line_j] for j, line_j in enumerate(lines) if
+                                      lines_cluster[j] == label_i]
+            random_line = random.choice(points_lines_cluster_i)
+            random_lines.append(random_line)
+        # select clusters randomly
+        random_lines = random.sample(random_lines, n_lois)
+        loi_lines = [line_i.T for line_i in random_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
         self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
         if self.sarc_obj.auto_save:
@@ -1056,11 +1057,12 @@ class Structure:
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, timepoint=0, n_seeds=1000, persistence=2, threshold_distance=0.3, score_threshold=None,
+    def detect_lois(self, timepoint=0, n_lois=4, n_seeds=200, persistence=2, threshold_distance=0.3,
+                    score_threshold=None,
                     mode='longest_in_cluster', random_seed=None, number_lims=(10, 50), length_lims=(0, 200),
                     sarcomere_mean_length_lims=(1, 3), sarcomere_std_length_lims=(0, 1), msc_lims=(0, 1),
                     max_orient_change=30, midline_mean_length_lims=(0, 20), midline_std_length_lims=(0, 5),
-                    midline_min_length_lims=(0, 20), distance_threshold_lois=40, linkage='single', n_lois=4,
+                    midline_min_length_lims=(0, 20), distance_threshold_lois=40, linkage='single',
                     linewidth=0.65, order=0, export_raw=False):
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
@@ -1073,6 +1075,8 @@ class Structure:
         ----------
         timepoint : int
             The index of the timepoint to select for analysis.
+        n_lois : int
+            Number of LOIs.
         n_seeds : int
             Number of seed points for initiating LOI growth.
         persistence : int
@@ -1085,7 +1089,8 @@ class Structure:
             Mode for selecting LOIs from identified clusters.
             - 'fit_straight_line' fits a straight line to all points in the cluster.
             - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved LOIs.
-            - 'random_line' selects a set of random lines that fulfil the filtering criteria
+            - 'random_from_cluster' selects a random line from each cluster, also allowing curved LOIs.
+            - 'random_line' selects a set of random lines that fulfil the filtering criteria.
         random_seed : int, optional
             Random seed for selection of random starting points for line growth algorithm, for reproducible outcomes.
             If None, no random seed is set, and outcomes in every run will differ.
@@ -1111,8 +1116,6 @@ class Structure:
             Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
         linkage : str
             Linkage criterion for clustering ('complete', 'average', 'single').
-        n_lois : int
-            Number of LOIs to save.
         linewidth : float
             Width of the scan line (in µm), perpendicular to the LOIs.
         order : int
@@ -1126,6 +1129,7 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
+
         # Grow LOIs based on seed points and specified parameters
         self._grow_lois(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
                         threshold_distance=threshold_distance, score_threshold=score_threshold,
@@ -1138,7 +1142,7 @@ class Structure:
                           midline_std_length_lims=midline_std_length_lims,
                           midline_min_length_lims=midline_min_length_lims,
                           max_orient_change=max_orient_change)
-        if mode == 'fit_straight_line' or mode == 'longest_in_cluster':
+        if mode == 'fit_straight_line' or mode == 'longest_in_cluster' or mode == 'random_from_cluster':
             # Calculate Hausdorff distance between LOIs and perform clustering
             self._hausdorff_distance_lois()
             self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
@@ -1147,6 +1151,8 @@ class Structure:
                 self._fit_straight_line(add_length=2, n_lois=n_lois)
             elif mode == 'longest_in_cluster':
                 self._longest_in_cluster(n_lois=n_lois)
+            elif mode == 'random_from_cluster':
+                self._random_from_cluster(n_lois=n_lois)
         elif mode == 'random_line':
             self._random_lois(n_lois=n_lois)
         else:
@@ -1155,6 +1161,13 @@ class Structure:
         # extract intensity kymographs profiles and save LOI files
         for line_i in self.data['loi_data']['loi_lines']:
             self.create_loi_data(line_i, linewidth=linewidth, order=order, export_raw=export_raw)
+
+    def delete_lois(self):
+        """Delete all LOIs"""
+        _ = self.data.pop('loi_data', 'No existing LOIs found.')
+        loi_files = glob.glob(self.sarc_obj.folder + '/*loi.json')
+        for loi_file in loi_files:
+            os.remove(loi_file)
 
     def full_analysis_structure(self, timepoints='all', save_all=False):
         """Analyze cell structure with default parameters
@@ -1244,7 +1257,7 @@ class Structure:
         labels_list[length < min_length] = 0
         labels_list = np.insert(labels_list, 0, 0)
         labels_list_ = np.insert(labels_list_, 0, 0)
-        labels = map_array(labels, labels_list_, labels_list)
+        labels = Utils.map_array(labels, labels_list_, labels_list)
         labels, forward_map, inverse_map = segmentation.relabel_sequential(labels)
         labels_list = labels_list[labels_list != 0]
 
@@ -1617,7 +1630,8 @@ class Structure:
         return bank, len_range, orient_range
 
     @staticmethod
-    def convolve_image_with_bank(image, bank, gating=True, dtype=torch.float16, save_memory=False):
+    def convolve_image_with_bank(image, bank, device: torch.device, gating=True, dtype=torch.float16,
+                                 save_memory=False):
         """AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality."""
         # Convert image to dtype and normalize
         image_torch = torch.from_numpy((image / 255)).to(dtype=dtype).to(device).view(1, 1, image.shape[0],
@@ -1918,7 +1932,7 @@ class Structure:
                     hull_i = ConvexHull(points_i)
                     area_clusters[i] = hull_i.volume
                 length_clusters[i] = np.mean(lengths_i)
-                oop, angle = analyze_orientations(orientations_i)
+                oop, angle = Utils.analyze_orientations(orientations_i)
                 oop_clusters[i] = oop
                 orientation_clusters[i] = angle
             return (n_clusters, points_clusters, area_clusters, length_clusters, oop_clusters,
@@ -2115,7 +2129,7 @@ class Structure:
                 area_domains[i] = area_i
                 sarcomere_length_mean_domains[i] = np.mean(lengths_i)
                 sarcomere_length_std_domains[i] = np.std(lengths_i)
-                oop, angle = analyze_orientations(orientations_i)
+                oop, angle = Utils.analyze_orientations(orientations_i)
                 sarcomere_oop_domains[i] = oop
                 sarcomere_orientation_domains[i] = angle
             return (n_domains, domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
@@ -2177,15 +2191,16 @@ class Structure:
         return np.asarray(line_i)
 
     @staticmethod
-    def line_growth(points_t, sarcomere_length_points_t, sarcomere_orientation_points_t, max_score_points_t,
-                    midline_length_points_t, pixelsize, n_seeds=5000, random_seed=None, persistence=4,
-                    threshold_distance=0.3, n_min=5):
+    def line_growth(points_t: np.ndarray, sarcomere_length_points_t: np.ndarray,
+                    sarcomere_orientation_points_t: np.ndarray, max_score_points_t: np.ndarray,
+                    midline_length_points_t: np.ndarray, pixelsize: float, n_seeds: int = 5000, random_seed=None,
+                    persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5):
         """
         Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
 
         Parameters
         ----------
-        points_t : ndarray
+        points_t : np.ndarray
             List of midline point positions
         sarcomere_length_points_t : list
             Sarcomere length at midline points
@@ -2214,6 +2229,7 @@ class Structure:
             Dictionary with LOI data keys = (lines, line_features)
         """
         # select random origins for line growth
+        points_t = np.asarray(points_t)
         random.seed(random_seed)
         n_points = len(points_t.T)
         seed_idx = random.sample(range(n_points), min(n_seeds, n_points))
@@ -2257,7 +2273,7 @@ class Structure:
         # mean and std orientation, and maximal change of orientation
         mean_orient_lines = [stats.circmean(sarcomere_orientation_points_t[l]) for l in lines]
         std_orient_lines = [stats.circstd(sarcomere_orientation_points_t[l]) for l in lines]
-        max_orient_change_lines = [max_orientation_change(sarcomere_orientation_points_t[l]) for l in lines]
+        max_orient_change_lines = [Utils.max_orientation_change(sarcomere_orientation_points_t[l]) for l in lines]
         # create dictionary
         line_features = {'n_points_lines': n_points_lines, 'length_lines': length_lines,
                          'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
@@ -2268,7 +2284,7 @@ class Structure:
                          'max_orient_change_lines': max_orient_change_lines,
                          'midline_std_length_lines': midline_std_length_lines,
                          'midline_min_length_lines': midline_min_length_lines}
-        line_features = convert_lists_to_arrays_in_dict(line_features)
+        line_features = Utils.convert_lists_to_arrays_in_dict(line_features)
         line_data = {'lines': lines, 'line_features': line_features}
         return line_data
 
@@ -2290,9 +2306,9 @@ class Structure:
             image.dtype is bool and 1 otherwise. The order has to be in
             the range 0-5. See `skimage.transform.warp` for detail.
 
-        Returns:
+        Return
         ---------
-        return_value : array
+        return_value : ndarray
             Kymograph along segmented line
 
         Notes

@@ -2,13 +2,13 @@ import codecs
 import copy
 import json
 import pickle
+
 import numpy as np
-from numpy import ndarray
 from scipy import sparse
 
 
 class IOUtils:
-
+    """Utility functions for storing and loading IO data"""
     # region JSON Serialization --- works with top1.csv
     @staticmethod
     def __serialize_field(field):

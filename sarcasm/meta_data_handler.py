@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 from tifffile import tifffile
 
-from . import IOUtils
+from .ioutils import IOUtils
 from .exceptions import MetaDataError
 
 
@@ -180,7 +180,6 @@ class MetaDataHandler:
             self.commit()
 
     def get_meta_data_file(self, is_temp_file=False):
-        # renaming meta_cell.json to metadata.json todo remove when complete
         if is_temp_file:
             return os.path.join(self.sarc_obj.data_folder, "metadata.temp.json")
         else:
@@ -190,7 +189,6 @@ class MetaDataHandler:
         """Create metadata for tif-file"""
         print('Creating metadata...')
         # get metadata from tif file
-        # todo: if this part is tested, remove the whole metadata reading stuff from this class
         frames, size, pixelsize, frametime, timestamps = MetaDataHandler.extract_meta_data(tif_file=self.sarc_obj.filename,
                                                                                            channel=self.sarc_obj.channel,
                                                                                            use_gui=self.sarc_obj.use_gui,

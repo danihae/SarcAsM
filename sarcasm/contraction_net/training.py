@@ -10,7 +10,7 @@ from .contraction_net import ContractionNet
 from .utils import get_device
 
 # select device
-device = get_device(print_device=True)
+device = get_device()
 
 
 class Trainer:
@@ -19,7 +19,7 @@ class Trainer:
                  save_dir='./', save_name='model.pth', save_iter=False, loss_function='BCEDice',
                  loss_params=(1, 1)):
         """
-        Class for training of neural network. Creates trainer object, training is started with .start().
+        Class for training of neural network. Creates Trainer object, training is started with .start().
 
         Parameters
         ----------
