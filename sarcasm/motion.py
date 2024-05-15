@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 
 import matplotlib.pyplot as plt
@@ -136,7 +138,7 @@ class Motion(SarcAsM):
             if 'profiles_raw' not in data.keys():
                 data['profiles_raw'] = None
             return (x_pos, data['profiles'], data['profiles_raw'], data['line'], time,
-                    np.int8(data['linewidth']))
+                    data['linewidth'])
         else:
             raise ValueError('LOI-File is not .json')
 
@@ -182,7 +184,7 @@ class Motion(SarcAsM):
             self.store_loi_data()
 
     def track_z_bands(self, search_range=1, memory_tracking=10, memory_interpol=6, t_range=None, z_range=None,
-                      min_length=5, filter_params=(13, 5)):
+                      min_length=10, filter_params=(13, 7)):
         """
         Track peaks of intensity profile over time with Crocker-Grier algorithm from TrackPy package
 
@@ -212,10 +214,11 @@ class Motion(SarcAsM):
         # make iterator of peaks
         peaks_iter = iter(peaks)
 
-        # Crocker-Grier linking algorithm
-        trajs_idx = pd.DataFrame(
-            link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
-        trajs_idx = trajs_idx.to_numpy()
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Crocker-Grier linking algorithm
+            trajs_idx = pd.DataFrame(
+                link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
+            trajs_idx = trajs_idx.to_numpy()
 
         # sort array into z-band trajectories
         z_pos = np.zeros((len(trajs_idx[0]), len(self.loi_data['time']))) * np.nan
