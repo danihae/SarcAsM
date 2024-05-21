@@ -98,7 +98,9 @@ class MetaDataHandler:
             if pixelsize is None and not use_gui:
                 raise MetaDataError('Pixel size could not be extracted from tif file. '
                                     'Please enter manually by, e.g., SarcAsM(filename, pixelsize=0.1)!')
-        if frametime is None and frames > 1:
+        if 'frametime' in info.keys():
+            frametime = info['frametime']
+        elif frametime is None and frames > 1:
             print('frametime could not be extracted from tif file. Please enter manually if needed for analysis, '
                   'e.g. SarcAsM(file, frametime=0.1).')
         return frames, size, pixelsize, frametime, timestamps
