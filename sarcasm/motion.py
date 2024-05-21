@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 
 import matplotlib.pyplot as plt
@@ -213,10 +215,11 @@ class Motion(SarcAsM):
         # make iterator of peaks
         peaks_iter = iter(peaks)
 
-        # Crocker-Grier linking algorithm
-        trajs_idx = pd.DataFrame(
-            link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
-        trajs_idx = trajs_idx.to_numpy()
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Crocker-Grier linking algorithm
+            trajs_idx = pd.DataFrame(
+                link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
+            trajs_idx = trajs_idx.to_numpy()
 
         # sort array into z-band trajectories
         z_pos = np.zeros((len(trajs_idx[0]), len(self.loi_data['time']))) * np.nan

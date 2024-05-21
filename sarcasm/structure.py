@@ -3,9 +3,8 @@ import os
 import random
 from multiprocessing import Pool
 
-import numpy as np
-import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandas as pd
 import skimage.measure
 import tifffile
@@ -21,7 +20,7 @@ from scipy.spatial import ConvexHull, cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology
 from skimage.draw import disk as draw_disk, line
-from skimage.measure import label, regionprops_table, regionprops
+from skimage.measure import label, regionprops_table, regionprops, profile_line
 from skimage.morphology import skeletonize, disk, binary_dilation
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
@@ -361,10 +360,11 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.08, width=0.4,
+    def analyze_sarcomere_length_orient(self, timepoints='all', kernel='gaussian', size=3, sigma=0.08, width=0.45,
                                         len_lims=(1.3, 2.6), len_step=0.05, orient_lims=(-90, 90), orient_step=10,
-                                        score_threshold=0.25, abs_threshold=True, gating=True, dilation_radius=3,
-                                        dtype='auto', save_memory=False, save_all=False):
+                                        add_negative_center_kernel=False, patch_size=1024, score_threshold=0.25,
+                                        abs_threshold=True, gating=True, dilation_radius=3, dtype='auto',
+                                        save_memory=False, test=False, save_all=False):
         """AND-gated double wavelet analysis of sarcomere structure
 
         Parameters
@@ -388,6 +388,11 @@ class Structure:
             Limits of sarcomere orientation angles in degree
         orient_step : float
             Step size of orientation angles in degree
+        add_negative_center_kernel : bool, optional
+            Whether to add a negative kernel in the middle of the two wavelets,
+            to avoid detection of two Z-bands two sarcomeres apart as sarcomere, only for kernel=='gaussian'.
+        patch_size : int, optional
+            Patch size for wavelet analysis, default is 1024 pixels. Adapt to GPU storage.
         score_threshold : float
             Threshold score for clipping of length and orientation map (if abs_threshold=False, score_threshold is
             percentile (e.g., 90) for adaptive thresholding)
@@ -407,6 +412,8 @@ class Structure:
             If True, the wavelet filter results (wavelet_length_i, wavelet_orientation_i, wavelet_max_score) are stored.
             If False, only the points on the midlines are stored (recommended).
         """
+        assert size > 1.1 * len_lims[1], (f"The size of wavelet filter {size} is too small for the maximum sarcomere "
+                                          f"length {len_lims[1]}")
         assert self.sarc_obj.file_sarcomeres is not None, "Z-band mask not found. Please run predict_z_bands first."
         if timepoints == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
@@ -447,14 +454,15 @@ class Structure:
                                                                  kernel=kernel,
                                                                  size=size, sigma=sigma, width=width, len_lims=len_lims,
                                                                  len_step=len_step, orient_lims=orient_lims,
-                                                                 orient_step=orient_step)
+                                                                 orient_step=orient_step,
+                                                                 add_negative_center_kernel=add_negative_center_kernel)
         len_range_tensor = torch.from_numpy(len_range).to(self.sarc_obj.device).to(dtype=dtype)
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
         print('Starting sarcomere length and orientation analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = self.convolve_image_with_bank(img_i, bank, device=self.sarc_obj.device, gating=gating,
-                                                     dtype=dtype, save_memory=save_memory)
+                                                     dtype=dtype, save_memory=save_memory, patch_size=patch_size)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
              wavelet_max_score_i) = self.argmax_wavelets(result_i,
                                                          len_range_tensor,
@@ -531,32 +539,98 @@ class Structure:
                     'pixelsize'] ** 2
                 sarcomere_area_ratio[i] = sarcomere_area[i] / area
 
-        tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
+        if not test:
 
-        wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_sigma': sigma, 'params.wavelet_width': width,
-                        'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
-                        'params.orient_lims': orient_lims, 'params.orient_step': orient_step, 'params.kernel': kernel,
-                        'params.wavelet_timepoints': timepoints, 'params.len_range': len_range[1:-2],
-                        'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
-                        'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
-                        'wavelet_max_score': wavelet_max_score,
-                        'points': points, 'sarcomere_length_points': sarcomere_length_points,
-                        'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
-                        'sarcomere_length': sarcomere_length_points, 'wavelet_bank': bank if save_all else None,
-                        'sarcomere_orientation_points': sarcomere_orientation_points,
-                        'sarcomere_orientation': sarcomere_orientation_points, 'max_score_points': max_score_points,
-                        'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
-                        'sarcomere_length_mean': sarcomere_length_mean, 'sarcomere_length_std': sarcomere_length_std,
-                        'sarcomere_length_median': sarcomere_length_median,
-                        'sarcomere_orientation_mean': sarcomere_orientation_mean,
-                        'sarcomere_orientation_std': sarcomere_orientation_std,
-                        'weighted_sarcomere_length_variability': weighted_sarcomere_length_variability,
-                        'sarcomere_oop': oop, 'sarcomere_mean_angle': mean_angle,
-                        'params.score_threshold': score_thresholds, 'params.abs_threshold': abs_threshold,
-                        'params.sarcomere_area_closing_radius': dilation_radius}
-        self.data.update(wavelet_dict)
-        if self.sarc_obj.auto_save:
-            self.store_structure_data()
+            tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
+
+            wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_sigma': sigma, 'params.wavelet_width': width,
+                            'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
+                            'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
+                            'params.kernel': kernel,
+                            'params.wavelet_timepoints': timepoints, 'params.len_range': len_range[1:-2],
+                            'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
+                            'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
+                            'wavelet_max_score': wavelet_max_score,
+                            'points': points, 'sarcomere_length_points': sarcomere_length_points,
+                            'midline_length_points': midline_length_points, 'midline_id_points': midline_id_points,
+                            'sarcomere_length': sarcomere_length_points, 'wavelet_bank': bank if save_all else None,
+                            'sarcomere_orientation_points': sarcomere_orientation_points,
+                            'sarcomere_orientation': sarcomere_orientation_points, 'max_score_points': max_score_points,
+                            'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
+                            'sarcomere_length_mean': sarcomere_length_mean,
+                            'sarcomere_length_std': sarcomere_length_std,
+                            'sarcomere_length_median': sarcomere_length_median,
+                            'sarcomere_orientation_mean': sarcomere_orientation_mean,
+                            'sarcomere_orientation_std': sarcomere_orientation_std,
+                            'weighted_sarcomere_length_variability': weighted_sarcomere_length_variability,
+                            'sarcomere_oop': oop, 'sarcomere_mean_angle': mean_angle,
+                            'params.score_threshold': score_thresholds, 'params.abs_threshold': abs_threshold,
+                            'params.sarcomere_area_closing_radius': dilation_radius}
+            self.data.update(wavelet_dict)
+            if self.sarc_obj.auto_save:
+                self.store_structure_data()
+
+    def find_optimal_wavelet_sigma(self, timepoint: int = 0, n_sample: int = 50):
+        """
+        Find the optimal wavelet sigma for a given sample by determining width of Z-bands by fitting Gaussian to sample
+        of sarcomere vectors. Before running this function, it is necessary to run analyze_sarcomere_length_orient with
+        a prior set of parameters.
+
+        Parameters
+        ----------
+        timepoint : int, optional
+            The specific timepoint to analyze. Default is 0.
+        n_sample : int, optional
+            Number of random samples to use for optimization. Default is 50.
+
+        Returns
+        -------
+        float
+            The median sigma value from the Gaussian fits to a sample of sarcomere vectors.
+        """
+        assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
+                                              'Run analyze_sarcomere_length_orient first.')
+        _timepoints = self.data['params.wavelet_timepoints']
+        z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=_timepoints[timepoint])
+        points_t = self.data['points'][timepoint]
+        sarcomere_orientation_points_t = self.data['sarcomere_orientation_points'][timepoint]
+        sarcomere_length_points_t = self.data['sarcomere_length_points'][timepoint] / self.sarc_obj.metadata[
+            'pixelsize']
+
+        # Calculate orientation vectors using trigonometry
+        orientation_vectors_t = np.asarray([-np.sin(sarcomere_orientation_points_t),
+                                            np.cos(sarcomere_orientation_points_t)])
+
+        # Calculate the ends of the vectors based on their orientation and length
+        starts, ends = points_t, points_t + orientation_vectors_t * sarcomere_length_points_t
+
+        # randomly select N lines
+        idxs_random = np.random.randint(0, starts.shape[1], size=n_sample)
+        starts, ends = starts[:, idxs_random], ends[:, idxs_random]
+
+        def gaussian(x, A, mu, sigma):
+            return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+
+        def fit_gaussian(x_data, y_data):
+            # Initial guesses for fitting parameters
+            A_guess = np.max(y_data)
+            mu_guess = x_data[np.argmax(y_data)]
+            sigma_guess = np.std(x_data) / 2
+
+            # Perform the Gaussian fit
+            params, _ = curve_fit(gaussian, x_data, y_data, p0=[A_guess, mu_guess, sigma_guess])
+
+            return params
+
+        # extract profiles perpendicular to Z-bands to determine Z-band width
+        sigmas = []
+        for start_i, end_i in zip(starts.T, ends.T):
+            profile_i = profile_line(z_bands_t, start_i, end_i, linewidth=5)
+            x_i = np.arange(profile_i.shape[0]) * self.sarc_obj.metadata['pixelsize']
+            params = fit_gaussian(x_i, profile_i)
+            sigmas.append(params[2])
+
+        return np.median(sigmas)
 
     def analyze_myofibrils(self, timepoints=None, n_seeds=1000, persistence=3, threshold_distance=0.3, n_min=5):
         """Estimate myofibril lines by line growth algorithm and analyze length and curvature
@@ -1456,7 +1530,7 @@ class Structure:
                 alignment_groups)
 
     @staticmethod
-    def intensity_sarcomeres(image_unet, image_raw, pixelsize, threshold=0.1, plot=False):
+    def intensity_sarcomeres(image_unet, image_raw, pixelsize, threshold=0.1):
         """Get ratio of sarcomere fluorescence to off-sarcomere fluorescence intensity
 
         Parameters
@@ -1469,8 +1543,6 @@ class Structure:
             Size of pixel in x,y in um
         threshold : float
             Binary threshold for masks
-        plot : bool
-            If True, masked raw images are plotted
         """
 
         # binary mask of sarcomere by thresholding
@@ -1489,16 +1561,6 @@ class Structure:
 
         # calculate sum fluorescence image
         fluorescence = np.mean(image_raw) / (pixelsize ** 2)
-
-        if plot:
-            fig, ax = plt.subplots(figsize=(20, 10), nrows=2)
-            ax[0].imshow(255 - image_sarcomeres, cmap='Greys')
-            ax[1].imshow(255 - image_minus_sarcomeres, cmap='Greys')
-            ax[0].axis('off')
-            ax[1].axis('off')
-            ax[0].set_title('Sarcomere fluorescence')
-            ax[1].set_title('Off-sarcomere fluorescence')
-            plt.show()
 
         return ratio_fluorescence_sarc, fluorescence
 
@@ -1542,8 +1604,11 @@ class Structure:
             return kernel0 + kernel1
 
     @staticmethod
-    def gaussian_kernel(dist, sigma, width, orient, size, pixelsize, mode='both'):
-        """Returns gaussian kernel pair for AND-gated double wavelet analysis
+    def gaussian_kernel(dist: float, sigma: float, width: float, orient: float, size: tuple[float, float],
+                        pixelsize: float, mode: str = 'both',
+                        add_negative_center_kernel: bool = False) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Returns gaussian kernel pair for AND-gated double wavelet analysis
 
         Parameters
         ----------
@@ -1552,31 +1617,48 @@ class Structure:
         sigma : float
             Minor axis width of single wavelets in µm
         width : float
-            Major axis with of single wavelets in µm
+            Major axis width of single wavelets in µm
         orient : float
             Rotation orientation in degree
-        size : tuple(float, float)
+        size : tuple[float, float]
             Size of kernel in µm
         pixelsize : float
             Pixelsize in µm
-        mode : string
-            'separate' returns two separate kernels, 'both' returns single kernel
+        mode : str, optional
+            'eparate' returns two separate kernels, 'both' returns single kernel
+        add_negative_center_kernel : bool, optional
+            Whether to add a negative kernel in the middle of the two wavelets,
+            to avoid detection of two Z-bands two sarcomeres apart as sarcomere
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            Gaussian kernel pair
         """
-        # meshgrid
-        size_pixel = Structure.round_up_to_odd(size / pixelsize)
+
+        size_pixel = np.ceil(size / pixelsize).astype(int)
         _range = np.linspace(-size / 2, size / 2, size_pixel, dtype='float32')
         x_mesh, y_mesh = np.meshgrid(_range, _range)
-        # build kernels
+
         kernel0 = (1 / (2 * np.pi * sigma * width) * np.exp(
             -((x_mesh - dist / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
         kernel1 = (1 / (2 * np.pi * sigma * width) * np.exp(
             -((x_mesh + dist / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
-        # normalize
-        kernel0 = kernel0 / np.sum(kernel0)
-        kernel1 = kernel1 / np.sum(kernel1)
-        # rotate kernels
+        kernelmid = (1 / (2 * np.pi * sigma * width) * np.exp(
+            -((x_mesh / 2) ** 2 / (2 * sigma ** 2) + y_mesh ** 2 / (2 * width ** 2))))
+
+        kernel0 /= np.sum(kernel0)
+        kernel1 /= np.sum(kernel1)
+        kernelmid /= np.sum(kernelmid)
+        kernelmid *= -1
+
+        if add_negative_center_kernel:
+            kernel0 += kernelmid
+            kernel1 += kernelmid
+
         kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=2)
         kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=2)
+
         if mode == 'separate':
             return kernel0, kernel1
         elif mode == 'both':
@@ -1589,7 +1671,7 @@ class Structure:
 
     @staticmethod
     def create_wavelet_bank(pixelsize, kernel='gaussian', size=3, sigma=0.15, width=0.5, len_lims=(1.3, 2.5),
-                            len_step=0.025, orient_lims=(-90, 90), orient_step=5):
+                            len_step=0.025, orient_lims=(-90, 90), orient_step=5, add_negative_center_kernel=False):
         """Returns bank of double wavelets
 
         Parameters
@@ -1612,6 +1694,9 @@ class Structure:
             Limits of orientation angle in degree
         orient_step : float
             Step size in degree
+        add_negative_center_kernel : bool, optional
+            Whether to add a negative kernel in the middle of the two wavelets,
+            to avoid detection of two Z-bands two sarcomeres apart as sarcomere, only for kernel=='gaussian'.
         """
 
         len_range = np.arange(len_lims[0] - len_step, len_lims[1] + len_step, len_step, dtype='float32')
@@ -1622,7 +1707,8 @@ class Structure:
         for i, d in enumerate(len_range):
             for j, orient in enumerate(orient_range):
                 if kernel == 'gaussian':
-                    bank[i, j] = Structure.gaussian_kernel(d, sigma, width, orient, size, pixelsize, mode='separate')
+                    bank[i, j] = Structure.gaussian_kernel(d, sigma, width, orient, size, pixelsize, mode='separate',
+                                                           add_negative_center_kernel=add_negative_center_kernel)
                 elif kernel == 'binary':
                     bank[i, j] = Structure.binary_kernel(d, sigma, width, orient, size, pixelsize, mode='separate')
                 else:
@@ -1630,50 +1716,107 @@ class Structure:
         return bank, len_range, orient_range
 
     @staticmethod
-    def convolve_image_with_bank(image, bank, device: torch.device, gating=True, dtype=torch.float16,
-                                 save_memory=False):
-        """AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality."""
+    def convolve_image_with_bank(image: np.ndarray, bank: np.ndarray, device: torch.device, gating: bool = True,
+                                 dtype: torch.dtype = torch.float16, save_memory: bool = False,
+                                 patch_size: int = 512) -> torch.Tensor:
+        """
+        AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality.
+        Processes the image in smaller overlapping patches to manage GPU memory usage and avoid edge effects.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            Input image to be convolved.
+        bank : np.ndarray
+            Filter bank containing the wavelet kernels.
+        device : torch.device
+            Device on which to perform the computation (e.g., 'cuda' or 'cpu').
+        gating : bool, optional
+            Whether to use AND-gated double-wavelet convolution. Default is True.
+        dtype : torch.dtype, optional
+            Data type for the tensors. Default is torch.float16.
+        save_memory : bool, optional
+            Whether to save memory by moving intermediate results to CPU. Default is False.
+        patch_size : int, optional
+            Size of the patches to process the image in. Default is 512.
+
+        Returns
+        -------
+        torch.Tensor
+            The result of the convolution, reshaped to match the input image dimensions.
+        """
         # Convert image to dtype and normalize
         image_torch = torch.from_numpy((image / 255)).to(dtype=dtype).to(device).view(1, 1, image.shape[0],
                                                                                       image.shape[1])
-        with torch.no_grad():
-            if gating:
-                # Convert filters to float32
-                bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
-                filters_torch_0 = torch.from_numpy(bank_0).to(dtype=dtype).to(device).view(
-                    bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
-                filters_torch_1 = torch.from_numpy(bank_1).to(dtype=dtype).to(device).view(
-                    bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
+        kernel_size = bank.shape[3]
+        margin = kernel_size // 2
 
-                # Perform convolutions
-                if save_memory:
-                    res0 = F.conv2d(image_torch, filters_torch_0, padding='same').to('cpu')
-                    del filters_torch_0
-                    res1 = F.conv2d(image_torch, filters_torch_1, padding='same').to('cpu')
-                    del filters_torch_1
+        def process_patch(patch: torch.Tensor) -> torch.Tensor:
+            with torch.no_grad():
+                if gating:
+                    # Convert filters to float32
+                    bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
+                    filters_torch_0 = torch.from_numpy(bank_0).to(dtype=dtype).to(device).view(
+                        bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
+                    filters_torch_1 = torch.from_numpy(bank_1).to(dtype=dtype).to(device).view(
+                        bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
+
+                    # Perform convolutions
+                    if save_memory:
+                        res0 = F.conv2d(patch, filters_torch_0, padding='same').to('cpu')
+                        del filters_torch_0
+                        res1 = F.conv2d(patch, filters_torch_1, padding='same').to('cpu')
+                        del filters_torch_1
+                    else:
+                        res0 = F.conv2d(patch, filters_torch_0, padding='same')
+                        del filters_torch_0
+                        res1 = F.conv2d(patch, filters_torch_1, padding='same')
+                        del filters_torch_1
+                    del patch
+
+                    # Multiply results as torch tensors
+                    result = res0 * res1
+                    del res0, res1
                 else:
-                    res0 = F.conv2d(image_torch, filters_torch_0, padding='same')
-                    del filters_torch_0
-                    res1 = F.conv2d(image_torch, filters_torch_1, padding='same')
-                    del filters_torch_1
+                    # Combine filters
+                    combined_filters = bank[:, :, 0] + bank[:, :, 1]
+                    filters_torch = torch.from_numpy(combined_filters).to(dtype=dtype).to(device).view(
+                        combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
+                        combined_filters.shape[3])
 
-                # Multiply results as torch tensors
-                result = res0 * res1
-            else:
-                # Combine filters
-                combined_filters = bank[:, :, 0] + bank[:, :, 1]
-                filters_torch = torch.from_numpy(combined_filters).to(dtype=dtype).to(device).view(
-                    combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
-                    combined_filters.shape[3])
+                    # Perform convolution
+                    if save_memory:
+                        result = F.conv2d(patch, filters_torch, padding='same').to('cpu')
+                    else:
+                        result = F.conv2d(patch, filters_torch, padding='same')
 
-                # Perform convolution
-                if save_memory:
-                    result = F.conv2d(image_torch, filters_torch, padding='same').to('cpu')
-                else:
-                    result = F.conv2d(image_torch, filters_torch, padding='same')
+            return result
 
-        # reshape
-        return result.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
+        # Process image in patches with overlap
+        output = torch.zeros(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1], dtype=dtype, device=device)
+        for i in range(0, image.shape[0], patch_size - 2 * margin):
+            for j in range(0, image.shape[1], patch_size - 2 * margin):
+                patch = image_torch[:, :, max(i - margin, 0):min(i + patch_size + margin, image.shape[0]),
+                        max(j - margin, 0):min(j + patch_size + margin, image.shape[1])]
+                patch_result = process_patch(patch).view(bank.shape[0], bank.shape[1], patch.shape[2], patch.shape[3])
+
+                # Determine the region to place the patch result
+                start_i = i
+                end_i = min(i + patch_size, image.shape[0])
+                start_j = j
+                end_j = min(j + patch_size, image.shape[1])
+
+                # Calculate the corresponding region in the patch result
+                patch_start_i = 0 if i == 0 else margin
+                patch_end_i = (end_i - start_i) + patch_start_i
+                patch_start_j = 0 if j == 0 else margin
+                patch_end_j = (end_j - start_j) + patch_start_j
+
+                output[:, :, start_i:end_i, start_j:end_j] = patch_result[:, :, patch_start_i:patch_end_i,
+                                                             patch_start_j:patch_end_j]
+
+        # Reshape
+        return output.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
 
     @staticmethod
     def argmax_wavelets(result, len_range, orient_range):

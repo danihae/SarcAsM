@@ -1,0 +1,8 @@
+.idea/
+/notebooks_private/
+/old_models/
+/training_data/
+/training_temp/
+/test_data/
+/benchmarking/
+/notebooks_sarcasm/

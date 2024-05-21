@@ -1020,7 +1020,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QCheckBox" name="chk_siam_unet">
+         <widget class="QCheckBox" name="chk_time_consistent">
           <property name="toolTip">
            <string>If True, the temporally more consistent Siam-U-Net is used. Requires Siam-U-Net network weights.</string>
           </property>
@@ -1035,7 +1035,7 @@
            <string>If True, the temporally more consistent Siam-U-Net is used. Requires Siam-U-Net network weights</string>
           </property>
           <property name="text">
-           <string>Siam U-Net</string>
+           <string>Time Consistent</string>
           </property>
          </widget>
         </item>

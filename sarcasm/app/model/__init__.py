@@ -12,12 +12,12 @@ class ApplicationModel:
     """
 
     def __init__(self):
-        self._cell = None
+        self._cell: SarcAsM = None
         self.__cell_file_name = None
         self.currentlyProcessing = Parameter("currentlyProcessing", False)
         self.__file_extension = ".json"
         self.__line_dictionary = {}  # todo: remove the line dictionary
-        self.__sarcomere = None
+        self.__sarcomere: Motion = None
         self.__scheme = f'%d_%d_%d_%d_%d'
         self.__parameters = Parameters()
         self.__create_parameters()
@@ -42,11 +42,11 @@ class ApplicationModel:
         return self.__parameters
 
     @property
-    def sarcomere(self):
+    def sarcomere(self) -> Motion:
         return self.__sarcomere
 
     @property
-    def cell(self):
+    def cell(self) -> SarcAsM:
         return self._cell
 
     @property
@@ -77,7 +77,7 @@ class ApplicationModel:
         # endregion
         # region structure parameters
         self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
-        self.__parameters.get_parameter(name='structure.predict.siam_unet').set_value(False)
+        self.__parameters.get_parameter(name='structure.predict.time_consistent').set_value(False)
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
             1024)  # is the predict_size_min from ui
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
@@ -177,11 +177,12 @@ class ApplicationModel:
         # region batch processing parameters
         # todo: currently set values here for testing (default values, matching the test data i'm using for batch processing ui tests)
         # todo: remove those values when finished with testing
-        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.053)
+        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.13)
         self.__parameters.get_parameter(name='batch.frame.time').set_value(0.1)
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.root').set_value('D:\\Test\\SarcasmTestBatch')
+        self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(True)
         # endregion
 
         pass
@@ -192,7 +193,7 @@ class ApplicationModel:
         # endregion
         # region structure parameters
         self.__parameters.set_parameter(name='structure.predict.network_path')
-        self.__parameters.set_parameter(name='structure.predict.siam_unet')
+        self.__parameters.set_parameter(name='structure.predict.time_consistent')
         self.__parameters.set_parameter(name='structure.predict.size_width')  # is the predict_size_min from ui
         self.__parameters.set_parameter(name='structure.predict.size_height')  # is the predict_size_max from ui
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
@@ -291,4 +292,5 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.force.override')
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.root')
+        self.__parameters.set_parameter(name='batch.recalculate.for.motion')
         # endregion
