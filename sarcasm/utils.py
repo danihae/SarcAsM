@@ -148,7 +148,6 @@ class Utils:
         return p_values, significance
 
     @staticmethod
-    @staticmethod
     def nan_sav_golay(data: np.ndarray, window_length: int, polyorder: int, axis: int = 0) -> np.ndarray:
         """
         Apply a Savitzky-Golay filter to data with NaN values along the specified axis.
