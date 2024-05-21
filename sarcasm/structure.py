@@ -1636,7 +1636,7 @@ class Structure:
             Gaussian kernel pair
         """
 
-        size_pixel = np.ceil(size / pixelsize).astype(int)
+        size_pixel = Structure.round_up_to_odd(size / pixelsize)
         _range = np.linspace(-size / 2, size / 2, size_pixel, dtype='float32')
         x_mesh, y_mesh = np.meshgrid(_range, _range)
 
