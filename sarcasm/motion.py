@@ -34,6 +34,7 @@ class Motion(SarcAsM):
             If True, LOI dictionary is saved at end of processing steps.
         """
         super().__init__(filename)  # init super SarcAsM object
+        assert self.metadata['frametime'] is not None, "frametime is not defined in metadata"
 
         self.loi_data = {}  # init empty dictionary
         self.loi_file = os.path.join(os.path.splitext(filename)[0], loi_name)  # folder for loi data
@@ -136,7 +137,7 @@ class Motion(SarcAsM):
             if 'profiles_raw' not in data.keys():
                 data['profiles_raw'] = None
             return (x_pos, data['profiles'], data['profiles_raw'], data['line'], time,
-                    np.int8(data['linewidth']))
+                    data['linewidth'])
         else:
             raise ValueError('LOI-File is not .json')
 
@@ -182,7 +183,7 @@ class Motion(SarcAsM):
             self.store_loi_data()
 
     def track_z_bands(self, search_range=1, memory_tracking=10, memory_interpol=6, t_range=None, z_range=None,
-                      min_length=5, filter_params=(13, 5)):
+                      min_length=1, filter_params=(13, 7)):
         """
         Track peaks of intensity profile over time with Crocker-Grier algorithm from TrackPy package
 
