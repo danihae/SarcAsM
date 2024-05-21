@@ -1,5 +1,5 @@
 import os.path
-from typing import Union
+from typing import Union, Tuple
 
 import matplotlib as mpl
 import numpy as np
@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 from matplotlib_scalebar.scalebar import ScaleBar
 from tifffile import tifffile
 
@@ -71,8 +72,6 @@ class Plots:
                             'ratio_vel_mutual_serial': 'R$_{V}$', 'corr_delta_slen_serial': 'r$_s, \Delta SL$',
                             'corr_delta_slen_mutual': 'r$_m, \Delta SL$', 'corr_vel_serial': 'r$_s, V$',
                             'corr_vel_mutual': 'r$_m, V$', 'smi': 'Surplus motion index'}
-
-
 
     @staticmethod
     def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoints, plot_func, offset=0.025,
@@ -286,7 +285,8 @@ class Plots:
 
     @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint: int = 0, clip_thrs=(1, 99), rotate=False,
-                   scalebar=True, title=None, show_loi=True):
+                   scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+                   inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots microscopy raw image of the sarcomere object.
 
@@ -298,8 +298,6 @@ class Plots:
             The sarcomere object to plot.
         timepoint : int, optional
             The timepoint to plot. Defaults to 0.
-        clip_thrs : tuple of int, optional
-            The thresholds to clip the image. Defaults to (1, 98).
         rotate : bool, optional
             Whether to rotate the image. Defaults to False.
         scalebar : bool, optional
@@ -308,6 +306,14 @@ class Plots:
             The title for the plot. Defaults to None.
         show_loi : bool, optional
             Whether to show the line of interest (LOI). Defaults to True.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
 
         img = sarc_obj.structure.read_imgs(timepoint=timepoint)
@@ -324,16 +330,27 @@ class Plots:
                 ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.04, location='lower right', scale_loc='top',
+                                   height_fraction=0.07, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap='Greys')
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
     @staticmethod
-    def plot_z_bands(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, rotate=False, invert=False, alpha=1,
-                     scalebar=True, title=None,
-                     show_loi=True):
+    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], timepoint=0, rotate=False, invert=False,
+                     alpha=1, scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+                     inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots the Z-bands of the sarcomere object.
 
@@ -357,6 +374,14 @@ class Plots:
             The title for the plot. Defaults to None.
         show_loi : bool, optional
             Whether to show the line of interest (LOI). Defaults to True.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
         assert os.path.exists(sarc_obj.file_sarcomeres), ('Z-band mask not found. Run predict_z_bands first.')
 
@@ -380,6 +405,17 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray', alpha=alpha)
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
     def plot_cell_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, rotate=False, invert=False,
@@ -422,7 +458,8 @@ class Plots:
 
     @staticmethod
     def plot_z_segmentation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, scalebar=True, shuffle=True,
-                            title=None):
+                            title=None, zoom_region: Tuple[int, int, int, int] = None,
+                            inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots the Z-band segmentation result of the sarcomere object.
 
@@ -440,6 +477,14 @@ class Plots:
             Whether to shuffle the labels. Defaults to True.
         title : str, optional
             The title for the plot. Defaults to None.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
@@ -458,9 +503,21 @@ class Plots:
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset.imshow(labels_plot[y1:y2, x1:x2], cmap='prism')
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
     @staticmethod
     def plot_z_dist_alignment(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, scalebar=True, markersize=5,
-                              linewidth=1, shuffle=True, title=None):
+                              linewidth=1, shuffle=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
+                              inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots lateral Z-band distance and alignment of the sarcomere object.
 
@@ -482,6 +539,14 @@ class Plots:
             Whether to shuffle the labels. Defaults to True.
         title : str, optional
             The title for the plot. Defaults to None.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
@@ -507,6 +572,23 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset.imshow(labels_plot[y1:y2, x1:x2], cmap='prism')
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+            for (i, k, j, l) in z_links.T:
+                ax_inset.plot([z_ends[i, k, 1], z_ends[j, l, 1]],
+                              [z_ends[i, k, 0], z_ends[j, l, 0]],
+                              c='gray', lw=linewidth, linestyle='-', alpha=1, zorder=2)
+            ax_inset.scatter(z_ends[:, 0, 1], z_ends[:, 0, 0], c='k', marker='o', s=markersize, zorder=3)
+            ax_inset.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='o', s=markersize, zorder=3)
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
     def plot_wavelet_bank(ax: Axes, sarc_obj: Union[SarcAsM, Motion], gap=0.005):
@@ -753,7 +835,9 @@ class Plots:
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, color_arrows='mediumpurple',
                                color_points='darkgreen', style='half', s_points=0.5, linewidths=0.001, scalebar=True,
-                               legend=False, invert_z_bands=True, alpha_z_bands=1, title=None):
+                               legend=False, invert_z_bands=True, alpha_z_bands=1, title=None,
+                               zoom_region: Tuple[int, int, int, int] = None,
+                               inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots quiver plot reflecting local sarcomere length and orientation based on
         wavelet analysis result of the sarcomere object.
@@ -786,6 +870,14 @@ class Plots:
             Alpha value of Z-bands. Defaults to 1.
         title : str, optional
             The title for the plot. Defaults to None.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
         assert 'points' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                             'run analyze_sarcomere_length_orient first.')
@@ -829,6 +921,41 @@ class Plots:
         ax.set_yticks([])
 
         ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            linewidths *= 10
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            if _timepoints == 'all':
+                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=timepoint)
+            else:
+                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
+                                   timepoint=_timepoints[timepoint])
+
+            ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
+            ax_inset.scatter(points[1], points[0], marker='o', c=color_points, s=s_points, label='Midline points')
+            if style == 'half':
+                ax_inset.quiver(points[1], points[0], -orientation_vectors[0] * sarcomere_length_points * 0.5,
+                                orientation_vectors[1] * sarcomere_length_points * 0.5, width=linewidths,
+                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+                                label='Sarcomere vectors')
+                ax_inset.quiver(points[1], points[0], orientation_vectors[0] * sarcomere_length_points * 0.5,
+                                -orientation_vectors[1] * sarcomere_length_points * 0.5,
+                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
+            if style == 'full':
+                ax_inset.quiver(points[1] - sarcomere_length_points * orientation_vectors[0] * 0.5,
+                                points[0] + sarcomere_length_points * orientation_vectors[1] * 0.5,
+                                orientation_vectors[0] * sarcomere_length_points * 1,
+                                -orientation_vectors[1] * sarcomere_length_points * 1, widths=linewidths,
+                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5)
+            ax_inset.set_xlim(x1, x2)
+            ax_inset.set_ylim(y2, y1)
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
     def plot_sarcomere_domains_points(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, scalebar=True,
@@ -942,8 +1069,7 @@ class Plots:
 
     @staticmethod
     def plot_myofibrils(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, show_z_bands=True, linewidth=1,
-                        alpha=0.2,
-                        scalebar=True, title=None):
+                        alpha=0.2, scalebar=True, title=None):
         """
         Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1043,8 +1169,7 @@ class Plots:
 
     @staticmethod
     def plot_z_pos(ax: Axes, motion_obj: Motion, number_contr=None, show_contr=True, show_kymograph=False, color='k',
-                   t_lim=(None, None),
-                   y_lim=(None, None)):
+                   t_lim=(None, None), y_lim=(None, None)):
         """
         Plots the z-band trajectories of the motion object.
 
@@ -1081,8 +1206,9 @@ class Plots:
         z_pos = motion_obj.loi_data['z_pos']
         # plot contraction cycles
         if show_contr:
-            for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
-                                      motion_obj.loi_data['start_quiet']):
+            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
+                                       motion_obj.loi_data['time_contr']):
+                end_i = start_i + time_i
                 if number_contr is not None:
                     start_i -= tlim[0]
                     end_i -= tlim[0]
@@ -1135,9 +1261,11 @@ class Plots:
             ax_i.plot(motion_obj.loi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
             ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
             if show_contr:
-                for start_j, end_j in zip(motion_obj.loi_data['start_contr'][:-1],
-                                          motion_obj.loi_data['start_quiet']):
-                    ax_i.fill_betweenx([-1, 1], [start_j, start_j], [end_j, end_j], color='lavender')
+                for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
+                                           motion_obj.loi_data['time_contr']):
+                    end_i = start_i + time_i
+                    ax_i.fill_betweenx([-1, 1], [start_i, start_i], [end_i, end_i], color='lavender')
+
             if i > 0:
                 ax_i.set_xticks([])
             else:
@@ -1191,8 +1319,9 @@ class Plots:
         delta_slen_avg = motion_obj.loi_data['delta_slen_avg']
         # plot contraction cycles
         if show_contr:
-            for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
-                                      motion_obj.loi_data['start_quiet']):
+            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
+                                       motion_obj.loi_data['time_contr']):
+                end_i = start_i + time_i
                 if number_contr is not None:
                     start_i -= tlim[0]
                     end_i -= tlim[0]
@@ -1255,8 +1384,9 @@ class Plots:
 
         # plot contraction cycles
         if show_contr:
-            for start_i, end_i in zip(motion_obj.loi_data['start_contr'][:-1],
-                                      motion_obj.loi_data['start_quiet']):
+            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
+                                       motion_obj.loi_data['time_contr']):
+                end_i = start_i + time_i
                 if number_contr is not None:
                     start_i -= tlim[0]
                     end_i -= tlim[0]
