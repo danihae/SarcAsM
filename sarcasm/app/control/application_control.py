@@ -1,5 +1,7 @@
 import os
 import sys
+from typing import Tuple, Optional
+
 import napari
 import numpy as np
 import tifffile
@@ -30,11 +32,11 @@ class ApplicationControl:
 
         """
         self._window = window
-        self._model = model
+        self._model: ApplicationModel = model
         self._viewer = None  # napari.Viewer(title='Image Window(napari)')  # the napari viewer object
-        self.__layer_loi: Shapes = None
+        self.__layer_loi: Optional[Shapes] = None
         self.__debug_action = None
-        self.__worker_thread = None
+        self.__worker_thread: Optional[QThread] = None
         self.__callback_loi_list_updated = None
 
         self.progress_notifier = ProgressNotifier()
@@ -83,10 +85,10 @@ class ApplicationControl:
     @staticmethod
     def is_gpu_available():
         gpu_flag = False
-        if torch.has_cuda:
+        if torch.cuda.is_available():
             gpu_flag = True
-        elif hasattr(torch, 'has_mps'):  # only for apple m1/m2/...
-            if torch.has_mps:
+        elif hasattr(torch, 'mps'):  # only for apple m1/m2/...
+            if torch.backends.mps.is_available():
                 gpu_flag = True
                 pass
             pass
@@ -171,7 +173,7 @@ class ApplicationControl:
                                         line[1][1],
                                         line[2])
 
-    def get_file_name_from_scheme(self, cell_file, line) -> (str, object):
+    def get_file_name_from_scheme(self, cell_file, line) -> Tuple[str, object]:
         scheme = self.model.scheme
         scan_line = self.model.line_dictionary[cell_file][line]
         file_name = scheme % (scan_line[0][0],
@@ -278,7 +280,8 @@ class ApplicationControl:
         return worker
 
     def worker_thread(self, on_finished):
-        self.__worker_thread.finished.connect(on_finished)
+        if self.__worker_thread is not None:
+            self.__worker_thread.finished.connect(on_finished)
 
     def __finished_task(self, finished_message=None):
         self.debug(finished_message)

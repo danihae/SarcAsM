@@ -6,10 +6,11 @@ class Parameters:
     """
     The Parameters class contains a dict of parameters and handles loading and storing of those.
     """
+
     def __init__(self):
         # create a structure for storing all parameters, dictionary would be the easiest
         # would be nice if the parameters get updated on changing ui stuff
-        self.__parameters_dict = dict()
+        self.__parameters_dict: dict[str, Parameter] = dict()
         pass
 
     def set_parameter(self, name: str, value=None):

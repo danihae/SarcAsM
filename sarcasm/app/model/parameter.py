@@ -1,6 +1,7 @@
 import threading
 from inspect import signature
-from PyQt5.QtWidgets import QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QComboBox, QRadioButton
+from PyQt5.QtWidgets import QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QComboBox
+from typing import Callable, Union
 
 
 class Parameter:
@@ -63,7 +64,7 @@ class Parameter:
         self.__get_value_parser = None
         self.__lambda_get_value = None
 
-    def connect(self, ui_element):
+    def connect(self, ui_element: Union[QDoubleSpinBox, QSpinBox, QLineEdit, QCheckBox, QComboBox, Callable]):
         """
         Connects the parameter to the ui element for pushing updates and retrieving updates
         """
@@ -104,8 +105,8 @@ class Parameter:
         #    self.__lambda_get_value = ui_element.isChecked
         #    ui_element.----.connect(self.__value_changed)
         #    pass
-
-        self.__lambda_set_value(self.__value)
+        if self.__lambda_set_value is not None and callable(self.__lambda_set_value):
+            self.__lambda_set_value(self.__value)
         pass
 
     pass

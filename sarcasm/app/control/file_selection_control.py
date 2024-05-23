@@ -99,6 +99,8 @@ class FileSelectionControl:
         self._init_file(self.__file_selection_widget.le_cell_file.text())
 
     def on_return_pressed_framerate_pixelsize(self, event=None):
+        if self.__main_control.model.cell is None:
+            return
         pixel_size = self.__file_selection_widget.le_pixel_size.text()
         if pixel_size is not None and pixel_size != '':
             try:
@@ -205,8 +207,8 @@ class FileSelectionControl:
         if isfloat(self.__file_selection_widget.le_frame_time.text()):
             self.__main_control.model.cell.metadata['frametime'] = float(
                 self.__file_selection_widget.le_frame_time.text())
-        self.__main_control.model.cell.store_meta_data(True)  # store meta-data and override if necessary
-        self.__main_control.model.cell.commit()
+        self.__main_control.model.cell.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
+        self.__main_control.model.cell.meta_data_handler.commit()
 
     def _init_meta_data(self):
         # set metadata with cut off comma's
@@ -245,7 +247,7 @@ class FileSelectionControl:
 
                 line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
                 line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
-                self.__main_control.on_update_roi_list(line_start, line_end,
+                self.__main_control.on_update_loi_list(line_start, line_end,
                                                        int(tmp_profile["linewidth"]),
                                                        False)  # add line to roi list and dictionary
         else:

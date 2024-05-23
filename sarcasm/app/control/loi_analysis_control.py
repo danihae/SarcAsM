@@ -8,6 +8,7 @@ class LOIAnalysisControl:
     """
     The LOIAnalysisControl handles the connection between loi-analysis-backend and the view.
     """
+
     def __init__(self, loi_analysis_widget: LoiAnalysisWidget, main_control: ApplicationControl):
         self.__loi_analysis_widget = loi_analysis_widget
         self.__main_control = main_control
@@ -25,34 +26,31 @@ class LOIAnalysisControl:
         print('start detect lois')
 
         m.cell.structure.detect_lois(timepoint=m.parameters.get_parameter('loi.detect.timepoint').get_value(),
-                           persistence=m.parameters.get_parameter('loi.detect.persistence').get_value(),
-                           threshold_distance=m.parameters.get_parameter('loi.detect.threshold_distance').get_value(),
-                           score_threshold=None if m.parameters.get_parameter(
-                               'loi.detect.score_threshold_automatic').get_value() else m.parameters.get_parameter(
-                               'loi.detect.score_threshold').get_value(),
-                           number_lims=(
-                               m.parameters.get_parameter('loi.detect.number_limits_lower').get_value(),
-                               m.parameters.get_parameter('loi.detect.number_limits_upper').get_value()
-                           ),
-                           msc_lims=(m.parameters.get_parameter('loi.detect.msc_limits_lower').get_value(),
-                                     m.parameters.get_parameter('loi.detect.msc_limits_upper').get_value()),
-                           distance_threshold_lois=m.parameters.get_parameter(
-                               'loi.detect.distance_threshold_lois').get_value(),
-                           n_longest=m.parameters.get_parameter('loi.detect.n_longest').get_value(),
-                           linewidth=m.parameters.get_parameter('loi.detect.line_width').get_value())
+                                     persistence=m.parameters.get_parameter('loi.detect.persistence').get_value(),
+                                     threshold_distance=m.parameters.get_parameter(
+                                         'loi.detect.threshold_distance').get_value(),
+                                     score_threshold=None if m.parameters.get_parameter(
+                                         'loi.detect.score_threshold_automatic').get_value() else m.parameters.get_parameter(
+                                         'loi.detect.score_threshold').get_value(),
+                                     number_lims=(
+                                         m.parameters.get_parameter('loi.detect.number_limits_lower').get_value(),
+                                         m.parameters.get_parameter('loi.detect.number_limits_upper').get_value()
+                                     ),
+                                     msc_lims=(m.parameters.get_parameter('loi.detect.msc_limits_lower').get_value(),
+                                               m.parameters.get_parameter('loi.detect.msc_limits_upper').get_value()),
+                                     distance_threshold_lois=m.parameters.get_parameter(
+                                         'loi.detect.distance_threshold_lois').get_value(),
+                                     n_longest=m.parameters.get_parameter('loi.detect.n_longest').get_value(),
+                                     linewidth=m.parameters.get_parameter('loi.detect.line_width').get_value())
 
     def _finished_detect_lois(self):
         # todo: get loi's from cell and add them to napari
         print('finished loi detection...')
         # before adding line to napari, check if the line is already in napari's 'loi' layer
+        if self.__main_control.model.cell is None:  # exit method
+            return
 
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-
-        #  WARNING: Traceback (most recent call last):
-        #  File "D:\Development\PycharmProjects\sarcomere_analysis\dist\distribution\sarcasm_old\app\control\loi_analysis_control.py", line 52, in _finished_detect_lois
-        #  for line in self.__main_control.model.cell.structure.data['loi_lines']:
-        #        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-        #  KeyError: 'loi_lines'
 
         for line in self.__main_control.model.cell.structure.data['loi_lines']:
             start, end = np.round(line).astype('int')
@@ -65,14 +63,15 @@ class LOIAnalysisControl:
         pass
 
     def on_btn_detect_lois(self):
-        if not self.__chk_initialized():
+        if not self.__chk_initialized() or self.__main_control.model.cell is None:
             return
         self.__worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                           call_lambda=self.__call_detect_lois,
                                                           start_message='Starting loi detection',
                                                           finished_message='Finished loi detection',
                                                           finished_action=self._finished_detect_lois,
-                                                          finished_successful_action=self.__main_control.model.cell.structure.commit)
+                                                          finished_successful_action=self.__main_control.
+                                                          model.cell.structure.commit)
 
     @staticmethod
     def __store_lois(w, p):
@@ -109,7 +108,7 @@ class LOIAnalysisControl:
     def on_btn_store_lois(self):
         # check loi's in napari
         # extract loi coordinates
-        #todo: add button cleanup loi's (remove all loi files from loi-lines not existing in napari currently)
+        # todo: add button cleanup loi's (remove all loi files from loi-lines not existing in napari currently)
         if not self.__chk_initialized():
             return
         parameters = {

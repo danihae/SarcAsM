@@ -3,7 +3,7 @@ import traceback
 from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
     QLineEdit, QWidget, QFileDialog, QMessageBox
 
-import sarcasm.export as export
+from sarcasm.export import MultiStructureAnalysis, MultiLOIAnalysis
 
 import numpy as np
 
@@ -35,6 +35,9 @@ class ExportPopup(QDialog):
         self.init_ui()
 
         pass
+
+    #todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
+    #todo: need to adapt "export" since those are wrapped with a class now
 
     def init_ui(self):
         self.setLayout(QVBoxLayout())
@@ -73,9 +76,9 @@ class ExportPopup(QDialog):
 
         self.__btn_export_as_csv.clicked.connect(self.__on_clicked_btn_export_as_csv)
 
-        self.__create_checkbox_from_list(export.meta_keys_default, self.__group_metadata)
-        self.__create_checkbox_from_list(export.structure_keys_default, self.__group_structure)
-        self.__create_checkbox_from_list(export.roi_keys_default, self.__group_motion)
+        self.__create_checkbox_from_list(MultiStructureAnalysis.meta_keys_default, self.__group_metadata)
+        self.__create_checkbox_from_list(MultiStructureAnalysis.structure_keys_default, self.__group_structure)
+        self.__create_checkbox_from_list(MultiLOIAnalysis.loi_keys_default, self.__group_motion)
         pass
 
     def __on_clicked_btn_search(self):

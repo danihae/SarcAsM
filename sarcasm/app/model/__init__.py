@@ -3,6 +3,7 @@ import napari
 from .parameters import Parameters
 from .parameter import Parameter
 from sarcasm import SarcAsM, Motion
+from typing import Optional
 
 
 class ApplicationModel:
@@ -12,12 +13,12 @@ class ApplicationModel:
     """
 
     def __init__(self):
-        self._cell: SarcAsM = None
-        self.__cell_file_name = None
+        self._cell: Optional[SarcAsM] = None
+        self.__cell_file_name: Optional[str] = None
         self.currentlyProcessing = Parameter("currentlyProcessing", False)
         self.__file_extension = ".json"
         self.__line_dictionary = {}  # todo: remove the line dictionary
-        self.__sarcomere: Motion = None
+        self.__sarcomere: Optional[Motion] = None
         self.__scheme = f'%d_%d_%d_%d_%d'
         self.__parameters = Parameters()
         self.__create_parameters()
@@ -37,16 +38,19 @@ class ApplicationModel:
     def line_dictionary(self):
         return self.__line_dictionary
 
+    # todo: to prevent annoying warnings of optional on usage the return type could be left without optional and
+    #   there could be a null check and exception in case that its null?
+
     @property
     def parameters(self):
         return self.__parameters
 
     @property
-    def sarcomere(self) -> Motion:
+    def sarcomere(self) -> Optional[Motion]:
         return self.__sarcomere
 
     @property
-    def cell(self) -> SarcAsM:
+    def cell(self) -> Optional[SarcAsM]:
         return self._cell
 
     @property

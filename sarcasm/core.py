@@ -56,7 +56,8 @@ class SarcAsM:
         Path to the sarcomere mask file, if exists.
     """
 
-    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, device='auto', **info):
+    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, device='auto',
+                 **info):
         """
         Initializes a SarcAsM object with specified parameters and directory structure.
         """
@@ -85,7 +86,7 @@ class SarcAsM:
         self.file_sarcomere_mask = os.path.join(self.folder, 'sarcomere_mask.tif')
 
         # Initialize MetaDataHandler and Structure (Assuming these are defined elsewhere)
-        self.meta_data_handler = MetaDataHandler(self)
+        self.meta_data_handler: MetaDataHandler = MetaDataHandler(self)
         self.metadata = self.meta_data_handler.metadata
         self.structure = Structure(self)
 

@@ -1,6 +1,7 @@
 import glob
 
 import qtutils
+import traceback
 from PyQt5.QtWidgets import QFileDialog
 from multiprocessing import Pool
 
@@ -76,7 +77,7 @@ class BatchProcessingControl:
                                message='Exception happened during processing of file:' + file)
                 qtutils.inmain(self.__main_control.debug, message='message:' + repr(e))
                 qtutils.inmain(self.__main_control.debug, message='')
-
+                traceback.print_exception(e)
                 # todo: add log file to batch processing
 
                 pass
