@@ -346,6 +346,12 @@ class Plots:
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+            PlotUtils.change_color_spines(ax_inset, 'w')
+
+            if scalebar:
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w',
+                                             sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                                             font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
     def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], timepoint=0, rotate=False, invert=False,
@@ -792,7 +798,9 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, cmap='viridis', show_z_bands=False,
-                            alpha=0.5, invert_z_bands=True, alpha_z_bands=1):
+                            alpha=0.5, invert_z_bands=True, alpha_z_bands=1,
+                            zoom_region: Tuple[int, int, int, int] = None,
+                            inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots binary mask of sarcomeres, derived from sarcomere vectors.
 
@@ -814,6 +822,14 @@ class Plots:
             Whether to invert binary mask of Z-bands. Defaults to True. Only applied if show_z_bands is True.
         alpha_z_bands : float, optional
             Alpha value of Z-bands. Defaults to 1.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
         """
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
                                                               'Run sarc_obj.analyze_sarcomere_length_orient ')
@@ -824,13 +840,30 @@ class Plots:
         else:
             _timepoint = timepoint
 
-        sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=timepoint)
-
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=_timepoint)
         else:
             Plots.plot_image(ax, sarc_obj, timepoint=_timepoint)
+
+        sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=timepoint)
         ax.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            if show_z_bands:
+                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, timepoint=_timepoint)
+            else:
+                Plots.plot_image(ax_inset, sarc_obj, timepoint=_timepoint)
+            ax_inset.set_ylim(y2, y1)
+            ax_inset.set_xlim(x1, x2)
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+            ax_inset.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+            PlotUtils.change_color_spines(ax_inset, 'w')
 
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, color_arrows='mediumpurple',
