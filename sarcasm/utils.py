@@ -636,6 +636,19 @@ class Utils:
         return d
 
     @staticmethod
+    def find_closest(array, x):
+        # Calculate the absolute differences
+        differences = np.abs(array - x)
+
+        # Find the index of the minimum difference
+        index = np.argmin(differences)
+
+        # Get the value at the found index
+        closest_value = array[index]
+
+        return index, closest_value
+
+    @staticmethod
     def max_orientation_change(angles):
         # Convert angles to unit vectors
         vectors = np.array([(np.cos(angle), np.sin(angle)) for angle in angles])
