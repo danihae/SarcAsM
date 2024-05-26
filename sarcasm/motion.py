@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,9 +19,9 @@ from .utils import Utils
 
 
 class Motion(SarcAsM):
-    """Class for tracking and analysis of sarcomere motion at region of interest"""
+    """Class for tracking and analysis of sarcomere motion at line of interest LOI"""
 
-    def __init__(self, filename, loi_name, restart=False, auto_save=True):
+    def __init__(self, filename: str, loi_name: str, restart: bool = False, auto_save: bool = True):
         """
         Initialization of a Motion object for single LOI (Line of Interest) analysis
 
@@ -143,7 +144,7 @@ class Motion(SarcAsM):
         else:
             raise ValueError('LOI-File is not .json')
 
-    def detekt_peaks(self, thres=0.05, min_dist=1., width=7, plot=False):
+    def detekt_peaks(self, thres: float = 0.05, min_dist: float = 1., width: int = 7, plot: bool = False):
         """
         Detect peaks of z-band intensity profiles
 
@@ -184,8 +185,9 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def track_z_bands(self, search_range=1, memory_tracking=10, memory_interpol=6, t_range=None, z_range=None,
-                      min_length=1, filter_params=(13, 7)):
+    def track_z_bands(self, search_range: float = 1, memory_tracking: int = 10, memory_interpol: int = 6,
+                      t_range: Union[Tuple[int, int], None] = None, z_range: Union[Tuple[int, int], None] = None,
+                      min_length: float = 1, filter_params: Tuple[int, int] = (13, 7)):
         """
         Track peaks of intensity profile over time with Crocker-Grier algorithm from TrackPy package
 
@@ -262,8 +264,9 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def detect_analyze_contractions(self, model=None, threshold=0.6, slen_lims=(1.2, 3), n_sarcomeres_min=4,
-                                    buffer_frames=3, contr_time_min=0.2, merge_time_max=0.05):
+    def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.6,
+                                    slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
+                                    buffer_frames: int = 3, contr_time_min: float = 0.2, merge_time_max: float = 0.05):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
 
@@ -304,9 +307,9 @@ class Motion(SarcAsM):
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
         contr[n_sarcomeres_time < n_sarcomeres_min] = 0
         # merge very close contractions and remove short contractions
-        contr = binary_opening(
-            binary_closing(contr, structure=np.ones(int(merge_time_max / self.metadata['frametime']))),
-            structure=np.ones(int(contr_time_min / self.metadata['frametime'])))
+        structure_closing = np.ones(max(1, int(merge_time_max / self.metadata['frametime'])))
+        structure_opening = np.ones(max(1, int(contr_time_min / self.metadata['frametime'])))
+        contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
         # remove incomplete contractions at the beginning and end of time series
         contr = clear_border(contr, buffer_size=buffer_frames)
 
@@ -350,7 +353,8 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def get_trajectories(self, slen_lims=(1.2, 3.), filter_params_vel=(13, 5), dilate_contr=0, equ_lims=(1.5, 2.2)):
+    def get_trajectories(self, slen_lims: Tuple[float, float] = (1.2, 3.), filter_params_vel: Tuple[int, int] = (13, 5),
+                         dilate_contr: float = 0, equ_lims: Tuple[float, float] = (1.5, 2.3)):
         """
         1. Calculate sarcomere lengths (single and avg) and filter too large and too small values (slen_lims).
         2. Calculate sarcomere velocities (single and avg), prior smoothing of s'lengths with Savitzky-Golay filter
@@ -412,9 +416,20 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def analyze_trajectories(self):
-        """ Analyze sarcomere single and average trajectories (extrema of sarcomeres contraction and velocity) """
+    def analyze_trajectories(self, custom_perc: Union[List[Tuple[float, float]], None] = None):
+        """
+        Analyze sarcomere single and average trajectories (extrema of sarcomeres contraction and velocity)
+        and sarcomere popping
 
+        Parameters
+        ----------
+        custom_perc : List[Tuple[float, float]] or None, optional
+            A list of tuples where each tuple contains two percentages (p0, p1) representing custom percentage
+            points to analyze contraction, e.g., the time from p0% to p1% contraction of individual and average
+            sarcomere length change.
+            If p0<p1, the shortening is analyzed, if p1<p0, the elongation is analyzed.
+            If not provided, defaults to None.
+        """
         # initialize arrays
         # maximal contraction
         contr_max = np.zeros((len(self.loi_data['delta_slen']), self.loi_data['n_contr'])) * np.nan
@@ -433,8 +448,15 @@ class Motion(SarcAsM):
         # relaxation time (100% to 0%)
         time_relax = np.zeros_like(contr_max) * np.nan
         time_relax_avg = np.zeros_like(contr_max_avg) * np.nan
+        # custom percentages (p0% to p1%)
+        if custom_perc and not isinstance(custom_perc, list):
+            custom_perc = [custom_perc]
+        elif not custom_perc:
+            custom_perc = []
+        custom_perc_time = [np.zeros_like(contr_max) for _ in range(len(custom_perc))]
+        custom_perc_time_avg = [np.zeros_like(contr_max_avg) for _ in range(len(custom_perc))]
 
-        # iterate single sarcomeres
+        # iterate individual sarcomeres
         labels_contr = self.loi_data['labels_contr']
         for j, delta_j in enumerate(self.loi_data['delta_slen']):
             vel_j = self.loi_data['vel'][j]
@@ -451,6 +473,33 @@ class Motion(SarcAsM):
                 if np.count_nonzero(np.isnan(delta_i)) == 0:
                     time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata['frametime']
                     time_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+                if custom_perc:
+                    for k, (p0, p1) in enumerate(custom_perc):
+                        if p0 < p1:  # shortening
+                            delta_shortening_i = delta_i[: np.nanargmin(delta_i)+1]
+                            if len(delta_shortening_i) > 0:
+                                if p0 == 0:
+                                    t0, contr0 = 0, 0
+                                else:
+                                    t0, contr0 = Utils.find_closest(delta_shortening_i, contr_max[j][i] * p0 * 0.01)
+                                t1, contr1 = Utils.find_closest(delta_shortening_i, contr_max[j][i] * p1 * 0.01)
+                            else:
+                                t0, contr0 = np.nan, np.nan
+                                t1, contr1 = np.nan, np.nan
+                        elif p0 > p1:  # elongation
+                            delta_elongation_i = delta_i[np.nanargmin(delta_i):]
+                            if len(delta_elongation_i) > 0:
+                                if p1 == 0:
+                                    t1, contr1 = len(delta_elongation_i), 0
+                                else:
+                                    t1, contr1 = Utils.find_closest(delta_elongation_i, contr_max[j][i] * p1 * 0.01)
+                                t0, contr0 = Utils.find_closest(delta_elongation_i, contr_max[j][i] * p0 * 0.01)
+                            else:
+                                t0, contr0 = np.nan, np.nan
+                                t1, contr1 = np.nan, np.nan
+                        else:
+                            raise ValueError('p0 and p1 must be different.')
+                        custom_perc_time[k][j, i] = (t1 - t0) * self.metadata['frametime']
 
         # average contraction
         for i in range(self.loi_data['n_contr']):
@@ -466,6 +515,33 @@ class Motion(SarcAsM):
             if np.count_nonzero(np.isnan(delta_i)) == 0:
                 time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata['frametime']
                 time_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+            if custom_perc:
+                for k, (p0, p1) in enumerate(custom_perc):
+                    if p0 < p1:  # shortening
+                        delta_shortening_i = delta_i[: np.nanargmin(delta_i)+1]
+                        if len(delta_shortening_i) > 0:
+                            if p0 == 0:
+                                t0_avg, contr0_avg = 0, 0
+                            else:
+                                t0_avg, contr0_avg = Utils.find_closest(delta_shortening_i, contr_max_avg[i] * p0 * 0.01)
+                            t1_avg, contr1_avg = Utils.find_closest(delta_shortening_i, contr_max_avg[i] * p1 * 0.01)
+                        else:
+                            t0_avg, contr0_avg = np.nan, np.nan
+                            t1_avg, contr1_avg = np.nan, np.nan
+                    elif p0 > p1:  # elongation
+                        delta_elongation_i = delta_i[np.nanargmin(delta_i):]
+                        if len(delta_elongation_i) > 0:
+                            if p1 == 0:
+                                t1_avg, contr1_avg = len(delta_elongation_i), 0
+                            else:
+                                t1_avg, contr1_avg = Utils.find_closest(delta_elongation_i, contr_max_avg[i] * p1 * 0.01)
+                            t0_avg, contr0_avg = Utils.find_closest(delta_elongation_i, contr_max_avg[i] * p0 * 0.01)
+                        else:
+                            t0_avg, contr0_avg = np.nan, np.nan
+                            t1_avg, contr1_avg = np.nan, np.nan
+                    else:
+                        raise ValueError('p0 and p1 must be different.')
+                    custom_perc_time_avg[k][i] = (t1_avg - t0_avg) * self.metadata['frametime']
 
         # calculate surplus motion index
         self.surplus_motion_index()
@@ -476,14 +552,16 @@ class Motion(SarcAsM):
                               'elong_max_avg': elong_max_avg, 'vel_contr_max_avg': vel_contr_max_avg,
                               'vel_elong_max_avg': vel_elong_max_avg, 'time_to_peak': time_to_peak,
                               'time_to_peak_avg': time_to_peak_avg, 'time_relax': time_relax,
-                              'time_relax_avg': time_relax_avg})
+                              'time_relax_avg': time_relax_avg, 'custom_perc_time': np.asarray(custom_perc_time),
+                              'custom_perc_time_avg': np.asarray(custom_perc_time_avg)})
         if self.auto_save:
             self.store_loi_data()
 
     def surplus_motion_index(self):
-        """Calculate surplus motion index (SMI) for sarcomere motion: average distance traveled by
-        individual sarcomeres contractions divided by distance traveled by sarcomere average"""
-
+        """
+        Calculate surplus motion index (SMI) for sarcomere motion: average distance traveled by
+        individual sarcomeres contractions divided by distance traveled by sarcomere average
+        """
         vel = self.loi_data['vel']
         vel_avg = self.loi_data['vel_avg']
         contr = self.loi_data['contr']
@@ -510,8 +588,9 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def analyze_popping(self, thres_popping=0.25):
-        """Analyze sarcomere popping - popping if elongation larger than thres_popping
+    def analyze_popping(self, thres_popping: float = 0.25):
+        """
+        Analyze sarcomere popping - popping if elongation of individual sarcomere is larger than thres_popping
 
         Parameters
         ----------
@@ -638,7 +717,8 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def analyze_oscillations(self, min_scale=6, max_scale=180, num_scales=60, wavelet='morl', freq_thres=2, plot=False):
+    def analyze_oscillations(self, min_scale: float = 6, max_scale: float = 180, num_scales: int = 60,
+                             wavelet: str = 'morl', freq_thres: float = 2, plot: bool = False):
         """
         Analyze the oscillation frequencies of average and individual sarcomere length changes.
 
@@ -710,8 +790,9 @@ class Motion(SarcAsM):
             peak_2_single = np.nan
             amp_2_single = np.nan
 
-        dict_oscill = {'parameters.analyze_oscillations': {'min_scale': 6, 'max_scale': 180, 'num_scales': 60,
-                                                           'wavelet': 'morl', 'freq_thres': 2},
+        dict_oscill = {'parameters.analyze_oscillations': {'min_scale': min_scale, 'max_scale': max_scale,
+                                                           'num_scales': num_scales, 'wavelet': wavelet,
+                                                           'freq_thres': freq_thres},
                        'oscill_frequencies': frequencies,
                        'oscill_cfs_avg': cfs_avg,
                        'oscill_cfs': np.asarray(cfs),
@@ -747,7 +828,9 @@ class Motion(SarcAsM):
             plt.show()
 
     def full_analysis_loi(self):
-        """Full analysis of LOI with default parameters"""
+        """
+        Full analysis of LOI with default parameters
+        """
         auto_save_ = self.auto_save
         self.auto_save = False
         self.detekt_peaks()
@@ -760,7 +843,7 @@ class Motion(SarcAsM):
         self.store_loi_data()
 
     @staticmethod
-    def predict_contractions(z_pos, slen, weights, threshold=0.33):
+    def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str, threshold: float = 0.33):
         """Predict contractions from motion of z-bands and sarcomere lengths, then calculate mean state and threshold to
         get more accurate estimation of contractions
 
@@ -781,7 +864,8 @@ class Motion(SarcAsM):
         return contr_mean > threshold
 
     @staticmethod
-    def wavelet_analysis_oscillations(data, frametime, min_scale=6, max_scale=150, num_scales=100, wavelet='morl'):
+    def wavelet_analysis_oscillations(data: np.ndarray, frametime: float, min_scale: float = 6, max_scale: float = 150,
+                                      num_scales: int = 100, wavelet: str = 'morl'):
         """
         Perform a wavelet transform of the data.
 
