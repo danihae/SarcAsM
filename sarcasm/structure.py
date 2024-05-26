@@ -2713,7 +2713,7 @@ class Structure:
 
         # Create a Pool and map process_frame to each frame
         with Pool() as pool:
-            results = pool.map(Structure.__process_frame, args)
+            results = pool.map(Structure.process_frame, args)
 
         # Convert list of results to a numpy array
         kymograph = np.array(results)
@@ -2721,7 +2721,7 @@ class Structure:
         return kymograph
 
     @staticmethod
-    def __process_frame(args):
+    def process_frame(args):
         frame, perp_lines, linewidth, order = args
         pixels = ndimage.map_coordinates(frame, perp_lines, prefilter=order > 1,
                                          order=order, mode='reflect', cval=0.0)
