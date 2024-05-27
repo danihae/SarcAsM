@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import re
+from typing import Union, Tuple, List
 
 import PIL
 import numpy as np
@@ -39,10 +40,9 @@ class MetaDataHandler:
             return False
             pass
 
-        pass
-
     @staticmethod
-    def extract_meta_data(tif_file: str, channel=None, use_gui=False, info={}):
+    def extract_meta_data(tif_file: str, channel: Union[int, None], use_gui: bool = False,
+                          info: dict = {}) -> Tuple[Union[int, None], Union[int, None], Union[float, None], Union[float, None], Union[List[str], None]]:
         # attempt to extract metadata from tif file
         with tifffile.TiffFile(tif_file) as tif:
             if hasattr(tif, 'imagej_metadata'):
@@ -105,10 +105,8 @@ class MetaDataHandler:
                   'e.g. SarcAsM(file, frametime=0.1).')
         return frames, size, pixelsize, frametime, timestamps
 
-        pass
-
     @staticmethod
-    def __get_shape_from_file(file, channel=None):
+    def __get_shape_from_file(file, channel: Union[int, None] = None):
         _data = MetaDataHandler.__read_image(file, channel)
         if len(_data.shape) == 2:
             frames = 1
@@ -124,7 +122,7 @@ class MetaDataHandler:
     pass
 
     @staticmethod
-    def __read_image(filename, channel=None, timepoint=None):
+    def __read_image(filename, channel: Union[int, None] = None, timepoint: Union[int, None] = None):
         """Load tif file, and optionally select channel"""
         if timepoint is None or timepoint == 'all':
             data = tifffile.imread(filename)
@@ -138,7 +136,7 @@ class MetaDataHandler:
         return data
 
     @staticmethod
-    def get_info_from_filename(filename):
+    def get_info_from_filename(filename: str):
         file_name = os.path.basename(filename)
         extract = lambda regex: next((m.group(1) for m in re.finditer(regex, filename)), None)
 
@@ -181,7 +179,7 @@ class MetaDataHandler:
             # commit changes
             self.commit()
 
-    def get_meta_data_file(self, is_temp_file=False):
+    def get_meta_data_file(self, is_temp_file: bool = False):
         if is_temp_file:
             return os.path.join(self.sarc_obj.data_folder, "metadata.temp.json")
         else:
@@ -212,7 +210,7 @@ class MetaDataHandler:
         self.metadata.update(self.sarc_obj.info)
         self.store_meta_data(override=True)
 
-    def store_meta_data(self, override=True):
+    def store_meta_data(self, override: bool = True):
         # only store if path doesn't exist or override is true
         if override or (not os.path.exists(self.get_meta_data_file())):
             IOUtils.json_serialize(self.metadata, self.get_meta_data_file())
