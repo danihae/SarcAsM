@@ -2,6 +2,7 @@ import glob
 import os
 import random
 import warnings
+from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
 
@@ -336,7 +337,7 @@ class Structure:
         z_labels, z_ends, z_links, z_lat_groups = ([] for _ in range(4))
 
         # iterate images
-        print('Starting Z-band analysis...')
+        print('\nStarting Z-band analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
             # segment z-bands
             labels_i, labels_skel_i = self.segment_z_bands(img_i)
@@ -417,7 +418,7 @@ class Structure:
                                         kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
                                         major: float = 1.0, len_lims: Tuple[float, float] = (1.3, 2.6),
                                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
-                                        orient_step: float = 10, add_negative_center_kernel: bool = False,
+                                        orient_step: float = 10, add_negative_center_kernel: bool = True,
                                         patch_size: int = 1024, score_threshold: float = 0.2,
                                         abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
                                         dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
@@ -522,7 +523,7 @@ class Structure:
         len_range_tensor = torch.from_numpy(len_range).to(self.sarc_obj.device).to(dtype=dtype)
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
-        print('Starting sarcomere length and orientation analysis...')
+        print('\nStarting sarcomere length and orientation analysis...')
         for i, img_i in enumerate(tqdm(imgs)):
             result_i = self.convolve_image_with_bank(img_i, bank, device=self.sarc_obj.device, gating=gating,
                                                      dtype=dtype, save_memory=save_memory, patch_size=patch_size)
@@ -701,7 +702,7 @@ class Structure:
         return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
     def analyze_myofibrils(self, timepoints: Optional[Union[str, int, List[int], np.ndarray]] = None,
-                           n_seeds: int = 1000, persistence: int = 3, threshold_distance: float = 0.3,
+                           n_seeds: int = 500, persistence: int = 3, threshold_distance: float = 0.3,
                            n_min: int = 5) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -751,7 +752,7 @@ class Structure:
         myof_lines, lengths, msc = [], [], []
 
         # iterate timepoints
-        print('Starting myofibril line analysis...')
+        print('\nStarting myofibril line analysis...')
         for i, (points_i, sarcomere_length_points_i, sarcomere_orientation_points_i, max_score_points_i,
                 midline_length_points_i) in enumerate(
             tqdm(
@@ -787,7 +788,7 @@ class Structure:
 
     def analyze_sarcomere_domains(self, timepoints: Optional[Union[str, int, List[int], np.ndarray]] = None,
                                   dist_threshold_ends: float = 0.5, dist_threshold_midline_points: float = 0.5,
-                                  louvain_resolution: float = 0.05, louvain_seed: int = 2, area_min: float = 50.0,
+                                  louvain_resolution: float = 0.06, louvain_seed: int = 2, area_min: float = 20.0,
                                   dilation_radius: int = 3) -> None:
         """
         Cluster sarcomeres into domains based on their spatial and orientational properties using the Louvain method
@@ -832,11 +833,11 @@ class Structure:
         else:
             raise ValueError('Selection of timepoints not valid!')
 
-        points = [self.data['points'][t] * self.sarc_obj.metadata['pixelsize'] for t in timepoints]
-        sarcomere_length_points = [self.data['sarcomere_length_points'][t] for t in timepoints]
-        sarcomere_orientation_points = [self.data['sarcomere_orientation_points'][t] for t in timepoints]
-        max_score_points = [self.data['max_score_points'][t] for t in timepoints]
-        midline_id_points = [self.data['midline_id_points'][t] for t in timepoints]
+        points = [np.asarray(self.data['points'][t]) * self.sarc_obj.metadata['pixelsize'] for t in timepoints]
+        sarcomere_length_points = [np.asarray(self.data['sarcomere_length_points'][t]) for t in timepoints]
+        sarcomere_orientation_points = [np.asarray(self.data['sarcomere_orientation_points'][t]) for t in timepoints]
+        max_score_points = [np.asarray(self.data['max_score_points'][t]) for t in timepoints]
+        midline_id_points = [np.asarray(self.data['midline_id_points'][t]) for t in timepoints]
 
         # create empty arrays
         n_domains, domain_area_mean, domain_area_median, domain_area_std = np.zeros(
@@ -850,7 +851,7 @@ class Structure:
          domain_oop, domain_orientation, domain_mask) = [], [], [], [], [], [], []
 
         # iterate timepoints
-        print('Starting sarcomere domain analysis...')
+        print('\nStarting sarcomere domain analysis...')
         for t, (points_t, sarcomere_length_points_t, sarcomere_orientation_points_t,
                 max_score_points_t, midline_id_points_i) in enumerate(
             tqdm(
@@ -1176,7 +1177,8 @@ class Structure:
         Parameters
         ----------
         line : np.ndarray
-            Line start and end coordinates ((start_x, start_y), (end_x, end_y)).
+            Line start and end coordinates ((start_x, start_y), (end_x, end_y))
+            or list of segments [(x0, y0), (x1, y1), (x2, y2), ...]
         linewidth : float, optional
             Width of the scan in µm, perpendicular to the line. Defaults to 0.65.
         order : int, optional
@@ -1197,8 +1199,8 @@ class Structure:
             profiles_raw = None
 
         # length of line
-        def __calculate_segmented_line_length(points):
-            diffs = np.diff(points, axis=0)
+        def __calculate_segmented_line_length(line):
+            diffs = np.diff(line, axis=0)
             lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
             return np.sum(lengths)
 
@@ -2527,55 +2529,55 @@ class Structure:
             return (n_domains, domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
                     sarcomere_oop_domains, sarcomere_orientation_domains, mask_domains)
         else:
-            return 0, [], [], [], [], [], []
+            return 0, [], [], [], [], [], [], []
 
     @staticmethod
     def _grow_line(seed, points_t, sarcomere_length_points_t, sarcomere_orientation_points_t, nbrs, threshold_distance,
                    pixelsize, persistence):
 
-        line_i = [seed]
+        line_i = deque([seed])
         stop_right = stop_left = False
 
         # threshold_distance from micrometer to pixels
         threshold_distance_pixels = threshold_distance / pixelsize
 
+        end_left = end_right = points_t[:, seed]
+        length_left = length_right = sarcomere_length_points_t[seed] / pixelsize
+        orientation_left = orientation_right = sarcomere_orientation_points_t[seed]
+
         while not stop_left or not stop_right:
             n_i = len(line_i)
-            if n_i == 1:
-                end_left = end_right = points_t[:, seed]
-                length_left = length_right = sarcomere_length_points_t[seed] / pixelsize
-                orientation_left = orientation_right = sarcomere_orientation_points_t[seed]
-            elif n_i > 1:
+            if n_i > 1:
+                line_i_list = list(line_i)  # Convert deque to list for slicing
                 if not stop_left:
-                    end_left = points_t[:, line_i[0]]
-                    length_left = np.mean(sarcomere_length_points_t[line_i[:persistence]]) / pixelsize
-                    orientation_left = stats.circmean(
-                        sarcomere_orientation_points_t[line_i[:persistence]])
+                    end_left = points_t[:, line_i_list[0]]
+                    length_left = np.mean(sarcomere_length_points_t[line_i_list[:persistence]]) / pixelsize
+                    orientation_left = stats.circmean(sarcomere_orientation_points_t[line_i_list[:persistence]])
                 if not stop_right:
-                    end_right = points_t[:, line_i[-1]]
-                    length_right = np.mean(sarcomere_length_points_t[line_i[-persistence:]]) / pixelsize
-                    orientation_right = stats.circmean(
-                        sarcomere_orientation_points_t[line_i[-persistence:]])
+                    end_right = points_t[:, line_i_list[-1]]
+                    length_right = np.mean(sarcomere_length_points_t[line_i_list[-persistence:]]) / pixelsize
+                    orientation_right = stats.circmean(sarcomere_orientation_points_t[line_i_list[-persistence:]])
 
             # grow left
             if not stop_left:
                 prior_left = [end_left[0] + np.sin(orientation_left) * length_left,
                               end_left[1] - np.cos(orientation_left) * length_left]
                 # nearest neighbor left
-                distance_left, index_left = nbrs.kneighbors([prior_left])
+                distance_left, index_left = nbrs.kneighbors([prior_left], return_distance=True)
                 # extend list
-                if distance_left < threshold_distance_pixels:
-                    line_i.insert(0, index_left[0][0].astype('int'))
+                if distance_left[0][0] < threshold_distance_pixels:
+                    line_i.appendleft(index_left[0][0].astype('int'))
                 else:
                     stop_left = True
+
             # grow right
             if not stop_right:
                 prior_right = [end_right[0] - np.sin(orientation_right) * length_right,
                                end_right[1] + np.cos(orientation_right) * length_right]
-                # nearest neighbor left
-                distance_right, index_right = nbrs.kneighbors([prior_right])
+                # nearest neighbor right
+                distance_right, index_right = nbrs.kneighbors([prior_right], return_distance=True)
                 # extend list
-                if distance_right < threshold_distance_pixels:
+                if distance_right[0][0] < threshold_distance_pixels:
                     line_i.append(index_right[0][0].astype('int'))
                 else:
                     stop_right = True
@@ -2585,7 +2587,7 @@ class Structure:
     @staticmethod
     def line_growth(points_t: np.ndarray, sarcomere_length_points_t: np.ndarray,
                     sarcomere_orientation_points_t: np.ndarray, max_score_points_t: np.ndarray,
-                    midline_length_points_t: np.ndarray, pixelsize: float, n_seeds: int = 5000, random_seed=None,
+                    midline_length_points_t: np.ndarray, pixelsize: float, n_seeds: int = 1000, random_seed=None,
                     persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5):
         """
         Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
