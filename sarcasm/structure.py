@@ -200,7 +200,7 @@ class Structure:
             self.store_structure_data()
 
     def predict_cell_area(self, model_path: Optional[str] = None, size: Tuple[int, int] = (1024, 1024),
-                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.8),
+                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0.05, 99.95),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Predict binary mask of cells vs. background with U-Net.
@@ -418,7 +418,7 @@ class Structure:
                                         kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
                                         major: float = 1.0, len_lims: Tuple[float, float] = (1.3, 2.6),
                                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
-                                        orient_step: float = 10, add_negative_center_kernel: bool = True,
+                                        orient_step: float = 10, add_negative_center_kernel: bool = False,
                                         patch_size: int = 1024, score_threshold: float = 0.2,
                                         abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
                                         dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
@@ -1963,7 +1963,7 @@ class Structure:
         bank : np.ndarray
             Filter bank containing the wavelet kernels.
         device : torch.device
-            Device on which to perform the computation (e.g., 'cuda' or 'cpu').
+            Device on which to perform the computation (e.g., 'cuda', 'mps' or 'cpu').
         gating : bool, optional
             Whether to use AND-gated double-wavelet convolution. Default is True.
         dtype : torch.dtype, optional
