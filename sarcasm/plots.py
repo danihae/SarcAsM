@@ -232,13 +232,11 @@ class Plots:
             Path to save the plot. If None, plot is not saved.
         """
         mosaic = """
-        a
-        b
-        c
-        d
+        ac
+        bd
         """
 
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_1cols, 4.6), constrained_layout=True)
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, 2.3), constrained_layout=True)
 
         if isinstance(sarc_obj.structure.data['params.wavelet_timepoints'], int):
             frame = sarc_obj.structure.data['params.wavelet_timepoints']
@@ -268,7 +266,7 @@ class Plots:
 
         for i, line_i in enumerate(sarc_obj.structure.data['loi_data']['loi_lines']):
             axs['d'].plot(line_i.T[0], line_i.T[1], lw=2, label=i)
-        axs['d'].legend(bbox_to_anchor=(0.5, -0.5), loc='lower center', borderaxespad=0., ncol=6, fontsize='xx-small')
+        axs['d'].legend(loc='lower left', fontsize='xx-small')
 
         PlotUtils.label_all_panels(axs, offset=(0.05, 0.9))
 
@@ -416,6 +414,7 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray', alpha=alpha)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -867,7 +866,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], timepoint=0, color_arrows='mediumpurple',
-                               color_points='darkgreen', style='half', s_points=0.5, linewidths=0.001, scalebar=True,
+                               color_points='darkgreen', style='half', s_points=0.5, linewidths=0.0005, scalebar=True,
                                legend=False, invert_z_bands=True, alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_loc='upper right', inset_width="35%", inset_height="35%"):
@@ -929,20 +928,20 @@ class Plots:
                                timepoint=_timepoints[timepoint])
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-        ax.scatter(points[1], points[0], marker='o', c=color_points, s=s_points, label='Midline points')
+        ax.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points, label='Midline points')
         if style == 'half':
             ax.quiver(points[1], points[0], -orientation_vectors[0] * sarcomere_length_points * 0.5,
                       orientation_vectors[1] * sarcomere_length_points * 0.5, width=linewidths,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, label='Sarcomere vectors')
             ax.quiver(points[1], points[0], orientation_vectors[0] * sarcomere_length_points * 0.5,
                       -orientation_vectors[1] * sarcomere_length_points * 0.5,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
+                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)
         if style == 'full':
             ax.quiver(points[1] - sarcomere_length_points * orientation_vectors[0] * 0.5,
                       points[0] + sarcomere_length_points * orientation_vectors[1] * 0.5,
                       orientation_vectors[0] * sarcomere_length_points * 1,
                       -orientation_vectors[1] * sarcomere_length_points * 1, width=linewidths,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5)
+                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35)
 
         if legend:
             ax.legend(loc=3, fontsize=PlotUtils.fontsize - 2)
@@ -967,7 +966,8 @@ class Plots:
                                    timepoint=_timepoints[timepoint])
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-            ax_inset.scatter(points[1], points[0], marker='o', c=color_points, s=s_points, label='Midline points')
+            ax_inset.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points,
+                             label='Midline points')
             if style == 'half':
                 ax_inset.quiver(points[1], points[0], -orientation_vectors[0] * sarcomere_length_points * 0.5,
                                 orientation_vectors[1] * sarcomere_length_points * 0.5, width=linewidths,
