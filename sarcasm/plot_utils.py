@@ -4,7 +4,7 @@ import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.ticker import FormatStrFormatter, MultipleLocator
+from matplotlib.ticker import FormatStrFormatter, MultipleLocator, FuncFormatter
 from scipy.stats import gaussian_kde
 
 from . import SarcAsM, Motion
@@ -110,7 +110,7 @@ class PlotUtils:
         ax.set_yticks([])
 
     @staticmethod
-    def polish_xticks(ax, major, minor, pad=3):
+    def polish_xticks(ax, major, minor, pad=3, radian=False):
         """
         Formats and polishes the x-ticks (markings) of a single panel.
 
@@ -119,11 +119,38 @@ class PlotUtils:
             major (float): The major tick spacing.
             minor (float): The minor tick spacing.
             pad (float, optional): The padding between the x-axis and the tick labels. Defaults to 3.
+            radian (bool, optional): Flag to format ticks in radians. Defaults to False.
         """
         ax.xaxis.set_major_locator(MultipleLocator(major))
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%g'))
         ax.xaxis.set_minor_locator(MultipleLocator(minor))
         ax.tick_params(axis='x', pad=pad)
+
+        if radian:
+            def radian_formatter(x, pos):
+                mapping = {
+                    0: '0',
+                    np.pi / 4: r'$\frac{\pi}{4}$',
+                    -np.pi / 4: r'$-\frac{\pi}{4}$',
+                    np.pi / 2: r'$\frac{\pi}{2}$',
+                    -np.pi / 2: r'$-\frac{\pi}{2}$',
+                    3 * np.pi / 4: r'$\frac{3\pi}{4}$',
+                    -3 * np.pi / 4: r'$-\frac{3\pi}{4}$',
+                    np.pi: r'$\pi$',
+                    -np.pi: r'$-\pi$',
+                    5 * np.pi / 4: r'$\frac{5\pi}{4}$',
+                    -5 * np.pi / 4: r'$-\frac{5\pi}{4}$',
+                    3 * np.pi / 2: r'$\frac{3\pi}{2}$',
+                    -3 * np.pi / 2: r'$-\frac{3\pi}{2}$',
+                    7 * np.pi / 4: r'$\frac{7\pi}{4}$',
+                    -7 * np.pi / 4: r'$-\frac{7\pi}{4}$',
+                    2 * np.pi: r'$2\pi$',
+                    -2 * np.pi: r'$-2\pi$'
+                }
+                return mapping.get(x, f'{x / np.pi:.1f}π')
+
+            ax.xaxis.set_major_formatter(FuncFormatter(radian_formatter))
+        else:
+            ax.xaxis.set_major_formatter(FormatStrFormatter('%g'))
 
     @staticmethod
     def polish_yticks(ax, major, minor, pad=3):
