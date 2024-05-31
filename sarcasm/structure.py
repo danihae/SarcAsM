@@ -327,7 +327,7 @@ class Structure:
         z_length_mean, z_length_std, z_length_max, z_length_sum = (nan_arrays() for _ in range(4))
         z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(2))
         z_straightness_mean, z_straightness_std = (nan_arrays() for _ in range(2))
-        z_ratio_intensity, z_oop, avg_intensity = (nan_arrays() for _ in range(3))
+        z_ratio_intensity, z_oop, z_avg_intensity = (nan_arrays() for _ in range(3))
         z_lat_neighbors_mean, z_lat_neighbors_std = (nan_arrays() for _ in range(2))
         z_lat_alignment_mean, z_lat_alignment_std = (nan_arrays() for _ in range(2))
         z_lat_dist_mean, z_lat_dist_std = (nan_arrays() for _ in range(2))
@@ -349,7 +349,7 @@ class Structure:
                                                     theta_phi_min=theta_phi_min,
                                                     d_max=d_max, d_min=d_min)
 
-            (z_length_i, z_intensity_i, z_straightness_i, z_ratio_intensity_i, avg_intensity_i, orientation_i, z_oop_i,
+            (z_length_i, z_intensity_i, z_straightness_i, z_ratio_intensity_i, z_avg_intensity_i, orientation_i, z_oop_i,
              labels_list_i, labels_i, z_lat_neighbors_i, z_lat_dist_i, z_lat_alignment_i, z_links_i, z_ends_i,
              z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
              ) = z_band_features
@@ -365,7 +365,7 @@ class Structure:
             z_lat_size_groups.append(z_lat_size_groups_i)
             z_lat_length_groups.append(z_lat_length_groups_i)
             z_lat_alignment_groups.append(z_lat_alignment_groups_i)
-            z_ratio_intensity[i], avg_intensity[i], z_oop[i] = z_ratio_intensity_i, avg_intensity_i, z_oop_i
+            z_ratio_intensity[i], z_avg_intensity[i], z_oop[i] = z_ratio_intensity_i, z_avg_intensity_i, z_oop_i
 
             z_labels.append(sparse.coo_matrix(labels_i))
             z_links.append(z_links_i)
@@ -393,7 +393,7 @@ class Structure:
         z_band_data = {'z_length': z_length, 'z_length_mean': z_length_mean, 'z_length_std': z_length_std,
                        'z_length_max': z_length_max, 'z_intensity': z_intensity, 'z_intensity_mean': z_intensity_mean,
                        'z_intensity_std': z_intensity_std, 'z_orientation': z_orientation, 'z_oop': z_oop,
-                       'z_straightness': z_straightness, 'avg_intensity': avg_intensity, 'z_labels': z_labels,
+                       'z_straightness': z_straightness, 'z_avg_intensity': z_avg_intensity, 'z_labels': z_labels,
                        'z_straightness_mean': z_straightness_mean, 'z_straightness_std': z_straightness_std,
                        'z_ratio_intensity': z_ratio_intensity, 'z_lat_neighbors': z_lat_neighbors,
                        'z_lat_neighbors_mean': z_lat_neighbors_mean, 'z_lat_neighbors_std': z_lat_neighbors_std,
@@ -419,7 +419,7 @@ class Structure:
                                         major: float = 1.0, len_lims: Tuple[float, float] = (1.3, 2.6),
                                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
                                         orient_step: float = 10, add_negative_center_kernel: bool = False,
-                                        patch_size: int = 1024, score_threshold: float = 0.2,
+                                        patch_size: int = 1024, score_threshold: float = 0.25,
                                         abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
                                         dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
                                         save_all: bool = False) -> None:
@@ -1442,7 +1442,7 @@ class Structure:
                                                                                  'mean_intensity', 'orientation',
                                                                                  'image', 'bbox'])
         # z-band length
-        length = length[length > min_length]
+        length = length[length >= min_length]
 
         # straightness of z-bands (area/convex_hull)
         straightness = props['area'] / props['convex_area']
@@ -1651,9 +1651,9 @@ class Structure:
         Returns
         -------
         ratio_intensity : float
-            Ratio of sarcomere fluorescence to off-sarcomere fluorescence intensity.
+            Ratio of Z-band fluorescence to off-sarcomere fluorescence intensity.
         avg_intensity : float
-            Average intensity of the sarcomeres.
+            Average intensity of the Z-bands.
         """
         # Binarize the U-Net result
         mask = image_unet >= (threshold * 255)
@@ -2190,141 +2190,6 @@ class Structure:
         return (points, midline_id_points, midline_length_points, sarcomere_length_points,
                 sarcomere_orientation_points, max_score_points, midline, score_threshold)
 
-    @staticmethod
-    @staticmethod
-    def cluster_sarcomeres_agglomerative(points_t: np.ndarray, sarcomere_length_points_t: np.ndarray,
-                                         sarcomere_orientation_points_t: np.ndarray, max_score_points_t: np.ndarray,
-                                         pixelsize: float, score_threshold: float = 0, reduce: int = 3,
-                                         weight_length: float = 1, distance_threshold: float = 3,
-                                         area_min: float = 200) -> Tuple[int, np.ndarray, np.ndarray, List[float],
-    List[float], List[float], List[float]]:
-        """
-        Find sarcomere domains with similar orientation using agglomerative clustering.
-
-        Parameters
-        ----------
-        points_t : np.ndarray
-            List of sarcomere midline point positions.
-        sarcomere_length_points_t : np.ndarray
-            List of midline point sarcomere lengths.
-        sarcomere_orientation_points_t : np.ndarray
-            List of midline point sarcomere orientations, in radians.
-        max_score_points_t : np.ndarray
-            List of midline point max score values.
-        pixelsize : float
-            Pixel size in µm.
-        score_threshold : float, optional
-            Threshold (percentile of max_score distribution) for filtering points based on max_score. Defaults to 0.
-        reduce : int, optional
-            Reduce number of samples by subsampling with factor reduce. Defaults to 3.
-        weight_length : float, optional
-            Weight of differences in sarcomere length between points for distance function (0 = no contribution). Defaults to 1.
-        distance_threshold : float, optional
-            Distance threshold for agglomerative clustering. Defaults to 3.
-        area_min : float, optional
-            Minimal area of domains / clusters (in µm^2). Area is calculated by convex hull. Defaults to 200.
-
-        Returns
-        -------
-        n_clusters : int
-            Number of clusters / domains.
-        points_clusters : np.ndarray
-            Positions of points contained in cluster.
-        labels_clusters : np.ndarray
-            Labels of points contained in cluster.
-        area_clusters : List[float]
-            Area of clusters.
-        length_clusters : List[float]
-            Mean sarcomere length inside each cluster.
-        oop_clusters : List[float]
-            Orientational order parameter of points in each cluster.
-        orientation_clusters : List[float]
-            Main orientation of clusters.
-        """
-        warnings.warn(
-            "The 'cluster_sarcomeres_agglomerative' function is deprecated and will be removed in a future version.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        # filter points for max score
-        if score_threshold != 0 and len(max_score_points_t) > 10:
-            _score_threshold = np.percentile(max_score_points_t, score_threshold)
-            points_t = points_t[:, max_score_points_t > _score_threshold]
-            sarcomere_length_points_t = sarcomere_length_points_t[max_score_points_t > _score_threshold]
-            sarcomere_orientation_points_t = sarcomere_orientation_points_t[max_score_points_t > _score_threshold]
-
-        # reduce number of points by factor "reduce"
-        if isinstance(reduce, int) and reduce >= 1:
-            points_t = points_t[:, ::reduce] * pixelsize  # convert to real space
-            sarcomere_length_points_t = sarcomere_length_points_t[::reduce]
-            sarcomere_orientation_points_t = sarcomere_orientation_points_t[::reduce]
-            orientation_vectors_t = np.asarray(
-                [np.cos(sarcomere_orientation_points_t), np.sin(sarcomere_orientation_points_t)])
-        else:
-            raise ValueError(f'reduce needs to be an integer >= 1')
-
-        if len(points_t.T) > 10:
-            # compute distance matrix
-            # 1. compute euclidean distance
-            dist_eucl = squareform(pdist(points_t.T, 'euclidean'))
-            # 2. compute cosine distance
-            dist_cosine = np.abs(1 - squareform(pdist(orientation_vectors_t.T, 'cosine'))) ** 4
-            # 3. distance length (1 if equal)
-            dist_length = 1 + weight_length * np.abs(
-                squareform(pdist(np.expand_dims(sarcomere_length_points_t, axis=1), 'euclidean')))
-
-            # 3. compute custom distance
-            dist = dist_eucl / dist_cosine * dist_length
-            # remove inf values
-            dist[np.isinf(dist)] = 1000
-
-            # accumulative clustering
-            if dist.shape[0] > 20:
-                clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold,
-                                                     metric='precomputed',
-                                                     linkage='single').fit(dist)
-                labels_clusters = clustering.labels_
-                n_clusters = clustering.n_clusters_
-            else:
-                labels_clusters = np.zeros(dist.shape[0])
-                n_clusters = 0
-
-            # convex hull to estimate cluster area
-            _area_clusters = np.zeros(n_clusters)
-            for i, label_i in enumerate(np.unique(labels_clusters)):
-                points_i = points_t.T[labels_clusters == label_i]
-                if len(points_i) > 20:
-                    hull_i = ConvexHull(points_i)
-                    _area_clusters[i] = hull_i.volume
-
-            # remove small clusters
-            points_clusters = points_t.T[np.isin(labels_clusters, np.argwhere(_area_clusters >= area_min).T[0])]
-            _length_clusters = sarcomere_length_points_t.T[
-                np.isin(labels_clusters, np.argwhere(_area_clusters >= area_min).T[0])]
-            _orientation_clusters = sarcomere_orientation_points_t.T[
-                np.isin(labels_clusters, np.argwhere(_area_clusters >= area_min).T[0])]
-            labels_clusters = labels_clusters[np.isin(labels_clusters, np.argwhere(_area_clusters >= area_min).T[0])]
-            n_clusters = len(np.unique(labels_clusters))
-
-            # quantify clusters
-            orientation_clusters, oop_clusters, length_clusters = np.zeros(n_clusters), np.zeros(n_clusters), np.zeros(
-                n_clusters)
-            area_clusters = np.zeros(n_clusters)
-            for i, label_i in enumerate(np.unique(labels_clusters)):
-                points_i = points_clusters[labels_clusters == label_i]
-                lengths_i = _length_clusters[labels_clusters == label_i]
-                orientations_i = _orientation_clusters[labels_clusters == label_i]
-                if len(points_i) > 10:
-                    hull_i = ConvexHull(points_i)
-                    area_clusters[i] = hull_i.volume
-                length_clusters[i] = np.mean(lengths_i)
-                oop, angle = Utils.analyze_orientations(orientations_i)
-                oop_clusters[i] = oop
-                orientation_clusters[i] = angle
-            return (n_clusters, points_clusters, area_clusters, length_clusters, oop_clusters,
-                    orientation_clusters)
-        else:
-            return 0, [], [], [], [], []
 
     @staticmethod
     def cluster_sarcomeres(points: np.ndarray,
@@ -2633,9 +2498,8 @@ class Structure:
              pixelsize,
              persistence) for seed in seed_idx]
 
-        # Use multiprocessing Pool to grow lines in parallel
-        with Pool() as pool:
-            lines = pool.starmap(Structure._grow_line, args)
+        # grow lines
+        lines = [Structure._grow_line(*arg) for arg in args]
 
         # remove short lines (< n_min)
         lines = [l for l in lines if len(l) >= n_min]
@@ -2679,7 +2543,7 @@ class Structure:
         return line_data
 
     @staticmethod
-    def kymograph_movie(movie: np.ndarray, line: np.ndarray, linewidth: int = 10, order:int = 0):
+    def kymograph_movie(movie: np.ndarray, line: np.ndarray, linewidth: int = 10, order: int = 0):
         """
         Generate a kymograph using multiprocessing.
 
@@ -2788,7 +2652,7 @@ class Structure:
         sarcomere_orientation_points : ndarray
             Orientations of sarcomere vectors.
         sarcomere_length_points : ndarray
-            Lengths of sarcomere vectors.
+            Lengths of sarcomere vectors in µm.
         size : tuple
             Size of the image, in pixels.
         pixelsize : float
