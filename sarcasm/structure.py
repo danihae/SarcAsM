@@ -1,7 +1,6 @@
 import glob
 import os
 import random
-import warnings
 from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
@@ -19,7 +18,7 @@ from biu.progress import ProgressNotifier
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
 from scipy.optimize import curve_fit
-from scipy.spatial import ConvexHull, cKDTree
+from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology
 from skimage.draw import disk as draw_disk, line
@@ -349,10 +348,12 @@ class Structure:
                                                     theta_phi_min=theta_phi_min,
                                                     d_max=d_max, d_min=d_min)
 
-            (z_length_i, z_intensity_i, z_straightness_i, z_ratio_intensity_i, z_avg_intensity_i, orientation_i, z_oop_i,
-             labels_list_i, labels_i, z_lat_neighbors_i, z_lat_dist_i, z_lat_alignment_i, z_links_i, z_ends_i,
-             z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
-             ) = z_band_features
+            (
+                z_length_i, z_intensity_i, z_straightness_i, z_ratio_intensity_i, z_avg_intensity_i, orientation_i,
+                z_oop_i,
+                labels_list_i, labels_i, z_lat_neighbors_i, z_lat_dist_i, z_lat_alignment_i, z_links_i, z_ends_i,
+                z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
+            ) = z_band_features
 
             # write in arrays
             z_length.append(z_length_i)
@@ -759,19 +760,23 @@ class Structure:
                 zip(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
                     midline_length_points),
                 total=len(points))):
-            line_data_i = self.line_growth(points_i, sarcomere_length_points_i, sarcomere_orientation_points_i,
-                                           max_score_points_i, midline_length_points_t=midline_length_points_i,
-                                           pixelsize=self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
-                                           persistence=persistence, threshold_distance=threshold_distance, n_min=n_min)
-            lines_i = line_data_i['lines']
+            if len(np.asarray(points_i).T) > 0:
+                line_data_i = self.line_growth(points_i, sarcomere_length_points_i, sarcomere_orientation_points_i,
+                                               max_score_points_i, midline_length_points_t=midline_length_points_i,
+                                               pixelsize=self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
+                                               persistence=persistence, threshold_distance=threshold_distance,
+                                               n_min=n_min)
+                lines_i = line_data_i['lines']
+                # line lengths and mean squared curvature (msc)
+                lengths_i = line_data_i['line_features']['length_lines']
+                msc_i = line_data_i['line_features']['msc_lines']
+                if len(lengths_i) > 0:
+                    length_mean[i], length_median[i], length_std[i], length_max[i] = np.mean(lengths_i), np.median(
+                        lengths_i), np.std(lengths_i), np.max(lengths_i)
+                    msc_mean[i], msc_median[i], msc_std[i] = np.mean(msc_i), np.median(msc_i), np.std(msc_i)
+            else:
+                lines_i, lengths_i, msc_i = [], [], []
             myof_lines.append(lines_i)
-            # line lengths and mean squared curvature (msc)
-            lengths_i = line_data_i['line_features']['length_lines']
-            msc_i = line_data_i['line_features']['msc_lines']
-            if len(lengths_i) > 0:
-                length_mean[i], length_median[i], length_std[i], length_max[i] = np.mean(lengths_i), np.median(
-                    lengths_i), np.std(lengths_i), np.max(lengths_i)
-                msc_mean[i], msc_median[i], msc_std[i] = np.mean(msc_i), np.median(msc_i), np.std(msc_i)
             lengths.append(lengths_i)
             msc.append(msc_i)
 
@@ -2190,7 +2195,6 @@ class Structure:
         return (points, midline_id_points, midline_length_points, sarcomere_length_points,
                 sarcomere_orientation_points, max_score_points, midline, score_threshold)
 
-
     @staticmethod
     def cluster_sarcomeres(points: np.ndarray,
                            sarcomere_length_points: np.ndarray,
@@ -2325,6 +2329,7 @@ class Structure:
                                                                   weight='weight')
             domains = list(communities_generator)
             n_domains = len(domains)
+
             # shuffle domains
             random.seed(123)
             random.shuffle(domains)
