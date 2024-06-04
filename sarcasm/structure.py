@@ -2311,7 +2311,7 @@ class Structure:
 
             def cosine_similarity(i, j):
                 orient_i, orient_j = sarcomere_orientation_points[i], sarcomere_orientation_points[j]
-                return np.cos(orient_i - orient_j) ** 2
+                return round(np.cos(orient_i - orient_j) ** 2, 4)  # round to avoid issues with floating point comparisons
 
             # Add edges to the graph based on pairs of ends
 
