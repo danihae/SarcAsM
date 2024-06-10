@@ -277,7 +277,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_z_bands(self, timepoints: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
-                        min_length: float = 1.0, end_radius: float = 0.75, theta_phi_min: float = 0.25,
+                        min_length: float = 0.5, end_radius: float = 0.75, theta_phi_min: float = 0.6,
                         d_max: float = 5.0, d_min: float = 0.25) -> None:
         """
         Segment and analyze sarcomere z-bands.
@@ -417,7 +417,7 @@ class Structure:
 
     def analyze_sarcomere_length_orient(self, timepoints: Union[str, int, List[int], np.ndarray] = 'all',
                                         kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
-                                        major: float = 1.0, len_lims: Tuple[float, float] = (1.3, 2.6),
+                                        major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
                                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
                                         orient_step: float = 10, add_negative_center_kernel: bool = False,
                                         patch_size: int = 1024, score_threshold: float = 0.25,
@@ -480,12 +480,13 @@ class Structure:
         assert size > 1.1 * len_lims[1], (f"The size of wavelet filter {size} is too small for the maximum sarcomere "
                                           f"length {len_lims[1]}")
         assert self.sarc_obj.file_sarcomeres is not None, "Z-band mask not found. Please run predict_z_bands first."
-        if timepoints == 'all':
-            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
-        elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
+
+        if isinstance(timepoints, int) or isinstance(timepoints, list) or isinstance(timepoints, np.ndarray):
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=timepoints)
             if isinstance(timepoints, int):
                 timepoints = [timepoints]
+        elif timepoints == 'all':
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
         else:
             raise ValueError('timepoints argument not valid')
         if len(imgs.shape) == 2:
@@ -655,9 +656,9 @@ class Structure:
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
         wavelet_timepoints = self.data['params.wavelet_timepoints']
-        if wavelet_timepoints != 'all':
+        if isinstance(timepoint, int):
             _timepoint = wavelet_timepoints[timepoint]
-        else:
+        elif isinstance(timepoint, str) and timepoint == 'all':
             _timepoint = timepoint
         z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=_timepoint)
         points_t = self.data['points'][timepoint]
@@ -767,6 +768,7 @@ class Structure:
                                                persistence=persistence, threshold_distance=threshold_distance,
                                                n_min=n_min)
                 lines_i = line_data_i['lines']
+
                 # line lengths and mean squared curvature (msc)
                 lengths_i = line_data_i['line_features']['length_lines']
                 msc_i = line_data_i['line_features']['msc_lines']
@@ -1475,7 +1477,7 @@ class Structure:
             # get two ends of each z-band
             z_ends = np.zeros((n_z, 2, 2)) * np.nan  # (z-band idx, upper/lower end, x/y)
             z_orientation = np.zeros((n_z, 2)) * np.nan  # (z-band idx, upper/lower)
-            end_radius_px = int(end_radius / pixelsize)
+            end_radius_px = int(round(end_radius / pixelsize, 0))
 
             for i, img_i in enumerate(props['image']):
                 img_i = np.pad(props['image'][i], (end_radius_px, end_radius_px))
@@ -1509,8 +1511,8 @@ class Structure:
                     mask_i_2[rr, cc] = 2
 
                     # get orientation of ends
-                    props_ends_i_1 = regionprops(mask_i_1 * img_i)[0]
-                    props_ends_i_2 = regionprops(mask_i_2 * img_i)[0]
+                    props_ends_i_1 = regionprops(mask_i_1 * skel_i)[0]
+                    props_ends_i_2 = regionprops(mask_i_2 * skel_i)[0]
                     z_orientation_i = [props_ends_i_1.orientation, props_ends_i_2.orientation]
                     y_1, x_1 = props_ends_i_1.centroid
                     y_2, x_2 = props_ends_i_2.centroid
@@ -1719,6 +1721,11 @@ class Structure:
         kernel1 = np.zeros_like(x_mesh)
         kernel1[np.abs((x_mesh - d / 2)) < sigma / 2] = 1
         kernel1[np.abs(y_mesh) > width / 2] = 0
+
+        # Normalize the kernels
+        kernel0 /= np.sum(kernel0)
+        kernel1 /= np.sum(kernel1)
+
         kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=3)
         kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=3)
         if mode == 'separate':
@@ -2490,6 +2497,7 @@ class Structure:
         """
         # select random origins for line growth
         points_t = np.asarray(points_t)
+        assert len(points_t) > 0, 'No sarcomeres in image (len(points) = 0), could not grow lines.'
         random.seed(random_seed)
         n_points = len(points_t.T)
         seed_idx = random.sample(range(n_points), min(n_seeds, n_points))
