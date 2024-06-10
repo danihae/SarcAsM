@@ -32,8 +32,6 @@ class PlotUtils:
             'axes.labelpad': self.labelpad,
             'font.family': 'arial'
         })
-        if 'seaborn-v0_8-paper' in mpl.style.available:
-            plt.style.use('seaborn-v0_8-paper')
 
     @staticmethod
     def label_all_panels(axs: dict, offset=(-0.1, 1.1), color='k'):
@@ -85,7 +83,7 @@ class PlotUtils:
         ax.spines['top'].set_visible(False)
 
     @staticmethod
-    def change_color_spines(ax, c='w'):
+    def change_color_spines(ax, c='w', linewidth=1):
         """
         Changes the color of the spines (borders) of a single panel.
 
@@ -93,10 +91,9 @@ class PlotUtils:
             ax (matplotlib.axes.Axes): The Axes object representing the panel.
             c (str, optional): The color of the spines. Defaults to 'w' (white).
         """
-        ax.spines['bottom'].set_color(c)
-        ax.spines['top'].set_color(c)
-        ax.spines['right'].set_color(c)
-        ax.spines['left'].set_color(c)
+        for spine in ax.spines.values():
+            spine.set_linewidth(linewidth)
+            spine.set_color(c)
 
     @staticmethod
     def remove_ticks(ax):
