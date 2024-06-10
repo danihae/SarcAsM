@@ -179,7 +179,7 @@ class BatchProcessingControl:
                                                    'structure.predict.clip_thresh_max').get_value()
                                            ))
         sarc_obj.structure.analyze_sarcomere_length_orient(
-            timepoints=model.parameters.get_parameter('loi.detect.timepoint').get_value(),
+            frames=model.parameters.get_parameter('loi.detect.frame').get_value(),
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
             sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
             width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
@@ -208,7 +208,7 @@ class BatchProcessingControl:
             self.__calculate_requirements_of_motion(sarc_obj, model)
             pass
 
-        sarc_obj.structure.detect_lois(timepoint=model.parameters.get_parameter('loi.detect.timepoint').get_value(),
+        sarc_obj.structure.detect_lois(frame=model.parameters.get_parameter('loi.detect.frame').get_value(),
                                        persistence=model.parameters.get_parameter('loi.detect.persistence').get_value(),
                                        threshold_distance=model.parameters.get_parameter(
                                            'loi.detect.threshold_distance').get_value(),
@@ -293,7 +293,7 @@ class BatchProcessingControl:
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             force_override=force_override)
 
-        timepoints = model.parameters.get_parameter('structure.timepoints').get_value()
+        frames = model.parameters.get_parameter('structure.frames').get_value()
 
         # predict sarcomere z-bands and cell area
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
@@ -328,16 +328,16 @@ class BatchProcessingControl:
                                                      'structure.predict.cell_area.clip_thresh_max').get_value()
                                              ))
         # analyze cell area and sarcomere area
-        sarc_obj.structure.analyze_cell_area(timepoints=timepoints)
+        sarc_obj.structure.analyze_cell_area(frames=frames)
         # analyze sarcomere structures
         sarc_obj.structure.analyze_z_bands(
-            timepoints=timepoints,
+            frames=frames,
             threshold=model.parameters.get_parameter('structure.z_band_analysis.threshold').get_value(),
             min_length=model.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
 
         # careful this method highly depends on pixel size setting
         sarc_obj.structure.analyze_sarcomere_length_orient(
-            timepoints=timepoints,
+            frames=frames,
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
             sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
             width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
@@ -357,7 +357,7 @@ class BatchProcessingControl:
         )
 
         sarc_obj.structure.analyze_myofibrils(
-            timepoints=timepoints,
+            frames=frames,
             n_seeds=model.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
             score_threshold=None if model.parameters.get_parameter(
                 'structure.myofibril.score_threshold_empty').get_value() else model.parameters.get_parameter(
@@ -367,7 +367,7 @@ class BatchProcessingControl:
         )
 
         sarc_obj.structure.analyze_sarcomere_domains(
-            timepoints=timepoints,
+            frames=frames,
             score_threshold=model.parameters.get_parameter('structure.domain.analysis.score_threshold').get_value(),
             reduce=model.parameters.get_parameter('structure.domain.analysis.reduce').get_value(),
             weight_length=model.parameters.get_parameter('structure.domain.analysis.weight_length').get_value(),

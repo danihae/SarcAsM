@@ -122,12 +122,12 @@ class MetaDataHandler:
     pass
 
     @staticmethod
-    def __read_image(filename, channel: Union[int, None] = None, timepoint: Union[int, None] = None):
+    def __read_image(filename, channel: Union[int, None] = None, frame: Union[int, None] = None):
         """Load tif file, and optionally select channel"""
-        if timepoint is None or timepoint == 'all':
+        if frame is None or frame == 'all':
             data = tifffile.imread(filename)
         else:
-            data = tifffile.imread(filename, key=timepoint)
+            data = tifffile.imread(filename, key=frame)
         if channel is not None:
             if data.ndim == 3:
                 data = data[:, :, channel]

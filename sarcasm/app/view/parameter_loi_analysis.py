@@ -153,9 +153,9 @@ class Ui_Form(object):
         _translate = QtCore.QCoreApplication.translate
         Form.setWindowTitle(_translate("Form", "Form"))
         self.groupBox_6.setTitle(_translate("Form", "Detect LOIs for tracking and analysis of sarcomere motion"))
-        self.label_36.setToolTip(_translate("Form", "Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis."))
+        self.label_36.setToolTip(_translate("Form", "Selects i-th frame of the frames specified in wavelet analysis."))
         self.label_36.setText(_translate("Form", "Timepoint [frame]"))
-        self.sb_detect_loi_timepoint.setToolTip(_translate("Form", "Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis."))
+        self.sb_detect_loi_timepoint.setToolTip(_translate("Form", "Selects i-th frame of frames specified in wavelet analysis."))
         self.label_37.setToolTip(_translate("Form", "Persistence of line (average points length and orientation for prior estimation)"))
         self.label_37.setText(_translate("Form", "Persistence"))
         self.sb_detect_loi_persistence.setToolTip(_translate("Form", "Persistence of line (average points length and orientation for prior estimation)"))

@@ -131,12 +131,12 @@ class Structure:
         if self.data is None:
             raise Exception('Loading of structure failed')
 
-    def read_imgs(self, timepoint: Union[str, int, List[int]] = None):
+    def read_imgs(self, frame: Union[str, int, List[int]] = None):
         """Load tif file, and optionally select channel"""
-        if timepoint is None or timepoint == 'all':
+        if frame is None or frame == 'all':
             data = tifffile.imread(self.sarc_obj.filename)
         else:
-            data = tifffile.imread(self.sarc_obj.filename, key=timepoint)
+            data = tifffile.imread(self.sarc_obj.filename, key=frame)
         if self.sarc_obj.channel is not None:
             if data.ndim == 3:
                 data = data[:, :, self.sarc_obj.channel]
@@ -235,28 +235,28 @@ class Structure:
         self.data.update(_dict)
         self.store_structure_data()
 
-    def analyze_cell_area(self, timepoints: Union[str, int, List[int], np.ndarray] = 'all',
+    def analyze_cell_area(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           threshold: float = 0.1) -> None:
         """
         Analyzes the area of cells in the given image(s) and calculates the cell area ratio.
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}, optional
-            Specifies the timepoints to analyze. If 'all', analyzes all timepoints.
-            If an integer, analyzes the specified timepoint. If a list or numpy array,
-            analyzes the specified timepoints. Defaults to 'all'.
+        frames : {'all', int, list, np.ndarray}, optional
+            Specifies the frames to analyze. If 'all', analyzes all frames.
+            If an integer, analyzes the specified frame. If a list or numpy array,
+            analyzes the specified frames. Defaults to 'all'.
         threshold : float, optional
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold * 255 are considered cell. Defaults to 0.1.
         """
         assert self.sarc_obj.file_cell_mask is not None, "Cell mask not found. Please run predict_cell_area first."
-        if timepoints == 'all':
+        if frames == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_cell_mask)
-        elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.file_cell_mask, key=timepoints)
+        elif isinstance(frames, int) or isinstance(frames, list) or type(frames) is np.ndarray:
+            imgs = tifffile.imread(self.sarc_obj.file_cell_mask, key=frames)
         else:
-            raise ValueError('timepoints argument not valid')
+            raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
             imgs = np.expand_dims(imgs, 0)
         n_imgs = len(imgs)
@@ -276,7 +276,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_z_bands(self, timepoints: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
+    def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
                         min_length: float = 0.5, end_radius: float = 0.75, theta_phi_min: float = 0.6,
                         d_max: float = 5.0, d_min: float = 0.25) -> None:
         """
@@ -284,8 +284,8 @@ class Structure:
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}, optional
-            Timepoints for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
+        frames: {'all', int, list, np.ndarray}, optional
+            frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
         threshold : float, optional
             Threshold for binarizing z-bands prior to labeling (0 - 1). Defaults to 0.1.
@@ -304,14 +304,14 @@ class Structure:
             Defaults to 0.25.
         """
         assert self.sarc_obj.file_sarcomeres is not None, ("Z-band mask not found. Please run predict_z_bands first.")
-        if timepoints == 'all':
+        if frames == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             imgs_raw = self.read_imgs()
-        elif isinstance(timepoints, int) or isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=timepoints)
-            imgs_raw = self.read_imgs(timepoint=timepoints)
+        elif isinstance(frames, int) or isinstance(frames, list) or type(frames) is np.ndarray:
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
+            imgs_raw = self.read_imgs(frame=frames)
         else:
-            raise ValueError('timepoints argument not valid')
+            raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
             imgs = np.expand_dims(imgs, 0)
             imgs_raw = np.expand_dims(imgs_raw, 0)
@@ -408,14 +408,14 @@ class Structure:
                        'z_lat_length_groups_std': z_lat_length_groups_std,
                        'z_lat_alignment_groups_mean': z_lat_alignment_groups_mean,
                        'z_lat_alignment_groups_std': z_lat_alignment_groups_std,
-                       'params.z_timepoints': timepoints, 'params.z_threshold': threshold,
+                       'params.z_frames': frames, 'params.z_threshold': threshold,
                        'params.z_min_length': min_length, 'params.z_end_radius': end_radius,
                        'params.z_theta_phi_min': theta_phi_min, 'params.z_d_max': d_max, 'params.z_d_min': d_min}
         self.data.update(z_band_data)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_length_orient(self, timepoints: Union[str, int, List[int], np.ndarray] = 'all',
+    def analyze_sarcomere_length_orient(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                                         kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
                                         major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
                                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
@@ -429,8 +429,8 @@ class Structure:
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}, optional
-            Timepoints for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
+        frames : {'all', int, list, np.ndarray}, optional
+            frames for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
         kernel : str, optional
             Filter kernel ('gaussian' for double Gaussian kernel, 'half_gaussian' for Gaussian in minor axis direction
@@ -481,14 +481,14 @@ class Structure:
                                           f"length {len_lims[1]}")
         assert self.sarc_obj.file_sarcomeres is not None, "Z-band mask not found. Please run predict_z_bands first."
 
-        if isinstance(timepoints, int) or isinstance(timepoints, list) or isinstance(timepoints, np.ndarray):
-            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=timepoints)
-            if isinstance(timepoints, int):
-                timepoints = [timepoints]
-        elif timepoints == 'all':
+        if isinstance(frames, int) or isinstance(frames, list) or isinstance(frames, np.ndarray):
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
+            if isinstance(frames, int):
+                frames = [frames]
+        elif frames == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
         else:
-            raise ValueError('timepoints argument not valid')
+            raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
             imgs = np.expand_dims(imgs, 0)
         n_imgs = len(imgs)
@@ -611,7 +611,7 @@ class Structure:
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
                         'params.kernel': kernel,
-                        'params.wavelet_timepoints': timepoints, 'params.len_range': len_range[1:-2],
+                        'params.wavelet_frames': frames, 'params.len_range': len_range[1:-2],
                         'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
@@ -634,7 +634,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def find_optimal_wavelet_minor_axis(self, timepoint: int = 0, n_sample: int = 50):
+    def find_optimal_wavelet_minor_axis(self, frame: int = 0, n_sample: int = 50):
         """
         Find the optimal wavelet minor axis, in full width at half maximum (FWHM) units, that maximizes the number of
         sarcomeres identified for a given sample by determining width of Z-bands by fitting Gaussian to sample
@@ -643,8 +643,8 @@ class Structure:
 
         Parameters
         ----------
-        timepoint : int, optional
-            The specific timepoint to analyze. Default is 0.
+        frame : int, optional
+            The specific frame to analyze. Default is 0.
         n_sample : int, optional
             Number of random samples to use for optimization. Default is 50.
 
@@ -655,15 +655,15 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        wavelet_timepoints = self.data['params.wavelet_timepoints']
-        if isinstance(timepoint, int):
-            _timepoint = wavelet_timepoints[timepoint]
-        elif isinstance(timepoint, str) and timepoint == 'all':
-            _timepoint = timepoint
-        z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=_timepoint)
-        points_t = self.data['points'][timepoint]
-        sarcomere_orientation_points_t = self.data['sarcomere_orientation_points'][timepoint]
-        sarcomere_length_points_t = self.data['sarcomere_length_points'][timepoint] / self.sarc_obj.metadata[
+        wavelet_frames = self.data['params.wavelet_frames']
+        if isinstance(frame, int):
+            _frame = wavelet_frames[frame]
+        elif isinstance(frame, str) and frame == 'all':
+            _frame = frame
+        z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=_frame)
+        points_t = self.data['points'][frame]
+        sarcomere_orientation_points_t = self.data['sarcomere_orientation_points'][frame]
+        sarcomere_length_points_t = self.data['sarcomere_length_points'][frame] / self.sarc_obj.metadata[
             'pixelsize']
 
         # Calculate orientation vectors using trigonometry
@@ -703,7 +703,7 @@ class Structure:
                 pass
         return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
-    def analyze_myofibrils(self, timepoints: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                            n_seeds: int = 500, persistence: int = 3, threshold_distance: float = 0.3,
                            n_min: int = 5) -> None:
         """
@@ -711,9 +711,9 @@ class Structure:
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}, optional
-            Timepoints for myofibril analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, timepoints from wavelet analysis are used. Defaults to None.
+        frames : {'all', int, list, np.ndarray}, optional
+            frames for myofibril analysis ('all' for all frames, int for a single frame, list or ndarray for
+            selected frames). If None, frames from wavelet analysis are used. Defaults to None.
         n_seeds : int, optional
             Number of random seeds for line growth. Defaults to 1000.
         persistence : int, optional
@@ -725,27 +725,27 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        if timepoints is None:
-            if 'params.wavelet_timepoints' in self.data.keys():
-                timepoints = self.data['params.wavelet_timepoints']
+        if frames is None:
+            if 'params.wavelet_frames' in self.data.keys():
+                frames = self.data['params.wavelet_frames']
             else:
-                raise ValueError('To use timepoints from wavelet analysis, run wavelet analysis first!')
-        if timepoints == 'all':
+                raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+        if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
-            timepoints = np.arange(0, n_imgs)
-        elif isinstance(timepoints, int):
+            frames = np.arange(0, n_imgs)
+        elif isinstance(frames, int):
             n_imgs = 1
-            timepoints = [timepoints]
-        elif isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            n_imgs = len(timepoints)
+            frames = [frames]
+        elif isinstance(frames, list) or type(frames) is np.ndarray:
+            n_imgs = len(frames)
         else:
-            raise ValueError('Selection of timepoints not valid!')
+            raise ValueError('Selection of frames not valid!')
 
-        points = [self.data['points'][t] for t in timepoints]
-        sarcomere_length_points = [self.data['sarcomere_length_points'][t] for t in timepoints]
-        sarcomere_orientation_points = [self.data['sarcomere_orientation_points'][t] for t in timepoints]
-        midline_length_points = [self.data['midline_length_points'][t] for t in timepoints]
-        max_score_points = [self.data['max_score_points'][t] for t in timepoints]
+        points = [self.data['points'][t] for t in frames]
+        sarcomere_length_points = [self.data['sarcomere_length_points'][t] for t in frames]
+        sarcomere_orientation_points = [self.data['sarcomere_orientation_points'][t] for t in frames]
+        midline_length_points = [self.data['midline_length_points'][t] for t in frames]
+        max_score_points = [self.data['max_score_points'][t] for t in frames]
 
         # create empty arrays
         length_mean, length_median, length_std, length_max = np.zeros(n_imgs) * np.nan, np.zeros(
@@ -753,7 +753,7 @@ class Structure:
         msc_mean, msc_median, msc_std = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
         myof_lines, lengths, msc = [], [], []
 
-        # iterate timepoints
+        # iterate frames
         print('\nStarting myofibril line analysis...')
         for i, (points_i, sarcomere_length_points_i, sarcomere_orientation_points_i, max_score_points_i,
                 midline_length_points_i) in enumerate(
@@ -788,12 +788,12 @@ class Structure:
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_msc': msc, 'myof_msc_mean': msc_mean, 'myof_msc_median': msc_median,
                           'myof_msc_std': msc_std, 'params.n_seeds': n_seeds, 'params.persistence': persistence,
-                          'params.threshold_distance': threshold_distance, 'params.myof_timepoints': timepoints}
+                          'params.threshold_distance': threshold_distance, 'params.myof_frames': frames}
         self.data.update(myofibril_data)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_domains(self, timepoints: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                                   dist_threshold_ends: float = 0.5, dist_threshold_midline_points: float = 0.5,
                                   louvain_resolution: float = 0.06, louvain_seed: int = 2, area_min: float = 20.0,
                                   dilation_radius: int = 3) -> None:
@@ -803,9 +803,9 @@ class Structure:
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}, optional
-            Timepoints for domain analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, timepoints from wavelet analysis are used. Defaults to None.
+        frames : {'all', int, list, np.ndarray}, optional
+            frames for domain analysis ('all' for all frames, int for a single frame, list or ndarray for
+            selected frames). If None, frames from wavelet analysis are used. Defaults to None.
         dist_threshold_ends : float, optional
             Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
             Only the ends with the smallest distance are connected. Defaults to 0.5.
@@ -824,27 +824,27 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        if timepoints is None:
-            if 'params.wavelet_timepoints' in self.data.keys():
-                timepoints = self.data['params.wavelet_timepoints']
+        if frames is None:
+            if 'params.wavelet_frames' in self.data.keys():
+                frames = self.data['params.wavelet_frames']
             else:
-                raise ValueError('To use timepoints from wavelet analysis, run wavelet analysis first!')
-        if timepoints == 'all':
+                raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+        if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
-            timepoints = np.arange(0, n_imgs)
-        elif isinstance(timepoints, int):
+            frames = np.arange(0, n_imgs)
+        elif isinstance(frames, int):
             n_imgs = 1
-            timepoints = [timepoints]
-        elif isinstance(timepoints, list) or type(timepoints) is np.ndarray:
-            n_imgs = len(timepoints)
+            frames = [frames]
+        elif isinstance(frames, list) or type(frames) is np.ndarray:
+            n_imgs = len(frames)
         else:
-            raise ValueError('Selection of timepoints not valid!')
+            raise ValueError('Selection of frames not valid!')
 
-        points = [np.asarray(self.data['points'][t]) * self.sarc_obj.metadata['pixelsize'] for t in timepoints]
-        sarcomere_length_points = [np.asarray(self.data['sarcomere_length_points'][t]) for t in timepoints]
-        sarcomere_orientation_points = [np.asarray(self.data['sarcomere_orientation_points'][t]) for t in timepoints]
-        max_score_points = [np.asarray(self.data['max_score_points'][t]) for t in timepoints]
-        midline_id_points = [np.asarray(self.data['midline_id_points'][t]) for t in timepoints]
+        points = [np.asarray(self.data['points'][t]) * self.sarc_obj.metadata['pixelsize'] for t in frames]
+        sarcomere_length_points = [np.asarray(self.data['sarcomere_length_points'][t]) for t in frames]
+        sarcomere_orientation_points = [np.asarray(self.data['sarcomere_orientation_points'][t]) for t in frames]
+        max_score_points = [np.asarray(self.data['max_score_points'][t]) for t in frames]
+        midline_id_points = [np.asarray(self.data['midline_id_points'][t]) for t in frames]
 
         # create empty arrays
         n_domains, domain_area_mean, domain_area_median, domain_area_std = np.zeros(
@@ -857,7 +857,7 @@ class Structure:
         (domains, domain_area, domain_slen, domain_slen_std,
          domain_oop, domain_orientation, domain_mask) = [], [], [], [], [], [], []
 
-        # iterate timepoints
+        # iterate frames
         print('\nStarting sarcomere domain analysis...')
         for t, (points_t, sarcomere_length_points_t, sarcomere_orientation_points_t,
                 max_score_points_t, midline_id_points_i) in enumerate(
@@ -904,7 +904,7 @@ class Structure:
                        'domain_oop': domain_oop, 'domain_oop_mean': domain_oop_mean,
                        'domain_oop_median': domain_oop_mean, 'domain_oop_std': domain_oop_std,
                        'domain_orientation': domain_orientation, 'domain_mask': domain_mask,
-                       'params.domain_timepoints': timepoints,
+                       'params.domain_frames': frames,
                        'params.dist_threshold_ends': dist_threshold_ends,
                        'params.dist_threshold_midline_points': dist_threshold_midline_points,
                        'params.louvain_resolution': louvain_resolution,
@@ -914,15 +914,15 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _grow_lois(self, timepoint: int = 0, n_seeds: int = 500, score_threshold: Optional[float] = None,
+    def _grow_lois(self, frame: int = 0, n_seeds: int = 500, score_threshold: Optional[float] = None,
                    persistence: int = 2, threshold_distance: float = 0.5, random_seed: Optional[int] = None) -> None:
         """
         Find LOIs (lines of interest) using a line growth algorithm. The parameters **lims can be used to filter LOIs.
 
         Parameters
         ----------
-        timepoint : int, optional
-            Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis. Defaults to 0.
+        frame : int, optional
+            Frame to select frame. Selects i-th frame of frames specified in wavelet analysis. Defaults to 0.
         n_seeds : int, optional
             Number of random seeds for line growth. Defaults to 500.
         score_threshold : float, optional
@@ -938,24 +938,24 @@ class Structure:
         if score_threshold is None:
             if 'params.score_threshold' in self.data.keys():
                 if len(self.data['params.score_threshold']) > 1:
-                    score_threshold = self.data['params.score_threshold'][timepoint]
+                    score_threshold = self.data['params.score_threshold'][frame]
                 else:
                     score_threshold = self.data['params.score_threshold']
             else:
                 raise ValueError('To use score_threshold from wavelet analysis, run wavelet analysis first!')
-        # select midline point data at timepoint
+        # select midline point data at frame
         (points, sarcomere_length_points,
-         sarcomere_orientation_points, max_score_points, midline_length_points) = self.data['points'][timepoint], \
-            self.data['sarcomere_length_points'][timepoint], \
-            self.data['sarcomere_orientation_points'][timepoint], \
-            self.data['max_score_points'][timepoint], \
-            self.data['midline_length_points'][timepoint]
+         sarcomere_orientation_points, max_score_points, midline_length_points) = self.data['points'][frame], \
+            self.data['sarcomere_length_points'][frame], \
+            self.data['sarcomere_orientation_points'][frame], \
+            self.data['max_score_points'][frame], \
+            self.data['midline_length_points'][frame]
         loi_data = self.line_growth(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
                                     midline_length_points, self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
                                     random_seed=random_seed, persistence=persistence,
                                     threshold_distance=threshold_distance)
         self.data['loi_data'] = loi_data
-        lois_points = [self.data['points'][timepoint].T[loi_i] for loi_i in self.data['loi_data']['lines']]
+        lois_points = [self.data['points'][frame].T[loi_i] for loi_i in self.data['loi_data']['lines']]
         self.data['loi_data']['lines_points'] = lois_points
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -1220,7 +1220,7 @@ class Structure:
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, timepoint: int = 0, n_lois: int = 4, n_seeds: int = 200, persistence: int = 2,
+    def detect_lois(self, frame: int = 0, n_lois: int = 4, n_seeds: int = 200, persistence: int = 2,
                     threshold_distance: float = 0.3, score_threshold: Optional[float] = None,
                     mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
                     number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
@@ -1240,8 +1240,8 @@ class Structure:
 
         Parameters
         ----------
-        timepoint : int
-            The index of the timepoint to select for analysis.
+        frame : int
+            The index of the frame to select for analysis.
         n_lois : int
             Number of LOIs.
         n_seeds : int
@@ -1298,7 +1298,7 @@ class Structure:
                                               'Run analyze_sarcomere_length_orient first.')
 
         # Grow LOIs based on seed points and specified parameters
-        self._grow_lois(timepoint=timepoint, n_seeds=n_seeds, persistence=persistence,
+        self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,
                         threshold_distance=threshold_distance, score_threshold=score_threshold,
                         random_seed=random_seed)
         # Filter LOIs based on geometric and morphological criteria
@@ -1338,23 +1338,23 @@ class Structure:
         for loi_file in loi_files:
             os.remove(loi_file)
 
-    def full_analysis_structure(self, timepoints='all', save_all=False):
+    def full_analysis_structure(self, frames='all', save_all=False):
         """
         Analyze sarcomere structure with default parameters at specified time points
 
         Parameters
         ----------
-        timepoints : {'all', int, list, np.ndarray}
-            Timepoints for analysis ('all' for all frames, int for a single frame, list or ndarray for
+        frames : {'all', int, list, np.ndarray}
+            frames for analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames).
         save_all : bool
             If True, all intermediary data is saved. Can take up large storage, and is only recommended for visualizing
             data.
         """
-        self.analyze_z_bands(timepoints=timepoints)
-        self.analyze_sarcomere_length_orient(timepoints=timepoints, save_all=save_all)
-        self.analyze_myofibrils(timepoints=timepoints)
-        self.analyze_sarcomere_domains(timepoints=timepoints)
+        self.analyze_z_bands(frames=frames)
+        self.analyze_sarcomere_length_orient(frames=frames, save_all=save_all)
+        self.analyze_myofibrils(frames=frames)
+        self.analyze_sarcomere_domains(frames=frames)
         if not self.sarc_obj.auto_save:
             self.store_structure_data()
 

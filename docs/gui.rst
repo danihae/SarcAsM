@@ -60,7 +60,7 @@ Analyzing a movie with the GUI
 
 You can the big **Analyze Structure** button on top to run through all the following sections.
 
-#. **General**: The **timepoints** field can be used to specify analysis to just a specific subset of the frames in the image. This parameter affects every section in this panel except for the **Network** section.
+#. **General**: The **frames** field can be used to specify analysis to just a specific subset of the frames in the image. This parameter affects every section in this panel except for the **Network** section.
 
 #. **Network**: This section segments the Z discs from your image with U-Net or Siam U-Net. *Required*: Specify the weights file to the neural network in the **file** field. Check the **siam unet** box if your weights file is for the Siam U-Net, uncheck if otherwise. The segmentation results will be saved to the cell folder after this section is done running. You can view the results in Napari.
 

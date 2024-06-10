@@ -51,7 +51,7 @@ class FileSelectionControl:
 
     def on_btn_export_data(self):
         """
-        - time-series of all structure features (if single number per timepoint, so ignore 2D arrays)
+        - time-series of all structure features (if single number per frame, so ignore 2D arrays)
           for motion analysis: z_pos, slen, slen_avg,  delta_slen, delta_slen_avg, vel, vel_avg, start_contr, state, cps_mean, cps_std
         """
         # model = self.__main_control.model

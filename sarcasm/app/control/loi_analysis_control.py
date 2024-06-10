@@ -25,7 +25,7 @@ class LOIAnalysisControl:
     def __call_detect_lois(w, m):
         print('start detect lois')
 
-        m.cell.structure.detect_lois(timepoint=m.parameters.get_parameter('loi.detect.timepoint').get_value(),
+        m.cell.structure.detect_lois(frame=m.parameters.get_parameter('loi.detect.frame').get_value(),
                                      persistence=m.parameters.get_parameter('loi.detect.persistence').get_value(),
                                      threshold_distance=m.parameters.get_parameter(
                                          'loi.detect.threshold_distance').get_value(),
@@ -130,8 +130,8 @@ class LOIAnalysisControl:
         self.__loi_analysis_widget.btn_detect_lois.clicked.connect(self.on_btn_detect_lois)
         self.__loi_analysis_widget.btn_store_lois.clicked.connect(self.on_btn_store_lois)
 
-        self.__main_control.model.parameters.get_parameter(name='loi.detect.timepoint').connect(
-            self.__loi_analysis_widget.sb_detect_loi_timepoint)
+        self.__main_control.model.parameters.get_parameter(name='loi.detect.frame').connect(
+            self.__loi_analysis_widget.sb_detect_loi_frame)
         self.__main_control.model.parameters.get_parameter(name='loi.detect.persistence').connect(
             self.__loi_analysis_widget.sb_detect_loi_persistence)
         self.__main_control.model.parameters.get_parameter(name='loi.detect.threshold_distance').connect(

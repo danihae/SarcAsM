@@ -95,7 +95,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_max').set_value(99.8)
 
-        self.__parameters.get_parameter(name='structure.timepoints').set_value('')
+        self.__parameters.get_parameter(name='structure.frames').set_value('')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
 
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.1)
@@ -129,7 +129,7 @@ class ApplicationModel:
         # endregion
 
         # region roi parameters
-        self.__parameters.get_parameter(name='loi.detect.timepoint').set_value(0)
+        self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
         self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
         self.__parameters.get_parameter(name='loi.detect.score_threshold').set_value(10000.0)
@@ -211,7 +211,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.timepoints')
+        self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
 
         self.__parameters.set_parameter(name='structure.z_band_analysis.threshold')
@@ -245,7 +245,7 @@ class ApplicationModel:
         # endregion
 
         # region roi parameters
-        self.__parameters.set_parameter(name='loi.detect.timepoint')
+        self.__parameters.set_parameter(name='loi.detect.frame')
         self.__parameters.set_parameter(name='loi.detect.persistence')
         self.__parameters.set_parameter(name='loi.detect.threshold_distance')
         self.__parameters.set_parameter(name='loi.detect.score_threshold')
