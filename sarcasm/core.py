@@ -28,7 +28,8 @@ class SarcAsM:
     use_gui : bool, optional
         Indicates if SarcAsM is used through a GUI. Defaults to False.
     device : torch.device, optional
-        Device on which to run Pytorch computations. Defaults to 'auto', which selects CUDA or MPS device if available.
+        Device on which to run Pytorch computations.
+        Defaults to 'auto', which selects CUDA or MPS device if available, else CPU.
     **info : dict
         Additional metadata for analysis as kwargs (e.g. cell_line='wt').
 

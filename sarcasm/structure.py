@@ -2038,6 +2038,9 @@ class Structure:
             return result
 
         # Process image in patches with overlap
+        if image.shape[0] <= patch_size and image.shape[1] <= patch_size:
+            return process_patch(image_torch).view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
+
         output = torch.zeros(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1], dtype=dtype, device=device)
         for i in range(0, image.shape[0], patch_size - 2 * margin):
             for j in range(0, image.shape[1], patch_size - 2 * margin):
@@ -2060,7 +2063,6 @@ class Structure:
                 output[:, :, start_i:end_i, start_j:end_j] = patch_result[:, :, patch_start_i:patch_end_i,
                                                              patch_start_j:patch_end_j]
 
-        # Reshape
         return output.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
 
     @staticmethod
