@@ -185,21 +185,21 @@ class ApplicationControl:
         return file_name, scan_line
 
     def init_zband_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.folder + 'sarcomeres.tif'):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomeres):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             # load sarcomere Z-band file into unet stack
-            tmp = tifffile.imread(self.model.cell.folder + 'sarcomeres.tif').astype('uint8')
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, )
+            tmp = tifffile.imread(self.model.cell.file_sarcomeres).astype('uint8')
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
 
     def init_cell_area_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.folder + 'cell_mask.tif'):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
             # load cell mask file into unet stack
-            tmp = tifffile.imread(self.model.cell.folder + 'cell_mask.tif').astype('uint8')
+            tmp = tifffile.imread(self.model.cell.file_cell_mask).astype('uint8')
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
         pass
 

@@ -181,8 +181,8 @@ class BatchProcessingControl:
         sarc_obj.structure.analyze_sarcomere_length_orient(
             frames=model.parameters.get_parameter('loi.detect.frame').get_value(),
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
@@ -339,8 +339,8 @@ class BatchProcessingControl:
         sarc_obj.structure.analyze_sarcomere_length_orient(
             frames=frames,
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()

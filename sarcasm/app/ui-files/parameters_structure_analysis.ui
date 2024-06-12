@@ -368,14 +368,14 @@
          <string>Minor axis width of single wavelets</string>
         </property>
         <property name="text">
-         <string>Sigma (minor axis) [µm]</string>
+         <string>Minor axis [µm]</string>
         </property>
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_wavelet_sigma">
+       <widget class="QDoubleSpinBox" name="dsb_wavelet_minor">
         <property name="toolTip">
-         <string>Minor axis width of single wavelets</string>
+         <string>Minor axis length of single wavelets</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -384,17 +384,17 @@
          <double>100000000.000000000000000</double>
         </property>
         <property name="value">
-         <double>0.150000000000000</double>
+         <double>0.30000000000000</double>
         </property>
        </widget>
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="label_22">
         <property name="toolTip">
-         <string>Major axis width of single wavelets</string>
+         <string>Major axis length of single wavelets</string>
         </property>
         <property name="text">
-         <string>Width (major axis) [µm]</string>
+         <string>Major axis length [µm]</string>
         </property>
        </widget>
       </item>
@@ -407,7 +407,7 @@
          <double>10000000000.000000000000000</double>
         </property>
         <property name="value">
-         <double>0.500000000000000</double>
+         <double>1.000000000000000</double>
         </property>
        </widget>
       </item>

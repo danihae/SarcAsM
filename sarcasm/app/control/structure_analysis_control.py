@@ -176,8 +176,8 @@ class StructureAnalysisControl:
         call_lambda = lambda w, m: m.cell.structure.analyze_sarcomere_length_orient(
             frames=m.parameters.get_parameter('structure.frames').get_value(),
             size=m.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=m.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=m.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=m.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=m.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 m.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 m.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
@@ -369,8 +369,8 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
         parameters.get_parameter(name='structure.wavelet.filter_size').connect(widget.dsb_wavelet_filter_size)
-        parameters.get_parameter(name='structure.wavelet.sigma').connect(widget.dsb_wavelet_sigma)
-        parameters.get_parameter(name='structure.wavelet.width').connect(widget.dsb_wavelet_width)
+        parameters.get_parameter(name='structure.wavelet.minor').connect(widget.dsb_wavelet_minor)
+        parameters.get_parameter(name='structure.wavelet.major').connect(widget.dsb_wavelet_major)
         parameters.get_parameter(name='structure.wavelet.length_limit_lower').connect(widget.dsb_wavelet_len_lims_min)
         parameters.get_parameter(name='structure.wavelet.length_limit_upper').connect(widget.dsb_wavelet_len_lims_max)
         parameters.get_parameter(name='structure.wavelet.length_step').connect(widget.dsb_wavelet_len_step)
