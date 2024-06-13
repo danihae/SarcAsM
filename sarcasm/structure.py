@@ -278,7 +278,7 @@ class Structure:
 
     def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
                         min_length: float = 0.5, end_radius: float = 0.75, theta_phi_min: float = 0.6,
-                        d_max: float = 5.0, d_min: float = 0.25) -> None:
+                        d_max: float = 4.0, d_min: float = 0.25) -> None:
         """
         Segment and analyze sarcomere z-bands.
 
@@ -307,9 +307,14 @@ class Structure:
         if frames == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             imgs_raw = self.read_imgs()
+            list_frames = list(range(len(imgs_raw)))
         elif isinstance(frames, int) or isinstance(frames, list) or type(frames) is np.ndarray:
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
             imgs_raw = self.read_imgs(frame=frames)
+            if isinstance(frames, int):
+                list_frames = [frames]
+            else:
+                list_frames = list(frames)
         else:
             raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
@@ -317,12 +322,15 @@ class Structure:
             imgs_raw = np.expand_dims(imgs_raw, 0)
         n_imgs = len(imgs)
 
-        # create empty arrays
-        z_length, z_intensity, z_straightness, z_ratio_intensity, z_orientation = ([] for _ in range(5))
-        z_lat_neighbors, z_lat_alignment, z_lat_dist = ([] for _ in range(3))
-        z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = ([] for _ in range(3))
+        # create empty lists
+        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
+        z_length, z_intensity, z_straightness, z_ratio_intensity, z_orientation = (none_lists() for _ in range(5))
+        z_lat_neighbors, z_lat_alignment, z_lat_dist = (none_lists() for _ in range(3))
+        z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = (none_lists() for _ in range(3))
+        z_labels, z_ends, z_links, z_lat_groups = (none_lists() for _ in range(4))
 
-        nan_arrays = lambda: np.full(n_imgs, np.nan)
+        # create empty arrays
+        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
         z_length_mean, z_length_std, z_length_max, z_length_sum = (nan_arrays() for _ in range(4))
         z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(2))
         z_straightness_mean, z_straightness_std = (nan_arrays() for _ in range(2))
@@ -333,11 +341,10 @@ class Structure:
         z_lat_size_groups_mean, z_lat_size_groups_std = (nan_arrays() for _ in range(2))
         z_lat_length_groups_mean, z_lat_length_groups_std = (nan_arrays(), nan_arrays())
         z_lat_alignment_groups_mean, z_lat_alignment_groups_std = (nan_arrays() for _ in range(2))
-        z_labels, z_ends, z_links, z_lat_groups = ([] for _ in range(4))
 
         # iterate images
         print('\nStarting Z-band analysis...')
-        for i, img_i in enumerate(tqdm(imgs)):
+        for i, (frame_i, img_i) in tqdm(enumerate(zip(list_frames, imgs)), total=n_imgs):
             # segment z-bands
             labels_i, labels_skel_i = self.segment_z_bands(img_i)
 
@@ -355,39 +362,45 @@ class Structure:
                 z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
             ) = z_band_features
 
-            # write in arrays
-            z_length.append(z_length_i)
-            z_intensity.append(z_intensity_i)
-            z_straightness.append(z_straightness_i)
-            z_lat_alignment.append(z_lat_alignment_i)
-            z_lat_neighbors.append(z_lat_neighbors_i)
-            z_orientation.append(orientation_i)
-            z_lat_dist.append(z_lat_dist_i)
-            z_lat_size_groups.append(z_lat_size_groups_i)
-            z_lat_length_groups.append(z_lat_length_groups_i)
-            z_lat_alignment_groups.append(z_lat_alignment_groups_i)
-            z_ratio_intensity[i], z_avg_intensity[i], z_oop[i] = z_ratio_intensity_i, z_avg_intensity_i, z_oop_i
+            # fill lists and arrays
+            z_length[frame_i] = z_length_i
+            z_intensity[frame_i] = z_intensity_i
+            z_straightness[frame_i] = z_straightness_i
+            z_lat_alignment[frame_i] = z_lat_alignment_i
+            z_lat_neighbors[frame_i] = z_lat_neighbors_i
+            z_orientation[frame_i] = orientation_i
+            z_lat_dist[frame_i] = z_lat_dist_i
+            z_lat_size_groups[frame_i] = z_lat_size_groups_i
+            z_lat_length_groups[frame_i] = z_lat_length_groups_i
+            z_lat_alignment_groups[frame_i] = z_lat_alignment_groups_i
+            z_ratio_intensity[frame_i], z_avg_intensity[frame_i], z_oop[
+                frame_i] = z_ratio_intensity_i, z_avg_intensity_i, z_oop_i
 
-            z_labels.append(sparse.coo_matrix(labels_i))
-            z_links.append(z_links_i)
-            z_ends.append(z_ends_i)
-            z_lat_groups.append(z_lat_groups_i)
+            z_labels[frame_i] = sparse.coo_matrix(labels_i)
+            z_links[frame_i] = z_links_i
+            z_ends[frame_i] = z_ends_i
+            z_lat_groups[frame_i] = z_lat_groups_i
 
             # calculate mean and std of z-band features
             if len(z_length_i) > 0:
-                z_length_mean[i], z_length_std[i], z_length_max[i], z_length_sum[i] = np.mean(z_length_i), np.std(
+                z_length_mean[frame_i], z_length_std[frame_i], z_length_max[frame_i], z_length_sum[frame_i] = np.mean(
+                    z_length_i), np.std(
                     z_length_i), np.max(z_length_i), np.sum(z_length_i)
-            z_intensity_mean[i], z_intensity_std[i] = np.mean(z_intensity_i), np.std(z_intensity_i)
-            z_straightness_mean[i], z_straightness_std[i] = np.mean(z_straightness_i), np.std(z_straightness_i)
-            z_lat_neighbors_mean[i], z_lat_neighbors_std[i] = np.mean(z_lat_neighbors_i), np.std(z_lat_neighbors_i)
-            z_lat_alignment_mean[i], z_lat_alignment_std[i] = np.nanmean(z_lat_alignment_i), np.nanstd(
+            z_intensity_mean[frame_i], z_intensity_std[frame_i] = np.mean(z_intensity_i), np.std(z_intensity_i)
+            z_straightness_mean[frame_i], z_straightness_std[frame_i] = np.mean(z_straightness_i), np.std(
+                z_straightness_i)
+            z_lat_neighbors_mean[frame_i], z_lat_neighbors_std[frame_i] = np.mean(z_lat_neighbors_i), np.std(
+                z_lat_neighbors_i)
+            z_lat_alignment_mean[frame_i], z_lat_alignment_std[frame_i] = np.nanmean(z_lat_alignment_i), np.nanstd(
                 z_lat_alignment_i)
-            z_lat_dist_mean[i], z_lat_dist_std[i] = np.nanmean(z_lat_dist_i), np.nanstd(z_lat_dist_i)
-            z_lat_size_groups_mean[i], z_lat_size_groups_std[i] = np.nanmean(z_lat_size_groups_i), np.nanstd(
+            z_lat_dist_mean[frame_i], z_lat_dist_std[frame_i] = np.nanmean(z_lat_dist_i), np.nanstd(z_lat_dist_i)
+            z_lat_size_groups_mean[frame_i], z_lat_size_groups_std[frame_i] = np.nanmean(
+                z_lat_size_groups_i), np.nanstd(
                 z_lat_size_groups_i)
-            z_lat_length_groups_mean[i], z_lat_length_groups_std[i] = np.nanmean(z_lat_length_groups_i), np.nanstd(
+            z_lat_length_groups_mean[frame_i], z_lat_length_groups_std[frame_i] = np.nanmean(
+                z_lat_length_groups_i), np.nanstd(
                 z_lat_length_groups_i)
-            z_lat_alignment_groups_mean[i], z_lat_alignment_groups_std[i] = np.nanmean(
+            z_lat_alignment_groups_mean[frame_i], z_lat_alignment_groups_std[frame_i] = np.nanmean(
                 z_lat_alignment_groups_i), np.nanstd(z_lat_alignment_groups_i)
 
         # create and save dictionary for cell structure
@@ -481,12 +494,15 @@ class Structure:
                                           f"length {len_lims[1]}")
         assert self.sarc_obj.file_sarcomeres is not None, "Z-band mask not found. Please run predict_z_bands first."
 
-        if isinstance(frames, int) or isinstance(frames, list) or isinstance(frames, np.ndarray):
+        if frames == 'all':
+            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
+            list_frames = list(range(len(imgs)))
+        elif isinstance(frames, int) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
             if isinstance(frames, int):
-                frames = [frames]
-        elif frames == 'all':
-            imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
+                list_frames = [frames]
+            else:
+                list_frames = list(frames)
         else:
             raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
@@ -501,19 +517,16 @@ class Structure:
                 dtype = torch.float16
 
         # create empty arrays
+        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
+        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
         (points, midline_length_points, midline_id_points, sarcomere_length_points,
-         sarcomere_orientation_points, max_score_points, sarcomere_masks) = [], [], [], [], [], [], []
+         sarcomere_orientation_points, max_score_points) = (none_lists() for _ in range(6))
+        sarcomere_masks = np.zeros((self.sarc_obj.metadata['frames'], *self.sarc_obj.metadata['size']), dtype=bool)
         (sarcomere_length_mean, sarcomere_length_std, sarcomere_length_median,
-         weighted_sarcomere_length_variability) = (np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan,
-                                                   np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan)
-        sarcomere_orientation_mean, sarcomere_orientation_std = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        oop, mean_angle, sarcomere_area, sarcomere_area_ratio = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, \
-                                                                np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        score_thresholds = np.zeros(n_imgs) * np.nan
-        if save_all:
-            wavelet_sarcomere_length, wavelet_sarcomere_orientation, wavelet_max_score = [], [], []
-        else:
-            wavelet_sarcomere_length, wavelet_sarcomere_orientation, wavelet_max_score = None, None, None
+         weighted_sarcomere_length_variability) = (nan_arrays() for _ in range(4))
+        sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
+        oop, mean_angle, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(5))
+        wavelet_sarcomere_length, wavelet_sarcomere_orientation, wavelet_max_score = (none_lists() for _ in range(3))
 
         # create filter bank
         bank, len_range, orient_range = self.create_wavelet_bank(pixelsize=self.sarc_obj.metadata['pixelsize'],
@@ -526,7 +539,7 @@ class Structure:
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, img_i in enumerate(tqdm(imgs)):
+        for i, (frame_i, img_i) in tqdm(enumerate(zip(list_frames, imgs)), total=n_imgs):
             result_i = self.convolve_image_with_bank(img_i, bank, device=self.sarc_obj.device, gating=gating,
                                                      dtype=dtype, save_memory=save_memory, patch_size=patch_size)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
@@ -566,25 +579,25 @@ class Structure:
             weighted_sarcomere_length_variability[i] = weighted_std
 
             # write in list
-            points.append(points_i)
-            midline_length_points.append(midline_length_points_i * self.sarc_obj.metadata['pixelsize'] if
-                                         any(midline_id_points_i) else [])
-            midline_id_points.append(midline_id_points_i)
-            sarcomere_length_points.append(sarcomere_length_points_i)
-            sarcomere_orientation_points.append(sarcomere_orientation_points_i)
-            max_score_points.append(max_score_points_i)
-            score_thresholds[i] = score_threshold_i
+            points[frame_i] = points_i
+            midline_length_points[frame_i] = midline_length_points_i * self.sarc_obj.metadata['pixelsize'] if any(
+                midline_id_points_i) else []
+            midline_id_points[frame_i] = midline_id_points_i
+            sarcomere_length_points[frame_i] = sarcomere_length_points_i
+            sarcomere_orientation_points[frame_i] = sarcomere_orientation_points_i
+            max_score_points[frame_i] = max_score_points_i
+            score_thresholds[frame_i] = score_threshold_i
 
             # calculate mean and std of sarcomere length and orientation
-            sarcomere_length_mean[i], sarcomere_length_std[i], sarcomere_length_median[i] = np.mean(
+            sarcomere_length_mean[frame_i], sarcomere_length_std[frame_i], sarcomere_length_median[frame_i] = np.mean(
                 sarcomere_length_points_i), np.std(
                 sarcomere_length_points_i), np.median(sarcomere_length_points_i)
-            sarcomere_orientation_mean[i], sarcomere_orientation_std[i] = np.mean(
+            sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = np.mean(
                 sarcomere_orientation_points_i), np.std(sarcomere_orientation_points_i)
 
             # orientation order parameter
             if len(sarcomere_orientation_points_i) > 0:
-                oop[i], mean_angle[i] = Utils.analyze_orientations(sarcomere_orientation_points_i)
+                oop[frame_i], mean_angle[frame_i] = Utils.analyze_orientations(sarcomere_orientation_points_i)
 
             # calculate sarcomere area
             if len(points_i) > 0:
@@ -596,14 +609,14 @@ class Structure:
                                              dilation_radius=dilation_radius)
             else:
                 mask_i = np.zeros(self.sarc_obj.metadata['size'], dtype='bool')
-            sarcomere_masks.append(mask_i)
-            sarcomere_area[i] = np.sum(mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
+            sarcomere_masks[frame_i] = mask_i
+            sarcomere_area[frame_i] = np.sum(mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
             if 'cell_area' in self.data.keys():
-                sarcomere_area_ratio[i] = sarcomere_area[i] / self.data['cell_area'][i]
+                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
             else:
                 area = self.sarc_obj.metadata['size'][0] * self.sarc_obj.metadata['size'][1] * self.sarc_obj.metadata[
                     'pixelsize'] ** 2
-                sarcomere_area_ratio[i] = sarcomere_area[i] / area
+                sarcomere_area_ratio[frame_i] = sarcomere_area[i] / area
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
@@ -611,7 +624,7 @@ class Structure:
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
                         'params.kernel': kernel,
-                        'params.wavelet_frames': frames, 'params.len_range': len_range[1:-2],
+                        'params.wavelet_frames': list_frames, 'params.len_range': len_range[1:-2],
                         'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
@@ -655,12 +668,10 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        wavelet_frames = self.data['params.wavelet_frames']
-        if isinstance(frame, int):
-            _frame = wavelet_frames[frame]
-        elif isinstance(frame, str) and frame == 'all':
-            _frame = frame
-        z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=_frame)
+        assert frame in self.data['params.z_frames'], f'Z-bands of frame {frame} not yet analyzed.'
+        assert frame in self.data['params.wavelet_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
+
+        z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frame)
         points_t = self.data['points'][frame]
         sarcomere_orientation_points_t = self.data['sarcomere_orientation_points'][frame]
         sarcomere_length_points_t = self.data['sarcomere_length_points'][frame] / self.sarc_obj.metadata[
@@ -704,7 +715,7 @@ class Structure:
         return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
-                           n_seeds: int = 500, persistence: int = 3, threshold_distance: float = 0.3,
+                           n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.3,
                            n_min: int = 5) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -725,40 +736,46 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        if frames is None:
+        if frames is not None:
+            assert set(frames).issubset(
+                self.data['params.wavelet_frames']), f'Run analyze_sarcomere_length_orient first for frames {frames}.'
+        elif frames is None:
             if 'params.wavelet_frames' in self.data.keys():
                 frames = self.data['params.wavelet_frames']
             else:
                 raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+
         if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
-            frames = np.arange(0, n_imgs)
+            list_frames = list(range(n_imgs))
         elif isinstance(frames, int):
             n_imgs = 1
-            frames = [frames]
+            list_frames = [frames]
         elif isinstance(frames, list) or type(frames) is np.ndarray:
             n_imgs = len(frames)
+            list_frames = list(frames)
         else:
             raise ValueError('Selection of frames not valid!')
 
-        points = [self.data['points'][t] for t in frames]
-        sarcomere_length_points = [self.data['sarcomere_length_points'][t] for t in frames]
-        sarcomere_orientation_points = [self.data['sarcomere_orientation_points'][t] for t in frames]
-        midline_length_points = [self.data['midline_length_points'][t] for t in frames]
-        max_score_points = [self.data['max_score_points'][t] for t in frames]
+        points = [self.data['points'][frame] for frame in list_frames]
+        sarcomere_length_points = [self.data['sarcomere_length_points'][frame] for frame in list_frames]
+        sarcomere_orientation_points = [self.data['sarcomere_orientation_points'][frame] for frame in list_frames]
+        midline_length_points = [self.data['midline_length_points'][frame] for frame in list_frames]
+        max_score_points = [self.data['max_score_points'][frame] for frame in list_frames]
 
         # create empty arrays
-        length_mean, length_median, length_std, length_max = np.zeros(n_imgs) * np.nan, np.zeros(
-            n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        msc_mean, msc_median, msc_std = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        myof_lines, lengths, msc = [], [], []
+        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
+        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
+        length_mean, length_median, length_std, length_max = (nan_arrays() for _ in range(4))
+        msc_mean, msc_median, msc_std = (nan_arrays() for _ in range(3))
+        myof_lines, lengths, msc = (none_lists() for _ in range(3))
 
         # iterate frames
         print('\nStarting myofibril line analysis...')
-        for i, (points_i, sarcomere_length_points_i, sarcomere_orientation_points_i, max_score_points_i,
+        for i, (frame_i, points_i, sarcomere_length_points_i, sarcomere_orientation_points_i, max_score_points_i,
                 midline_length_points_i) in enumerate(
             tqdm(
-                zip(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
+                zip(list_frames, points, sarcomere_length_points, sarcomere_orientation_points, max_score_points,
                     midline_length_points),
                 total=len(points))):
             if len(np.asarray(points_i).T) > 0:
@@ -773,14 +790,14 @@ class Structure:
                 lengths_i = line_data_i['line_features']['length_lines']
                 msc_i = line_data_i['line_features']['msc_lines']
                 if len(lengths_i) > 0:
-                    length_mean[i], length_median[i], length_std[i], length_max[i] = np.mean(lengths_i), np.median(
+                    length_mean[frame_i], length_median[frame_i], length_std[frame_i], length_max[frame_i] = np.mean(
+                        lengths_i), np.median(
                         lengths_i), np.std(lengths_i), np.max(lengths_i)
-                    msc_mean[i], msc_median[i], msc_std[i] = np.mean(msc_i), np.median(msc_i), np.std(msc_i)
-            else:
-                lines_i, lengths_i, msc_i = [], [], []
-            myof_lines.append(lines_i)
-            lengths.append(lengths_i)
-            msc.append(msc_i)
+                    msc_mean[frame_i], msc_median[frame_i], msc_std[frame_i] = np.mean(msc_i), np.median(msc_i), np.std(
+                        msc_i)
+                myof_lines[frame_i] = lines_i
+                lengths[frame_i] = lengths_i
+                msc[frame_i] = msc_i
 
         # update structure dictionary
         myofibril_data = {'myof_length_mean': length_mean, 'myof_length_median': length_median,
@@ -788,7 +805,7 @@ class Structure:
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_msc': msc, 'myof_msc_mean': msc_mean, 'myof_msc_median': msc_median,
                           'myof_msc_std': msc_std, 'params.n_seeds': n_seeds, 'params.persistence': persistence,
-                          'params.threshold_distance': threshold_distance, 'params.myof_frames': frames}
+                          'params.threshold_distance': threshold_distance, 'params.myof_frames': list_frames}
         self.data.update(myofibril_data)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -824,76 +841,74 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
-        if frames is None:
+        if frames is not None:
+            assert set(frames).issubset(
+                self.data['params.wavelet_frames']), f'Run analyze_sarcomere_length_orient first for frames {frames}.'
+        elif frames is None:
             if 'params.wavelet_frames' in self.data.keys():
                 frames = self.data['params.wavelet_frames']
             else:
                 raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+
         if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
-            frames = np.arange(0, n_imgs)
+            list_frames = list(range(n_imgs))
         elif isinstance(frames, int):
             n_imgs = 1
-            frames = [frames]
+            list_frames = [frames]
         elif isinstance(frames, list) or type(frames) is np.ndarray:
             n_imgs = len(frames)
+            list_frames = list(frames)
         else:
             raise ValueError('Selection of frames not valid!')
 
-        points = [np.asarray(self.data['points'][t]) * self.sarc_obj.metadata['pixelsize'] for t in frames]
-        sarcomere_length_points = [np.asarray(self.data['sarcomere_length_points'][t]) for t in frames]
-        sarcomere_orientation_points = [np.asarray(self.data['sarcomere_orientation_points'][t]) for t in frames]
-        max_score_points = [np.asarray(self.data['max_score_points'][t]) for t in frames]
-        midline_id_points = [np.asarray(self.data['midline_id_points'][t]) for t in frames]
+        points = [np.asarray(self.data['points'][t]) * self.sarc_obj.metadata['pixelsize'] for t in list_frames]
+        sarcomere_length_points = [np.asarray(self.data['sarcomere_length_points'][t]) for t in list_frames]
+        sarcomere_orientation_points = [np.asarray(self.data['sarcomere_orientation_points'][t]) for t in list_frames]
+        max_score_points = [np.asarray(self.data['max_score_points'][t]) for t in list_frames]
+        midline_id_points = [np.asarray(self.data['midline_id_points'][t]) for t in list_frames]
 
         # create empty arrays
-        n_domains, domain_area_mean, domain_area_median, domain_area_std = np.zeros(
-            n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        domain_slen_mean, domain_slen_median, domain_slen_std = np.zeros(n_imgs) * np.nan, np.zeros(
-            n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
-        domain_oop_mean, domain_oop_median, domain_oop_std = np.zeros(n_imgs) * np.nan, np.zeros(
-            n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
+        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
+        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
+        n_domains, domain_area_mean, domain_area_median, domain_area_std = (nan_arrays() for _ in range(4))
+        domain_slen_mean, domain_slen_median, domain_slen_std = (nan_arrays() for _ in range(3))
+        domain_oop_mean, domain_oop_median, domain_oop_std = (nan_arrays() for _ in range(3))
 
         (domains, domain_area, domain_slen, domain_slen_std,
-         domain_oop, domain_orientation, domain_mask) = [], [], [], [], [], [], []
+         domain_oop, domain_orientation, domain_mask) = (none_lists() for _ in range(7))
 
         # iterate frames
         print('\nStarting sarcomere domain analysis...')
-        for t, (points_t, sarcomere_length_points_t, sarcomere_orientation_points_t,
+        for i, (frame_i, points_i, sarcomere_length_points_i, sarcomere_orientation_points_i,
                 max_score_points_t, midline_id_points_i) in enumerate(
             tqdm(
-                zip(points, sarcomere_length_points, sarcomere_orientation_points, max_score_points, midline_id_points),
+                zip(list_frames, points, sarcomere_length_points, sarcomere_orientation_points, max_score_points, midline_id_points),
                 total=len(points))):
-            cluster_data_t = self.cluster_sarcomeres(points_t, sarcomere_length_points_t,
-                                                     sarcomere_orientation_points_t,
+            cluster_data_t = self.cluster_sarcomeres(points_i, sarcomere_length_points_i,
+                                                     sarcomere_orientation_points_i,
                                                      midline_id_points_i, pixelsize=self.sarc_obj.metadata['pixelsize'],
                                                      size=self.sarc_obj.metadata['size'],
                                                      dist_threshold_ends=dist_threshold_ends,
                                                      dist_threshold_midline_points=dist_threshold_midline_points,
                                                      louvain_resolution=louvain_resolution, louvain_seed=louvain_seed,
                                                      area_min=area_min, dilation_radius=dilation_radius)
-            (n_domains[t], domains_t, area_domains_t, sarcomere_length_mean_domains_t, sarcomere_length_std_domains_t,
-             sarcomere_oop_domains_t, sarcomere_orientation_domains_t, domain_mask_t) = cluster_data_t
+            (n_domains[frame_i], domains[frame_i], domain_area[frame_i], domain_slen[frame_i], domain_slen_std[frame_i],
+             domain_oop[frame_i], domain_orientation[frame_i], domain_mask_i) = cluster_data_t
 
             # write single domain / cluster in lists
-            domains.append(domains_t)
-            domain_area.append(area_domains_t)
-            domain_slen.append(sarcomere_length_mean_domains_t)
-            domain_slen_std.append(sarcomere_length_std_domains_t)
-            domain_oop.append(sarcomere_oop_domains_t)
-            domain_orientation.append(sarcomere_orientation_domains_t)
-            domain_mask.append(sparse.coo_matrix(domain_mask_t))
+            domain_mask[frame_i] = sparse.coo_matrix(domain_mask_i)
 
             # calculate mean, median and std of domains
-            domain_area_mean[t], domain_area_median[t], domain_area_std[t] = np.mean(area_domains_t), np.median(
-                area_domains_t), np.std(area_domains_t)
-            domain_slen_mean[t], domain_slen_median[t], domain_slen_std[t] = (np.mean(sarcomere_length_mean_domains_t),
+            domain_area_mean[frame_i], domain_area_median[frame_i], domain_area_std[frame_i] = np.mean(domain_area[frame_i]), np.median(
+                domain_area[frame_i]), np.std(domain_area[frame_i])
+            domain_slen_mean[frame_i], domain_slen_median[frame_i], domain_slen_std[frame_i] = (np.mean(domain_slen[frame_i]),
                                                                               np.median(
-                                                                                  sarcomere_length_mean_domains_t),
-                                                                              np.std(sarcomere_length_mean_domains_t))
-            domain_oop_mean[t], domain_oop_median[t], domain_oop_std[t] = (np.mean(sarcomere_oop_domains_t),
-                                                                           np.median(sarcomere_oop_domains_t),
-                                                                           np.std(sarcomere_oop_domains_t))
+                                                                                  domain_slen[frame_i]),
+                                                                              np.std(domain_slen[frame_i]))
+            domain_oop_mean[frame_i], domain_oop_median[frame_i], domain_oop_std[frame_i] = (np.mean(domain_oop[frame_i]),
+                                                                           np.median(domain_oop[frame_i]),
+                                                                           np.std(domain_oop[frame_i]))
 
         # update structure dictionary
         domain_data = {'n_domains': n_domains, 'domains': domains,
@@ -1296,6 +1311,7 @@ class Structure:
         """
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
+        assert frame in self.data['params.wavelet_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         # Grow LOIs based on seed points and specified parameters
         self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,
@@ -2320,7 +2336,8 @@ class Structure:
 
             def cosine_similarity(i, j):
                 orient_i, orient_j = sarcomere_orientation_points[i], sarcomere_orientation_points[j]
-                return round(np.cos(orient_i - orient_j) ** 2, 4)  # round to avoid issues with floating point comparisons
+                return round(np.cos(orient_i - orient_j) ** 2,
+                             4)  # round to avoid issues with floating point comparisons
 
             # Add edges to the graph based on pairs of ends
 

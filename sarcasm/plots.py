@@ -496,6 +496,7 @@ class Plots:
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
+        assert frame in sarc_obj.structure.data['params.z_frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.structure.data['z_labels'][frame].toarray()
         if shuffle:
@@ -561,6 +562,7 @@ class Plots:
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
+        assert frame in sarc_obj.structure.data['params.z_frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.structure.data['z_labels'][frame].toarray()
 
@@ -947,6 +949,7 @@ class Plots:
         """
         assert 'points' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                             'run analyze_sarcomere_length_orient first.')
+        assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
 
         points = sarc_obj.structure.data['points'][frame]
         sarcomere_orientation_points = sarc_obj.structure.data['sarcomere_orientation_points'][frame]
@@ -954,16 +957,8 @@ class Plots:
             'pixelsize']
         orientation_vectors = np.asarray([np.cos(sarcomere_orientation_points), np.sin(sarcomere_orientation_points)])
 
-        _frames = sarc_obj.structure.data['params.wavelet_frames']
-        if isinstance(_frames, int) or isinstance(_frames, list) or isinstance(_frames, np.ndarray):
-            _frame = _frames[frame]
-        elif _frames == 'all':
-            _frame = frame
-        else:
-            raise ValueError('frames argument not valid')
-
         Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
-                           frame=_frame)
+                           frame=frame)
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
         ax.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
@@ -998,11 +993,7 @@ class Plots:
             linewidths *= 10
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            if _frames == 'all':
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
-            else:
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
-                                   frame=_frames[frame])
+            Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
             ax_inset.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points,
@@ -1028,66 +1019,6 @@ class Plots:
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
-
-    @staticmethod
-    def plot_sarcomere_domains_points(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True,
-                                      markersize=1,
-                                      plot_raw_data=False, show_oop=True, title=None):
-        """
-        Plots the sarcomere domains of the sarcomere object.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
-        frame : int, optional
-            The frame to plot. Defaults to 0.
-        scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
-        markersize : int, optional
-            The size of the markers. Defaults to 1.
-        plot_raw_data : bool, optional
-            Whether to plot the raw data. Defaults to False.
-        show_oop : bool, optional
-            Whether to show the out of plane component. Defaults to True.
-        title : str, optional
-            The title for the plot. Defaults to None.
-
-        """
-        assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
-                                                               'Run analyze_sarcomere_domains first.')
-
-        n_domains = sarc_obj.structure.data['n_domains'][frame]
-        domains = sarc_obj.structure.data['domains'][frame]
-        domain_oop = sarc_obj.structure.data['domain_oop'][frame]
-        points = sarc_obj.structure.data['points'][frame]
-
-        _frames = sarc_obj.structure.data['params.wavelet_frames']
-        if _frames == 'all':
-            frame_plot = frame
-        else:
-            frame_plot = _frames[frame]
-        if plot_raw_data:
-            Plots.plot_image(ax, sarc_obj, frame=frame_plot)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, invert=True, frame=frame_plot)
-
-        cm = mpl.colormaps['jet'].resampled(n_domains)
-        for i, domain_i in enumerate(domains):
-            points_i = points[:, list(domain_i)].T
-            ax.scatter(points_i.T[1], points_i.T[0],
-                       color=cm(i), s=markersize)
-            if show_oop:
-                ax.text((np.mean(points_i.T[1]) + 3),
-                        (np.mean(points_i.T[0]) + 8),
-                        s=np.round(domain_oop[i], 3), fontsize=PlotUtils.fontsize, weight='bold')
-        if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
-                                   font_properties={'size': PlotUtils.fontsize - 1}))
-        ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
@@ -1117,19 +1048,16 @@ class Plots:
         """
         assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
+        assert frame in sarc_obj.structure.data['params.domain_frames'], (f'Domains in frame {frame} are not yet '
+                                                                          f'analyzed.')
 
         domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray().astype(float)
         domain_mask[domain_mask == 0] = np.nan
 
-        _frames = sarc_obj.structure.data['params.wavelet_frames']
-        if _frames == 'all':
-            frame_plot = frame
-        else:
-            frame_plot = _frames[frame]
         if plot_raw_data:
-            Plots.plot_image(ax, sarc_obj, frame=frame_plot, scalebar=False)
+            Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False)
         else:
-            Plots.plot_z_bands(ax, sarc_obj, invert=True, frame=frame_plot, scalebar=False)
+            Plots.plot_z_bands(ax, sarc_obj, invert=True, frame=frame, scalebar=False)
 
         ax.imshow(domain_mask, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
 
@@ -1178,13 +1106,11 @@ class Plots:
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
+        assert frame in sarc_obj.structure.data['params.myof_frames'], f'Frame {frame} not yet analyzed.'
 
-        _frames = sarc_obj.structure.data['params.wavelet_frames']
         if show_z_bands:
-            if _frames == 'all':
-                Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, frame=frame)
-            else:
-                Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, frame=_frames[frame])
+            Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, frame=frame)
+
         lines = sarc_obj.structure.data['myof_lines'][frame]
         points = sarc_obj.structure.data['points'][frame]
         if scalebar:
@@ -1201,19 +1127,11 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            if _frames == 'all':
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
-            else:
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands,
-                                   frame=_frames[frame])
+            Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
 
             if show_z_bands:
-                if _frames == 'all':
-                    Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
-                else:
-                    Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=_frames[frame])
-            lines = sarc_obj.structure.data['myof_lines'][frame]
-            points = sarc_obj.structure.data['points'][frame]
+                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
+
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
