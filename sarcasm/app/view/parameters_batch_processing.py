@@ -83,10 +83,10 @@ class Ui_Form(object):
         self.label_7 = QtWidgets.QLabel(self.groupBox)
         self.label_7.setObjectName("label_7")
         self.formLayout.setWidget(6, QtWidgets.QFormLayout.LabelRole, self.label_7)
-        self.chk_calc_rois = QtWidgets.QCheckBox(self.groupBox)
-        self.chk_calc_rois.setText("")
-        self.chk_calc_rois.setObjectName("chk_calc_rois")
-        self.formLayout.setWidget(6, QtWidgets.QFormLayout.FieldRole, self.chk_calc_rois)
+        self.chk_calc_lois = QtWidgets.QCheckBox(self.groupBox)
+        self.chk_calc_lois.setText("")
+        self.chk_calc_lois.setObjectName("chk_calc_lois")
+        self.formLayout.setWidget(6, QtWidgets.QFormLayout.FieldRole, self.chk_calc_lois)
         self.gridLayout.addWidget(self.groupBox, 3, 0, 1, 2)
 
         self.retranslateUi(Form)
@@ -116,7 +116,7 @@ class Ui_Form(object):
         self.label_6.setText(_translate("Form", "Batch processing will use the parameters set in the different sections of the program, you can try for example different settings with a single image and if they are good enough for your use case, you can use the batch processing."))
         self.label_7.setToolTip(_translate("Form", "If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)"))
         self.label_7.setText(_translate("Form", "Calculate Requirements for LOIs for Motion"))
-        self.chk_calc_rois.setToolTip(_translate("Form", "If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)"))
+        self.chk_calc_lois.setToolTip(_translate("Form", "If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)"))
 
 
 if __name__ == "__main__":

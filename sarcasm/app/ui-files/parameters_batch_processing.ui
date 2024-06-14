@@ -183,7 +183,7 @@
        </widget>
       </item>
       <item row="6" column="1">
-       <widget class="QCheckBox" name="chk_calc_rois">
+       <widget class="QCheckBox" name="chk_calc_lois">
         <property name="toolTip">
          <string>If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)</string>
         </property>

@@ -3,6 +3,7 @@ import traceback
 from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
     QLineEdit, QWidget, QFileDialog, QMessageBox
 
+from sarcasm import export
 from sarcasm.export import MultiStructureAnalysis, MultiLOIAnalysis
 
 import numpy as np
@@ -113,12 +114,11 @@ class ExportPopup(QDialog):
 
             if len(self.__from_checkboxes_to_str_list(self.__group_metadata, self.__group_metadata_old)) != 0 or len(
                     self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
-                to_export_motion = export.get_motion_dict(motion_obj=self.__model.sarcomere,
-                                                          meta_keys=self.__from_checkboxes_to_str_list(
-                                                              self.__group_metadata,
-                                                              self.__group_metadata_old),
-                                                          roi_keys=self.__from_checkboxes_to_str_list(
-                                                              self.__group_motion))
+                to_export_motion = export.MultiLOIAnalysis.get_motion_dict(motion_obj=self.__model.sarcomere,
+                                                                           meta_keys=self.__from_checkboxes_to_str_list(
+                                                                               self.__group_metadata),
+                                                                           loi_keys=self.__from_checkboxes_to_str_list(
+                                                                               self.__group_motion))
                 print(to_export_motion)
                 self.__control.debug('exported following motion keys')
                 self.__control.debug(to_export_motion.__str__())

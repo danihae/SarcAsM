@@ -35,7 +35,7 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.force.override').connect(widget.chk_force_override)
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
-        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_rois)
+        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
 
         pass
 
@@ -226,10 +226,10 @@ class BatchProcessingControl:
                                            'loi.detect.distance_threshold_lois').get_value(),
                                        n_longest=model.parameters.get_parameter('loi.detect.n_longest').get_value(),
                                        linewidth=model.parameters.get_parameter('loi.detect.line_width').get_value())
-        rois = Utils.get_lois_of_cell(file)
-        for file, roi in rois:
+        lois = Utils.get_lois_of_cell(file)
+        for file, loi in lois:
             try:
-                motion_obj = Motion(file, roi)
+                motion_obj = Motion(file, loi)
                 self.__single_motion_loi_analysis(motion_obj, model)
                 pass
             except Exception as e:

@@ -115,7 +115,7 @@ class StructureAnalysisControl:
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=f'Z-bands detected and saved in {self.__main_control.model.cell.folder}',
-                                                   finished_action=self.__predict_finished,
+                                                   finished_action=self.__predict_z_bands_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -195,6 +195,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    finished_message='Finished wavelet analysis',
                                                    start_message='Start wavelet analysis',
+                                                   finished_action=self.__sarcomere_analysis_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -227,6 +228,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    start_message='Start myofibril analysis',
                                                    finished_message='Finished myofibril analysis',
+                                                   finished_action=self.__myofibril_analysis_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -397,11 +399,22 @@ class StructureAnalysisControl:
             widget.dsb_domain_analysis_distance_threshold)
         parameters.get_parameter(name='structure.domain.analysis.area_min').connect(widget.dsb_domain_analysis_area_min)
 
-    def __predict_finished(self):
-        self.__main_control.init_zband_stack()
+    def __predict_z_bands_finished(self):
+        self.__main_control.init_z_band_stack()
 
     def __predict_cell_area_finished(self):
         self.__main_control.init_cell_area_stack()
+
+    def __z_band_analysis_finished(self):
         pass
 
-    pass
+    def __sarcomere_analysis_finished(self):
+        self.__main_control.init_sarcomere_mask_stack()
+        self.__main_control.init_sarcomere_vector_stack()
+        self.__main_control.init_midline_points_stack()
+
+    def __myofibril_analysis_finished(self):
+        self.__main_control.init_myofibril_lines_stack()
+
+    def __domain_analysis_finished(self):
+        self.__main_control.init_sarcomere_domain_stack()

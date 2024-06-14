@@ -57,9 +57,9 @@ class ApplicationModel:
     def file_extension(self):
         return self.__file_extension
 
-    def init_cell(self, cell_file, correct_phase_leica):
+    def init_cell(self, cell_file):
         self.__cell_file_name = cell_file
-        self._cell = SarcAsM(cell_file, correct_phase_leica=correct_phase_leica, use_gui=True)
+        self._cell = SarcAsM(cell_file, use_gui=True)
 
     def init_sarcomere(self, loi_name):
         self.__sarcomere = Motion(self.__cell_file_name, loi_name=loi_name)
@@ -128,7 +128,7 @@ class ApplicationModel:
 
         # endregion
 
-        # region roi parameters
+        # region loi parameters
         self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
         self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
@@ -244,7 +244,7 @@ class ApplicationModel:
 
         # endregion
 
-        # region roi parameters
+        # region loi parameters
         self.__parameters.set_parameter(name='loi.detect.frame')
         self.__parameters.set_parameter(name='loi.detect.persistence')
         self.__parameters.set_parameter(name='loi.detect.threshold_distance')
