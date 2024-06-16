@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Tuple, Optional
+from ...type_utils import TypeUtils
 
 import napari
 import numpy as np
@@ -58,6 +59,7 @@ class ApplicationControl:
             te.setText(text[:text.rfind('\n')])
             te.append(message)
             te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
+            TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
             # remove last line
             # append message as last line
 
