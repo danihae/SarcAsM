@@ -91,10 +91,10 @@ class StructureAnalysisControl:
             return False
         return True
 
-    def __chk_timepoints(self):
-        timepoints = self.__main_control.model.parameters.get_parameter('structure.timepoints').get_value()
-        if timepoints is None or timepoints == '':
-            self.__check_timepoint_syntax()
+    def __chk_frames(self):
+        frames = self.__main_control.model.parameters.get_parameter('structure.frames').get_value()
+        if frames is None or frames == '':
+            self.__check_frame_syntax()
             self.__main_control.debug(
                 'no time points selected, please select the time point(s) in the specified format')
             return False
@@ -115,7 +115,7 @@ class StructureAnalysisControl:
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=f'Z-bands detected and saved in {self.__main_control.model.cell.folder}',
-                                                   finished_action=self.__predict_finished,
+                                                   finished_action=self.__predict_z_bands_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -135,15 +135,15 @@ class StructureAnalysisControl:
         self.__worker = worker
         return worker
 
-    def __parse_timepoints(self, timepoints_str: str):
-        if timepoints_str == '':
+    def __parse_frames(self, frames_str: str):
+        if frames_str == '':
             return None
-        if timepoints_str.lower().__eq__('all'):
-            return timepoints_str.lower()
-        if timepoints_str.isnumeric():
-            return int(timepoints_str)
-        if timepoints_str.__contains__(','):
-            list_str = timepoints_str.split(',')
+        if frames_str.lower().__eq__('all'):
+            return frames_str.lower()
+        if frames_str.isnumeric():
+            return int(frames_str)
+        if frames_str.__contains__(','):
+            list_str = frames_str.split(',')
             parsed_list = []
             for x in list_str:
                 if x.isnumeric():
@@ -154,10 +154,10 @@ class StructureAnalysisControl:
     def on_btn_z_band(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_timepoints():
+        if not self.__chk_frames():
             return
         call_lambda = lambda w, m: m.cell.structure.analyze_z_bands(
-            timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
+            frames=m.parameters.get_parameter('structure.frames').get_value(),
             threshold=m.parameters.get_parameter('structure.z_band_analysis.threshold').get_value(),
             min_length=m.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
 
@@ -171,13 +171,13 @@ class StructureAnalysisControl:
     def on_btn_wavelet(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_timepoints():
+        if not self.__chk_frames():
             return
         call_lambda = lambda w, m: m.cell.structure.analyze_sarcomere_length_orient(
-            timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
+            frames=m.parameters.get_parameter('structure.frames').get_value(),
             size=m.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=m.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=m.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=m.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=m.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 m.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 m.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
@@ -195,6 +195,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    finished_message='Finished wavelet analysis',
                                                    start_message='Start wavelet analysis',
+                                                   finished_action=self.__sarcomere_analysis_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -204,18 +205,18 @@ class StructureAnalysisControl:
 
     def on_btn_myofibril(self):
         """
-        analyze_myofibrils(self, timepoints=None, n_seeds=200, score_threshold=None, persistence=3,
+        analyze_myofibrils(self, frames=None, n_seeds=200, score_threshold=None, persistence=3,
                            threshold_distance=0.3,
                            save_all=False, plot=False)
         """
         if not self.__chk_initialized():
             return
-        if not self.__chk_timepoints():
+        if not self.__chk_frames():
             return
         # estimate myofibril lengths using line-growth algorithm
         # cell.structure.get_myofibril_lengths(plot=True)
         call_lambda = lambda w, m: m.cell.structure.analyze_myofibrils(
-            timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
+            frames=m.parameters.get_parameter('structure.frames').get_value(),
             n_seeds=m.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
             score_threshold=None if m.parameters.get_parameter(
                 'structure.myofibril.score_threshold_empty').get_value() else m.parameters.get_parameter(
@@ -227,6 +228,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=call_lambda,
                                                    start_message='Start myofibril analysis',
                                                    finished_message='Finished myofibril analysis',
+                                                   finished_action=self.__myofibril_analysis_finished,
                                                    finished_successful_action=self.__main_control.model.cell.structure.commit)
         self.__worker = worker
         return worker
@@ -238,11 +240,11 @@ class StructureAnalysisControl:
         """
         if not self.__chk_initialized():
             return
-        if not self.__chk_timepoints():
+        if not self.__chk_frames():
             return
 
         call_lambda = lambda w, m: m.cell.structure.analyze_sarcomere_domains(
-            timepoints=m.parameters.get_parameter('structure.timepoints').get_value(),
+            frames=m.parameters.get_parameter('structure.frames').get_value(),
             score_threshold=m.parameters.get_parameter('structure.domain.analysis.score_threshold').get_value(),
             reduce=m.parameters.get_parameter('structure.domain.analysis.reduce').get_value(),
             weight_length=m.parameters.get_parameter('structure.domain.analysis.weight_length').get_value(),
@@ -280,15 +282,15 @@ class StructureAnalysisControl:
             pass
         pass
 
-    def __check_timepoint_syntax(self):
-        text = self.__structure_parameters_widget.le_general_timepoints.text()
-        value = self.__parse_timepoints(text)
+    def __check_frame_syntax(self):
+        text = self.__structure_parameters_widget.le_general_frames.text()
+        value = self.__parse_frames(text)
         if not text.isnumeric() and (value == 0 or value is None):
             # this is an error
-            self.__structure_parameters_widget.le_general_timepoints.setStyleSheet("QLineEdit{background : red;}")
+            self.__structure_parameters_widget.le_general_frames.setStyleSheet("QLineEdit{background : red;}")
             pass
         else:
-            self.__structure_parameters_widget.le_general_timepoints.setStyleSheet(
+            self.__structure_parameters_widget.le_general_frames.setStyleSheet(
                 "QLineEdit{background : lightgreen;}")
         pass
 
@@ -297,7 +299,7 @@ class StructureAnalysisControl:
             return
         if not self.__chk_prediction_network():
             return
-        if not self.__chk_timepoints():
+        if not self.__chk_frames():
             return
         if not self.__chk_cell_area_prediction_network():
             return
@@ -330,7 +332,7 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.sb_cell_area_size_height.editingFinished.connect(
             lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_cell_area_size_height))
 
-        self.__structure_parameters_widget.le_general_timepoints.editingFinished.connect(self.__check_timepoint_syntax)
+        self.__structure_parameters_widget.le_general_frames.editingFinished.connect(self.__check_frame_syntax)
 
         self.__structure_parameters_widget.btn_structure_cell_area_predict.clicked.connect(
             self.on_btn_cell_area_predict)
@@ -363,14 +365,14 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_max').connect(
             widget.dsb_cell_area_clip_threshold_max)
 
-        parameters.get_parameter(name='structure.timepoints').set_value_parser(self.__parse_timepoints)
-        parameters.get_parameter(name='structure.timepoints').connect(widget.le_general_timepoints)
+        parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
+        parameters.get_parameter(name='structure.frames').connect(widget.le_general_frames)
 
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
         parameters.get_parameter(name='structure.wavelet.filter_size').connect(widget.dsb_wavelet_filter_size)
-        parameters.get_parameter(name='structure.wavelet.sigma').connect(widget.dsb_wavelet_sigma)
-        parameters.get_parameter(name='structure.wavelet.width').connect(widget.dsb_wavelet_width)
+        parameters.get_parameter(name='structure.wavelet.minor').connect(widget.dsb_wavelet_minor)
+        parameters.get_parameter(name='structure.wavelet.major').connect(widget.dsb_wavelet_major)
         parameters.get_parameter(name='structure.wavelet.length_limit_lower').connect(widget.dsb_wavelet_len_lims_min)
         parameters.get_parameter(name='structure.wavelet.length_limit_upper').connect(widget.dsb_wavelet_len_lims_max)
         parameters.get_parameter(name='structure.wavelet.length_step').connect(widget.dsb_wavelet_len_step)
@@ -397,11 +399,22 @@ class StructureAnalysisControl:
             widget.dsb_domain_analysis_distance_threshold)
         parameters.get_parameter(name='structure.domain.analysis.area_min').connect(widget.dsb_domain_analysis_area_min)
 
-    def __predict_finished(self):
-        self.__main_control.init_zband_stack()
+    def __predict_z_bands_finished(self):
+        self.__main_control.init_z_band_stack()
 
     def __predict_cell_area_finished(self):
         self.__main_control.init_cell_area_stack()
+
+    def __z_band_analysis_finished(self):
         pass
 
-    pass
+    def __sarcomere_analysis_finished(self):
+        self.__main_control.init_sarcomere_mask_stack()
+        self.__main_control.init_sarcomere_vector_stack()
+        self.__main_control.init_midline_points_stack()
+
+    def __myofibril_analysis_finished(self):
+        self.__main_control.init_myofibril_lines_stack()
+
+    def __domain_analysis_finished(self):
+        self.__main_control.init_sarcomere_domain_stack()

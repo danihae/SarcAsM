@@ -1,6 +1,8 @@
 import glob
 
+import numpy as np
 from PyQt5.QtWidgets import QFileDialog
+from tifffile import tifffile
 
 from .popup_export import ExportPopup
 from .application_control import ApplicationControl
@@ -51,7 +53,7 @@ class FileSelectionControl:
 
     def on_btn_export_data(self):
         """
-        - time-series of all structure features (if single number per timepoint, so ignore 2D arrays)
+        - time-series of all structure features (if single number per frame, so ignore 2D arrays)
           for motion analysis: z_pos, slen, slen_avg,  delta_slen, delta_slen_avg, vel, vel_avg, start_contr, state, cps_mean, cps_std
         """
         # model = self.__main_control.model
@@ -133,22 +135,25 @@ class FileSelectionControl:
         self.__main_control.model.currentlyProcessing.set_value(True)
         self.__main_control.update_progress(10)
 
-        # image = tifffile.imread(file)
-        self.__main_control.viewer.open(file, plugin=None, name='Raw')
-        # self.__main_control.viewer.add_image(image, name='Raw')
+        image = tifffile.imread(file)
+        lower_perc, upper_perc = np.percentile(image, q=[0.1, 99.8])
+        # self.__main_control.viewer.open(file, plugin=None, name='ImageData')
+        self.__main_control.viewer.add_image(image, name='ImageData', contrast_limits=[lower_perc, upper_perc])
 
-        self.__main_control.model.init_cell(file, False)
-        self.__main_control.init_zband_stack()
+        self.__main_control.model.init_cell(file)
+        self.__main_control.init_z_band_stack()
         self.__main_control.init_cell_area_stack()
+        self.__main_control.init_sarcomere_vector_stack()
+        self.__main_control.init_myofibril_lines_stack()
 
-        self.init_line_layer()  # initializes the layer for drawing roi's
+        self.init_line_layer()  # initializes the layer for drawing loi's
 
         # todo: init or update dictionary
         if self.__main_control.model.cell.filename not in self.__main_control.model.line_dictionary:
             self.__main_control.model.line_dictionary[self.__main_control.model.cell.filename] = {}
             pass
 
-        self._init_roi_from_file()
+        self._init_loi_from_file()
         self._init_meta_data()
 
         self.__main_control.debug('Initialized: ' + file)
@@ -156,19 +161,19 @@ class FileSelectionControl:
         self.__main_control.model.currentlyProcessing.set_value(False)
 
     def init_line_layer(self):
-        if self.__main_control.viewer.layers.__contains__('ROIs'):
-            layer = self.__main_control.viewer.layers.__getitem__('ROIs')
+        if self.__main_control.viewer.layers.__contains__('LOIs'):
+            layer = self.__main_control.viewer.layers.__getitem__('LOIs')
             self.__main_control.viewer.layers.remove(layer)
         # set the pre selected color to red
-        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='ROIs', edge_color='#FF0000'))
+        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000'))
 
         # todo: this is how adding lines and reading the data works
         # note that first coordinate in the point tuples is Y and second is X
         # points = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
-        # self.__main_control.layer_roi.add_lines(points,edge_width=[10,5],edge_color='red')
-        # self.__main_control.layer_roi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
-        # data=self.__main_control.layer_roi.data
-        # widths=self.__main_control.layer_roi.edge_width
+        # self.__main_control.layer_loi.add_lines(points,edge_width=[10,5],edge_color='red')
+        # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
+        # data=self.__main_control.layer_loi.data
+        # widths=self.__main_control.layer_loi.edge_width
         # print(data)
         # print(widths)
         # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
@@ -236,19 +241,19 @@ class FileSelectionControl:
             # self.__file_selection_widget.le_frame_time.setStyleSheet("QLineEdit{background : red;}")
         pass
 
-    def _init_roi_from_file(self):
-        # read roi files, store the line data in dictionary and in ui roi list
+    def _init_loi_from_file(self):
+        # read loi files, store the line data in dictionary and in ui loi list
 
-        roi_files = glob.glob(
-            self.__main_control.model.cell.folder + '*_roi' + self.__main_control.model.file_extension)
-        if len(roi_files) > 0:
-            for roi_file in roi_files:
-                tmp_profile = IOUtils.json_deserialize(roi_file)  # IOUtils.deserialize_profile_data(roi_file)
+        loi_files = glob.glob(
+            self.__main_control.model.cell.folder + '*_loi' + self.__main_control.model.file_extension)
+        if len(loi_files) > 0:
+            for loi_file in loi_files:
+                tmp_profile = IOUtils.json_deserialize(loi_file)  # IOUtils.deserialize_profile_data(loi_file)
 
                 line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
                 line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
                 self.__main_control.on_update_loi_list(line_start, line_end,
                                                        int(tmp_profile["linewidth"]),
-                                                       False)  # add line to roi list and dictionary
+                                                       False)  # add line to loi list and dictionary
         else:
-            self.__main_control.debug("no roi's found for current image")
+            self.__main_control.debug("no LOI's found for current image")

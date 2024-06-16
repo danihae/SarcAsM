@@ -15,7 +15,7 @@ from .control.batch_processing_control import BatchProcessingControl
 from .model import ApplicationModel
 from .view.file_selection import Ui_Form as FileSelectionWidget
 from .view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
-from .view.parameter_loi_analysis import Ui_Form as RoiAnalysisWidget
+from .view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
 from .view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
 from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
@@ -48,7 +48,7 @@ class Application:
         self.__window = QWidget()
         self.__file_selection = FileSelectionWidget()
         self.__structure_analysis_parameters = StructureAnalysisWidget()
-        self.__roi_analysis = RoiAnalysisWidget()
+        self.__loi_analysis = LoiAnalysisWidget()
         self.__motion_analysis = MotionAnalysisWidget()
         self.__batch_processing = BatchProcessingWidget()
         self.__progress_bar = QProgressBar()
@@ -61,7 +61,7 @@ class Application:
         self.__file_selection_control = FileSelectionControl(self.__file_selection, self.__control)
         self.__structure_analysis_control = StructureAnalysisControl(self.__structure_analysis_parameters,
                                                                      self.__control)
-        self.__roi_analysis_control = LOIAnalysisControl(self.__roi_analysis, self.__control)
+        self.__loi_analysis_control = LOIAnalysisControl(self.__loi_analysis, self.__control)
         self.__motion_analysis_control = MotionAnalysisControl(self.__motion_analysis, self.__control)
         self.__batch_processing_control = BatchProcessingControl(self.__batch_processing, self.__control)
 
@@ -86,8 +86,8 @@ class Application:
         widget_structure_parameters = QWidget()
         self.__structure_analysis_parameters.setupUi(widget_structure_parameters)
 
-        widget_roi_analysis = QWidget()
-        self.__roi_analysis.setupUi(widget_roi_analysis)
+        widget_loi_analysis = QWidget()
+        self.__loi_analysis.setupUi(widget_loi_analysis)
 
         widget_motion_analysis = QWidget()
         self.__motion_analysis.setupUi(widget_motion_analysis)
@@ -96,7 +96,7 @@ class Application:
         self.__batch_processing.setupUi(widget_batch_processing)
 
         widget_parameter_toolbox.addItem(widget_structure_parameters, 'Structure Analysis')
-        widget_parameter_toolbox.addItem(widget_roi_analysis, 'ROI Finder')
+        widget_parameter_toolbox.addItem(widget_loi_analysis, 'LOI Finder')
         widget_parameter_toolbox.addItem(widget_motion_analysis, 'Motion Analysis')
         widget_parameter_toolbox.addItem(widget_batch_processing, 'Batch Processing')
 
@@ -108,7 +108,7 @@ class Application:
         self.__control.set_debug_action(self.debug)
         self.__file_selection_control.bind_events()
         self.__structure_analysis_control.bind_events()
-        self.__roi_analysis_control.bind_events()
+        self.__loi_analysis_control.bind_events()
         self.__motion_analysis_control.bind_events()
         self.__batch_processing_control.bind_events()
 

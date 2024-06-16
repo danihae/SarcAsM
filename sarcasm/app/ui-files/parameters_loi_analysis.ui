@@ -28,17 +28,17 @@
       <item row="1" column="0">
        <widget class="QLabel" name="label_36">
         <property name="toolTip">
-         <string>Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.</string>
+         <string>Selects i-th frame of frames specified in wavelet analysis.</string>
         </property>
         <property name="text">
-         <string>Timepoint [frame]</string>
+         <string>Frame [#]</string>
         </property>
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QSpinBox" name="sb_detect_loi_timepoint">
+       <widget class="QSpinBox" name="sb_detect_loi_frame">
         <property name="toolTip">
-         <string>Timepoint to select frame. Selects i-th timepoint of timepoints specified in wavelet analysis.</string>
+         <string>Selects i-th frame of framess specified in wavelet analysis.</string>
         </property>
         <property name="maximum">
          <number>1000000000</number>

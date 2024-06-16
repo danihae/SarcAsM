@@ -57,9 +57,9 @@ class ApplicationModel:
     def file_extension(self):
         return self.__file_extension
 
-    def init_cell(self, cell_file, correct_phase_leica):
+    def init_cell(self, cell_file):
         self.__cell_file_name = cell_file
-        self._cell = SarcAsM(cell_file, correct_phase_leica=correct_phase_leica, use_gui=True)
+        self._cell = SarcAsM(cell_file, use_gui=True)
 
     def init_sarcomere(self, loi_name):
         self.__sarcomere = Motion(self.__cell_file_name, loi_name=loi_name)
@@ -95,17 +95,17 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_max').set_value(99.8)
 
-        self.__parameters.get_parameter(name='structure.timepoints').set_value('')
+        self.__parameters.get_parameter(name='structure.frames').set_value('')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
 
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.1)
         self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(1.0)
 
         self.__parameters.get_parameter(name='structure.wavelet.filter_size').set_value(3.0)
-        self.__parameters.get_parameter(name='structure.wavelet.sigma').set_value(0.150)
-        self.__parameters.get_parameter(name='structure.wavelet.width').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.wavelet.minor').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.wavelet.major').set_value(1.0)
         self.__parameters.get_parameter(name='structure.wavelet.length_limit_lower').set_value(1.4)
-        self.__parameters.get_parameter(name='structure.wavelet.length_limit_upper').set_value(2.4)
+        self.__parameters.get_parameter(name='structure.wavelet.length_limit_upper').set_value(2.7)
         self.__parameters.get_parameter(name='structure.wavelet.length_step').set_value(0.05)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_lower').set_value(-90)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_upper').set_value(90)
@@ -128,8 +128,8 @@ class ApplicationModel:
 
         # endregion
 
-        # region roi parameters
-        self.__parameters.get_parameter(name='loi.detect.timepoint').set_value(0)
+        # region loi parameters
+        self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
         self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
         self.__parameters.get_parameter(name='loi.detect.score_threshold').set_value(10000.0)
@@ -211,15 +211,15 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.timepoints')
+        self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
 
         self.__parameters.set_parameter(name='structure.z_band_analysis.threshold')
         self.__parameters.set_parameter(name='structure.z_band_analysis.min_length')
 
         self.__parameters.set_parameter(name='structure.wavelet.filter_size')
-        self.__parameters.set_parameter(name='structure.wavelet.sigma')
-        self.__parameters.set_parameter(name='structure.wavelet.width')
+        self.__parameters.set_parameter(name='structure.wavelet.minor')
+        self.__parameters.set_parameter(name='structure.wavelet.major')
         self.__parameters.set_parameter(name='structure.wavelet.length_limit_lower')
         self.__parameters.set_parameter(name='structure.wavelet.length_limit_upper')
         self.__parameters.set_parameter(name='structure.wavelet.length_step')
@@ -244,8 +244,8 @@ class ApplicationModel:
 
         # endregion
 
-        # region roi parameters
-        self.__parameters.set_parameter(name='loi.detect.timepoint')
+        # region loi parameters
+        self.__parameters.set_parameter(name='loi.detect.frame')
         self.__parameters.set_parameter(name='loi.detect.persistence')
         self.__parameters.set_parameter(name='loi.detect.threshold_distance')
         self.__parameters.set_parameter(name='loi.detect.score_threshold')

@@ -1,5 +1,5 @@
 import os
-import sys
+import traceback
 from typing import Tuple, Optional
 from ...type_utils import TypeUtils
 
@@ -9,10 +9,9 @@ import tifffile
 import torch
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit
-
 from biu.progress import ProgressNotifier
 from napari.layers import Shapes
-import traceback
+
 from ..model import ApplicationModel
 
 
@@ -186,24 +185,98 @@ class ApplicationControl:
         file_name += "_loi" + self.model.file_extension
         return file_name, scan_line
 
-    def init_zband_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.folder + 'sarcomeres.tif'):
+    def init_z_band_stack(self):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomeres):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             # load sarcomere Z-band file into unet stack
-            tmp = tifffile.imread(self.model.cell.folder + 'sarcomeres.tif').astype('uint8')
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, )
+            tmp = tifffile.imread(self.model.cell.file_sarcomeres).astype('uint8')
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
 
     def init_cell_area_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.folder + 'cell_mask.tif'):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
             # load cell mask file into unet stack
-            tmp = tifffile.imread(self.model.cell.folder + 'cell_mask.tif').astype('uint8')
+            tmp = tifffile.imread(self.model.cell.file_cell_mask).astype('uint8')
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
-        pass
+
+    def init_myofibril_lines_stack(self):
+        if self.model.cell is not None and 'myof_lines' in self.model.cell.structure.data.keys():
+            if self.viewer.layers.__contains__('MyofibrilLines'):
+                layer = self.viewer.layers.__getitem__('MyofibrilLines')
+                self.viewer.layers.remove(layer)
+            # load myofibril lines and as multi-segment paths
+            myof_lines = self.model.cell.structure.data['myof_lines']
+            points = self.model.cell.structure.data['points']
+            myof_lines_points = [
+                [np.column_stack((np.full((len(line_j), 1), i), points_i[:, line_j].T)) for line_j in lines_i]
+                if points_i is not None and lines_i is not None else None
+                for i, (lines_i, points_i) in enumerate(zip(myof_lines, points))]
+            _myof_lines_points = [line for lines in myof_lines_points if lines is not None for line in lines]
+            self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_points, shape_type='path',
+                                   edge_color='red', edge_width=2, opacity=0.5)
+
+    def init_midline_points_stack(self):
+        if self.model.cell is not None and 'points' in self.model.cell.structure.data.keys():
+            if self.viewer.layers.__contains__('MidlinePoints'):
+                layer = self.viewer.layers.__getitem__('MidlinePoints')
+                self.viewer.layers.remove(layer)
+            # add midline points to all layers
+            points = self.model.cell.structure.data['points']
+            _frames_analyzed = self.model.cell.structure.data['params.wavelet_frames']
+            _points = [np.vstack((np.full((1, pts.shape[1]), frame), pts)) for frame, pts in
+                       zip(_frames_analyzed, points) if pts is not None]
+            _points = np.concatenate(_points, axis=1).T
+            self.viewer.add_points(name='MidlinePoints', data=_points, face_color='darkgreen', size=2)
+
+    def init_sarcomere_vector_stack(self):
+        if self.model.cell is not None and 'points' in self.model.cell.structure.data.keys():
+            if self.viewer.layers.__contains__('SarcomereVectors'):
+                layer = self.viewer.layers.__getitem__('SarcomereVectors')
+                self.viewer.layers.remove(layer)
+            # create sarcomere vectors for all frames and add as vector layer
+            vectors = []
+            midline_points = []
+            for frame in range(self.model.cell.metadata['frames']):
+                if frame in self.model.cell.structure.data['params.wavelet_frames']:
+                    points = self.model.cell.structure.data['points'][frame]
+                    sarc_orientation_points = self.model.cell.structure.data['sarcomere_orientation_points'][frame]
+                    sarc_length_points = self.model.cell.structure.data['sarcomere_length_points'][frame] / self.model.cell.metadata[
+                        'pixelsize']
+                    orientation_vectors = np.asarray(
+                        [-np.sin(sarc_orientation_points), np.cos(sarc_orientation_points)])
+                    for i in range(len(points[0])):
+                        start_point = [frame, points[0][i], points[1][i]]
+                        vector_1 = [frame, orientation_vectors[0][i] * sarc_length_points[i] * 0.5,
+                                    orientation_vectors[1][i] * sarc_length_points[i] * 0.5]
+                        vector_2 = [frame, -orientation_vectors[0][i] * sarc_length_points[i] * 0.5,
+                                    -orientation_vectors[1][i] * sarc_length_points[i] * 0.5]
+                        midline_points.append(start_point)
+                        vectors.append([start_point, vector_1])
+                        vectors.append([start_point, vector_2])
+            self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='purple', name='SarcomereVectors', opacity=0.8,
+                                    vector_style='arrow')
+            self.viewer.add_points(name='MidlinePoints', data=midline_points, face_color='darkgreen', size=2)
+
+    def init_sarcomere_mask_stack(self):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
+            if self.viewer.layers.__contains__('SarcomereMask'):
+                layer = self.viewer.layers.__getitem__('SarcomereMask')
+                self.viewer.layers.remove(layer)
+            #
+            tmp = tifffile.imread(self.model.cell.file_sarcomere_mask).astype('uint8')
+            self.viewer.add_labels(tmp, name='SarcomereMask', opacity=0.4, colormap='Blues')
+
+    def init_sarcomere_domain_stack(self):
+        if self.model.cell is not None and 'domain_mask' in self.model.cell.structure.data.keys():
+            if self.viewer.layers.__contains__('SarcomereDomains'):
+                layer = self.viewer.layers.__getitem__('SarcomereDomains')
+                self.viewer.layers.remove(layer)
+            #
+            self.viewer.add_labels()
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):

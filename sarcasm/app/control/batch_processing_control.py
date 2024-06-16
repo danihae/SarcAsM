@@ -35,7 +35,7 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.force.override').connect(widget.chk_force_override)
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
-        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_rois)
+        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
 
         pass
 
@@ -179,10 +179,10 @@ class BatchProcessingControl:
                                                    'structure.predict.clip_thresh_max').get_value()
                                            ))
         sarc_obj.structure.analyze_sarcomere_length_orient(
-            timepoints=model.parameters.get_parameter('loi.detect.timepoint').get_value(),
+            frames=model.parameters.get_parameter('loi.detect.frame').get_value(),
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
@@ -208,7 +208,7 @@ class BatchProcessingControl:
             self.__calculate_requirements_of_motion(sarc_obj, model)
             pass
 
-        sarc_obj.structure.detect_lois(timepoint=model.parameters.get_parameter('loi.detect.timepoint').get_value(),
+        sarc_obj.structure.detect_lois(frame=model.parameters.get_parameter('loi.detect.frame').get_value(),
                                        persistence=model.parameters.get_parameter('loi.detect.persistence').get_value(),
                                        threshold_distance=model.parameters.get_parameter(
                                            'loi.detect.threshold_distance').get_value(),
@@ -226,10 +226,10 @@ class BatchProcessingControl:
                                            'loi.detect.distance_threshold_lois').get_value(),
                                        n_longest=model.parameters.get_parameter('loi.detect.n_longest').get_value(),
                                        linewidth=model.parameters.get_parameter('loi.detect.line_width').get_value())
-        rois = Utils.get_lois_of_cell(file)
-        for file, roi in rois:
+        lois = Utils.get_lois_of_cell(file)
+        for file, loi in lois:
             try:
-                motion_obj = Motion(file, roi)
+                motion_obj = Motion(file, loi)
                 self.__single_motion_loi_analysis(motion_obj, model)
                 pass
             except Exception as e:
@@ -293,7 +293,7 @@ class BatchProcessingControl:
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             force_override=force_override)
 
-        timepoints = model.parameters.get_parameter('structure.timepoints').get_value()
+        frames = model.parameters.get_parameter('structure.frames').get_value()
 
         # predict sarcomere z-bands and cell area
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
@@ -328,19 +328,19 @@ class BatchProcessingControl:
                                                      'structure.predict.cell_area.clip_thresh_max').get_value()
                                              ))
         # analyze cell area and sarcomere area
-        sarc_obj.structure.analyze_cell_area(timepoints=timepoints)
+        sarc_obj.structure.analyze_cell_area(frames=frames)
         # analyze sarcomere structures
         sarc_obj.structure.analyze_z_bands(
-            timepoints=timepoints,
+            frames=frames,
             threshold=model.parameters.get_parameter('structure.z_band_analysis.threshold').get_value(),
             min_length=model.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
 
         # careful this method highly depends on pixel size setting
         sarc_obj.structure.analyze_sarcomere_length_orient(
-            timepoints=timepoints,
+            frames=frames,
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            sigma=model.parameters.get_parameter('structure.wavelet.sigma').get_value(),
-            width=model.parameters.get_parameter('structure.wavelet.width').get_value(),
+            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
+            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
             len_lims=(
                 model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
                 model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
@@ -357,7 +357,7 @@ class BatchProcessingControl:
         )
 
         sarc_obj.structure.analyze_myofibrils(
-            timepoints=timepoints,
+            frames=frames,
             n_seeds=model.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
             score_threshold=None if model.parameters.get_parameter(
                 'structure.myofibril.score_threshold_empty').get_value() else model.parameters.get_parameter(
@@ -367,7 +367,7 @@ class BatchProcessingControl:
         )
 
         sarc_obj.structure.analyze_sarcomere_domains(
-            timepoints=timepoints,
+            frames=frames,
             score_threshold=model.parameters.get_parameter('structure.domain.analysis.score_threshold').get_value(),
             reduce=model.parameters.get_parameter('structure.domain.analysis.reduce').get_value(),
             weight_length=model.parameters.get_parameter('structure.domain.analysis.weight_length').get_value(),

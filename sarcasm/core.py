@@ -2,6 +2,8 @@ import os
 import pathlib
 import shutil
 
+import torch
+
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 from .utils import Utils
@@ -26,7 +28,8 @@ class SarcAsM:
     use_gui : bool, optional
         Indicates if SarcAsM is used through a GUI. Defaults to False.
     device : torch.device, optional
-        Device on which to run Pytorch computations. Defaults to 'auto', which selects CUDA or MPS device if available.
+        Device on which to run Pytorch computations.
+        Defaults to 'auto', which selects CUDA or MPS device if available, else CPU.
     **info : dict
         Additional metadata for analysis as kwargs (e.g. cell_line='wt').
 
@@ -97,4 +100,5 @@ class SarcAsM:
         if device == 'auto':
             self.device = Utils.get_device(print_device=True)
         else:
+            assert isinstance(device, torch.device), "Device must be of type 'torch.device', e.g. torch.device('cpu')"
             self.device = device
