@@ -241,7 +241,7 @@ class ApplicationControl:
             vectors = []
             midline_points = []
             for frame in range(self.model.cell.metadata['frames']):
-                if frame in self.model.cell.structure.data['params.wavelet_frames']:
+                if 'params.wavelet_frames' in self.model.cell.structure.data and frame in self.model.cell.structure.data['params.wavelet_frames']:
                     points = self.model.cell.structure.data['points'][frame]
                     sarc_orientation_points = self.model.cell.structure.data['sarcomere_orientation_points'][frame]
                     sarc_length_points = self.model.cell.structure.data['sarcomere_length_points'][frame] / self.model.cell.metadata[
