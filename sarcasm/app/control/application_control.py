@@ -57,7 +57,7 @@ class ApplicationControl:
             text = te.toPlainText()
             te.setText(text[:text.rfind('\n')])
             te.append(message)
-            te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
+            # te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
             TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
             # remove last line
             # append message as last line
