@@ -1,6 +1,7 @@
 import os
 import traceback
 from typing import Tuple, Optional
+from ...type_utils import TypeUtils
 
 import napari
 import numpy as np
@@ -56,7 +57,8 @@ class ApplicationControl:
             text = te.toPlainText()
             te.setText(text[:text.rfind('\n')])
             te.append(message)
-            te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
+            # te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
+            TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
             # remove last line
             # append message as last line
 
@@ -239,7 +241,7 @@ class ApplicationControl:
             vectors = []
             midline_points = []
             for frame in range(self.model.cell.metadata['frames']):
-                if frame in self.model.cell.structure.data['params.wavelet_frames']:
+                if 'params.wavelet_frames' in self.model.cell.structure.data and frame in self.model.cell.structure.data['params.wavelet_frames']:
                     points = self.model.cell.structure.data['points'][frame]
                     sarc_orientation_points = self.model.cell.structure.data['sarcomere_orientation_points'][frame]
                     sarc_length_points = self.model.cell.structure.data['sarcomere_length_points'][frame] / self.model.cell.metadata[

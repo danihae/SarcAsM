@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheck
 
 from sarcasm import export
 from sarcasm.export import MultiStructureAnalysis, MultiLOIAnalysis
-
+from ...type_utils import TypeUtils
 import numpy as np
 
 
@@ -31,14 +31,14 @@ class ExportPopup(QDialog):
         self.__model = model
         self.__control = control
         self.__h_box = None
-        self.__le_file_path = None
-        self.__le_file_name = None
+        self.__le_file_path: QLineEdit
+        self.__le_file_name: QLineEdit
         self.init_ui()
 
         pass
 
-    #todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
-    #todo: need to adapt "export" since those are wrapped with a class now
+    # todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
+    # todo: need to adapt "export" since those are wrapped with a class now
 
     def init_ui(self):
         self.setLayout(QVBoxLayout())
@@ -50,9 +50,9 @@ class ExportPopup(QDialog):
         self.__group_metadata.setLayout(QGridLayout())
         self.__group_motion.setLayout(QGridLayout())
 
-        self.layout().addWidget(self.__group_structure)
-        self.layout().addWidget(self.__group_metadata)
-        self.layout().addWidget(self.__group_motion)
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_structure))
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_metadata))
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_motion))
 
         self.__h_box = QWidget()
         self.__h_box.setLayout(QHBoxLayout())
@@ -66,14 +66,13 @@ class ExportPopup(QDialog):
         btn_search = QPushButton(text='...')
         btn_search.clicked.connect(self.__on_clicked_btn_search)
 
-        self.__h_box.layout().addWidget(self.__le_file_path, 5)
-        self.__h_box.layout().addWidget(self.__le_file_name, 4)
-        self.__h_box.layout().addWidget(btn_search, 1)
-
-        self.layout().addWidget(self.__h_box)
+        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_path, 5))
+        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_name, 4))
+        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(btn_search, 1))
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__h_box))
 
         self.__btn_export_as_csv = QPushButton(text='Export as Csv')
-        self.layout().addWidget(self.__btn_export_as_csv)
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_csv))
 
         self.__btn_export_as_csv.clicked.connect(self.__on_clicked_btn_export_as_csv)
 

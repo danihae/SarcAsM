@@ -4,7 +4,8 @@ from PyQt5.QtWidgets import QFileDialog
 from sarcasm.app.control.chain_execution import ChainExecution
 from sarcasm.app import ApplicationControl
 from sarcasm.app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
-from ... import Motion
+from ...motion import Motion
+from ...type_utils import TypeUtils
 
 
 class MotionAnalysisControl:
@@ -45,9 +46,10 @@ class MotionAnalysisControl:
             return
         # linedict [filename][line_as_txt] = line_object
         # line objects müssten also alle im line_dict drin sein
-        line = self.__main_control.model.line_dictionary[self.__main_control.model.cell.filename][txt]
-        file_name, scan_line = self.__main_control.get_file_name_from_scheme(self.__main_control.model.cell.filename,
-                                                                             txt)
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
+
+        line = self.__main_control.model.line_dictionary[cell.filename][txt]
+        file_name, scan_line = self.__main_control.get_file_name_from_scheme(cell.filename, txt)
         if self.__main_control.model.sarcomere is None or \
                 self.__main_control.model.sarcomere.loi_name != Motion.get_loi_name_from_file_name(file_name):
             self.__main_control.model.init_sarcomere(file_name)
@@ -95,7 +97,8 @@ class MotionAnalysisControl:
                                                            'motion.detect_peaks.width').get_value()),
                                                    start_message='Starting Detect Peaks',
                                                    finished_message='Finished Detect Peaks',
-                                                   finished_successful_action=self.__main_control.model.sarcomere.commit)
+                                                   finished_successful_action=TypeUtils.if_present(
+                                                       self.__main_control.model.sarcomere, lambda s: s.commit()))
         self.__worker = worker
         return worker
         pass
@@ -115,7 +118,8 @@ class MotionAnalysisControl:
                                                            'motion.track_z_bands.memory_interpolation').get_value()),
                                                    start_message='Starting track z bands',
                                                    finished_message='Finished track z bands',
-                                                   finished_successful_action=self.__main_control.model.sarcomere.commit)
+                                                   finished_successful_action=TypeUtils.if_present(
+                                                       self.__main_control.model.sarcomere, lambda s: s.commit()))
         self.__worker = worker
         return worker
         pass
@@ -147,7 +151,7 @@ class MotionAnalysisControl:
                                                                                  'motion.systoles.merge_time_max').get_value()),
             start_message='Starting Detect and Analyze Contractions',
             finished_message='Finished Detect and Analyze Contractions',
-            finished_successful_action=self.__main_control.model.sarcomere.commit)
+            finished_successful_action=TypeUtils.if_present(self.__main_control.model.sarcomere, lambda s: s.commit()))
         self.__worker = worker
         return worker
         pass
@@ -162,7 +166,7 @@ class MotionAnalysisControl:
             call_lambda=self.__on_btn_get_and_analyze_sarcomere_trajectories,
             start_message='Starting get sarcomere trajectories',
             finished_message='Finished get sarcomere trajectories',
-            finished_successful_action=self.__main_control.model.sarcomere.commit)
+            finished_successful_action=TypeUtils.if_present(self.__main_control.model.sarcomere, lambda s: s.commit()))
         self.__worker = worker
         return worker
         pass

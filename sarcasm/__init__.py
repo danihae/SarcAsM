@@ -7,3 +7,4 @@ from .contraction_net import *
 from .plots import Plots
 from .plot_utils import PlotUtils
 from .export import MultiStructureAnalysis, MultiLOIAnalysis
+from .type_utils import TypeUtils

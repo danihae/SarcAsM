@@ -7,6 +7,7 @@ from tifffile import tifffile
 from .popup_export import ExportPopup
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
+from ...type_utils import TypeUtils
 import platform
 import os
 import subprocess
@@ -149,8 +150,10 @@ class FileSelectionControl:
         self.init_line_layer()  # initializes the layer for drawing loi's
 
         # todo: init or update dictionary
-        if self.__main_control.model.cell.filename not in self.__main_control.model.line_dictionary:
-            self.__main_control.model.line_dictionary[self.__main_control.model.cell.filename] = {}
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
+
+        if cell.filename not in self.__main_control.model.line_dictionary:
+            self.__main_control.model.line_dictionary[cell.filename] = {}
             pass
 
         self._init_loi_from_file()
@@ -188,7 +191,9 @@ class FileSelectionControl:
         if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
             self.__main_control.debug("The path doesn't exist")
             return
-        str_path = self.__main_control.model.cell.folder
+
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
+        str_path = cell.folder
 
         if platform.system() == 'Windows':
             os.startfile(str_path)
@@ -206,20 +211,22 @@ class FileSelectionControl:
             except ValueError:
                 return False
 
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
         if isfloat(self.__file_selection_widget.le_pixel_size.text()):
-            self.__main_control.model.cell.metadata['pixelsize'] = float(
+            cell.metadata['pixelsize'] = float(
                 self.__file_selection_widget.le_pixel_size.text())
         if isfloat(self.__file_selection_widget.le_frame_time.text()):
-            self.__main_control.model.cell.metadata['frametime'] = float(
+            cell.metadata['frametime'] = float(
                 self.__file_selection_widget.le_frame_time.text())
-        self.__main_control.model.cell.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
-        self.__main_control.model.cell.meta_data_handler.commit()
+        cell.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
+        cell.meta_data_handler.commit()
 
     def _init_meta_data(self):
         # set metadata with cut off comma's
-        if ('pixelsize' in self.__main_control.model.cell.metadata and
-                self.__main_control.model.cell.metadata['pixelsize'] is not None):
-            pixel_size = self.__main_control.model.cell.metadata['pixelsize']
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
+
+        if ('pixelsize' in cell.metadata and cell.metadata['pixelsize'] is not None):
+            pixel_size = cell.metadata['pixelsize']
             pixel_size *= 10000
             pixel_size = int(pixel_size)
             pixel_size = float(pixel_size) / 10000
@@ -228,9 +235,8 @@ class FileSelectionControl:
             self.__file_selection_widget.le_pixel_size.setPlaceholderText('- enter metadata manually -')
             self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
 
-        if ('frametime' in self.__main_control.model.cell.metadata and
-                self.__main_control.model.cell.metadata['frametime'] is not None):
-            frame_rate = self.__main_control.model.cell.metadata['frametime']
+        if ('frametime' in cell.metadata and cell.metadata['frametime'] is not None):
+            frame_rate = cell.metadata['frametime']
             frame_rate *= 10000
             frame_rate = int(frame_rate)
             frame_rate = float(frame_rate) / 10000
@@ -243,9 +249,9 @@ class FileSelectionControl:
 
     def _init_loi_from_file(self):
         # read loi files, store the line data in dictionary and in ui loi list
-
+        cell = TypeUtils.unbox(self.__main_control.model.cell)
         loi_files = glob.glob(
-            self.__main_control.model.cell.folder + '*_loi' + self.__main_control.model.file_extension)
+           cell.folder + '*_loi' + self.__main_control.model.file_extension)
         if len(loi_files) > 0:
             for loi_file in loi_files:
                 tmp_profile = IOUtils.json_deserialize(loi_file)  # IOUtils.deserialize_profile_data(loi_file)
