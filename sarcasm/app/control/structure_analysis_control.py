@@ -218,9 +218,6 @@ class StructureAnalysisControl:
         call_lambda = lambda w, m: m.cell.structure.analyze_myofibrils(
             frames=m.parameters.get_parameter('structure.frames').get_value(),
             n_seeds=m.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
-            score_threshold=None if m.parameters.get_parameter(
-                'structure.myofibril.score_threshold_empty').get_value() else m.parameters.get_parameter(
-                'structure.myofibril.score_threshold').get_value(),
             persistence=m.parameters.get_parameter('structure.myofibril.persistence').get_value(),
             threshold_distance=m.parameters.get_parameter('structure.myofibril.threshold_distance').get_value()
         )
@@ -411,7 +408,6 @@ class StructureAnalysisControl:
     def __sarcomere_analysis_finished(self):
         self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
-        self.__main_control.init_midline_points_stack()
 
     def __myofibril_analysis_finished(self):
         self.__main_control.init_myofibril_lines_stack()

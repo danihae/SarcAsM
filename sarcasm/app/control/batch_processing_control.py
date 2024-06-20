@@ -328,7 +328,7 @@ class BatchProcessingControl:
                                                      'structure.predict.cell_area.clip_thresh_max').get_value()
                                              ))
         # analyze cell area and sarcomere area
-        sarc_obj.structure.analyze_cell_area(frames=frames)
+        sarc_obj.structure.analyze_cell_area()
         # analyze sarcomere structures
         sarc_obj.structure.analyze_z_bands(
             frames=frames,

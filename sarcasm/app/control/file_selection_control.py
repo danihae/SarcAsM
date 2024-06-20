@@ -144,6 +144,7 @@ class FileSelectionControl:
         self.__main_control.model.init_cell(file)
         self.__main_control.init_z_band_stack()
         self.__main_control.init_cell_area_stack()
+        self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
         self.__main_control.init_myofibril_lines_stack()
 

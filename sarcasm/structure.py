@@ -235,30 +235,23 @@ class Structure:
         self.data.update(_dict)
         self.store_structure_data()
 
-    def analyze_cell_area(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
-                          threshold: float = 0.1) -> None:
+    def analyze_cell_area(self, threshold: float = 0.1) -> None:
         """
         Analyzes the area of cells in the given image(s) and calculates the cell area ratio.
 
         Parameters
         ----------
-        frames : {'all', int, list, np.ndarray}, optional
-            Specifies the frames to analyze. If 'all', analyzes all frames.
-            If an integer, analyzes the specified frame. If a list or numpy array,
-            analyzes the specified frames. Defaults to 'all'.
         threshold : float, optional
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold * 255 are considered cell. Defaults to 0.1.
         """
         assert self.sarc_obj.file_cell_mask is not None, "Cell mask not found. Please run predict_cell_area first."
-        if frames == 'all':
-            imgs = tifffile.imread(self.sarc_obj.file_cell_mask)
-        elif isinstance(frames, int) or isinstance(frames, list) or type(frames) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.file_cell_mask, key=frames)
-        else:
-            raise ValueError('frames argument not valid')
+
+        imgs = tifffile.imread(self.sarc_obj.file_cell_mask)
+
         if len(imgs.shape) == 2:
             imgs = np.expand_dims(imgs, 0)
+
         n_imgs = len(imgs)
 
         # create empty array
@@ -421,7 +414,7 @@ class Structure:
                        'z_lat_length_groups_std': z_lat_length_groups_std,
                        'z_lat_alignment_groups_mean': z_lat_alignment_groups_mean,
                        'z_lat_alignment_groups_std': z_lat_alignment_groups_std,
-                       'params.z_frames': frames, 'params.z_threshold': threshold,
+                       'params.z_frames': list_frames, 'params.z_threshold': threshold,
                        'params.z_min_length': min_length, 'params.z_end_radius': end_radius,
                        'params.z_theta_phi_min': theta_phi_min, 'params.z_d_max': d_max, 'params.z_d_min': d_min}
         self.data.update(z_band_data)
@@ -923,7 +916,7 @@ class Structure:
                        'domain_oop': domain_oop, 'domain_oop_mean': domain_oop_mean,
                        'domain_oop_median': domain_oop_mean, 'domain_oop_std': domain_oop_std,
                        'domain_orientation': domain_orientation, 'domain_mask': domain_mask,
-                       'params.domain_frames': frames,
+                       'params.domain_frames': list_frames,
                        'params.dist_threshold_ends': dist_threshold_ends,
                        'params.dist_threshold_midline_points': dist_threshold_midline_points,
                        'params.louvain_resolution': louvain_resolution,

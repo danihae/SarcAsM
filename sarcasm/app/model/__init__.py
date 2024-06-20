@@ -110,8 +110,8 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_lower').set_value(-90)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_upper').set_value(90)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_step').set_value(15)
-        self.__parameters.get_parameter(name='structure.wavelet.absolute_threshold').set_value(False)
-        self.__parameters.get_parameter(name='structure.wavelet.score_threshold').set_value(90)
+        self.__parameters.get_parameter(name='structure.wavelet.absolute_threshold').set_value(True)
+        self.__parameters.get_parameter(name='structure.wavelet.score_threshold').set_value(0.25)
         self.__parameters.get_parameter(name='structure.wavelet.save_all').set_value(False)
 
         self.__parameters.get_parameter(name='structure.myofibril.n_seeds').set_value(500)
