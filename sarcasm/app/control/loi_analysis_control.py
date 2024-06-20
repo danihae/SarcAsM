@@ -44,14 +44,14 @@ class LOIAnalysisControl:
                                      linewidth=m.parameters.get_parameter('loi.detect.line_width').get_value())
 
     def _finished_detect_lois(self):
-        # todo: get loi's from cell and add them to napari
+        # get loi's from cell and add them to napari
         print('finished loi detection...')
         # before adding line to napari, check if the line is already in napari's 'loi' layer
         if self.__main_control.model.cell is None:  # exit method
             return
 
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-
+        # todo: the key loi_lines is not found in cell.structure.data
         for line in self.__main_control.model.cell.structure.data['loi_lines']:
             start, end = np.round(line).astype('int')
             self.__main_control.on_update_loi_list(line_start=start,

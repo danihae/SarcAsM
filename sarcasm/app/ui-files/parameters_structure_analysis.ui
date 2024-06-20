@@ -384,7 +384,7 @@
          <double>100000000.000000000000000</double>
         </property>
         <property name="value">
-         <double>0.30000000000000</double>
+         <double>0.300000000000000</double>
         </property>
        </widget>
       </item>
@@ -618,16 +618,16 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_wavelet_score_threshold">
+         <widget class="QDoubleSpinBox" name="dsb_wavelet_score_threshold">
           <property name="toolTip">
            <string>Threshold score for clipping of length and orientation map (if abs_threshold=False, score_threshold is
             percentile (e.g., 90) for adaptive thresholding)</string>
           </property>
-          <property name="maximum">
-           <number>999999999</number>
+          <property name="decimals">
+           <number>3</number>
           </property>
-          <property name="value">
-           <number>90</number>
+          <property name="maximum">
+           <double>99999999.000000000000000</double>
           </property>
          </widget>
         </item>
@@ -792,63 +792,44 @@
       <string>Sarcomere domains analysis using clustering algorithm</string>
      </property>
      <layout class="QFormLayout" name="formLayout_5">
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_5">
-        <property name="toolTip">
-         <string>Threshold (percentile of max_score distribution) for filtering points based on max_score</string>
-        </property>
-        <property name="text">
-         <string>Score threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domain_analysis_score_threshold">
-        <property name="toolTip">
-         <string>Threshold (percentile of max_score distribution) for filtering points based on max_score</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
       <item row="2" column="0">
-       <widget class="QLabel" name="label_7">
+       <widget class="QLabel" name="label">
         <property name="toolTip">
-         <string>Reduce number of samples by subsampling with factor reduce</string>
+         <string>Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
+            Only the ends with the smallest distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="text">
-         <string>Reduce points</string>
+         <string>Distance threshold ends</string>
         </property>
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QSpinBox" name="sb_domain_analysis_reduce">
+       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_ends">
         <property name="toolTip">
-         <string>Reduce number of samples by subsampling with factor reduce</string>
+         <string>Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
+            Only the ends with the smallest distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="maximum">
-         <number>999999</number>
+         <double>9999999.000000000000000</double>
         </property>
        </widget>
       </item>
       <item row="3" column="0">
-       <widget class="QLabel" name="label_17">
+       <widget class="QLabel" name="label_16">
         <property name="toolTip">
-         <string>Distance threshold for agglomerative clustering.</string>
+         <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
+            All points within this distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="text">
-         <string>Distance threshold [µm]</string>
+         <string>Distance threshold midline points</string>
         </property>
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domain_analysis_distance_threshold">
+       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_midline_points">
         <property name="toolTip">
-         <string>Distance threshold for agglomerative clustering.</string>
+         <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
+            All points within this distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="maximum">
          <double>999999.000000000000000</double>
@@ -856,19 +837,61 @@
        </widget>
       </item>
       <item row="4" column="0">
+       <widget class="QLabel" name="label_31">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="text">
+         <string>Louvain resolution</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_louvain_resolution">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="maximum">
+         <double>999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_42">
+        <property name="toolTip">
+         <string>Random seed for Louvain algorithm, to ensure reproducibility. Defaults to 2.</string>
+        </property>
+        <property name="text">
+         <string>Louvain seed</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QSpinBox" name="sb_louvain_seed">
+        <property name="toolTip">
+         <string>Random seed for Louvain algorithm, to ensure reproducibility. Defaults to 2.</string>
+        </property>
+        <property name="maximum">
+         <number>99999999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
        <widget class="QLabel" name="label_19">
         <property name="toolTip">
-         <string>Minimal area of domains / clusters (in µm^2). Area is calculated by convex hull.</string>
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
         </property>
         <property name="text">
          <string>Min. domain area [µm²]</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="6" column="1">
        <widget class="QDoubleSpinBox" name="dsb_domain_analysis_area_min">
         <property name="toolTip">
-         <string>Minimal area of domains / clusters (in µm^2). Area is calculated by convex hull.</string>
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -878,7 +901,27 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="2">
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_43">
+        <property name="toolTip">
+         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
+        </property>
+        <property name="text">
+         <string>Dilation radius</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QSpinBox" name="sb_dilation_radius">
+        <property name="toolTip">
+         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
+        </property>
+        <property name="maximum">
+         <number>9999999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="11" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_domain_analysis">
         <property name="toolTip">
          <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>

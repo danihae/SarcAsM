@@ -2,7 +2,7 @@ import napari
 
 from .parameters import Parameters
 from .parameter import Parameter
-from sarcasm import SarcAsM, Motion
+from sarcasm import SarcAsM, Motion, TypeUtils
 from typing import Optional
 
 
@@ -62,7 +62,8 @@ class ApplicationModel:
         self._cell = SarcAsM(cell_file, use_gui=True)
 
     def init_sarcomere(self, loi_name):
-        self.__sarcomere = Motion(self.__cell_file_name, loi_name=loi_name)
+        cell_file_name = TypeUtils.unbox(self.__cell_file_name)
+        self.__sarcomere = Motion(cell_file_name, loi_name=loi_name)
 
     def is_initialized(self):
         # check if file is loaded, check if viewer is active(not closed)
@@ -120,11 +121,12 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.myofibril.persistence').set_value(3)
         self.__parameters.get_parameter(name='structure.myofibril.threshold_distance').set_value(0.3)
 
-        self.__parameters.get_parameter(name='structure.domain.analysis.score_threshold').set_value(0.)
-        self.__parameters.get_parameter(name='structure.domain.analysis.reduce').set_value(3)
-        self.__parameters.get_parameter(name='structure.domain.analysis.weight_length').set_value(0)
-        self.__parameters.get_parameter(name='structure.domain.analysis.distance_threshold').set_value(3)
-        self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(200)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_ends').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_midline_points').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.domain.analysis.louvain_resolution').set_value(0.05)
+        self.__parameters.get_parameter(name='structure.domain.analysis.louvain_seed').set_value(2)
+        self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(50.0)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(3)
 
         # endregion
 
@@ -236,11 +238,12 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.myofibril.persistence')
         self.__parameters.set_parameter(name='structure.myofibril.threshold_distance')
 
-        self.__parameters.set_parameter(name='structure.domain.analysis.score_threshold')
-        self.__parameters.set_parameter(name='structure.domain.analysis.reduce')
-        self.__parameters.set_parameter(name='structure.domain.analysis.weight_length')
-        self.__parameters.set_parameter(name='structure.domain.analysis.distance_threshold')
+        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_ends')
+        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_midline_points')
+        self.__parameters.set_parameter(name='structure.domain.analysis.louvain_resolution')
+        self.__parameters.set_parameter(name='structure.domain.analysis.louvain_seed')
         self.__parameters.set_parameter(name='structure.domain.analysis.area_min')
+        self.__parameters.set_parameter(name='structure.domain.analysis.dilation_radius')
 
         # endregion
 
