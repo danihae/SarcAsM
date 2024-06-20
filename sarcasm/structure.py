@@ -290,7 +290,7 @@ class Structure:
         threshold : float, optional
             Threshold for binarizing z-bands prior to labeling (0 - 1). Defaults to 0.1.
         min_length : float, optional
-            Minimal length of z-bands; smaller z-bands are removed (in µm). Defaults to 1.0.
+            Minimal length of z-bands; smaller z-bands are removed (in µm). Defaults to 0.5.
         end_radius : float, optional
             Radius around z-band ends to quantify orientation of ends (in µm). Defaults to 0.75.
         theta_phi_min : float, optional
@@ -647,7 +647,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def find_optimal_wavelet_minor_axis(self, frame: int = 0, n_sample: int = 50):
+    def optimize_wavelet_minor_axis(self, frame: int = 0, n_sample: int = 50):
         """
         Find the optimal wavelet minor axis, in full width at half maximum (FWHM) units, that maximizes the number of
         sarcomeres identified for a given sample by determining width of Z-bands by fitting Gaussian to sample
@@ -737,6 +737,8 @@ class Structure:
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
         if frames is not None:
+            if isinstance(frames, int):
+                frames = [frames]
             assert set(frames).issubset(
                 self.data['params.wavelet_frames']), f'Run analyze_sarcomere_length_orient first for frames {frames}.'
         elif frames is None:
@@ -842,6 +844,8 @@ class Structure:
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
         if frames is not None:
+            if isinstance(frames, int):
+                frames = [frames]
             assert set(frames).issubset(
                 self.data['params.wavelet_frames']), f'Run analyze_sarcomere_length_orient first for frames {frames}.'
         elif frames is None:
@@ -2229,7 +2233,7 @@ class Structure:
                            size: Tuple[int, int],
                            dist_threshold_ends: float = 0.5,
                            dist_threshold_midline_points: float = 0.5,
-                           louvain_resolution: float = 0.05,
+                           louvain_resolution: float = 0.06,
                            louvain_seed: int = 2,
                            area_min: float = 50,
                            dilation_radius: int = 3) -> Tuple[int, List, List, List, List, List, np.ndarray]:
