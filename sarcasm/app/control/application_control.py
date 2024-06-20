@@ -278,8 +278,15 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('SarcomereDomains'):
                 layer = self.viewer.layers.__getitem__('SarcomereDomains')
                 self.viewer.layers.remove(layer)
-            #
-            self.viewer.add_labels()
+
+            domain_masks = self.model.cell.structure.data['domain_mask']
+
+            _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']), dtype='uint16')
+            for frame in range(self.model.cell.metadata['frames']):
+                if frame in self.model.cell.structure.data['params.domain_frames']:
+                    _domain_masks[frame] = domain_masks[frame].toarray()
+
+            self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):

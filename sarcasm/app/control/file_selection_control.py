@@ -147,6 +147,7 @@ class FileSelectionControl:
         self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
         self.__main_control.init_myofibril_lines_stack()
+        self.__main_control.init_sarcomere_domain_stack()
 
         self.init_line_layer()  # initializes the layer for drawing loi's
 
