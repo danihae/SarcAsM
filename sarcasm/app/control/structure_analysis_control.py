@@ -281,6 +281,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    start_message='Start sarcomere domains analysis',
                                                    finished_message='Finished sarcomere domains analysis',
+                                                   finished_action=self.__domain_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
                                                        self.__main_control.model.cell, lambda c: c.structure.commit()))
         self.__worker = worker

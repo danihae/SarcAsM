@@ -730,6 +730,8 @@ class Structure:
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
         if frames is not None:
+            if frames == 'all':
+                frames = list(range(self.sarc_obj.metadata['frames']))
             if isinstance(frames, int):
                 frames = [frames]
             assert set(frames).issubset(
@@ -837,6 +839,8 @@ class Structure:
         assert 'points' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                               'Run analyze_sarcomere_length_orient first.')
         if frames is not None:
+            if frames == 'all':
+                frames = list(range(self.sarc_obj.metadata['frames']))
             if isinstance(frames, int):
                 frames = [frames]
             assert set(frames).issubset(
