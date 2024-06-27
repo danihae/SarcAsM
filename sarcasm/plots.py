@@ -44,24 +44,23 @@ class Plots:
                               'sarcomere_area': 'Sarcomere area [µm$^2$]',
                               'sarcomere_area_ratio': 'Sarcomere area ratio',
                               'cell_area': 'Cell area [µm$^2$]', 'cell_area_ratio': 'Cell area ratio',
-                              'sarcomere_length': 'Sarcomere length [µm]',
+                              'sarcomere_length_points': 'Sarcomere length [µm]',
                               'sarcomere_length_mean': 'Sarcomere length [µm]',
                               'sarcomere_length_std': 'Sarc. length STD [µm]',
-                              'sarcomere_orientation': 'Sarcomere orient. [°]', 'sarcomere_oop': 'Sarcomere OOP',
+                              'sarcomere_orientation_points': 'Sarcomere orient. [°]', 'sarcomere_oop': 'Sarcomere OOP',
                               'sarcomere_orientation_mean': 'Sarcomere orient. [°]',
                               'sarcomere_orientation_std': 'Sarcomere orient. STD [°]',
                               'myof_length': 'Myofibril length [µm]', 'myof_length_mean': 'Myofibril length [µm]',
                               'myof_length_std': 'Myofibril length STD [µm]',
                               'myof_length_max': 'Myofibril length MAX [µm]',
-                              'myof_length_median': 'Myofibril length MEDIAN [µm]',
                               'myof_msc': 'Myofibril MSC', 'myof_msc_mean': 'Myofibril MSC',
                               'myof_msc_std': 'Myofibril MSC STD',
-                              'myof_msc_median': 'Myofibril MSC MEDIAN', 'domain_area': 'Domain area [µm$^2$]',
+                              'domain_area': 'Domain area [µm$^2$]',
                               'domain_area_mean': 'Domain area [µm$^2$]',
                               'domain_area_std': 'Domain area STD [µm$^2$]',
-                              'domain_area_median': 'Domain area MEDIAN [µm$^2$]', 'domain_oop': 'Domain OOP',
-                              'domain_oop_mean': 'Domain OOP', 'domain_oop_median': 'Domain OOP',
-                              'domain_oop_std': 'Domain OOP'}
+                              'domain_oop': 'Domain OOP',
+                              'domain_oop_mean': 'Domain OOP',
+                              'domain_oop_std': 'STD Domain OOP'}
 
     feature_names_motion = {'contr_max': '$\Delta SL_-$', 'contr_max_avg': '$\overline{\Delta SL}_-$',
                             'elong_max': '$\Delta SL_+$', 'elong_max_avg': '$\overline{\Delta SL}_+$',
@@ -114,54 +113,54 @@ class Plots:
             ax_t.set_xlim(xlim)
             ax_t.set_ylim(ylim)
 
-    @staticmethod
-    def plot_summary_structure(sarc_obj: Union[SarcAsM, Motion], save_format='png'):
-        """
-        Plots a summary of the structure of the sarcomere object.
-
-        Parameters
-        ----------
-        sarc_obj : SarcAsM or Motion
-            The object to plot, which can be an instance of SarcAsM or Motion.
-        save_format : str, optional
-            The format to save the plot. Defaults to 'png'.
-        """
-
-        mosaic = """
-        AAADDD
-        BBBEEE
-        CCCFFF
-        GGHHII
-        JJKKLL
-        """
-
-        fig, axs = plt.subplot_mosaic(mosaic=mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
-
-        # image
-        title = f'{sarc_obj.filename}'
-        fig.suptitle(title)
-
-        Plots.plot_image(axs['A'], sarc_obj)
-        Plots.plot_z_bands(axs['B'], sarc_obj)
-        Plots.plot_z_segmentation(axs['C'], sarc_obj)
-        Plots.plot_sarcomere_lengths(axs['D'], sarc_obj)
-        Plots.plot_sarcomere_orientations(axs['E'], sarc_obj)
-        Plots.plot_myofibrils(axs['F'], sarc_obj)
-
-        Plots.plot_histogram_structure(axs['G'], sarc_obj, feature='z_length', label='Z-band lengths [µm]')
-        Plots.plot_histogram_structure(axs['H'], sarc_obj, feature='z_intensity', label='Z-band intensity [a.u.]')
-        Plots.plot_histogram_structure(axs['I'], sarc_obj, feature='z_straightness', label='Z-band straightness [a.u.]')
-        Plots.plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_points',
-                                       label='Sarcomere lengths [µm]')
-        Plots.plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_points',
-                                       label='Sarcomere orientation [°]')
-        Plots.plot_histogram_structure(axs['L'], sarc_obj, feature='myof_line_lengths', label='Myofibril lengths [µm]')
-
-        PlotUtils.label_all_panels(axs)
-        plt.tight_layout()
-
-        fig.savefig(sarc_obj.analysis_folder + 'summary_structure.' + save_format, dpi=PlotUtils.dpi)
-        plt.show()
+    # @staticmethod
+    # def plot_summary_structure(sarc_obj: Union[SarcAsM, Motion], save_format='png'):
+    #     """
+    #     Plots a summary of the structure of the sarcomere object.
+    #
+    #     Parameters
+    #     ----------
+    #     sarc_obj : SarcAsM or Motion
+    #         The object to plot, which can be an instance of SarcAsM or Motion.
+    #     save_format : str, optional
+    #         The format to save the plot. Defaults to 'png'.
+    #     """
+    #
+    #     mosaic = """
+    #     AAADDD
+    #     BBBEEE
+    #     CCCFFF
+    #     GGHHII
+    #     JJKKLL
+    #     """
+    #
+    #     fig, axs = plt.subplot_mosaic(mosaic=mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
+    #
+    #     # image
+    #     title = f'{sarc_obj.filename}'
+    #     fig.suptitle(title)
+    #
+    #     Plots.plot_image(axs['A'], sarc_obj)
+    #     Plots.plot_z_bands(axs['B'], sarc_obj)
+    #     Plots.plot_z_segmentation(axs['C'], sarc_obj)
+    #     Plots.plot_sarcomere_lengths(axs['D'], sarc_obj)
+    #     Plots.plot_sarcomere_orientations(axs['E'], sarc_obj)
+    #     Plots.plot_myofibrils(axs['F'], sarc_obj)
+    #
+    #     Plots.plot_histogram_structure(axs['G'], sarc_obj, feature='z_length', label='Z-band lengths [µm]')
+    #     Plots.plot_histogram_structure(axs['H'], sarc_obj, feature='z_intensity', label='Z-band intensity [a.u.]')
+    #     Plots.plot_histogram_structure(axs['I'], sarc_obj, feature='z_straightness', label='Z-band straightness [a.u.]')
+    #     Plots.plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_points',
+    #                                    label='Sarcomere lengths [µm]')
+    #     Plots.plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_points',
+    #                                    label='Sarcomere orientation [°]')
+    #     Plots.plot_histogram_structure(axs['L'], sarc_obj, feature='myof_line_lengths', label='Myofibril lengths [µm]')
+    #
+    #     PlotUtils.label_all_panels(axs)
+    #     plt.tight_layout()
+    #
+    #     fig.savefig(sarc_obj.analysis_folder + 'summary_structure.' + save_format, dpi=PlotUtils.dpi)
+    #     plt.show()
 
     @staticmethod
     def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
@@ -286,7 +285,7 @@ class Plots:
 
     @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, clip_thrs=(1, 99), rotate=False,
-                   scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+                   invert=False, scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                    inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots microscopy raw image of the sarcomere object.
@@ -301,6 +300,8 @@ class Plots:
             The frame to plot. Defaults to 0.
         rotate : bool, optional
             Whether to rotate the image. Defaults to False.
+        invert : bool, optional
+            Whether to invert the image. Defaults to False.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -321,8 +322,11 @@ class Plots:
         if rotate:
             img = img.T
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
-        img = 1 - img / np.max(img)
-        plot = ax.imshow(img, cmap='Greys')
+        if invert:
+            img = 1 - img/np.max(img)
+        else:
+            img = img / np.max(img)
+        plot = ax.imshow(img, cmap='gray')
         if hasattr(sarc_obj, 'loi_data') and show_loi:
             line = sarc_obj.loi_data['line']
             if rotate:
@@ -581,7 +585,7 @@ class Plots:
             labels_plot = Utils.shuffle_labels(labels_plot)
 
         z_ends = sarc_obj.structure.data['z_ends'][frame] / sarc_obj.metadata['pixelsize']
-        z_links = sarc_obj.structure.data['z_links'][frame]
+        z_links = sarc_obj.structure.data['z_lat_links'][frame]
         masked_labels = np.ma.masked_where(labels_plot == 0, labels_plot)
         cmap = plt.cm.prism
         cmap.set_bad(color=(0, 0, 0, 0))

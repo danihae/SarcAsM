@@ -36,21 +36,21 @@ class MultiStructureAnalysis:
     meta_keys_default = ['file_id', 'file_name', 'file_path', 'date', 'frames', 'size', 'pixelsize', 'timestamps',
                          'measurement_id', 'time', 'frametime']
 
-    structure_keys_default = ['avg_intensity', 'cell_area', 'cell_area_ratio', 'domain_area_mean',
-                              'domain_area_median', 'domain_area_std', 'domain_oop_mean',
-                              'domain_oop_median', 'domain_oop_std', 'domain_slen_mean',
-                              'domain_slen_median', 'domain_slen_std', 'myof_length_max',
-                              'myof_length_mean', 'myof_length_median', 'myof_length_std',
-                              'myof_msc_mean', 'myof_msc_median', 'myof_msc_std', 'n_domains',
+    structure_keys_default = ['cell_area', 'cell_area_ratio', 'domain_area_mean',
+                              'domain_area_std', 'domain_oop_mean',
+                              'domain_oop_std', 'domain_slen_mean',
+                              'myof_length_max',
+                              'myof_length_mean', 'myof_length_std',
+                              'myof_msc_mean', 'myof_msc_std', 'n_domains',
                               'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
-                              'sarcomere_length_median', 'sarcomere_length_std', 'sarcomere_oop',
+                              'sarcomere_length_std', 'sarcomere_oop',
                               'z_intensity_mean', 'z_intensity_std', 'z_lat_alignment_mean',
-                              'z_lat_alignment_std', 'z_lat_dist_mean', 'z_lat_dist_std',
+                              'z_lat_alignment_std', 'z_lat_dist_mean', 'z_lat_dist_std', 'z_lat_length_groups_mean',
                               'z_lat_neighbors_mean', 'z_lat_neighbors_std', 'z_length_max',
                               'z_length_mean', 'z_length_std', 'z_oop', 'z_ratio_intensity',
                               'z_straightness_mean', 'z_straightness_std']
 
-    def __init__(self, list_files, folder, experiment=None, load_data=False, **conditions):
+    def __init__(self, list_files: list, folder: str, experiment: str = None, load_data: bool = False, **conditions):
         self.folder = folder
         self.experiment = experiment
         self.files = list_files

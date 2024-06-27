@@ -1,6 +1,7 @@
 import os
 import pathlib
 import shutil
+from typing import Union
 
 import torch
 
@@ -39,8 +40,8 @@ class SarcAsM:
         Path to the TIFF file for analysis.
     auto_save : bool
         Whether to save analysis results automatically.
-    channel : int or None
-        Channel containing sarcomeres in multichannel images/movies.
+    channel : int or None or str
+        Channel containing sarcomeres in multichannel images/movies, or 'RGB' for RGB images.
     use_gui : bool
         Whether SarcAsM is used through GUI.
     info : dict
@@ -59,8 +60,8 @@ class SarcAsM:
         Path to the sarcomere mask file, if exists.
     """
 
-    def __init__(self, filename: str, restart=False, channel=None, auto_save=True, use_gui=False, device='auto',
-                 **info):
+    def __init__(self, filename: str, restart: bool = False, channel: Union[int, None, str] = None, auto_save: bool = True,
+                 use_gui: bool = False, device: Union[torch.device, str] = 'auto', **info):
         """
         Initializes a SarcAsM object with specified parameters and directory structure.
         """
@@ -98,7 +99,7 @@ class SarcAsM:
 
         # determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
         if device == 'auto':
-            self.device = Utils.get_device(print_device=True)
+            self.device = Utils.get_device(print_device=False)
         else:
             assert isinstance(device, torch.device), "Device must be of type 'torch.device', e.g. torch.device('cpu')"
             self.device = device
