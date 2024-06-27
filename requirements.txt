@@ -16,5 +16,6 @@ PyWavelets~=1.5.0
 imagecodecs~=2024.1.1
 qtutils
 networkx
+openpyxl
 tifffile
 notebook
