@@ -1,0 +1,484 @@
+from typing import List
+
+import numpy as np
+from scipy import sparse
+
+# structural features
+structure_feature_dict = {
+    'domain_area': {
+        'description': 'Areas of individual sarcomere domains in µm^2. List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Domain area [µm$^2$]'
+    },
+    'domain_area_mean': {
+        'description': 'Mean domain area in µm^2. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Mean domain area [µm^2]'
+    },
+    'domain_area_std': {
+        'description': 'Standard deviation of domain area in µm^2. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'STD domain area [µm^2]'
+    },
+    'domain_mask': {
+        'description': 'Masks of sarcomere domains, pixel values reflects domain indices, 0 is background. '
+                       'Stored as list of sparse arrays. For conversion to np.ndarray, use mask.toarray().',
+        'data type': List[sparse.coo_matrix],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Sarcomere domain mask'
+    },
+    'domain_oop': {
+        'description': 'Sarcomere orientational order parameter (OOP) of individual sarcomere domains. '
+                       'OOP is 1 for perfectly aligned sarcomeres, and 0 for randomly oriented sarcomeres. '
+                       'List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Domain OOP'
+    },
+    'domain_oop_mean': {
+        'description': 'Mean sarcomere orientational order parameter (OOP) of all sarcomere domains in image. '
+                       'np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Mean domain OOP'
+    },
+    'domain_oop_std': {
+        'description': 'Standard deviation of sarcomere orientational order parameter (OOP) of all sarcomere domains in image. '
+                       'np.array with value for each frame.',
+        'data type': 'e.g. float',
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Standard deviation of domain out-of-plane'
+    },
+    'domain_orientation': {
+        'description': 'Sarcomere orientation in radians of individual sarcomere domains. ',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Domain orientation [rad]'
+    },
+    'domain_slen': {
+        'description': 'Mean sarcomere length within each sarcomere domain. List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Domain sarcomere length [µm]'
+    },
+    'domains': {
+        'description': 'Set of sarcomere vectors of each sarcomere domain. List with list of np.arrays for each frame, '
+                       'storing the indices of sarcomere vectors for each domain.',
+        'data type': List[List[np.ndarray]],
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': 'Sarcomere domains'
+    },
+    'max_score_points': {
+        'description': 'Wavelet score of each sarcomere vector. List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Max score sarcomere vectors'
+    },
+    'midline_id_points': {
+        'description': 'Midline identifier of each sarcomere vector. '
+                       'Value reflects midline label, with unique label for each sarcomere midline. '
+                       'List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Midline ID sarcomere vectors'
+    },
+    'midline_length_points': {
+        'description': 'Length of repsective sarcomere midline of each sarcomere vector. '
+                       'List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.sarcomere_length_orient',
+        'name': 'Midline length vectors [µm]'
+    },
+    'myof_length': {
+        'description': 'Length of myofibril lines. List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Myofibril lengths [µm]'
+    },
+    'myof_length_max': {
+        'description': 'Maximum length of myofibril lines in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Max. myofibril length [µm]'
+    },
+    'myof_length_mean': {
+        'description': 'Mean length of myofibril lines in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Mean myofibril length [µm]'
+    },
+    'myof_length_std': {
+        'description': 'Standard deviation of length of myofibril lines in each frame. '
+                       'np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'STD myofibril length [µm]'
+    },
+    'myof_lines': {
+        'description': 'Sarcomere vector IDs of myofibril lines. List with list of np.arrays for each frame.',
+        'data type': List[List[np.ndarray]],
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Myofibril lines'
+    },
+    'myof_msc': {
+        'description': 'Mean squared curvature (MSC) of myofibril lines. List with np.array for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Myofibril MSC'
+    },
+    'myof_msc_mean': {
+        'description': 'Mean of mean squared curvature (MSC) of myofibril lines in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Mean myofibril MSC'
+    },
+    'myof_msc_std': {
+        'description': 'Standard deviation of mean squared curvature (MSC) of myofibril lines in each frame. '
+                       'np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'STD myofibril MSC'
+    },
+    'n_domains': {
+        'description': 'Number of sarcomere domains in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_domains',
+        'name': '# sarcomere domains'
+    },
+    'points': {
+        'description': 'Position of sarcomere vectors in each frame in pixels.', 'List of np.ndarray for each frame'
+                                                                                 'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere vector positions [px]'
+    },
+    'sarcomere_area': {
+        'description': 'Area occupied by sarcomeres. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere area [µm^2]'
+    },
+    'sarcomere_area_ratio': {
+        'description': 'Ratio of image area occupied by sarcomeres. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere area ratio'
+    },
+    'sarcomere_length_mean': {
+        'description': 'Mean sarcomere length of sarcomere vectors in each frame. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze...',
+        'name': 'Mean sarcomere length [µm]'
+    },
+    'sarcomere_length_points': {
+        'description': 'Sarcomere length of sarcomere vectors in each frame. List of np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere length vectors [µm]'
+    },
+    'sarcomere_length_std': {
+        'description': 'Standard deviation of sarcomere length of sarcomere vectors in each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'STD sarcomere length [µm]'
+    },
+    'sarcomere_oop': {
+        'description': 'Sarcomere orientational order parameter (OOP) of all sarcomere vectors in frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere OOP'
+    },
+    'sarcomere_orientation_mean': {
+        'description': 'Mean sarcomere orientation of all sarcomere vectors in each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Mean sarcomere orientation [rad]'
+    },
+    'sarcomere_orientation_points': {
+        'description': 'Sarcomere orientation of sarcomere vectors. List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere orientation points [rad]'
+    },
+    'sarcomere_orientation_std': {
+        'description': 'Standard deviation of sarcomere orientation of all sarcomere vectors in each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'STD sarcomere orientation [rad]'
+    },
+    'wavelet_bank': {
+        'description': 'Wavelet bank. Only stored if save_all=True.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Wavelet bank'
+    },
+    'wavelet_max_score': {
+        'description': 'Spatial map of maximum wavelet score. Only stored if save_all=True.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze...',
+        'name': 'Wavelet max score'
+    },
+    'wavelet_sarcomere_length': {
+        'description': 'Spatial map of sarcomere length. Only stored if save_all=True.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere length [µm]'
+    },
+    'wavelet_sarcomere_orientation': {
+        'description': 'Spatial map of sarcomere orientation. Only stored if save_all=True.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_length_orient',
+        'name': 'Sarcomere orientation [rad]'
+    },
+    'z_avg_intensity': {
+        'description': 'Average intensity of Z-bands, i.e. average pixel values of all Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band intensity'
+    },
+    'z_ends': {
+        'description': 'Position of Z-band ends in pixels.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band ends [px]'
+    },
+    'z_intensity': {
+        'description': 'Intensity of individual Z-band objects. List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band intensity'
+    },
+    'z_intensity_mean': {
+        'description': 'Mean intensity of Z-band objects. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band intensity'
+    },
+    'z_intensity_std': {
+        'description': 'Standard devialtion of intensity of Z-band objects. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band intensity'
+    },
+    'z_labels': {
+        'description': 'Z-band labels. Image with pixel values reflecting object labels. '
+                       'Stored as a sparse matrix, use labels.to_numpy() to convert to np.ndarray.',
+        'data type': sparse.csr_matrix,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band labels'
+    },
+    'z_lat_alignment': {
+        'description': 'Lateral alignment A of pairs of adjacent Z-bands. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band lateral alignment'
+    },
+    'z_lat_alignment_groups': {
+        'description': 'Mean alignment of pairs of adjacent Z-bands in lateral groups. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band alignment lat. groups'
+    },
+    'z_lat_alignment_groups_mean': {
+        'description': 'Frame-level average of mean alignment of pairs of Z-bands in lateral groups. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean alignment in lateral Z-band groups'
+    },
+    'z_lat_alignment_groups_std': {
+        'description': 'Frame-level standard deviation of mean alignment in lateral groups. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD alignment in lateral Z-band groups'
+    },
+    'z_lat_alignment_mean': {
+        'description': 'Mean lateral alignment of adjacent Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band lateral alignment'
+    },
+    'z_lat_alignment_std': {
+        'description': 'Standard deviation of lateral alignment of adjacent Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band lateral alignment'
+    },
+    'z_lat_dist': {
+        'description': 'Distance of pairs of laterally adjacent Z-bands. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band lateral distances [µm]'
+    },
+    'z_lat_dist_mean': {
+        'description': 'Mean lateral distance of pairs of laterally adjacent Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band lateral distance'
+    },
+    'z_lat_dist_std': {
+        'description': 'Standard deviation of lateral distance of pairs of laterally adjacent Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band lateral distance'
+    },
+    'z_lat_groups': {
+        'description': 'Groups of laterally aligned Z-band objects. '
+                       'List with lists of Z-band indices for each frame.',
+        'data type': List[List[List[int]]],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band lateral groups'
+    },
+    'z_lat_length_groups': {
+        'description': 'Lengths of groups of laterally aligned Z-bands. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Lengths lat. Z-band groups [µm]'
+    },
+    'z_lat_length_groups_mean': {
+        'description': 'Mean length of groups of laterally aligned Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean length lat. Z-band groups [µm]'
+    },
+    'z_lat_length_groups_std': {
+        'description': 'Standard deviation of lengths of groups of laterally aligned Z-bands. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD length lat. Z-band groups [µm]'
+    },
+    'z_lat_links': {
+        'description': 'Links between laterally aligned Z-band ends. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band lateral links'
+    },
+    'z_lat_neighbors': {
+        'description': 'Number of lateral neighbors of each Z-band object (0, 1 or 2). '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band lateral neighbors [#]'
+    },
+    'z_lat_neighbors_mean': {
+        'description': 'Mean number of lateral neighbors of each Z-band object for each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band lateral neighbors [#]'
+    },
+    'z_lat_neighbors_std': {
+        'description': 'Standard deviation of number of lateral neighbors of each Z-band object for each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band lateral neighbors [#]'
+    },
+    'z_lat_size_groups': {
+        'description': 'Size of groups of laterally aligned Z-band objects. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Size of laterally aligned Z-band groups [#]'
+    },
+    'z_lat_size_groups_mean': {
+        'description': 'Mean size of groups of laterally aligned Z-band objects. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean size groups lat. aligned Z-band [#]'
+    },
+    'z_lat_size_groups_std': {
+        'description': 'Standard deviation of size of groups of laterally aligned Z-band objects. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD size lat. aligned Z-band [#]'
+    },
+    'z_length': {
+        'description': 'Length of Z-band objects. '
+                       'List with np.ndarray of each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band length [µm]'
+    },
+    'z_length_max': {
+        'description': 'here description',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Max Z length'
+    },
+    'z_length_mean': {
+        'description': 'Mean Z-band length in each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band length'
+    },
+    'z_length_std': {
+        'description': 'Standard deviation of Z-band lengths in each frame. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band length'
+    },
+    'z_oop': {
+        'description': 'Z-band orientation order parameter. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band OOP'
+    },
+    'z_orientation': {
+        'description': 'Orientation of individual Z-band objects. '
+                       'List with np.ndarray for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band orientation [rad]'
+    },
+    'z_ratio_intensity': {
+        'description': 'Ratio of Z-band intensity to total intensity in image. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Ratio Z-band intensity to total intensity'
+    },
+    'z_straightness': {
+        'description': 'Straightness of Z-band objects, measured by ratio of end-to-end length to contour length. '
+                       'List with np.ndarray of each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band straightness'
+    },
+    'z_straightness_mean': {
+        'description': 'Mean Z-band straightness for each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Mean Z-band straightness'
+    },
+    'z_straightness_std': {
+        'description': 'Standard deviation of Z-band straightness for each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'STD Z-band straightness'
+    }
+}
