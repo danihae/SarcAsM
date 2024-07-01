@@ -221,6 +221,11 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('SarcomereVectors'):
                 layer = self.viewer.layers.__getitem__('SarcomereVectors')
                 self.viewer.layers.remove(layer)
+                pass
+            if self.viewer.layers.__contains__('MidlinePoints'):
+                layer = self.viewer.layers.__getitem__('MidlinePoints')
+                self.viewer.layers.remove(layer)
+                pass
             # create sarcomere vectors for all frames and add as vector layer
             vectors = []
             pos_vectors = []
