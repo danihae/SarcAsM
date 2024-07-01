@@ -1,8 +1,10 @@
 from typing import Any
 
+import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from biu.progress import ProgressNotifier
 
+from sarcasm import SarcAsM
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
@@ -21,20 +23,28 @@ class StructureAnalysisControl:
         self.__thread = None
         self.__worker = None
 
-    @staticmethod
-    def __predict_call(worker, model: ApplicationModel):
-
+    def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
-        progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
+
+        def __internal_function(p):
+            qtutils.inmain(lambda: self.__main_control.update_progress(int(p * 100)))  # wrap with qt main thread
+            pass
+
+        progress_notifier.set_progress_report(__internal_function)
         progress_notifier.set_progress_detail(
             lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: worker.progress_details.emit(
                 "%02d:%02d:%02d / %02d:%02d:%02d" % (
                     hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
+        return progress_notifier
+
+    def __predict_call(self, worker, model: ApplicationModel):
+
+        progress_notifier = self.__get_progress_notifier(worker)
 
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        cell = TypeUtils.unbox(model.cell)
+        cell: SarcAsM = TypeUtils.unbox(model.cell)
         cell.structure.predict_z_bands(progress_notifier=progress_notifier,
                                        model_path=network_model,
                                        time_consistent=model.parameters.get_parameter(
@@ -54,17 +64,13 @@ class StructureAnalysisControl:
         pass
 
     def __cell_mask_predict_call(self, worker, model: ApplicationModel):
-        progress_notifier = ProgressNotifier()
-        progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
-        progress_notifier.set_progress_detail(
-            lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: worker.progress_details.emit(
-                "%02d:%02d:%02d / %02d:%02d:%02d" % (
-                    hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
+        progress_notifier = self.__get_progress_notifier(worker)
+
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
 
-        cell = TypeUtils.unbox(model.cell)
+        cell: SarcAsM = TypeUtils.unbox(model.cell)
         cell.structure.predict_cell_mask(progress_notifier=progress_notifier,
                                          model_path=network_model,
                                          size=(
@@ -115,7 +121,7 @@ class StructureAnalysisControl:
             return
         if not self.__chk_prediction_network():
             return
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         message_finished = f'Z-bands detected and saved in {cell.folder}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call,
@@ -131,7 +137,7 @@ class StructureAnalysisControl:
             return
         if not self.__chk_cell_mask_prediction_network():
             return
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__cell_mask_predict_call,
                                                    start_message='Start prediction of cell mask',
@@ -164,12 +170,14 @@ class StructureAnalysisControl:
             return
 
         def __internal_call(w, m: ApplicationModel):
-            cell = TypeUtils.unbox(m.cell)
+            progress_notifier = self.__get_progress_notifier(w)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.structure.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
                                            threshold=m.parameters.get_parameter(
                                                'structure.z_band_analysis.threshold').get_value(),
                                            min_length=m.parameters.get_parameter(
-                                               'structure.z_band_analysis.min_length').get_value())
+                                               'structure.z_band_analysis.min_length').get_value(),
+                                           progress_notifier=progress_notifier)
             pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
@@ -187,7 +195,8 @@ class StructureAnalysisControl:
             return
 
         def __internal_call(w: Any, m: ApplicationModel):
-            cell = TypeUtils.unbox(m.cell)
+            progress_notifier = self.__get_progress_notifier(w)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.structure.analyze_sarcomere_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 size=m.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
@@ -205,7 +214,8 @@ class StructureAnalysisControl:
                 orient_step=m.parameters.get_parameter('structure.wavelet.orientation_step').get_value(),
                 score_threshold=m.parameters.get_parameter('structure.wavelet.score_threshold').get_value(),
                 abs_threshold=m.parameters.get_parameter('structure.wavelet.absolute_threshold').get_value(),
-                save_all=m.parameters.get_parameter('structure.wavelet.save_all').get_value()
+                save_all=m.parameters.get_parameter('structure.wavelet.save_all').get_value(),
+                progress_notifier=progress_notifier
             )
             pass
 
@@ -234,12 +244,14 @@ class StructureAnalysisControl:
 
         # estimate myofibril lengths using line-growth algorithm
         def __internal_call(w: Any, m: ApplicationModel):
-            cell = TypeUtils.unbox(m.cell)
+            progress_notifier = self.__get_progress_notifier(w)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.structure.analyze_myofibrils(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 n_seeds=m.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
                 persistence=m.parameters.get_parameter('structure.myofibril.persistence').get_value(),
-                threshold_distance=m.parameters.get_parameter('structure.myofibril.threshold_distance').get_value()
+                threshold_distance=m.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
+                progress_notifier=progress_notifier
             )
             pass
 
@@ -263,7 +275,8 @@ class StructureAnalysisControl:
             return
 
         def __internal_call(w: Any, m: ApplicationModel):
-            cell = TypeUtils.unbox(m.cell)
+            progress_notifier = self.__get_progress_notifier(w)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.structure.analyze_sarcomere_domains(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 dist_threshold_ends=m.parameters.get_parameter(
@@ -274,7 +287,8 @@ class StructureAnalysisControl:
                     'structure.domain.analysis.louvain_resolution').get_value(),
                 louvain_seed=m.parameters.get_parameter('structure.domain.analysis.louvain_seed').get_value(),
                 area_min=m.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
-                dilation_radius=m.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
+                dilation_radius=m.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value(),
+                progress_notifier=progress_notifier
             )
             pass
 

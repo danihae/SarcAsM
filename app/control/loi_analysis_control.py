@@ -1,8 +1,10 @@
 import numpy as np
 import os
+
+from sarcasm import TypeUtils, SarcAsM
 from .application_control import ApplicationControl
 from ..view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
-
+from ..model import ApplicationModel
 
 class LOIAnalysisControl:
     """
@@ -22,10 +24,11 @@ class LOIAnalysisControl:
         return True
 
     @staticmethod
-    def __call_detect_lois(w, m):
+    def __call_detect_lois(w, m:ApplicationModel):
         print('start detect lois')
-
-        m.cell.structure.detect_lois(frame=m.parameters.get_parameter('loi.detect.frame').get_value(),
+        #todo: complete in QT designer the loi parameters ui, and afterwards adapt in AppModel, and in the calls
+        cell:SarcAsM = TypeUtils.unbox(m.cell)
+        cell.structure.detect_lois(frame=m.parameters.get_parameter('loi.detect.frame').get_value(),
                                      persistence=m.parameters.get_parameter('loi.detect.persistence').get_value(),
                                      threshold_distance=m.parameters.get_parameter(
                                          'loi.detect.threshold_distance').get_value(),

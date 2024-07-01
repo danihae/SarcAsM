@@ -308,7 +308,8 @@ class Structure:
 
     def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
                         min_length: float = 0.5, end_radius: float = 0.75, theta_phi_min: float = 0.6,
-                        d_max: float = 4.0, d_min: float = 0.25) -> None:
+                        d_max: float = 4.0, d_min: float = 0.25,
+                        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
 
@@ -332,6 +333,8 @@ class Structure:
         d_min : float, optional
             Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
             Defaults to 0.25.
+        progress_notifier: ProgressNotifier
+            Wraps progress notification, default is progress notification done with tqdm
         """
         assert self.sarc_obj.file_sarcomeres is not None, ("Z-band mask not found. Please run predict_z_bands first.")
         if frames == 'all':
@@ -374,7 +377,9 @@ class Structure:
 
         # iterate images
         print('\nStarting Z-band analysis...')
-        for i, (frame_i, img_i) in tqdm(enumerate(zip(list_frames, imgs)), total=n_imgs):
+        for i, (frame_i, img_i) in enumerate(progress_notifier.iterator(zip(list_frames, imgs), total=n_imgs)):
+            # todo: the progress_notifier only works with newest (git) version of bio-image-unet's ProgressNotifier
+            #   state: 2024-07-01
             # segment z-bands
             labels_i, labels_skel_i = self.segment_z_bands(img_i)
 
@@ -466,7 +471,8 @@ class Structure:
                                   patch_size: int = 1024, score_threshold: float = 0.25,
                                   abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
                                   dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
-                                  save_all: bool = False) -> None:
+                                  save_all: bool = False,
+                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         AND-gated double wavelet analysis of sarcomere structure.
 
@@ -519,6 +525,8 @@ class Structure:
         save_all : bool, optional
             If True, the wavelet filter results (wavelet_length_i, wavelet_orientation_i, wavelet_max_score) are stored.
             If False, only the points on the midlines are stored (recommended). Defaults to False.
+        progress_notifier: ProgressNotifier
+            Wraps progress notification, default is progress notification done with tqdm
         """
         assert size > 1.1 * len_lims[1], (f"The size of wavelet filter {size} is too small for the maximum sarcomere "
                                           f"length {len_lims[1]}")
@@ -571,7 +579,7 @@ class Structure:
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, img_i) in tqdm(enumerate(zip(list_frames, imgs)), total=n_imgs):
+        for i, (frame_i, img_i) in enumerate(progress_notifier.iterator(zip(list_frames, imgs), total=n_imgs)):
             result_i = self.convolve_image_with_bank(img_i, bank, device=self.sarc_obj.device, gating=gating,
                                                      dtype=dtype, save_memory=save_memory, patch_size=patch_size)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
@@ -732,7 +740,8 @@ class Structure:
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                            n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.3,
-                           n_min: int = 5) -> None:
+                           n_min: int = 5,
+                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
 
@@ -749,6 +758,8 @@ class Structure:
             Maximal distance for nearest neighbor estimation (in micrometers). Defaults to 0.3.
         n_min : int, optional
             Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.
+        progress_notifier: ProgressNotifier
+            Wraps progress notification, default is progress notification done with tqdm
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
@@ -793,9 +804,10 @@ class Structure:
         # iterate frames
         print('\nStarting myofibril line analysis...')
         for i, (
-        frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i, max_score_vectors_i,
-        midline_length_vectors_i) in enumerate(
-            tqdm(
+                frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
+                max_score_vectors_i,
+                midline_length_vectors_i) in enumerate(
+            progress_notifier.iterator(
                 zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     max_score_vectors,
                     midline_length_vectors),
@@ -835,7 +847,8 @@ class Structure:
     def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                                   dist_threshold_ends: float = 0.5, dist_threshold_pos_vectors: float = 0.5,
                                   louvain_resolution: float = 0.06, louvain_seed: int = 2, area_min: float = 20.0,
-                                  dilation_radius: int = 3) -> None:
+                                  dilation_radius: int = 3,
+                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Cluster sarcomeres into domains based on their spatial and orientational properties using the Louvain method
         for community detection.
@@ -860,6 +873,8 @@ class Structure:
             Minimal area of domains/clusters (in µm^2). Defaults to 50.0.
         dilation_radius : int, optional
             Dilation radius for refining domain area masks. Defaults to 3.
+        progress_notifier: ProgressNotifier
+            Wraps progress notification, default is progress notification done with tqdm
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
@@ -909,7 +924,7 @@ class Structure:
         print('\nStarting sarcomere domain analysis...')
         for i, (frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
                 max_score_vectors_t, midline_id_vectors_i) in enumerate(
-            tqdm(
+            progress_notifier.iterator(
                 zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     max_score_vectors, midline_id_vectors),
                 total=len(pos_vectors))):
@@ -932,9 +947,9 @@ class Structure:
             domain_area_mean[frame_i], domain_area_std[frame_i] = np.mean(domain_area[frame_i]), np.std(
                 domain_area[frame_i])
             domain_slen_mean[frame_i], domain_slen_std[frame_i] = (
-            np.mean(domain_slen[frame_i]), np.std(domain_slen[frame_i]))
+                np.mean(domain_slen[frame_i]), np.std(domain_slen[frame_i]))
             domain_oop_mean[frame_i], domain_oop_std[frame_i] = (
-            np.mean(domain_oop[frame_i]), np.std(domain_oop[frame_i]))
+                np.mean(domain_oop[frame_i]), np.std(domain_oop[frame_i]))
 
         # update structure dictionary
         domain_data = {'n_domains': n_domains, 'domains': domains,
@@ -1040,7 +1055,7 @@ class Structure:
         # Apply filters based on the provided limits
         is_good = (
                 (loi_features['n_vectors_lines'] >= number_lims[0]) & (
-                    loi_features['n_vectors_lines'] < number_lims[1]) &
+                loi_features['n_vectors_lines'] < number_lims[1]) &
                 (loi_features['length_lines'] >= length_lims[0]) & (loi_features['length_lines'] < length_lims[1]) &
                 (loi_features['sarcomere_mean_length_lines'] >= sarcomere_mean_length_lims[0]) &
                 (loi_features['sarcomere_mean_length_lines'] < sarcomere_mean_length_lims[1]) &
