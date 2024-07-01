@@ -4,7 +4,34 @@ import torch.nn.functional as F
 
 
 class ContractionNet(nn.Module):
+    """
+        ContractionNet model for detecting contraction intervals from time-series data of individual Z-band positions
+        and sarcomere lengths of beating cardiomyocytes.
+
+        This neural network is designed to handle noisy data and distinguish between contracting and non-contracting intervals.
+        The network first extracts various features from a single input time-series by two convolutional layers with kernel size 5, followed by a dilated convolution in the third layer
+        to capture broader temporal patterns. Each convolution is followed by instance normalization and ReLU activation.
+        A self-attention layer enhances focus on salient features. The processed signal then undergoes two further
+        convolutions before being outputted through a sigmoid activation function.
+
+        Methods
+        -------
+        forward(x)
+            Forward pass through the network.
+        """
     def __init__(self, n_filter=64, in_channels=1, out_channels=2, dropout_rate=0.5):
+        """
+        Parameters
+        ----------
+        n_filter : int, optional
+            Number of filters in the convolutional layers (default is 64).
+        in_channels : int, optional
+            Number of input channels (default is 1).
+        out_channels : int, optional
+            Number of output channels (default is 2).
+        dropout_rate : float, optional
+            Dropout rate (default is 0.5).
+        """
         super(ContractionNet, self).__init__()
         self.conv1 = nn.Conv1d(in_channels=in_channels, out_channels=n_filter, kernel_size=5, padding=2)
         self.in1 = nn.InstanceNorm1d(n_filter)
@@ -23,6 +50,21 @@ class ContractionNet(nn.Module):
         self.conv_out = nn.Conv1d(in_channels=n_filter * 2, out_channels=out_channels, kernel_size=1)
 
     def forward(self, x):
+        """
+        Forward pass through the network.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, in_channels, sequence_length).
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch_size, out_channels, sequence_length) after sigmoid activation.
+        torch.Tensor
+            Raw output tensor of shape (batch_size, out_channels, sequence_length).
+        """
         x = F.relu(self.in1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))

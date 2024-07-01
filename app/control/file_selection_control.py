@@ -1,4 +1,5 @@
 import glob
+import glob
 
 import numpy as np
 from PyQt5.QtWidgets import QFileDialog
@@ -7,7 +8,7 @@ from tifffile import tifffile
 from .popup_export import ExportPopup
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
-from ...type_utils import TypeUtils
+from sarcasm.type_utils import TypeUtils
 import platform
 import os
 import subprocess
@@ -143,7 +144,7 @@ class FileSelectionControl:
 
         self.__main_control.model.init_cell(file)
         self.__main_control.init_z_band_stack()
-        self.__main_control.init_cell_area_stack()
+        self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
         self.__main_control.init_myofibril_lines_stack()
@@ -174,8 +175,8 @@ class FileSelectionControl:
 
         # todo: this is how adding lines and reading the data works
         # note that first coordinate in the point tuples is Y and second is X
-        # points = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
-        # self.__main_control.layer_loi.add_lines(points,edge_width=[10,5],edge_color='red')
+        # pos_vectors = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
+        # self.__main_control.layer_loi.add_lines(pos_vectors,edge_width=[10,5],edge_color='red')
         # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
         # data=self.__main_control.layer_loi.data
         # widths=self.__main_control.layer_loi.edge_width

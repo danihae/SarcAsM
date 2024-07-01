@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore")
 
 
 class Utils:
+    """ Miscellaneous utility functions """
     @staticmethod
     def get_device(print_device=False, no_cuda_warning=False):
         """
@@ -403,7 +404,7 @@ class Utils:
         x : ndarray
             The input time-series, must be 1D or 2D.
         dt : float
-            The time interval between points in `x`.
+            The time interval between pos_vectors in `x`.
 
         Returns
         -------
@@ -436,7 +437,7 @@ class Utils:
             data : numpy.ndarray
                 The input data to be transformed.
             dt : float
-                The time interval between data points.
+                The time interval between frames.
 
             Returns
             -------

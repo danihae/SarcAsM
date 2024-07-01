@@ -12,7 +12,7 @@ from scipy.stats import kstest, geom
 from skimage.segmentation import clear_border
 from trackpy import link_iter
 
-from .contraction_net.prediction import predict_contractions as contraction_net
+from contraction_net.prediction import predict_contractions
 from .core import SarcAsM
 from .ioutils import IOUtils
 from .utils import Utils
@@ -333,6 +333,8 @@ class Motion(SarcAsM):
         time_quiet = np.asarray(
             [np.count_nonzero(labels_quiet == i) for i in np.unique(labels_quiet)[1:]]) * \
                      self.metadata['frametime']
+        time_quiet_avg = np.mean(time_quiet)
+        time_contr_avg = np.mean(time_contr)
         # time of full contraction cycles (equivalent to 1/beating_rate)
         time_cycle = time_contr[:-1] + time_quiet
 
@@ -345,7 +347,8 @@ class Motion(SarcAsM):
                      'contr': contr, 'start_contr_frame': start_contr_frame, 'start_contr': start_contr,
                      'quiet': quiet, 'start_quiet_frame': start_quiet_frame, 'start_quiet': start_quiet,
                      'labels_contr': labels_contr, 'labels_quiet': labels_quiet,
-                     'time_contr': time_contr, 'time_quiet': time_quiet, 'time_cycle': time_cycle,
+                     'time_contr': time_contr, 'time_quiet': time_quiet, 'time_quiet_avg': time_quiet_avg,
+                     'time_contr_avg': time_contr_avg, 'time_cycle': time_cycle,
                      'n_contr': n_contr, 'n_quiet': n_quiet,
                      'beating_rate_variability': beating_rate_variability, 'beating_rate': beating_rate, }
         self.loi_data.update(dict_temp)
@@ -446,8 +449,8 @@ class Motion(SarcAsM):
         time_to_peak = np.zeros_like(contr_max) * np.nan
         time_to_peak_avg = np.zeros_like(contr_max_avg) * np.nan
         # relaxation time (100% to 0%)
-        time_relax = np.zeros_like(contr_max) * np.nan
-        time_relax_avg = np.zeros_like(contr_max_avg) * np.nan
+        time_to_relax = np.zeros_like(contr_max) * np.nan
+        time_to_relax_avg = np.zeros_like(contr_max_avg) * np.nan
         # custom percentages (p0% to p1%)
         if custom_perc and not isinstance(custom_perc, list):
             custom_perc = [custom_perc]
@@ -472,7 +475,7 @@ class Motion(SarcAsM):
                 # time to peak
                 if np.count_nonzero(np.isnan(delta_i)) == 0:
                     time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata['frametime']
-                    time_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+                    time_to_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
                 if custom_perc:
                     for k, (p0, p1) in enumerate(custom_perc):
                         if p0 < p1:  # shortening
@@ -514,7 +517,7 @@ class Motion(SarcAsM):
             # time to peak
             if np.count_nonzero(np.isnan(delta_i)) == 0:
                 time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata['frametime']
-                time_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+                time_to_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
             if custom_perc:
                 for k, (p0, p1) in enumerate(custom_perc):
                     if p0 < p1:  # shortening
@@ -544,20 +547,20 @@ class Motion(SarcAsM):
                     custom_perc_time_avg[k][i] = (t1_avg - t0_avg) * self.metadata['frametime']
 
         # calculate surplus motion index
-        self.surplus_motion_index()
+        self.calculate_surplus_motion_index()
 
         # save data in LOI dict
         self.loi_data.update({'contr_max': contr_max, 'elong_max': elong_max, 'vel_contr_max': vel_contr_max,
                               'vel_elong_max': vel_elong_max, 'contr_max_avg': contr_max_avg,
                               'elong_max_avg': elong_max_avg, 'vel_contr_max_avg': vel_contr_max_avg,
                               'vel_elong_max_avg': vel_elong_max_avg, 'time_to_peak': time_to_peak,
-                              'time_to_peak_avg': time_to_peak_avg, 'time_relax': time_relax,
-                              'time_relax_avg': time_relax_avg, 'custom_perc_time': np.asarray(custom_perc_time),
+                              'time_to_peak_avg': time_to_peak_avg, 'time_to_relax': time_to_relax,
+                              'time_to_relax_avg': time_to_relax_avg, 'custom_perc_time': np.asarray(custom_perc_time),
                               'custom_perc_time_avg': np.asarray(custom_perc_time_avg)})
         if self.auto_save:
             self.store_loi_data()
 
-    def surplus_motion_index(self):
+    def calculate_surplus_motion_index(self):
         """
         Calculate surplus motion index (SMI) for sarcomere motion: average distance traveled by
         individual sarcomeres contractions divided by distance traveled by sarcomere average
@@ -602,14 +605,14 @@ class Motion(SarcAsM):
         popping = np.zeros_like(elong_max, dtype='bool')
         popping[elong_max > thres_popping] = 1
 
-        # calculate popping frequencies
-        freq_time = np.mean(popping, axis=0)
-        freq_sarcomeres = np.mean(popping, axis=1)
-        freq = np.mean(popping)
+        # calculate popping rates
+        rate_contr = np.mean(popping, axis=0)
+        rate_sarcomeres = np.mean(popping, axis=1)
+        rate = np.mean(popping)
 
         # dictionary
-        dict_popping = {'popping_freq_time': freq_time, 'popping_freq_sarcomeres': freq_sarcomeres,
-                        'popping_freq': freq, 'popping_events': popping}
+        dict_popping = {'popping_rate_contr': rate_contr, 'popping_rate_sarcomeres': rate_sarcomeres,
+                        'popping_rate': rate, 'popping_events': popping}
 
         popping_events = dict_popping['popping_events']
         idxs_popping_s, idxs_popping_c = np.where(popping_events == 1)
@@ -651,13 +654,28 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def correlation_mutual_serial(self):
+    def analyze_sarcomere_correlations(self):
         """
         Computes the Pearson correlation coefficients for sarcomere motion patterns (∆SL and V) across different contraction
         cycles and between sarcomeres within the same cycle to analyze static and stochastic heterogeneity in sarcomere dynamics.
+
         It calculates the average serial (r_s) and mutual (r_m) correlation coefficients, and introduces the ratio R of serial
         to mutual correlations to distinguish between static and stochastic heterogeneity. The function updates the instance's
         loi_data with correlation data, including the calculated R values, and stores the data if auto_save is enabled.
+
+        Returns
+        -------
+        None
+            Updates `self.loi_data` with the following keys:
+                - 'corr_delta_slen' (ndarray or None): Correlation matrix for sarcomere length changes.
+                - 'corr_vel' (ndarray or None): Correlation matrix for sarcomere velocities.
+                - 'corr_delta_slen_serial' (float or NaN): Average serial correlation for sarcomere length changes.
+                - 'corr_delta_slen_mutual' (float or NaN): Average mutual correlation for sarcomere length changes.
+                - 'corr_vel_serial' (float or NaN): Average serial correlation for sarcomere velocities.
+                - 'corr_vel_mutual' (float or NaN): Average mutual correlation for sarcomere velocities.
+                - 'ratio_delta_slen_mutual_serial' (float or NaN): Ratio of mutual to serial correlation for sarcomere length changes.
+                - 'ratio_vel_mutual_serial' (float or NaN): Ratio of mutual to serial correlation for sarcomere velocities.
+
         """
         if self.loi_data['n_contr'] > 0:
             time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata['frametime'])
@@ -859,7 +877,7 @@ class Motion(SarcAsM):
             Binary threshold for contraction state (0, 1)
         """
         data = np.concatenate([z_pos, slen])
-        contr_all = np.asarray([contraction_net(d, weights)[0] for d in data])
+        contr_all = np.asarray([predict_contractions(d, weights)[0] for d in data])
         contr_mean = np.nanmean(contr_all, axis=0)
         return contr_mean > threshold
 

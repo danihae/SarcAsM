@@ -146,7 +146,7 @@ def process_contractions(contractions, signal=None, threshold=0.05, area_min=3, 
     area_min : int, optional
         Minimum area under the signal curve for contraction interval to consider, by default 3 frames.
     dilate_surrounding : int, optional
-        Number of points to dilate around each contraction for offset calculation, by default 2 frames.
+        Number of frames to dilate around each contraction for offset calculation, by default 2 frames.
     len_min : int, optional
         Minimum length of a contraction to consider, by default 4 frames.
     merge_max : int, optional

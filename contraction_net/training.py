@@ -14,46 +14,48 @@ device = get_device()
 
 
 class Trainer:
+    """
+    Class for training of ContractionNet. Creates Trainer object.
+
+
+    Parameters
+    ----------
+    dataset
+        Training data, object of PyTorch Dataset class
+    num_epochs : int
+        Number of training epochs
+    network
+        Network class (Default Unet)
+    in_channels : int
+        Number of input channels
+    out_channels : int
+        Number of output channels
+    batch_size : int
+        Batch size for training
+    lr : float
+        Learning rate
+    n_filter : int
+        Number of convolutional filters in first layer
+    val_split : float
+        Validation split
+    save_dir : str
+        Path of directory to save trained networks
+    save_name : str
+        Base name for saving trained networks
+    save_iter : bool
+        If True, network state is save after each epoch
+    load_weights : str, optional
+        If not None, network state is loaded before training
+    loss_function : str
+        Loss function ('BCEDice', 'Tversky' or 'logcoshTversky')
+    loss_params : Tuple[float, float]
+        Parameter of loss function, depends on chosen loss function
+    """
     def __init__(self, dataset, num_epochs, network=ContractionNet, in_channels=1, out_channels=2,
                  batch_size=16, lr=1e-3, n_filter=64, val_split=0.2,
                  save_dir='./', save_name='model.pth', save_iter=False, loss_function='BCEDice',
                  loss_params=(1, 1)):
-        """
-        Class for training of neural network. Creates Trainer object, training is started with .start().
 
-        Parameters
-        ----------
-        dataset
-            Training data, object of PyTorch Dataset class
-        num_epochs : int
-            Number of training epochs
-        network
-            Network class (Default Unet)
-        in_channels : int
-            Number of input channels
-        out_channels : int
-            Number of output channels
-        batch_size : int
-            Batch size for training
-        lr : float
-            Learning rate
-        n_filter : int
-            Number of convolutional filters in first layer
-        val_split : float
-            Validation split
-        save_dir : str
-            Path of directory to save trained networks
-        save_name : str
-            Base name for saving trained networks
-        save_iter : bool
-            If True, network state is save after each epoch
-        load_weights : str, optional
-            If not None, network state is loaded before training
-        loss_function : str
-            Loss function ('BCEDice', 'Tversky' or 'logcoshTversky')
-        loss_params : Tuple[float, float]
-            Parameter of loss function, depends on chosen loss function
-        """
         self.network = network
         self.model = network(n_filter=n_filter, in_channels=in_channels, out_channels=out_channels).to(device)
         self.data = dataset
@@ -126,7 +128,7 @@ class Trainer:
 
     def start(self):
         """
-        Start network training. Optional: predict small test sample after each epoch.
+        Start network training.
         """
         train_loss = []
         val_loss = []

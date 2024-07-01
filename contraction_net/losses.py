@@ -3,6 +3,23 @@ from torch import nn
 
 
 class BCEDiceLoss(nn.Module):
+    """
+    A combination of Binary Cross Entropy (BCE) and Dice Loss for binary segmentation tasks.
+
+    Parameters
+    ----------
+    loss_params : tuple, optional
+        A tuple containing the weights for BCE and Dice losses respectively. Default is (1, 1).
+
+    Methods
+    -------
+    dice_loss(inputs, targets, epsilon=1e-6)
+        Computes the Dice loss.
+
+    forward(inputs, targets)
+        Computes the combined BCE and Dice loss.
+    """
+
     def __init__(self, loss_params=(1, 1)):
         super(BCEDiceLoss, self).__init__()
         self.bce_loss = nn.BCEWithLogitsLoss()
@@ -21,59 +38,60 @@ class BCEDiceLoss(nn.Module):
 
 
 class SmoothnessLoss(nn.Module):
-    def __init__(self, alpha=10):
-        """
-        Initializes the SmoothnessLoss module.
+    """
+    Computes the smoothness loss for a sequence of predictions.
 
-        Parameters:
-        - alpha: Weight of the smoothness loss component.
-        """
+    Parameters
+    ----------
+    alpha : float, optional
+        Weight of the smoothness loss component. Default is 10.
+
+    Methods
+    -------
+    forward(predictions)
+        Computes the smoothness loss for a sequence of predictions.
+    """
+
+    def __init__(self, alpha=10):
         super(SmoothnessLoss, self).__init__()
         self.alpha = alpha
 
     def forward(self, predictions):
-        """
-        Computes the smoothness loss for a sequence of predictions.
-
-        Parameters:
-        - predictions: Tensor containing the model's predictions. Expected shape is
-                       (batch_size, 1, len_time_series) for univariate time-series.
-
-        Returns:
-        - loss: The computed smoothness loss.
-        """
-        # Ensure predictions is at least 2D
         if predictions.dim() < 3:
             raise ValueError("The input tensor must be 3-dimensional.")
-
-        # Calculate differences between consecutive predictions along the time series dimension
         diffs = predictions[:, :, 1:] - predictions[:, :, :-1]
-        # Compute the squared differences and sum over the time series dimension
-        loss = torch.sum(diffs ** 2) / predictions.size(0)  # Normalize by batch size
+        loss = torch.sum(diffs ** 2) / predictions.size(0)
         return self.alpha * loss
 
 
 def f1_score(logits, true_labels, threshold=0.5, epsilon=1e-7):
-    # Step 1: Convert logits to probabilities
+    """
+    Computes the F1 score for binary classification.
+
+    Parameters
+    ----------
+    logits : torch.Tensor
+        The raw output from the model (before applying sigmoid).
+    true_labels : torch.Tensor
+        The ground truth binary labels.
+    threshold : float, optional
+        The threshold to convert probabilities to binary predictions. Default is 0.5.
+    epsilon : float, optional
+        A small value to avoid division by zero. Default is 1e-7.
+
+    Returns
+    -------
+    float
+        The computed F1 score.
+    """
     probabilities = torch.sigmoid(logits)
-
-    # Step 2: Threshold probabilities to get binary predictions
     predictions = probabilities > threshold
-
-    # Convert to float for calculation
     predictions = predictions.float()
     true_labels = true_labels.float()
-
-    # True positives, false positives, false negatives
     tp = (predictions * true_labels).sum().item()
     fp = ((1 - true_labels) * predictions).sum().item()
     fn = (true_labels * (1 - predictions)).sum().item()
-
-    # Step 3: Calculate precision and recall
     precision = tp / (tp + fp + epsilon)
     recall = tp / (tp + fn + epsilon)
-
-    # Step 4: Calculate F1 score
     f1_score = 2 * (precision * recall) / (precision + recall + epsilon)
-
     return f1_score

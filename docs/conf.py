@@ -30,14 +30,13 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'SarcAsM'
-copyright = '2023, Daniel Haertter' # TODO
+copyright = '2024, Daniel Haertter'  # TODO
 author = 'Daniel Haertter'
 
 # The short X.Y version
 version = '0.1.0'
 # The full version, including alpha/beta/rc tags
 release = 'beta'
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -50,6 +49,7 @@ release = 'beta'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'autoapi.extension',
     'sphinx.ext.napoleon',
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
@@ -58,6 +58,10 @@ extensions = [
     'sphinx.ext.autosummary',
     'nbsphinx'
 ]
+
+autoapi_type = 'python'
+autoapi_dirs = ['../sarcasm', '../contraction_net']
+autoapi_ignore = ["*/test_*.py", "*/tests/*.py", "*/type_utils.py"]
 
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 nbsphinx_execute = 'never'
@@ -84,11 +88,10 @@ language = 'en'
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'sarcasm_old/app', 'sarcasm_old/yokogawa_utils.py']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
-
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -108,7 +111,7 @@ html_logo = 'images/logo.png'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = []
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -125,7 +128,6 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'sarcasmdoc'
-
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -155,7 +157,6 @@ latex_documents = [
      'Daniel Haertter', 'manual'),
 ]
 
-
 # -- Options for manual page output ------------------------------------------
 
 # One entry per manual page. List of tuples
@@ -164,7 +165,6 @@ man_pages = [
     (master_doc, 'sarcasm_old', 'SarcAsM Documentation',
      [author], 1)
 ]
-
 
 # -- Options for Texinfo output ----------------------------------------------
 
@@ -176,7 +176,6 @@ texinfo_documents = [
      author, 'SarcAsM', 'Sarcomere Analysis Multitool',
      'Miscellaneous'),
 ]
-
 
 # -- Options for Epub output -------------------------------------------------
 

@@ -10,28 +10,28 @@ files = glob.glob(folder + '/*/*.tif')[::-1]
 print(f'{len(files)} tif-files found')
 
 
-def find_rois(file):
+def find_lois(file):
     sarc_obj = SarcAsM(file)
     sarc_obj.structure.predict_z_bands(siam_unet=True)
-    sarc_obj.structure.analyze_sarcomere_length_orient(frames=0)
+    sarc_obj.structure.analyze_sarcomere_vectors(frames=0)
     sarc_obj.structure.detect_rois(timepoint=0)
 
 
 def analyze_motion(file):
-    rois = Utils.get_rois_of_cell(file)
-    for file, roi in rois:
+    lois = Utils.get_lois_of_cell(file)
+    for file, loi in lois:
         try:
-            mot_obj = Motion(file, roi)
+            mot_obj = Motion(file, loi)
             mot_obj.full_analysis_loi()
         except Exception as e:
-            print(file, roi)
+            print(file, loi)
             print(repr(e))
 
 
 if __name__ == '__main__':
-    # find ROIs
+    # find LOIs
     with Pool(4) as p:
-        p.map(find_rois, files)
+        p.map(find_lois, files)
 
     # analyze ROIs
     with Pool(12) as p:

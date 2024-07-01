@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheck
 
 from sarcasm import export
 from sarcasm.export import MultiStructureAnalysis, MultiLOIAnalysis
-from ...type_utils import TypeUtils
+from sarcasm.type_utils import TypeUtils
 import numpy as np
 
 

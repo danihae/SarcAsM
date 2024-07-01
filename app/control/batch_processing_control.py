@@ -7,8 +7,8 @@ from multiprocessing import Pool
 
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from .application_control import ApplicationControl
-from ... import SarcAsM, Utils, Motion
-from ...meta_data_handler import MetaDataHandler
+from sarcasm import SarcAsM, Utils, Motion
+from sarcasm.meta_data_handler import MetaDataHandler
 from biu.progress import ProgressNotifier
 
 
@@ -178,7 +178,7 @@ class BatchProcessingControl:
                                                model.parameters.get_parameter(
                                                    'structure.predict.clip_thresh_max').get_value()
                                            ))
-        sarc_obj.structure.analyze_sarcomere_length_orient(
+        sarc_obj.structure.analyze_sarcomere_vectors(
             frames=model.parameters.get_parameter('loi.detect.frame').get_value(),
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
             minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
@@ -295,7 +295,7 @@ class BatchProcessingControl:
 
         frames = model.parameters.get_parameter('structure.frames').get_value()
 
-        # predict sarcomere z-bands and cell area
+        # predict sarcomere z-bands and cell mask
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
@@ -314,21 +314,21 @@ class BatchProcessingControl:
                                                model.parameters.get_parameter(
                                                    'structure.predict.clip_thresh_max').get_value()
                                            ))
-        sarc_obj.structure.predict_cell_area(model_path=network_model,
+        sarc_obj.structure.predict_cell_mask(model_path=network_model,
                                              size=(
                                                  model.parameters.get_parameter(
-                                                     'structure.predict.cell_area.size_width').get_value(),
+                                                     'structure.predict.cell_mask.size_width').get_value(),
                                                  model.parameters.get_parameter(
-                                                     'structure.predict.cell_area.size_height').get_value()
+                                                     'structure.predict.cell_mask.size_height').get_value()
                                              ),
                                              clip_thres=(
                                                  model.parameters.get_parameter(
-                                                     'structure.predict.cell_area.clip_thresh_min').get_value(),
+                                                     'structure.predict.cell_mask.clip_thresh_min').get_value(),
                                                  model.parameters.get_parameter(
-                                                     'structure.predict.cell_area.clip_thresh_max').get_value()
+                                                     'structure.predict.cell_mask.clip_thresh_max').get_value()
                                              ))
-        # analyze cell area and sarcomere area
-        sarc_obj.structure.analyze_cell_area()
+        # analyze cell mask and sarcomere area
+        sarc_obj.structure.analyze_cell_mask()
         # analyze sarcomere structures
         sarc_obj.structure.analyze_z_bands(
             frames=frames,
@@ -336,7 +336,7 @@ class BatchProcessingControl:
             min_length=model.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
 
         # careful this method highly depends on pixel size setting
-        sarc_obj.structure.analyze_sarcomere_length_orient(
+        sarc_obj.structure.analyze_sarcomere_vectors(
             frames=frames,
             size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
             minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),

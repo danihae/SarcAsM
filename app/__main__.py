@@ -1,4 +1,4 @@
-from sarcasm.app import Application
+from app import Application
 
 
 def main():

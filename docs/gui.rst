@@ -64,11 +64,11 @@ You can the big **Analyze Structure** button on top to run through all the follo
 
 #. **Network**: This section segments the Z discs from your image with U-Net or Siam U-Net. *Required*: Specify the weights file to the neural network in the **file** field. Check the **siam unet** box if your weights file is for the Siam U-Net, uncheck if otherwise. The segmentation results will be saved to the cell folder after this section is done running. You can view the results in Napari.
 
-#. **Z Band Analysis**: See :meth:`sarcasm.package.sarcasm.SarcAsM.analyze_z_bands`.
+#. **Z Band Analysis**: See :meth:`sarcasm.package.sarcasm.SarcAsM.structure.analyze_z_bands`.
 
-#. **Wavelet Analysis**: See :meth:`sarcasm.package.sarcasm.SarcAsM.wavelet_analysis`.
+#. **Wavelet Analysis**: See :meth:`sarcasm.package.sarcasm.SarcAsM.structure.wavelet_analysis`.
 
-#. **Myofibril Lengths**: See :meth:`sarcasm.package.sarcasm.SarcAsM.analyze_myofibrils`.
+#. **Myofibril Lengths**: See :meth:`sarcasm.package.sarcasm.SarcAsM.structure.analyze_myofibrils`.
 
 .. See the appropriate sections in :mod:`sarcasm.package.motion.Motion` for detailed documentation about the parameters of the last three sections.
 

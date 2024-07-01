@@ -22,22 +22,32 @@ There are two ways to use SarcAsM:
    :caption: Getting Started:
 
    installation
+   quickstart
    gui
 
 .. toctree::
    :maxdepth: 2
-   :caption: Examples:
+   :caption: Tutorials:
 
    ./notebooks/tutorial_structure_analysis
    ./notebooks/tutorial_motion_analysis
    ./notebooks/tutorial_batch_analysis
+   ./notebooks/tutorial_data_export
+   ./notebooks/tutorial_data_visualization
+   ./notebooks/tutorial_training_unet
+   ./notebooks/tutorial_training_3Dunet
+   ./notebooks/tutorial_training_contraction_net
 
 .. toctree::
    :maxdepth: 2
-   :caption: Python package:
+   :caption: Features:
 
-   API reference <_autosummary/sarcasm>
+   structure_features
+   motion_features
 
+.. toctree::
+   :maxdepth: 2
+   :caption: API reference:
 
 
 Citing SarcAsM
@@ -51,14 +61,32 @@ Title: SarcAsM (Sarcomere Analysis Multi-tool): A comprehensive software tool fo
 
 License
 --------------
+This software is patent pending (Patent Application No. DE 10 2024 112 939.5, Priority Date: 8.5.2024).
+
+Academic and Non-Commercial Use
+==================
+This software is free for academic and non-commercial use. Users are granted a non-exclusive, non-transferable license to use and modify the software for research, educational, and other non-commercial purposes.
+
+Commercial Use Restrictions
+==================
+Commercial use of this software is strictly prohibited without obtaining a separate license agreement. This includes but is not limited to:
+
+- Using the software in a commercial product or service
+- Using the software to provide services to third parties
+- Reselling or redistributing the software
+
+For commercial licensing inquiries, please contact:
+
+**MBM ScienceBridge GmbH**,
+Hans-Adolf-Krebs-Weg 1,
+37077 Göttingen,
+https://sciencebridge.de/en/
+
+All rights not expressly granted are reserved. Unauthorized use may result in legal action.
 
 Contact
 --------------
-For questions, requests and issues, please contact us at :mailto:'daniel.haertter@med.uni-goettingen.de' or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_.
-
-.. To-Do:
-   Fix formatting of notebooks: Add more hashtags to the markdown headers so that they appear well in the toctree.
-
+For questions, requests and issues, please contact us at daniel.haertter@med.uni-goettingen.de or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_.
 
 
 Indices and tables

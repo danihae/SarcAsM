@@ -22,7 +22,7 @@
       </font>
      </property>
      <property name="toolTip">
-      <string>execute all of the below functions except cell area prediction (check the parameters before)</string>
+      <string>execute all of the below functions except cell mask prediction (check the parameters before)</string>
      </property>
      <property name="text">
       <string>Analyze Structure</string>
@@ -67,13 +67,13 @@
       </font>
      </property>
      <property name="title">
-      <string>Prediction of cell area</string>
+      <string>Prediction of cell mask</string>
      </property>
      <layout class="QFormLayout" name="formLayout_7">
       <item row="0" column="0">
        <widget class="QLabel" name="label_20">
         <property name="toolTip">
-         <string>Path of trained network weights forcell area prediction</string>
+         <string>Path of trained network weights for cell mask prediction</string>
         </property>
         <property name="text">
          <string>Network model</string>
@@ -83,9 +83,9 @@
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_4">
         <item>
-         <widget class="QLineEdit" name="le_cell_area_network">
+         <widget class="QLineEdit" name="le_cell_mask_network">
           <property name="toolTip">
-           <string>Path of trained network weights forcell area prediction</string>
+           <string>Path of trained network weights for cell mask prediction</string>
           </property>
           <property name="text">
            <string>generalist</string>
@@ -93,7 +93,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="btn_cell_area_network_search">
+         <widget class="QPushButton" name="btn_cell_mask_network_search">
           <property name="text">
            <string>Search</string>
           </property>
@@ -124,7 +124,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_cell_area_size_width">
+         <widget class="QSpinBox" name="sb_cell_mask_size_width">
           <property name="toolTip">
            <string>Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
@@ -147,7 +147,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QSpinBox" name="sb_cell_area_size_height">
+         <widget class="QSpinBox" name="sb_cell_mask_size_height">
           <property name="toolTip">
            <string>Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
@@ -184,7 +184,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_cell_area_clip_threshold_min">
+         <widget class="QDoubleSpinBox" name="dsb_cell_mask_clip_threshold_min">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
           </property>
@@ -210,7 +210,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_cell_area_clip_threshold_max">
+         <widget class="QDoubleSpinBox" name="dsb_cell_mask_clip_threshold_max">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
           </property>
@@ -231,12 +231,12 @@
        </layout>
       </item>
       <item row="4" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_cell_area_predict">
+       <widget class="QPushButton" name="btn_structure_cell_mask_predict">
         <property name="toolTip">
-         <string>execute cell area prediction based on the given network</string>
+         <string>execute cell mask prediction based on the given network</string>
         </property>
         <property name="text">
-         <string>Predict cell area</string>
+         <string>Predict cell mask</string>
         </property>
        </widget>
       </item>
@@ -693,7 +693,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_37">
         <property name="toolTip">
-         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
         </property>
         <property name="text">
          <string>Persistence</string>
@@ -703,7 +703,7 @@
       <item row="2" column="1">
        <widget class="QSpinBox" name="sb_myofibril_persistence">
         <property name="toolTip">
-         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
         </property>
         <property name="maximum">
          <number>10</number>
@@ -818,7 +818,7 @@
        <widget class="QLabel" name="label_16">
         <property name="toolTip">
          <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
-            All points within this distance are connected. Defaults to 0.5.</string>
+            All midline points of vectors within this distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="text">
          <string>Distance threshold midline points</string>
@@ -826,10 +826,10 @@
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_midline_points">
+       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_pos_vectors">
         <property name="toolTip">
          <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
-            All points within this distance are connected. Defaults to 0.5.</string>
+            All midline points within this distance are connected. Defaults to 0.5.</string>
         </property>
         <property name="maximum">
          <double>999999.000000000000000</double>

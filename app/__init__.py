@@ -1,10 +1,8 @@
 import sys
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
+from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
 
 from .control.application_control import ApplicationControl
 from .control.file_selection_control import FileSelectionControl
@@ -24,6 +22,7 @@ class Application:
 
     def __init__(self):
         self.__app = QApplication([])
+
         # todo: dark theme: https://stackoverflow.com/questions/48256772/dark-theme-for-qt-widgets
         self.__app.setStyle(QStyleFactory.create("Fusion"))  # try to fix the layout issue on macOs
 
@@ -46,6 +45,11 @@ class Application:
         self.__app.setPalette(self.__palette)
 
         self.__window = QWidget()
+
+        # Load and set the thumbnail as the window icon
+        thumbnail_path = "../app/thumbnail.png"
+        self.__app.setWindowIcon(QIcon(thumbnail_path))
+
         self.__file_selection = FileSelectionWidget()
         self.__structure_analysis_parameters = StructureAnalysisWidget()
         self.__loi_analysis = LoiAnalysisWidget()

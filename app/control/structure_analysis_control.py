@@ -7,7 +7,7 @@ from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
-from ...type_utils import TypeUtils
+from sarcasm.type_utils import TypeUtils
 
 
 class StructureAnalysisControl:
@@ -53,7 +53,7 @@ class StructureAnalysisControl:
                                        ))
         pass
 
-    def __cell_area_predict_call(self, worker, model: ApplicationModel):
+    def __cell_mask_predict_call(self, worker, model: ApplicationModel):
         progress_notifier = ProgressNotifier()
         progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
         progress_notifier.set_progress_detail(
@@ -65,21 +65,21 @@ class StructureAnalysisControl:
             network_model = None
 
         cell = TypeUtils.unbox(model.cell)
-        cell.structure.predict_cell_area(progress_notifier=progress_notifier,
+        cell.structure.predict_cell_mask(progress_notifier=progress_notifier,
                                          model_path=network_model,
                                          size=(
                                              model.parameters.get_parameter(
-                                                 'structure.predict.cell_area.size_width').get_value(),
+                                                 'structure.predict.cell_mask.size_width').get_value(),
                                              model.parameters.get_parameter(
-                                                 'structure.predict.cell_area.size_height').get_value()
+                                                 'structure.predict.cell_mask.size_height').get_value()
                                          ),
                                          clip_thres=(
                                              model.parameters.get_parameter(
-                                                 'structure.predict.cell_area.clip_thresh_min').get_value(),
+                                                 'structure.predict.cell_mask.clip_thresh_min').get_value(),
                                              model.parameters.get_parameter(
-                                                 'structure.predict.cell_area.clip_thresh_max').get_value()
+                                                 'structure.predict.cell_mask.clip_thresh_max').get_value()
                                          ))
-        cell.structure.analyze_cell_area()
+        cell.structure.analyze_cell_mask()
         pass
 
     def __chk_prediction_network(self):  # todo rename to zband_prediction or similar
@@ -88,10 +88,10 @@ class StructureAnalysisControl:
             return False
         return True
 
-    def __chk_cell_area_prediction_network(self):
+    def __chk_cell_mask_prediction_network(self):
         if self.__main_control.model.parameters.get_parameter(
-                'structure.predict.cell_area.network_path').get_value() == '':
-            self.__main_control.debug('no network file was chosen for cell area prediction')
+                'structure.predict.cell_mask.network_path').get_value() == '':
+            self.__main_control.debug('no network file was chosen for cell mask prediction')
             return False
         return True
 
@@ -100,7 +100,7 @@ class StructureAnalysisControl:
         if frames is None or frames == '':
             self.__check_frame_syntax()
             self.__main_control.debug(
-                'no time points selected, please select the time point(s) in the specified format')
+                'no frames selected, please select the frame(s) in the specified format')
             return False
         return True
 
@@ -110,7 +110,7 @@ class StructureAnalysisControl:
             return False
         return True
 
-    def on_btn_cell_level_analysis(self):
+    def on_btn_z_bands_predict(self):
         if not self.__chk_initialized():
             return
         if not self.__chk_prediction_network():
@@ -126,17 +126,17 @@ class StructureAnalysisControl:
         self.__worker = worker
         return worker
 
-    def on_btn_cell_area_predict(self):
+    def on_btn_cell_mask_predict(self):
         if not self.__chk_initialized():
             return
-        if not self.__chk_cell_area_prediction_network():
+        if not self.__chk_cell_mask_prediction_network():
             return
         cell = TypeUtils.unbox(self.__main_control.model.cell)
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
-                                                   call_lambda=self.__cell_area_predict_call,
-                                                   start_message='Start prediction of cell area',
-                                                   finished_message='Finished prediction of cell area',
-                                                   finished_action=self.__predict_cell_area_finished,
+                                                   call_lambda=self.__cell_mask_predict_call,
+                                                   start_message='Start prediction of cell mask',
+                                                   finished_message='Finished prediction of cell mask',
+                                                   finished_action=self.__predict_cell_mask_finished,
                                                    finished_successful_action=cell.structure.commit)
         self.__worker = worker
         return worker
@@ -188,7 +188,7 @@ class StructureAnalysisControl:
 
         def __internal_call(w: Any, m: ApplicationModel):
             cell = TypeUtils.unbox(m.cell)
-            cell.structure.analyze_sarcomere_length_orient(
+            cell.structure.analyze_sarcomere_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 size=m.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
                 minor=m.parameters.get_parameter('structure.wavelet.minor').get_value(),
@@ -268,8 +268,8 @@ class StructureAnalysisControl:
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 dist_threshold_ends=m.parameters.get_parameter(
                     'structure.domain.analysis.dist_thresh_ends').get_value(),
-                dist_threshold_midline_points=m.parameters.get_parameter(
-                    'structure.domain.analysis.dist_thresh_midline_points').get_value(),
+                dist_threshold_pos_vectors=m.parameters.get_parameter(
+                    'structure.domain.analysis.dist_thresh_pos_vectors').get_value(),
                 louvain_resolution=m.parameters.get_parameter(
                     'structure.domain.analysis.louvain_resolution').get_value(),
                 louvain_seed=m.parameters.get_parameter('structure.domain.analysis.louvain_seed').get_value(),
@@ -294,10 +294,10 @@ class StructureAnalysisControl:
         if f_name is not None:
             self.__structure_parameters_widget.le_network.setText(f_name[0])
 
-    def on_btn_cell_area_search_network(self):
+    def on_btn_cell_mask_search_network(self):
         f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pth)")
         if f_name is not None:
-            self.__structure_parameters_widget.le_cell_area_network.setText(f_name[0])
+            self.__structure_parameters_widget.le_cell_mask_network.setText(f_name[0])
 
     def __filter_input_prediction_size(self, element):
         if not (hasattr(element, 'value') and hasattr(element, 'setValue')):
@@ -329,12 +329,12 @@ class StructureAnalysisControl:
             return
         if not self.__chk_frames():
             return
-        if not self.__chk_cell_area_prediction_network():
+        if not self.__chk_cell_mask_prediction_network():
             return
         # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
-        chain.add_step(self.on_btn_cell_level_analysis)
-        # chain.add_step(self.on_btn_cell_area_predict) # excluded from analyze structure
+        chain.add_step(self.on_btn_z_bands_predict)
+        # chain.add_step(self.on_btn_cell_mask_predict) # excluded from analyze structure
         chain.add_step(self.on_btn_z_band)
         chain.add_step(self.on_btn_wavelet)
         chain.add_step(self.on_btn_myofibril)
@@ -355,22 +355,22 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.sb_predict_size_max.editingFinished.connect(
             lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_predict_size_max))
 
-        self.__structure_parameters_widget.sb_cell_area_size_width.editingFinished.connect(
-            lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_cell_area_size_width))
-        self.__structure_parameters_widget.sb_cell_area_size_height.editingFinished.connect(
-            lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_cell_area_size_height))
+        self.__structure_parameters_widget.sb_cell_mask_size_width.editingFinished.connect(
+            lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_cell_mask_size_width))
+        self.__structure_parameters_widget.sb_cell_mask_size_height.editingFinished.connect(
+            lambda: self.__filter_input_prediction_size(self.__structure_parameters_widget.sb_cell_mask_size_height))
 
         self.__structure_parameters_widget.le_general_frames.editingFinished.connect(self.__check_frame_syntax)
 
-        self.__structure_parameters_widget.btn_structure_cell_area_predict.clicked.connect(
-            self.on_btn_cell_area_predict)
-        self.__structure_parameters_widget.btn_structure_predict.clicked.connect(self.on_btn_cell_level_analysis)
+        self.__structure_parameters_widget.btn_structure_cell_mask_predict.clicked.connect(
+            self.on_btn_cell_mask_predict)
+        self.__structure_parameters_widget.btn_structure_predict.clicked.connect(self.on_btn_z_bands_predict)
         self.__structure_parameters_widget.btn_structure_z_band.clicked.connect(self.on_btn_z_band)
         self.__structure_parameters_widget.btn_structure_wavelet.clicked.connect(self.on_btn_wavelet)
         self.__structure_parameters_widget.btn_structure_myofibril.clicked.connect(self.on_btn_myofibril)
         self.__structure_parameters_widget.btn_search_network.clicked.connect(self.on_btn_search_network)
-        self.__structure_parameters_widget.btn_cell_area_network_search.clicked.connect(
-            self.on_btn_cell_area_search_network)
+        self.__structure_parameters_widget.btn_cell_mask_network_search.clicked.connect(
+            self.on_btn_cell_mask_search_network)
         self.__structure_parameters_widget.btn_structure_domain_analysis.clicked.connect(self.on_btn_domain_analysis)
 
         # todo: bind parameters to ui elements
@@ -384,14 +384,14 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_clip_thresh_min)
         parameters.get_parameter(name='structure.predict.clip_thresh_max').connect(widget.dsb_clip_thresh_max)
 
-        parameters.get_parameter(name='structure.predict.cell_area.network_path').connect(widget.le_cell_area_network)
-        parameters.get_parameter(name='structure.predict.cell_area.size_width').connect(widget.sb_cell_area_size_width)
-        parameters.get_parameter(name='structure.predict.cell_area.size_height').connect(
-            widget.sb_cell_area_size_height)
-        parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_min').connect(
-            widget.dsb_cell_area_clip_threshold_min)
-        parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_max').connect(
-            widget.dsb_cell_area_clip_threshold_max)
+        parameters.get_parameter(name='structure.predict.cell_mask.network_path').connect(widget.le_cell_mask_network)
+        parameters.get_parameter(name='structure.predict.cell_mask.size_width').connect(widget.sb_cell_mask_size_width)
+        parameters.get_parameter(name='structure.predict.cell_mask.size_height').connect(
+            widget.sb_cell_mask_size_height)
+        parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_min').connect(
+            widget.dsb_cell_mask_clip_threshold_min)
+        parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_max').connect(
+            widget.dsb_cell_mask_clip_threshold_max)
 
         parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
         parameters.get_parameter(name='structure.frames').connect(widget.le_general_frames)
@@ -421,8 +421,8 @@ class StructureAnalysisControl:
             widget.dsb_myofibril_thresh_dist)
 
         parameters.get_parameter(name='structure.domain.analysis.dist_thresh_ends').connect(widget.dsb_dist_thresh_ends)
-        parameters.get_parameter(name='structure.domain.analysis.dist_thresh_midline_points').connect(
-            widget.dsb_dist_thresh_midline_points)
+        parameters.get_parameter(name='structure.domain.analysis.dist_thresh_pos_vectors').connect(
+            widget.dsb_dist_thresh_pos_vectors)
         parameters.get_parameter(name='structure.domain.analysis.louvain_resolution').connect(
             widget.dsb_louvain_resolution)
         parameters.get_parameter(name='structure.domain.analysis.louvain_seed').connect(widget.sb_louvain_seed)
@@ -434,8 +434,8 @@ class StructureAnalysisControl:
     def __predict_z_bands_finished(self):
         self.__main_control.init_z_band_stack()
 
-    def __predict_cell_area_finished(self):
-        self.__main_control.init_cell_area_stack()
+    def __predict_cell_mask_finished(self):
+        self.__main_control.init_cell_mask_stack()
 
     def __z_band_analysis_finished(self):
         pass

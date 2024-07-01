@@ -12,7 +12,8 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 from matplotlib_scalebar.scalebar import ScaleBar
 from tifffile import tifffile
 
-from . import SarcAsM, Motion
+from .core import SarcAsM
+from .motion import Motion
 from .plot_utils import PlotUtils
 from .utils import Utils
 
@@ -21,59 +22,6 @@ class Plots:
     """
     Class with plotting functions for SarcAsM and Motion objects
     """
-
-    # Feature names
-    feature_dict_structure = {'z_intensity': 'Z-band intensity [a.u.]',
-                              'z_intensity_mean': 'Z-band intensity [a.u.]',
-                              'z_intensity_std': 'Z-band intensity STD [a.u.]', 'z_length': 'Z-band length [µm]',
-                              'z_length_mean': 'Z-band length [µm]', 'z_length_std': 'Z-band length STD [µm]',
-                              'z_length_max': 'Z-band length MAX [µm]',
-                              'z_ratio_intensity': 'Z-band intensity ratio',
-                              'z_straightness': 'Z-band straightness', 'z_straightness_mean': 'Z-band straightness',
-                              'z_straightness_std': 'Z-band straightness STD',
-                              'z_lat_neighbors': 'Lateral neighbors [#]',
-                              'z_lat_neighbors_mean': 'Lateral neighbors [#]',
-                              'z_lat_neighbors_std': 'Lateral neighbors STD [#]',
-                              'z_lat_alignment': 'Z-band lat. alignment',
-                              'z_lat_alignment_mean': 'Z-band lat. alignment',
-                              'z_lat_alignment_std': 'Z-band lat. alignment STD',
-                              'z_lat_dist': 'Z-band lat. dist. [µm]', 'z_lat_dist_mean': 'Z-band lat. dist. [µm]',
-                              'z_lat_dist_std': 'Z-band lat. dist. STD [µm]',
-                              'z_lat_length_groups': 'Length lat. groups [µm]',
-                              'z_lat_length_groups_mean': 'Length lat. groups [µm]',
-                              'sarcomere_area': 'Sarcomere area [µm$^2$]',
-                              'sarcomere_area_ratio': 'Sarcomere area ratio',
-                              'cell_area': 'Cell area [µm$^2$]', 'cell_area_ratio': 'Cell area ratio',
-                              'sarcomere_length_points': 'Sarcomere length [µm]',
-                              'sarcomere_length_mean': 'Sarcomere length [µm]',
-                              'sarcomere_length_std': 'Sarc. length STD [µm]',
-                              'sarcomere_orientation_points': 'Sarcomere orient. [°]', 'sarcomere_oop': 'Sarcomere OOP',
-                              'sarcomere_orientation_mean': 'Sarcomere orient. [°]',
-                              'sarcomere_orientation_std': 'Sarcomere orient. STD [°]',
-                              'myof_length': 'Myofibril length [µm]', 'myof_length_mean': 'Myofibril length [µm]',
-                              'myof_length_std': 'Myofibril length STD [µm]',
-                              'myof_length_max': 'Myofibril length MAX [µm]',
-                              'myof_msc': 'Myofibril MSC', 'myof_msc_mean': 'Myofibril MSC',
-                              'myof_msc_std': 'Myofibril MSC STD',
-                              'domain_area': 'Domain area [µm$^2$]',
-                              'domain_area_mean': 'Domain area [µm$^2$]',
-                              'domain_area_std': 'Domain area STD [µm$^2$]',
-                              'domain_oop': 'Domain OOP',
-                              'domain_oop_mean': 'Domain OOP',
-                              'domain_oop_std': 'STD Domain OOP'}
-
-    feature_names_motion = {'contr_max': '$\Delta SL_-$', 'contr_max_avg': '$\overline{\Delta SL}_-$',
-                            'elong_max': '$\Delta SL_+$', 'elong_max_avg': '$\overline{\Delta SL}_+$',
-                            'vel_contr_max': '$V_-$', 'vel_contr_max_avg': '$\overline{V}_-$',
-                            'vel_elong_max': '$V_+$', 'vel_elong_max_avg': '$\overline{V}_+$',
-                            'equ': 'Resting length [µm]', 'frequency': 'Frequency [Hz]',
-                            'periodicity': 'Aperiodicity [s]',
-                            'time_to_peak': 'Time-to-peak single [s]', 'time_to_peak_avg': 'Time-to-peak avg. [s]',
-                            'popping_freq': 'Popping frequency',
-                            'ratio_delta_slen_mutual_serial': 'R$_{\Delta SL}$',
-                            'ratio_vel_mutual_serial': 'R$_{V}$', 'corr_delta_slen_serial': 'r$_s, \Delta SL$',
-                            'corr_delta_slen_mutual': 'r$_m, \Delta SL$', 'corr_vel_serial': 'r$_s, V$',
-                            'corr_vel_mutual': 'r$_m, V$', 'smi': 'Surplus motion index'}
 
     @staticmethod
     def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
@@ -150,9 +98,9 @@ class Plots:
     #     Plots.plot_histogram_structure(axs['G'], sarc_obj, feature='z_length', label='Z-band lengths [µm]')
     #     Plots.plot_histogram_structure(axs['H'], sarc_obj, feature='z_intensity', label='Z-band intensity [a.u.]')
     #     Plots.plot_histogram_structure(axs['I'], sarc_obj, feature='z_straightness', label='Z-band straightness [a.u.]')
-    #     Plots.plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_points',
+    #     Plots.plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_vectors',
     #                                    label='Sarcomere lengths [µm]')
-    #     Plots.plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_points',
+    #     Plots.plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_vectors',
     #                                    label='Sarcomere orientation [°]')
     #     Plots.plot_histogram_structure(axs['L'], sarc_obj, feature='myof_line_lengths', label='Myofibril lengths [µm]')
     #
@@ -251,8 +199,8 @@ class Plots:
         Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, invert=True)
         Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, invert=True)
 
-        for i, points_i in enumerate(sarc_obj.structure.data['loi_data']['lines_points']):
-            axs['a'].plot(points_i[:, 1], points_i[:, 0], c='r', lw=0.2, alpha=0.6)
+        for i, pos_vectors_i in enumerate(sarc_obj.structure.data['loi_data']['lines_pos_vectors']):
+            axs['a'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0], c='r', lw=0.2, alpha=0.6)
 
         axs['b'].hist(sarc_obj.structure.data['loi_data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
                       alpha=0.75,
@@ -261,9 +209,9 @@ class Plots:
         axs['b'].set_xlabel('Hausdorff distance')
         axs['b'].set_ylabel('# LOI pairs')
 
-        for i, (points_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_points'],
+        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_pos_vectors'],
                                                     sarc_obj.structure.data['loi_data']['line_cluster'])):
-            axs['c'].plot(points_i[:, 1], points_i[:, 0],
+            axs['c'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0],
                           c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
 
         for i, line_i in enumerate(sarc_obj.structure.data['loi_data']['loi_lines']):
@@ -430,10 +378,10 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
-    def plot_cell_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, rotate=False, invert=False,
+    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, rotate=False, invert=False,
                        scalebar=True, title=None):
         """
-        Plots the cell area of the sarcomere object.
+        Plots the cell mask of the sarcomere object.
 
         Parameters
         ----------
@@ -452,7 +400,7 @@ class Plots:
         title : str, optional
             The title for the plot. Defaults to None.
         """
-        assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_area first.')
+        assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_mask first.')
 
         img = tifffile.imread(sarc_obj.file_cell_mask, key=frame)
         if invert:
@@ -642,13 +590,13 @@ class Plots:
         None
         """
         assert 'wavelet_bank' in sarc_obj.structure.data.keys(), ('No wavelet bank stored. '
-                                                                  'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                                  'Run sarc_obj.analyze_sarcomere_vectors '
                                                                   'with save_all=True.')
 
         bank = sarc_obj.structure.data['wavelet_bank']
         if bank is None:
             raise ValueError(
-                'Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_length_orient with save_all=True.')
+                'Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_vectors with save_all=True.')
 
         ax.set_xticks([])
         ax.set_yticks([])
@@ -705,7 +653,7 @@ class Plots:
                 The title for the plot. Defaults to None.
             """
         assert 'wavelet_max_score' in sarc_obj.structure.data.keys(), ('No wavelet stors map stored. '
-                                                                       'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                                       'Run sarc_obj.analyze_sarcomere_vectors '
                                                                        'with save_all=True.')
 
         max_score = sarc_obj.structure.data['wavelet_max_score'][frame].copy()
@@ -754,7 +702,7 @@ class Plots:
             The title for the plot. Defaults to None.
         """
         assert 'wavelet_sarcomere_length' in sarc_obj.structure.data.keys(), ('No sarcomere length map stored. '
-                                                                              'Run sarc_obj.analyze_sarcomere_length_orient '
+                                                                              'Run sarc_obj.analyze_sarcomere_vectors '
                                                                               'with save_all=True.')
 
         length = sarc_obj.structure.data['wavelet_sarcomere_length'][frame].copy()
@@ -805,7 +753,7 @@ class Plots:
             """
         assert 'wavelet_sarcomere_orientation' in sarc_obj.structure.data.keys(), (
             'No sarcomere orientation map stored. '
-            'Run sarc_obj.analyze_sarcomere_length_orient '
+            'Run sarc_obj.analyze_sarcomere_vectors '
             'with save_all=True.')
 
         orientation = sarc_obj.structure.data['wavelet_sarcomere_orientation'][frame].copy()
@@ -864,7 +812,7 @@ class Plots:
             The height of the inset axis. Defaults to "30%".
         """
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
-                                                              'Run sarc_obj.analyze_sarcomere_length_orient ')
+                                                              'Run sarc_obj.analyze_sarcomere_vectors ')
 
         _frames = sarc_obj.structure.data['params.wavelet_frames']
         if isinstance(_frames, int) or isinstance(_frames, list) or isinstance(_frames, np.ndarray):
@@ -951,34 +899,34 @@ class Plots:
         inset_height : str or float, optional
             The height of the inset axis. Defaults to "30%".
         """
-        assert 'points' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
-                                                            'run analyze_sarcomere_length_orient first.')
+        assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
+                                                            'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
 
-        points = sarc_obj.structure.data['points'][frame]
-        sarcomere_orientation_points = sarc_obj.structure.data['sarcomere_orientation_points'][frame]
-        sarcomere_length_points = sarc_obj.structure.data['sarcomere_length_points'][frame] / sarc_obj.metadata[
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
-        orientation_vectors = np.asarray([np.cos(sarcomere_orientation_points), np.sin(sarcomere_orientation_points)])
+        orientation_vectors = np.asarray([np.cos(sarcomere_orientation_vectors), np.sin(sarcomere_orientation_vectors)])
 
         Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
                            frame=frame)
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-        ax.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
-                   label='Midline points')
+        ax.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
+                   label='Midline pos_vectors')
         if style == 'half':
-            ax.quiver(points[1], points[0], -orientation_vectors[0] * sarcomere_length_points * 0.5,
-                      orientation_vectors[1] * sarcomere_length_points * 0.5, width=linewidths,
+            ax.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                      orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, label='Sarcomere vectors')
-            ax.quiver(points[1], points[0], orientation_vectors[0] * sarcomere_length_points * 0.5,
-                      -orientation_vectors[1] * sarcomere_length_points * 0.5,
+            ax.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                      -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)
         if style == 'full':
-            ax.quiver(points[1] - sarcomere_length_points * orientation_vectors[0] * 0.5,
-                      points[0] + sarcomere_length_points * orientation_vectors[1] * 0.5,
-                      orientation_vectors[0] * sarcomere_length_points * 1,
-                      -orientation_vectors[1] * sarcomere_length_points * 1, width=linewidths,
+            ax.quiver(pos_vectors[1] - sarcomere_length_vectors * orientation_vectors[0] * 0.5,
+                      pos_vectors[0] + sarcomere_length_vectors * orientation_vectors[1] * 0.5,
+                      orientation_vectors[0] * sarcomere_length_vectors * 1,
+                      -orientation_vectors[1] * sarcomere_length_vectors * 1, width=linewidths,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35)
 
         if legend:
@@ -1000,21 +948,21 @@ class Plots:
             Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-            ax_inset.scatter(points[1], points[0], marker='.', c=color_points, edgecolors='none', s=s_points,
+            ax_inset.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points,
                              label='Midline points')
             if style == 'half':
-                ax_inset.quiver(points[1], points[0], -orientation_vectors[0] * sarcomere_length_points * 0.5,
-                                orientation_vectors[1] * sarcomere_length_points * 0.5, width=linewidths,
+                ax_inset.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                                orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
                                 label='Sarcomere vectors')
-                ax_inset.quiver(points[1], points[0], orientation_vectors[0] * sarcomere_length_points * 0.5,
-                                -orientation_vectors[1] * sarcomere_length_points * 0.5,
+                ax_inset.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                                -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
             if style == 'full':
-                ax_inset.quiver(points[1] - sarcomere_length_points * orientation_vectors[0] * 0.5,
-                                points[0] + sarcomere_length_points * orientation_vectors[1] * 0.5,
-                                orientation_vectors[0] * sarcomere_length_points * 1,
-                                -orientation_vectors[1] * sarcomere_length_points * 1, widths=linewidths,
+                ax_inset.quiver(pos_vectors[1] - sarcomere_length_vectors * orientation_vectors[0] * 0.5,
+                                pos_vectors[0] + sarcomere_length_vectors * orientation_vectors[1] * 0.5,
+                                orientation_vectors[0] * sarcomere_length_vectors * 1,
+                                -orientation_vectors[1] * sarcomere_length_vectors * 1, widths=linewidths,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5)
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
@@ -1116,7 +1064,7 @@ class Plots:
             Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, frame=frame)
 
         lines = sarc_obj.structure.data['myof_lines'][frame]
-        points = sarc_obj.structure.data['points'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -1124,7 +1072,7 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         for i, line_i in enumerate(lines):
-            ax.plot(points[1, line_i], points[0, line_i], c='r', alpha=alpha, lw=linewidth)
+            ax.plot(pos_vectors[1, line_i], pos_vectors[0, line_i], c='r', alpha=alpha, lw=linewidth)
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
@@ -1142,7 +1090,7 @@ class Plots:
                              height_fraction=0.07, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
-                ax_inset.plot(points[1, line_i], points[0, line_i], c='r', alpha=alpha, lw=linewidth)
+                ax_inset.plot(pos_vectors[1, line_i], pos_vectors[0, line_i], c='r', alpha=alpha, lw=linewidth)
 
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)

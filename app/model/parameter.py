@@ -15,7 +15,7 @@ class Parameter:
         self.__value = value
         self.__lambda_get_value = None
         self.__lambda_set_value = None
-        self.__get_value_parser = None  # function to parse value before returning it (for example the parse time points)
+        self.__get_value_parser = None  # function to parse value before returning it (for example the parse frames)
         pass
 
     @property

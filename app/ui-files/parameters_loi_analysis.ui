@@ -48,7 +48,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_37">
         <property name="toolTip">
-         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
         </property>
         <property name="text">
          <string>Persistence</string>
@@ -58,7 +58,7 @@
       <item row="2" column="1">
        <widget class="QSpinBox" name="sb_detect_loi_persistence">
         <property name="toolTip">
-         <string>Persistence of line (average points length and orientation for prior estimation)</string>
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
         </property>
         <property name="maximum">
          <number>10</number>

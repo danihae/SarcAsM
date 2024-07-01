@@ -90,13 +90,13 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.8)
 
-        self.__parameters.get_parameter(name='structure.predict.cell_area.network_path').set_value('generalist')
-        self.__parameters.get_parameter(name='structure.predict.cell_area.size_width').set_value(1024)
-        self.__parameters.get_parameter(name='structure.predict.cell_area.size_height').set_value(1024)
-        self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_min').set_value(0.)
-        self.__parameters.get_parameter(name='structure.predict.cell_area.clip_thresh_max').set_value(99.8)
+        self.__parameters.get_parameter(name='structure.predict.cell_mask.network_path').set_value('generalist')
+        self.__parameters.get_parameter(name='structure.predict.cell_mask.size_width').set_value(1024)
+        self.__parameters.get_parameter(name='structure.predict.cell_mask.size_height').set_value(1024)
+        self.__parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_min').set_value(0.)
+        self.__parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_max').set_value(99.8)
 
-        self.__parameters.get_parameter(name='structure.frames').set_value('')
+        self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
 
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.1)
@@ -110,7 +110,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.wavelet.length_step').set_value(0.05)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_lower').set_value(-90)
         self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_upper').set_value(90)
-        self.__parameters.get_parameter(name='structure.wavelet.orientation_step').set_value(15)
+        self.__parameters.get_parameter(name='structure.wavelet.orientation_step').set_value(10)
         self.__parameters.get_parameter(name='structure.wavelet.absolute_threshold').set_value(True)
         self.__parameters.get_parameter(name='structure.wavelet.score_threshold').set_value(0.25)
         self.__parameters.get_parameter(name='structure.wavelet.save_all').set_value(False)
@@ -122,7 +122,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.myofibril.threshold_distance').set_value(0.3)
 
         self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_ends').set_value(0.5)
-        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_midline_points').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_pos_vectors').set_value(0.5)
         self.__parameters.get_parameter(name='structure.domain.analysis.louvain_resolution').set_value(0.05)
         self.__parameters.get_parameter(name='structure.domain.analysis.louvain_seed').set_value(2)
         self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(50.0)
@@ -205,13 +205,13 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.predict.cell_area.network_path')
+        self.__parameters.set_parameter(name='structure.predict.cell_mask.network_path')
         self.__parameters.set_parameter(
-            name='structure.predict.cell_area.size_width')  # is the predict_size_min from ui
+            name='structure.predict.cell_mask.size_width')  # is the predict_size_min from ui
         self.__parameters.set_parameter(
-            name='structure.predict.cell_area.size_height')  # is the predict_size_max from ui
-        self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_min')
-        self.__parameters.set_parameter(name='structure.predict.cell_area.clip_thresh_max')
+            name='structure.predict.cell_mask.size_height')  # is the predict_size_max from ui
+        self.__parameters.set_parameter(name='structure.predict.cell_mask.clip_thresh_min')
+        self.__parameters.set_parameter(name='structure.predict.cell_mask.clip_thresh_max')
 
         self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
@@ -239,7 +239,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.myofibril.threshold_distance')
 
         self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_ends')
-        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_midline_points')
+        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_pos_vectors')
         self.__parameters.set_parameter(name='structure.domain.analysis.louvain_resolution')
         self.__parameters.set_parameter(name='structure.domain.analysis.louvain_seed')
         self.__parameters.set_parameter(name='structure.domain.analysis.area_min')

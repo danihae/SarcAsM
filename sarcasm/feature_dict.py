@@ -5,23 +5,36 @@ from scipy import sparse
 
 # structural features
 structure_feature_dict = {
+    'cell_area': {
+        'description': 'Area occupied by cells in image. NOT the area of individual cells. '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_cell_mask',
+        'name': 'Cell area [µm²]'
+    },
+    'cell_area_ratio': {
+        'description': 'Area ratio of total image occupied by cells. np.ndarray with value for each frame.',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_cell_mask',
+        'name': 'Cell area ratio'
+    },
     'domain_area': {
         'description': 'Areas of individual sarcomere domains in µm^2. List with np.array for each frame.',
         'data type': List[np.ndarray],
         'function': 'Structure.analyze_sarcomere_domains',
-        'name': 'Domain area [µm$^2$]'
+        'name': 'Domain area [µm²]'
     },
     'domain_area_mean': {
         'description': 'Mean domain area in µm^2. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_domains',
-        'name': 'Mean domain area [µm^2]'
+        'name': 'Mean domain area [µm²]'
     },
     'domain_area_std': {
         'description': 'Standard deviation of domain area in µm^2. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_domains',
-        'name': 'STD domain area [µm^2]'
+        'name': 'STD domain area [µm²]'
     },
     'domain_mask': {
         'description': 'Masks of sarcomere domains, pixel values reflects domain indices, 0 is background. '
@@ -32,7 +45,6 @@ structure_feature_dict = {
     },
     'domain_oop': {
         'description': 'Sarcomere orientational order parameter (OOP) of individual sarcomere domains. '
-                       'OOP is 1 for perfectly aligned sarcomeres, and 0 for randomly oriented sarcomeres. '
                        'List with np.array for each frame.',
         'data type': List[np.ndarray],
         'function': 'Structure.analyze_sarcomere_domains',
@@ -48,7 +60,7 @@ structure_feature_dict = {
     'domain_oop_std': {
         'description': 'Standard deviation of sarcomere orientational order parameter (OOP) of all sarcomere domains in image. '
                        'np.array with value for each frame.',
-        'data type': 'e.g. float',
+        'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_domains',
         'name': 'Standard deviation of domain out-of-plane'
     },
@@ -71,25 +83,25 @@ structure_feature_dict = {
         'function': 'Structure.analyze_sarcomere_domains',
         'name': 'Sarcomere domains'
     },
-    'max_score_points': {
+    'max_score_vectors': {
         'description': 'Wavelet score of each sarcomere vector. List with np.array for each frame.',
         'data type': List[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Max score sarcomere vectors'
     },
-    'midline_id_points': {
+    'midline_id_vectors': {
         'description': 'Midline identifier of each sarcomere vector. '
                        'Value reflects midline label, with unique label for each sarcomere midline. '
                        'List with np.array for each frame.',
         'data type': List[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Midline ID sarcomere vectors'
     },
-    'midline_length_points': {
+    'midline_length_vectors': {
         'description': 'Length of repsective sarcomere midline of each sarcomere vector. '
                        'List with np.array for each frame.',
         'data type': List[np.ndarray],
-        'function': 'Structure.sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Midline length vectors [µm]'
     },
     'myof_length': {
@@ -148,92 +160,93 @@ structure_feature_dict = {
         'function': 'Structure.analyze_sarcomere_domains',
         'name': '# sarcomere domains'
     },
-    'points': {
-        'description': 'Position of sarcomere vectors in each frame in pixels.', 'List of np.ndarray for each frame'
-                                                                                 'data type': List[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_length_orient',
+    'pos_vectors': {
+        'description': 'Position of sarcomere vectors in each frame in pixels. '
+                       'List of np.ndarray for each frame',
+        'data type': List[np.ndarray],
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere vector positions [px]'
     },
     'sarcomere_area': {
         'description': 'Area occupied by sarcomeres. np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
-        'name': 'Sarcomere area [µm^2]'
+        'function': 'Structure.analyze_sarcomere_vectors',
+        'name': 'Sarcomere area [µm²]'
     },
     'sarcomere_area_ratio': {
         'description': 'Ratio of image area occupied by sarcomeres. np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere area ratio'
     },
     'sarcomere_length_mean': {
         'description': 'Mean sarcomere length of sarcomere vectors in each frame. np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze...',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Mean sarcomere length [µm]'
     },
-    'sarcomere_length_points': {
+    'sarcomere_length_vectors': {
         'description': 'Sarcomere length of sarcomere vectors in each frame. List of np.ndarray for each frame.',
         'data type': List[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere length vectors [µm]'
     },
     'sarcomere_length_std': {
         'description': 'Standard deviation of sarcomere length of sarcomere vectors in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'STD sarcomere length [µm]'
     },
     'sarcomere_oop': {
         'description': 'Sarcomere orientational order parameter (OOP) of all sarcomere vectors in frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere OOP'
     },
     'sarcomere_orientation_mean': {
         'description': 'Mean sarcomere orientation of all sarcomere vectors in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Mean sarcomere orientation [rad]'
     },
-    'sarcomere_orientation_points': {
+    'sarcomere_orientation_vectors': {
         'description': 'Sarcomere orientation of sarcomere vectors. List with np.ndarray for each frame.',
         'data type': List[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_length_orient',
-        'name': 'Sarcomere orientation points [rad]'
+        'function': 'Structure.analyze_sarcomere_vectors',
+        'name': 'Sarcomere orientation vectors [rad]'
     },
     'sarcomere_orientation_std': {
         'description': 'Standard deviation of sarcomere orientation of all sarcomere vectors in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'STD sarcomere orientation [rad]'
     },
     'wavelet_bank': {
         'description': 'Wavelet bank. Only stored if save_all=True.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Wavelet bank'
     },
     'wavelet_max_score': {
         'description': 'Spatial map of maximum wavelet score. Only stored if save_all=True.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze...',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Wavelet max score'
     },
     'wavelet_sarcomere_length': {
         'description': 'Spatial map of sarcomere length. Only stored if save_all=True.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere length [µm]'
     },
     'wavelet_sarcomere_orientation': {
         'description': 'Spatial map of sarcomere orientation. Only stored if save_all=True.',
         'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_length_orient',
+        'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere orientation [rad]'
     },
     'z_avg_intensity': {
@@ -425,21 +438,21 @@ structure_feature_dict = {
         'description': 'here description',
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
-        'name': 'Max Z length'
+        'name': 'Max Z length [µm]'
     },
     'z_length_mean': {
         'description': 'Mean Z-band length in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
-        'name': 'Mean Z-band length'
+        'name': 'Mean Z-band length [µm]'
     },
     'z_length_std': {
         'description': 'Standard deviation of Z-band lengths in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
-        'name': 'STD Z-band length'
+        'name': 'STD Z-band length [µm]'
     },
     'z_oop': {
         'description': 'Z-band orientation order parameter. '
@@ -480,5 +493,210 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
         'name': 'STD Z-band straightness'
+    }
+}
+
+motion_feature_dict = {
+    'contr_max': {
+        'description': 'Maximal contraction/shortening of each individual sarcomeres in each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Contr. $\Delta SL_-$ [µm]'
+    },
+    'contr_max_avg': {
+        'description': 'Maximal contraction/shortening of sarcomere average in LOI. '
+                       'Array with shape (c_contractions)',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_contr_max_avg',
+        'name': 'Avg. Contr. $\overline{\Delta SL}_-$ [µm]'
+    },
+    'elong_max': {
+        'description': 'Maximal elongation of each individual sarcomeres in each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Elong. $\Delta SL_+$ [µm]'
+    },
+    'elong_max_avg': {
+        'description': 'Maximal elongation of sarcomere average in LOI. '
+                       'Array with shape (c_contractions)',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Elong. $\overline{\Delta SL}_+$ [µm]'
+    },
+    'vel_contr_max': {
+        'description': 'Maximal shortening velocity each individual sarcomeres in each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Vel. Contr. $V_-$ [µm/s]'
+    },
+    'vel_contr_max_avg': {
+        'description': 'Maximal shortening velocity of sarcomere average in LOI. '
+                       'Array with shape (n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Vel. Contr. $\overline{V}_-$ [µm/s]'
+    },
+    'vel_elong_max': {
+        'description': 'Maximal elongation velocity of each individual sarcomeres in each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Vel. Elong. $V_+$ [µm/s]'
+    },
+    'vel_elong_max_avg': {
+        'description': 'Maximal elongation velocity of sarcomere average in LOI. '
+                       'Array with shape (n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Vel. Elong. $\overline{V}_+$ [µm/s]'
+    },
+    'equ': {
+        'description': 'Resting length of each individual sarcomere. '
+                       'Array with shape (n_sarcomeres).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Rest. Length $RL$ [µm]'
+    },
+    'beating_rate': {
+        'description': 'Beating rate of LOI.',
+        'data type': float,
+        'function': 'Motion.detect_analyze_contractions',
+        'name': 'Beating Rate $BR$ [Hz]'
+    },
+    'beating_rate_variability': {
+        'description': 'Beating rate variability. Standard deviation of time between contraction starts.',
+        'data type': float,
+        'function': 'Motion.detect_analyze_contractions',
+        'name': 'BR Variability $BRV$ [s]'
+    },
+    'time_contr': {
+        'description': 'Duration of each individual contraction cycle.'
+                       'Array with shape (n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Time Contr. $T_C$ [s]'
+    },
+    'time_contr_avg': {
+        'description': 'Average duration of contraction cycles.',
+        'data type': float,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Time Contr. $\overline{T}_C$ [s]'
+    },
+    'time_quiet': {
+        'description': 'Duration of each quiescent period between contraction cycles. '
+                       'Array with shape (n_contractions-1).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Time quiet. $T_Q$ [s]'
+    },
+    'time_quiet_avg': {
+        'description': 'Average duration of quiescent periods between contraction cycles. ',
+        'data type': float,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Time quiet. $T_Q$ [s]'
+    },
+    'time_to_peak': {
+        'description': 'Time to maximal contraction of each individual sarcomere for each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Time to Peak $T_P$ [s]'
+    },
+    'time_to_peak_avg': {
+        'description': 'Time to maximal contraction of sarcomere average in LOI. '
+                       'Array with shape (n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Time to Peak $\overline{T}_P$ [s]'
+    },
+    'time_to_relax': {
+        'description': 'Time from maximal to end of contraction of each individual sarcomere for each contraction cycle. '
+                       'Array with shape (n_sarcomeres, n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Time to Relax $T_R$ [s]'
+    },
+    'time_to_relax_avg': {
+        'description': 'Time from maximal to end of contraction of sarcomere average in LOI. '
+                       'Array with shape (n_contractions).',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_trajectories',
+        'name': 'Avg. Time to Relax $\overline{T}_R$ [s]'
+    },
+    'popping_events': {
+        'description': 'Sarcomere popping events, extensions of sarcomeres far beyond resting length (e.g. 0.25 µm). '
+                       'Binary array with shape (n_sarcomeres, n_contractions) with 0 for no popping and 1 for popping.',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_popping',
+        'name': 'Popping Events'
+    },
+    'popping_rate': {
+        'description': 'Average popping rate in LOI.',
+        'data type': float,
+        'function': 'Motion.analyze_popping',
+        'name': 'Popping Rate $P$'
+    },
+    'popping_rate_sarcomeres': {
+        'description': 'Popping rate of each individual sarcomere.',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_popping',
+        'name': 'Sarcomere Popping Rate $P_s$'
+    },
+    'popping_rate_contr': {
+        'description': 'Popping rate at each contraction cycle.',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_popping',
+        'name': 'Contraction Popping Rate $P_c$'
+    },
+    'ratio_delta_slen_mutual_serial': {
+        'description': 'Ratio of mutual to serial correlation for sarcomere length changes.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Ratio Mutual Serial $R_{\Delta SL}$'
+    },
+    'ratio_vel_mutual_serial': {
+        'description': 'Ratio of mutual to serial correlation for sarcomere velocities.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Ratio Mutual Serial $R_{V}$'
+    },
+    'corr_delta_slen_serial': {
+        'description': 'Average serial correlation for sarcomere length changes.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Serial Corr. $\Delta SL$'
+    },
+    'corr_delta_slen_mutual': {
+        'description': 'Average mutual correlation for sarcomere length changes.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Mutual Corr. $\Delta SL$'
+    },
+    'corr_vel_serial': {
+        'description': 'Average serial correlation for sarcomere velocities.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Serial Corr. $V$'
+    },
+    'corr_vel_mutual': {
+        'description': 'Average mutual correlation for sarcomere velocities.',
+        'data type': float,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Mutual Corr. $V$'
+    },
+    'corr_delta_slen': {
+        'description': 'Correlation matrix for sarcomere length changes.',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Corr. $\Delta SL$'
+    },
+    'corr_vel': {
+        'description': 'Correlation matrix for sarcomere velocities.',
+        'data type': np.ndarray,
+        'function': 'Motion.analyze_sarcomere_correlations',
+        'name': 'Corr. $V$'
     }
 }

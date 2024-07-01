@@ -9,31 +9,29 @@ from .utils import distance_transform
 
 
 class DataProcess(Dataset):
-    """Class for training data processing"""
+    """
+    Class to create training data object for ContractionNet training
 
+    Parameters
+    ----------
+    source_dir : Tuple[str, str]
+        Path of training data [images, labels]. Images need to be tif files.
+    input_len : int
+        Length of the input sequences
+    normalize : bool
+        Whether to normalize each time-series (standard normalizer)
+    aug_factor : int
+        Factor of image augmentation
+    val_split : float
+        Validation split for training
+    noise_amp : float
+        Amplitude of Gaussian noise for image augmentation
+
+    """
     def __init__(self, source_dir, input_len=512, normalize=False, val_split=0.2, aug_factor=10, aug_p=0.5,
                  noise_amp=0.2, random_offset=0.25, random_outlier=0.5, random_drift=(0.01, 0.2), random_swap=0.5,
                  random_subsampling=None):
-        """
-        Create training data object for network training
 
-
-        Parameters
-        ----------
-        source_dir : Tuple[str, str]
-            Path of training data [images, labels]. Images need to be tif files.
-        input_len : int
-            Length of the input sequences
-        normalize : bool
-            Whether to normalize each time-series (standard normalizer)
-        aug_factor : int
-            Factor of image augmentation
-        val_split : float
-            Validation split for training
-        noise_amp : float
-            Amplitude of Gaussian noise for image augmentation
-
-        """
         self.source_dir = source_dir
         self.data = []
         self.is_real = []

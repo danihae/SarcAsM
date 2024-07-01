@@ -76,8 +76,8 @@ class LOIAnalysisControl:
     @staticmethod
     def __store_lois(w, p):
         # note that first coordinate in the point tuples is Y and second is X
-        # points = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
-        # self.__main_control.layer_loi.add_lines(points,edge_width=[10,5],edge_color='red')
+        # pos_vectors = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
+        # self.__main_control.layer_loi.add_lines(pos_vectors,edge_width=[10,5],edge_color='red')
         # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
         # data=self.__main_control.layer_loi.data
         # widths=self.__main_control.layer_loi.edge_width

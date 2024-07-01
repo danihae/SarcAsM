@@ -27,7 +27,7 @@ class SarcAsM:
     auto_save : bool, optional
         If True, automatically saves analysis results. Defaults to True.
     use_gui : bool, optional
-        Indicates if SarcAsM is used through a GUI. Defaults to False.
+        Indicates if SarcAsM is used through the application. Defaults to False.
     device : torch.device, optional
         Device on which to run Pytorch computations.
         Defaults to 'auto', which selects CUDA or MPS device if available, else CPU.

@@ -1,7 +1,7 @@
 import os
 import traceback
 from typing import Tuple, Optional
-from ...type_utils import TypeUtils
+from sarcasm.type_utils import TypeUtils
 
 import napari
 import numpy as np
@@ -13,9 +13,6 @@ from biu.progress import ProgressNotifier
 from napari.layers import Shapes
 
 from ..model import ApplicationModel
-
-
-# from app.model import ApplicationModel
 
 
 class ApplicationControl:
@@ -119,8 +116,8 @@ class ApplicationControl:
         # note that first coordinate in the point tuples is Y and second is X
         # np.array([[[100, 100], [200, 200]], [[300, 300], [400, 300]]])
 
-        points = np.array([[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]])
-        self.layer_loi.add_lines(points, edge_width=line_to_draw[2], edge_color='red')
+        pos_vectors = np.array([[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]])
+        self.layer_loi.add_lines(pos_vectors, edge_width=line_to_draw[2], edge_color='red')
         # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
         # data=self.__main_control.layer_loi.data
         # widths=self.__main_control.layer_loi.edge_width
@@ -194,7 +191,7 @@ class ApplicationControl:
             tmp = tifffile.imread(self.model.cell.file_sarcomeres).astype('uint8')
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
 
-    def init_cell_area_stack(self):
+    def init_cell_mask_stack(self):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
@@ -210,45 +207,47 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             # load myofibril lines and as multi-segment paths
             myof_lines = self.model.cell.structure.data['myof_lines']
-            points = self.model.cell.structure.data['points']
-            myof_lines_points = [
-                [np.column_stack((np.full((len(line_j), 1), i), points_i[:, line_j].T)) for line_j in lines_i]
-                if points_i is not None and lines_i is not None else None
-                for i, (lines_i, points_i) in enumerate(zip(myof_lines, points))]
-            _myof_lines_points = [line for lines in myof_lines_points if lines is not None for line in lines]
-            self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_points, shape_type='path',
+            pos_vectors = self.model.cell.structure.data['pos_vectors']
+            myof_lines_pos_vectors = [
+                [np.column_stack((np.full((len(line_j), 1), i), pos_vectors_i[:, line_j].T)) for line_j in lines_i]
+                if pos_vectors_i is not None and lines_i is not None else None
+                for i, (lines_i, pos_vectors_i) in enumerate(zip(myof_lines, pos_vectors))]
+            _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
+            self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_vector_pos, shape_type='path',
                                    edge_color='red', edge_width=2, opacity=0.5)
 
-
     def init_sarcomere_vector_stack(self):
-        if self.model.cell is not None and 'points' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'pos_vectors' in self.model.cell.structure.data.keys():
             if self.viewer.layers.__contains__('SarcomereVectors'):
                 layer = self.viewer.layers.__getitem__('SarcomereVectors')
                 self.viewer.layers.remove(layer)
             # create sarcomere vectors for all frames and add as vector layer
             vectors = []
-            midline_points = []
+            pos_vectors = []
             for frame in range(self.model.cell.metadata['frames']):
-                if 'params.wavelet_frames' in self.model.cell.structure.data and frame in self.model.cell.structure.data['params.wavelet_frames']:
-                    points = self.model.cell.structure.data['points'][frame]
-                    if len(points) > 0:
-                        sarc_orientation_points = self.model.cell.structure.data['sarcomere_orientation_points'][frame]
-                        sarc_length_points = self.model.cell.structure.data['sarcomere_length_points'][frame] / self.model.cell.metadata[
-                            'pixelsize']
+                if 'params.wavelet_frames' in self.model.cell.structure.data and frame in \
+                        self.model.cell.structure.data['params.wavelet_frames']:
+                    pos_vectors_frame = self.model.cell.structure.data['pos_vectors'][frame]
+                    if len(pos_vectors_frame) > 0:
+                        sarc_orientation_vectors = self.model.cell.structure.data['sarcomere_orientation_vectors'][
+                            frame]
+                        sarc_length_vectors = self.model.cell.structure.data['sarcomere_length_vectors'][frame] / \
+                                              self.model.cell.metadata[
+                                                  'pixelsize']
                         orientation_vectors = np.asarray(
-                            [-np.sin(sarc_orientation_points), np.cos(sarc_orientation_points)])
-                        for i in range(len(points[0])):
-                            start_point = [frame, points[0][i], points[1][i]]
-                            vector_1 = [frame, orientation_vectors[0][i] * sarc_length_points[i] * 0.5,
-                                        orientation_vectors[1][i] * sarc_length_points[i] * 0.5]
-                            vector_2 = [frame, -orientation_vectors[0][i] * sarc_length_points[i] * 0.5,
-                                        -orientation_vectors[1][i] * sarc_length_points[i] * 0.5]
-                            midline_points.append(start_point)
+                            [-np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
+                        for i in range(len(pos_vectors_frame[0])):
+                            start_point = [frame, pos_vectors_frame[0][i], pos_vectors_frame[1][i]]
+                            vector_1 = [frame, orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
+                                        orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
+                            vector_2 = [frame, -orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
+                                        -orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
+                            pos_vectors.append(start_point)
                             vectors.append([start_point, vector_1])
                             vectors.append([start_point, vector_2])
             self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='purple', name='SarcomereVectors', opacity=0.8,
                                     vector_style='arrow')
-            self.viewer.add_points(name='MidlinePoints', data=midline_points, face_color='darkgreen', size=2)
+            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2)
 
     def init_sarcomere_mask_stack(self):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
@@ -281,7 +280,8 @@ class ApplicationControl:
 
             domain_masks = self.model.cell.structure.data['domain_mask']
 
-            _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']), dtype='uint16')
+            _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']),
+                                     dtype='uint16')
             for frame in range(self.model.cell.metadata['frames']):
                 if frame in self.model.cell.structure.data['params.domain_frames']:
                     _domain_masks[frame] = domain_masks[frame].toarray()

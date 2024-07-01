@@ -1,4 +1,6 @@
 from multiprocessing import Pool
+import glob
+
 from sarcasm import *
 
 # select folder with tif files
@@ -14,16 +16,12 @@ def analyze_tif(file):
     # initialize SarcAsM object
     sarc_obj = SarcAsM(file)
 
-    # predict sarcomere z-bands and cell area
-    sarc_obj.predict_z_bands(size=(2048, 2048))
-    sarc_obj.predict_cell_area(size=(2048, 2048))
-
-    # analyze cell area and sarcomere area
-    sarc_obj.analyze_cell_area(frames='all')
-    sarc_obj.analyze_sarcomere_area(frames='all')
+    # predict sarcomere z-bands and cell mask
+    sarc_obj.structure.predict_z_bands(size=(2048, 2048))
+    sarc_obj.structure.predict_cell_mask(size=(2048, 2048))
 
     # analyze sarcomere structures
-    sarc_obj.full_analysis_structure(frames='all')
+    sarc_obj.structure.full_analysis_structure(frames='all')
 
     print(f'{file} successfully analyzed!')
 
