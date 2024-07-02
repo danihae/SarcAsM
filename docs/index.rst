@@ -35,7 +35,7 @@ There are two ways to use SarcAsM:
    ./notebooks/tutorial_data_export
    ./notebooks/tutorial_data_visualization
    ./notebooks/tutorial_training_unet
-   ./notebooks/tutorial_training_3Dunet
+   ./notebooks/tutorial_training_3dunet
    ./notebooks/tutorial_training_contraction_net
 
 .. toctree::

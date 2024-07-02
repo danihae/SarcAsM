@@ -144,7 +144,7 @@ class Motion(SarcAsM):
         else:
             raise ValueError('LOI-File is not .json')
 
-    def detekt_peaks(self, thres: float = 0.05, min_dist: float = 1., width: int = 7, plot: bool = False):
+    def detekt_peaks(self, thres: float = 0.05, min_dist: float = 1., width: int = 7):
         """
         Detect peaks of z-band intensity profiles
 
@@ -156,9 +156,6 @@ class Motion(SarcAsM):
             Minimal distance of z-band peaks in µm
         width : int
             Width of interval around peak for precise determination of peak center, in pixels
-        plot : bool
-            If True, peak detection result for each time point are plotted (for parameter optimization)
-
         """
         peaks = []
         if not self.loi_data:
@@ -169,16 +166,6 @@ class Motion(SarcAsM):
 
             peaks_i = Utils.peakdetekt(self.loi_data['x_pos'], y, thres, min_dist_frames, width)
             peaks.append(peaks_i[~np.isnan(peaks_i)])
-
-            if plot:
-                plt.figure(figsize=(8, 3))
-                plt.plot(self.loi_data['x_pos'], self.loi_data['y_int'][i], c='b')
-                for peak_pos in peaks_i:
-                    plt.axvline(peak_pos, linestyle=':', color='r')
-                plt.ylabel('Intensity')
-                plt.xlabel('x in µm')
-                plt.tight_layout()
-                plt.show()
 
         # save peaks
         self.loi_data['peaks'] = peaks
@@ -654,7 +641,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def analyze_sarcomere_correlations(self):
+    def analyze_correlations(self):
         """
         Computes the Pearson correlation coefficients for sarcomere motion patterns (∆SL and V) across different contraction
         cycles and between sarcomeres within the same cycle to analyze static and stochastic heterogeneity in sarcomere dynamics.

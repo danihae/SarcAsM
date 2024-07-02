@@ -81,9 +81,9 @@ class Utils:
         return files
 
     @staticmethod
-    def get_lois_of_cell(filename_cell: str) -> List[Tuple[str, str]]:
+    def get_lois_of_file(filename_cell: str) -> List[Tuple[str, str]]:
         """
-        Get the lines of interests (LOIs) of a specified cell.
+        Get the lines of interests (LOIs) of a tif-file.
 
         Parameters
         ----------
@@ -96,6 +96,7 @@ class Utils:
             List of tuples, each containing the cell file path and LOI filename.
         """
         cell_dir = filename_cell[:-4] + '/'
+        assert os.path.isdir(cell_dir), "File not yet analyzed."
         list_lois = glob.glob(cell_dir + '*.json')
         return [(filename_cell, os.path.basename(loi)) for loi in list_lois]
 

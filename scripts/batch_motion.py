@@ -18,7 +18,7 @@ def find_lois(file):
 
 
 def analyze_motion(file):
-    lois = Utils.get_lois_of_cell(file)
+    lois = Utils.get_lois_of_file(file)
     for file, loi in lois:
         try:
             mot_obj = Motion(file, loi)

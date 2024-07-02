@@ -281,6 +281,13 @@ class Plots:
                 ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
             else:
                 ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+        elif 'loi_data' in sarc_obj.structure.data:
+            loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
+            for line in loi_lines:
+                if rotate:
+                    ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
+                else:
+                    ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -453,9 +460,10 @@ class Plots:
         labels = sarc_obj.structure.data['z_labels'][frame].toarray()
         if shuffle:
             labels = Utils.shuffle_labels(labels)
-        labels_plot = labels.astype('float16')
-        labels_plot[labels == 0] = np.nan
-        ax.imshow(labels_plot, cmap='prism')
+        masked_labels = np.ma.masked_array(labels, mask=(labels == 0))
+        cmap = plt.cm.prism
+        cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
+        ax.imshow(masked_labels, cmap=cmap)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -468,7 +476,7 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset.imshow(labels_plot[y1:y2, x1:x2], cmap='prism')
+            ax_inset.imshow(labels[y1:y2, x1:x2], cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -776,7 +784,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
-                            alpha=0.5, invert_z_bands=True, alpha_z_bands=1, clip_thrs=(1, 99.9),
+                            alpha=0.5, invert_z_bands=True, alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
                             zoom_region: Tuple[int, int, int, int] = None,
                             inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
@@ -802,6 +810,8 @@ class Plots:
             Alpha value of Z-bands. Defaults to 1.
         clip_thrs : tuple of float, optional
             Clipping threshold for image in background. Defaults to (1, 99.9). Only if show_z_bands is False.
+        title : str, optional
+            The title for the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
         inset_loc : str, optional
@@ -834,6 +844,7 @@ class Plots:
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
         ax.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
         if zoom_region:
@@ -1003,15 +1014,17 @@ class Plots:
         assert frame in sarc_obj.structure.data['params.domain_frames'], (f'Domains in frame {frame} are not yet '
                                                                           f'analyzed.')
 
-        domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray().astype(float)
-        domain_mask[domain_mask == 0] = np.nan
+        domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
+        domain_mask_masked = np.ma.masked_where(domain_mask, domain_mask==0)
+        cmap = plt.get_cmap(cmap)
+        cmap.set_bad(color=(0, 0, 0, 0))
 
         if plot_raw_data:
             Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False)
         else:
             Plots.plot_z_bands(ax, sarc_obj, invert=True, frame=frame, scalebar=False)
 
-        ax.imshow(domain_mask, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
+        ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,

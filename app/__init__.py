@@ -47,7 +47,7 @@ class Application:
         self.__window = QWidget()
 
         # Load and set the thumbnail as the window icon
-        thumbnail_path = "../app/thumbnail.png"
+        thumbnail_path = "icon.png"
         self.__app.setWindowIcon(QIcon(thumbnail_path))
 
         self.__file_selection = FileSelectionWidget()

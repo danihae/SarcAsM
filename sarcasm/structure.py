@@ -173,6 +173,10 @@ class Structure:
 
         return data
 
+    def get_list_lois(self):
+        """Returns list of LOIs"""
+        return Utils.get_lois_of_file(self.sarc_obj.filename)
+
     def predict_z_bands(self, time_consistent: bool = False, model_path: Optional[str] = None,
                         size: Tuple[int, int] = (1024, 1024), normalization_mode: str = 'all',
                         clip_thres: Tuple[float, float] = (0., 99.8),
@@ -378,8 +382,6 @@ class Structure:
         # iterate images
         print('\nStarting Z-band analysis...')
         for i, (frame_i, img_i) in enumerate(progress_notifier.iterator(zip(list_frames, imgs), total=n_imgs)):
-            # todo: the progress_notifier only works with newest (git) version of bio-image-unet's ProgressNotifier
-            #   state: 2024-07-01
             # segment z-bands
             labels_i, labels_skel_i = self.segment_z_bands(img_i)
 

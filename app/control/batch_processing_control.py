@@ -226,7 +226,7 @@ class BatchProcessingControl:
                                            'loi.detect.distance_threshold_lois').get_value(),
                                        n_longest=model.parameters.get_parameter('loi.detect.n_longest').get_value(),
                                        linewidth=model.parameters.get_parameter('loi.detect.line_width').get_value())
-        lois = Utils.get_lois_of_cell(file)
+        lois = Utils.get_lois_of_file(file)
         for file, loi in lois:
             try:
                 motion_obj = Motion(file, loi)
