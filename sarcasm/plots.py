@@ -1015,7 +1015,7 @@ class Plots:
                                                                           f'analyzed.')
 
         domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
-        domain_mask_masked = np.ma.masked_where(domain_mask, domain_mask==0)
+        domain_mask_masked = np.ma.masked_where(domain_mask==0, domain_mask)
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
 
