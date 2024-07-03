@@ -13,6 +13,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from tifffile import tifffile
 
 from .core import SarcAsM
+from .feature_dict import structure_feature_dict
 from .motion import Motion
 from .plot_utils import PlotUtils
 from .utils import Utils
@@ -300,7 +301,7 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset.imshow(img[y1:y2, x1:x2], cmap='Greys')
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -476,12 +477,12 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset.imshow(labels[y1:y2, x1:x2], cmap=cmap)
+            ax_inset.imshow(masked_labels[y1:y2, x1:x2], cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
             # Mark the zoomed region on the main plot
-            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
     def plot_z_lateral_connections(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, markersize=1.5,
@@ -1163,6 +1164,8 @@ class Plots:
         data = data[~np.isnan(data)]
         ax.hist(data, rwidth=0.8, color='k', alpha=0.7, density=True, bins=bins,
                 range=range)
+        if label is None:
+            label = structure_feature_dict[feature]['name']
         ax.set_xlabel(label)
         ax.set_ylabel('Frequency')
         PlotUtils.remove_spines(ax)
