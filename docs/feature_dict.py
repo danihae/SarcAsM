@@ -1,3 +1,7 @@
+import os
+import sys
+# Ensure the sarcasm module is in the PYTHONPATH
+sys.path.insert(0, os.path.abspath('..'))
 from sarcasm.feature_dict import structure_feature_dict, motion_feature_dict
 
 

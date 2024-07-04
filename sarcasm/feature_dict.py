@@ -510,7 +510,7 @@ motion_feature_dict = {
         'description': 'Maximal contraction/shortening of sarcomere average in LOI. '
                        'Array with shape (c_contractions)',
         'data type': np.ndarray,
-        'function': 'Motion.analyze_contr_max_avg',
+        'function': 'Motion.analyze_trajectories',
         'name': 'Avg. Contr. $\overline{\Delta SL}_-$ [µm]'
     },
     'elong_max': {

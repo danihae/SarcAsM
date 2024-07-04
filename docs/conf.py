@@ -13,6 +13,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import subprocess
 import sys
 import pathlib
 
@@ -60,14 +61,21 @@ extensions = [
 ]
 
 autoapi_type = 'python'
-autoapi_dirs = ['../sarcasm', '../contraction_net']
-autoapi_ignore = ["*/test_*.py", "*/tests/*.py", "*/type_utils.py"]
+autoapi_dirs = ['../sarcasm', '../contraction_net', '../../bio-image-unet/bio_image_unet']
+autoapi_ignore = ["*/test*.py", "*/tests/*.py", "*/type_utils.py", "*/siam_unet/*", "*/progress/*"]
 
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
 nbsphinx_execute = 'never'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['templates']
+
+def run_feature_dict_script():
+    script_path = os.path.abspath('./feature_dict.py')
+    subprocess.run([sys.executable, script_path], check=True)
+
+def setup(app):
+    app.connect('builder-inited', lambda app: run_feature_dict_script())
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
