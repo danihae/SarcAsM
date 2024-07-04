@@ -9,7 +9,7 @@ from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from .application_control import ApplicationControl
 from sarcasm import SarcAsM, Utils, Motion
 from sarcasm.meta_data_handler import MetaDataHandler
-from biu.progress import ProgressNotifier
+from bio_image_unet.progress import ProgressNotifier
 
 
 class BatchProcessingControl:

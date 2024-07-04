@@ -15,9 +15,9 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from biu import unet
-from biu import unet3d as unet3d
-from biu.progress import ProgressNotifier
+from bio_image_unet import unet
+from bio_image_unet import unet3d as unet3d
+from bio_image_unet.progress import ProgressNotifier
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
 from scipy.optimize import curve_fit

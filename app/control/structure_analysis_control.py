@@ -2,7 +2,7 @@ from typing import Any
 
 import qtutils
 from PyQt5.QtWidgets import QFileDialog
-from biu.progress import ProgressNotifier
+from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import SarcAsM
 from .chain_execution import ChainExecution

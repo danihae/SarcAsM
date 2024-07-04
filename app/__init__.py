@@ -1,3 +1,5 @@
+# Usage of this software for commercial purposes without a license is strictly prohibited.
+
 import sys
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon

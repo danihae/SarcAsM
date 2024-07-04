@@ -9,7 +9,7 @@ import tifffile
 import torch
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit
-from biu.progress import ProgressNotifier
+from bio_image_unet.progress import ProgressNotifier
 from napari.layers import Shapes
 
 from ..model import ApplicationModel

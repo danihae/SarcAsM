@@ -1,3 +1,5 @@
+# Usage of this software for commercial purposes without a license is strictly prohibited.
+
 import hashlib
 import json
 import os
