@@ -10,58 +10,121 @@ from skimage.morphology import binary_dilation, remove_small_holes, binary_closi
 def simulate_training_data(folder, input_len=512, n=100, freq_range=(0.04, 0.25), prob_zeros=0.5,
                            clip_thrs=(-0.75, 0.75), random_drift_amp_range=(0.005, 0.02),
                            random_drift_freq_range=(0, 0.05), noise_amp_range=(0, 0.25), plot=False):
+    """
+    Simulate training data for ContractionNet with sinusoidal patterns, random drift, and noise.
+
+    Parameters
+    ----------
+    folder : str
+        Path to the folder where the simulated data will be saved.
+    input_len : int, optional
+        Length of each simulated sequence, by default 512.
+    n : int, optional
+        Number of sequences to simulate, by default 100.
+    freq_range : tuple of float, optional
+        Range of frequencies for the sinusoidal patterns, by default (0.04, 0.25).
+    prob_zeros : float, optional
+        Probability of zero frequency (flat line), by default 0.5.
+    clip_thrs : tuple of float, optional
+        Clipping thresholds for the sinusoidal values, by default (-0.75, 0.75).
+    random_drift_amp_range : tuple of float, optional
+        Amplitude range for the random drift, by default (0.005, 0.02).
+    random_drift_freq_range : tuple of float, optional
+        Frequency range for the random drift, by default (0, 0.05).
+    noise_amp_range : tuple of float, optional
+        Amplitude range for the added noise, by default (0, 0.25).
+    plot : bool, optional
+        Whether to plot the simulated data, by default False.
+    """
+    # Ensure the folder exists
     os.makedirs(folder, exist_ok=True)
 
     for i in range(n):
-
+        # Randomly select a frequency within the specified range
         freq = np.random.uniform(freq_range[0], freq_range[1])
         x_range = np.arange(input_len)
+
+        # Amplitude modulation with a slow cosine function
         amp_mod = 1 + np.abs(np.cos(x_range * np.random.uniform(0.01, 0.02)))
+
+        # Set frequency to zero with a certain probability
         if np.random.binomial(1, prob_zeros):
             freq = 0
 
+        # Generate a cosine wave and clip its values
         y_sim = np.clip(np.cos(x_range * freq), None, np.random.uniform(clip_thrs[0], clip_thrs[1]))
-        y_sim -= np.max(y_sim)
+        y_sim -= np.max(y_sim)  # Normalize to zero baseline
         y_sim = amp_mod * y_sim
 
-        # calculate systole
-        y_systole = np.zeros_like(y_sim)
-        y_systole[y_sim != 0] = 1
+        # Calculate systole as a binary mask where the signal is non-zero
+        y_contr = np.zeros_like(y_sim)
+        y_contr[y_sim != 0] = 1
 
-        # add random drift
+        # Add random drift to the signal
         random_drift = (np.random.uniform(random_drift_amp_range[0], random_drift_amp_range[1]),
                         np.random.uniform(random_drift_freq_range[0], random_drift_freq_range[1]))
         y_sim += random_drift[0] * np.cos(random_drift[1] * x_range)
 
-        # add normal noise
+        # Add normal noise to the signal
         y_sim += np.random.normal(0, np.random.uniform(noise_amp_range[0], noise_amp_range[1]), size=input_len)
 
+        # Plot the simulated data
         if plot:
             plt.figure()
             plt.plot(x_range, y_sim)
-            plt.plot(x_range, y_systole)
+            plt.plot(x_range, y_contr)
             plt.show()
 
-        np.savetxt(folder + f'simulated_{i}.txt', y_sim)
-        np.savetxt(folder + f'simulated_{i}_systole.txt', y_systole)
+        # Save the simulated signal and its contraction mask to text files
+        np.savetxt(os.path.join(folder, f'simulated_{i}.txt'), y_sim)
+        np.savetxt(os.path.join(folder, f'simulated_{i}_contr.txt'), y_contr)
 
 
 def plot_selection_training_data(dataset, n_sample):
+    """
+    Plot a random selection of training data sequences.
+
+    Parameters
+    ----------
+    dataset : object
+        Dataset object containing the training data.
+    n_sample : int
+        Number of samples to plot.
+    """
+    # Randomly select n_sample sequences from the dataset
     selection = dataset.data[np.random.choice(dataset.data.shape[0], n_sample)]
+
+    # Create subplots
     fig, axs = plt.subplots(figsize=(5, 2 * n_sample), nrows=n_sample)
 
     for i, d_i in enumerate(selection):
-        axs[i].plot(d_i[0], c='k')
-        axs[i].plot(d_i[1], c='r')
+        # Plot the data sequences
+        axs[i].plot(d_i[0], c='k')  # Plot the first sequence in black
+        axs[i].plot(d_i[1], c='r')  # Plot the second sequence in red
 
     plt.show()
 
 
 def find_txt_files(root_dir):
+    """
+    Find all .txt files in a directory and its subdirectories.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory to search for text files.
+
+    Returns
+    -------
+    list of str
+        List of paths to the found text files.
+    """
     txt_files = []
+    # Walk through the directory tree
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for filename in filenames:
             if filename.endswith('.txt'):
+                # Append the full path of text files to the list
                 txt_files.append(os.path.join(dirpath, filename))
     return txt_files
 
