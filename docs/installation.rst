@@ -1,38 +1,34 @@
-================================
+============
 Installation
-================================
+============
 
 Installation via pip
-=======================
-
-.. todo::
-    Update with pip repo name
+====================
 
 #. Create a new environment::
 
         conda create -n sarcasm
 
-#. Install `PyTorch <https://pytorch.org/get-started/locally/>`_  into that Conda environment, based on the instructions for your system.
+#. Install `PyTorch <https://pytorch.org/get-started/locally/>`_. For CUDA-capable systems, install `CUDA toolkit <https://developer.nvidia.com/cuda-toolkit>`_. Ensure that the CUDA toolkit version matches the PyTorch version requirements.
 
-#. Install the rest of the dependencies via pip::
+#. Install SarcAsM and its dependencies via pip from PyPI::
 
-        pip install ...
+        pip install sarcasm
 
-Installation via git
+Installation via github
 =======================
 
-.. todo::
-    Update with git repo name
+#. Clone repo from git::
 
-#. Clone this repo from git::
-
-        git clone [link to repo]
-        cd sarcomere_analysis
+        git clone https://github.com/danihae/SarcAsM
+        cd sarcasm
 
 #. Create a new environment::
 
         conda create -n sarcasm
 
-#. Install `PyTorch <https://pytorch.org/get-started/locally/>`_  into that Conda environment, based on the instructions for your system.
+#. Install `PyTorch <https://pytorch.org/get-started/locally/>`_. For CUDA-capable systems, install `CUDA toolkit <https://developer.nvidia.com/cuda-toolkit>`_. Ensure that the CUDA toolkit version matches the PyTorch version requirements.
 
-#. Finally, install all the required packages from pip via ``pip install -r requirements.txt``.
+#. Finally, install all the required packages from pip via::
+
+        pip install -r requirements.txt
