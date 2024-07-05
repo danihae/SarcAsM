@@ -1,6 +1,8 @@
 import os
 import traceback
 from typing import Tuple, Optional
+
+from sarcasm import Utils
 from sarcasm.type_utils import TypeUtils
 
 import napari
@@ -199,6 +201,57 @@ class ApplicationControl:
             # load cell mask file into unet stack
             tmp = tifffile.imread(self.model.cell.file_cell_mask).astype('uint8')
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
+
+    def init_z_lateral_connections(self):
+        if self.model.cell is not None and 'z_labels' in self.model.cell.structure.data.keys():
+            if self.viewer.layers.__contains__('ZbandLatGroups'):
+                layer = self.viewer.layers.__getitem__('ZbandLatGroups')
+                self.viewer.layers.remove(layer)
+                pass
+            if self.viewer.layers.__contains__('ZbandLatConnections'):
+                layer = self.viewer.layers.__getitem__('ZbandLatConnections')
+                self.viewer.layers.remove(layer)
+                pass
+            if self.viewer.layers.__contains__('ZbandEnds'):
+                layer = self.viewer.layers.__getitem__('ZbandEnds')
+                self.viewer.layers.remove(layer)
+                pass
+            # create labels and connections for all frames and add as label and line layers
+            labels_groups = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']), dtype='uint16')
+            ends = []
+            connections = []
+            for frame in range(self.model.cell.metadata['frames']):
+                if 'params.z_frames' in self.model.cell.structure.data and frame in \
+                        self.model.cell.structure.data['params.z_frames']:
+                    labels_frame = self.model.cell.structure.data['z_labels'][frame].toarray()
+                    groups_frame = self.model.cell.structure.data['z_lat_groups'][frame]
+                    labels_groups_frame = np.zeros_like(labels_frame)
+                    for i, group in enumerate(groups_frame[1:]):
+                        mask = np.zeros_like(labels_frame, dtype=bool)
+                        for label in group:
+                            mask += (labels_frame == label + 1)
+                        labels_groups_frame[mask] = i + 1
+                    labels_groups_frame = Utils.shuffle_labels(labels_groups_frame)
+                    labels_groups[frame] = labels_groups_frame
+
+                    z_ends_frame = self.model.cell.structure.data['z_ends'][frame] / self.model.cell.metadata['pixelsize']
+                    z_links_frame = self.model.cell.structure.data['z_lat_links'][frame]
+
+                    # ends
+                    for z_ends_i in z_ends_frame:
+                        ends.append([frame, z_ends_i[0, 0], z_ends_i[0, 1]])
+                        ends.append([frame, z_ends_i[1, 0], z_ends_i[1, 1]])
+
+                    # connections
+                    for (i, k, j, l) in z_links_frame.T:
+                        connections.append([[frame, z_ends_frame[i, k, 0], z_ends_frame[i, k, 1]],
+                                            [frame, z_ends_frame[j, l, 0], z_ends_frame[j, l, 1]]])
+
+            labels_groups = np.asarray(labels_groups)
+            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5)
+            self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
+                              edge_width=1, opacity=0.15)
+            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3)
 
     def init_myofibril_lines_stack(self):
         if self.model.cell is not None and 'myof_lines' in self.model.cell.structure.data.keys():

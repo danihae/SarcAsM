@@ -183,6 +183,7 @@ class StructureAnalysisControl:
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    start_message='Start Z-band Analysis',
                                                    finished_message='Finished Z-band Analysis',
+                                                   finished_action=self.__z_band_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
                                                        self.__main_control.model.cell, lambda c: c.structure.commit()))
         self.__worker = worker
@@ -452,7 +453,7 @@ class StructureAnalysisControl:
         self.__main_control.init_cell_mask_stack()
 
     def __z_band_analysis_finished(self):
-        pass
+        self.__main_control.init_z_lateral_connections()
 
     def __sarcomere_analysis_finished(self):
         self.__main_control.init_sarcomere_mask_stack()
