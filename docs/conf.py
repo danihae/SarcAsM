@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'SarcAsM'
-copyright = '2024, Daniel Haertter'  # TODO
+copyright = '2024, University Medical Center Göttingen'
 author = 'Daniel Haertter'
 
 # The short X.Y version
@@ -204,6 +204,7 @@ epub_exclude_files = ['search.html']
 
 # add GitHub repo
 html_context = {
+    'display_github': True,
     'github_url': 'https://github.com/danihae/sarcasm',
 }
 
