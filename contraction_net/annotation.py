@@ -1,4 +1,3 @@
-
 import random
 import os
 import numpy as np
@@ -34,6 +33,8 @@ class TimeSeriesAnnotator:
         Record the x-coordinate (time) where the mouse button is released.
     save_and_load_next(event)
         Save the current annotations and load the next time-series file.
+    reset_annotations(event)
+        Reset the current annotations for the current time-series file.
 
     Notes
     -----
@@ -60,6 +61,10 @@ class TimeSeriesAnnotator:
         save_ax = self.fig.add_axes([0.85, 0.01, 0.1, 0.075])
         self.save_button = Button(save_ax, 'Save & Next', color='lightgoldenrodyellow', hovercolor='0.975')
         self.save_button.on_clicked(self.save_and_load_next)
+
+        reset_ax = self.fig.add_axes([0.75, 0.01, 0.1, 0.075])
+        self.reset_button = Button(reset_ax, 'Reset', color='lightcoral', hovercolor='0.975')
+        self.reset_button.on_clicked(self.reset_annotations)
 
         plt.show()
 
@@ -100,6 +105,16 @@ class TimeSeriesAnnotator:
 
             self.current_file_index += 1
             self.load_next_file()
+
+    def reset_annotations(self, event):
+        """Reset the current annotations for the current time-series file."""
+        self.start_contraction = []
+        self.end_contraction = []
+        self.ax.clear()
+        self.ax.plot(self.data, c='k')
+        self.ax.set_title(f'Annotating {os.path.basename(self.file_list[self.current_file_index])}')
+        plt.draw()
+
 
 def split_trace(filepath, output_dir, chunk_size=512, p=1):
     """
