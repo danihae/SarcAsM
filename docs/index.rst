@@ -52,9 +52,9 @@ There are two ways to use SarcAsM:
 
 Citing SarcAsM
 ---------------
-Authors: *Daniel Härtter, Lara Hauke, Til Driehorst, Yuxi Long, Guobin Bao, Andreas Primeßnig, Branimir Berecic, Lukas Cyganek, Malte Tiburcy, Wolfram-Hubertus Zimmermann, Christoph F. Schmidt*
+Authors: Daniel Härtter, Lara Hauke, Til Driehorst, Yuxi Long, Guobin Bao, Andreas Primeßnig, Branimir Berecic, Lukas Cyganek, Malte Tiburcy, Christoph F. Schmidt, Wolfram-Hubertus Zimmermann
 
-Title: SarcAsM (Sarcomere Analysis Multi-tool): A comprehensive software tool for structural and functional analysis of sarcomeres in cardiomyocytes
+Title: " SarcAsM (Sarcomere Analysis Multi-tool): a comprehensive software tool for structural and functional analysis of sarcomeres in cardiomyocytes"
 
 .. todo::
    Update this upon actual publication. Probably insert bibtex as well.
