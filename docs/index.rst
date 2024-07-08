@@ -59,31 +59,6 @@ Title: " SarcAsM (Sarcomere Analysis Multi-tool): a comprehensive software tool 
 .. todo::
    Update this upon actual publication. Probably insert bibtex as well.
 
-License
---------------
-This software is patent pending (Patent Application No. DE 10 2024 112 939.5, Priority Date: 8.5.2024).
-
-Academic and Non-Commercial Use
-===============================
-This software is free for academic and non-commercial use. Users are granted a non-exclusive, non-transferable license to use and modify the software for research, educational, and other non-commercial purposes.
-
-Commercial Use Restrictions
-===========================
-Commercial use of this software is strictly prohibited without obtaining a separate license agreement. This includes but is not limited to:
-
-- Using the software in a commercial product or service
-- Using the software to provide services to third parties
-- Reselling or redistributing the software
-
-For commercial licensing inquiries, please contact:
-
-**MBM ScienceBridge GmbH**,
-Hans-Adolf-Krebs-Weg 1,
-37077 Göttingen,
-https://sciencebridge.de/en/
-
-All rights not expressly granted are reserved. Unauthorized use may result in legal action.
-
 Contact
 --------------
 For questions, requests and issues, please contact us at daniel.haertter@med.uni-goettingen.de or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_.

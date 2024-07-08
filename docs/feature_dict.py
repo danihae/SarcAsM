@@ -52,7 +52,7 @@ def dict_to_list_table(dictionary):
 
     table = ".. list-table:: Table with structural features\n"
     table += "   :header-rows: 1\n"
-    table += "   :widths: 20 20 10 20 20\n\n"
+    table += "   :widths: 15 15 30 28 12\n\n"
 
     # Add header
     table += "   * - " + "\n     - ".join(header) + "\n"
