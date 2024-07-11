@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '.\sarcasm\app\ui-files\parameters_structure_analysis.ui'
+# Form implementation generated from reading ui file '.\app\ui-files\parameters_structure_analysis.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -549,8 +549,8 @@ class Ui_Form(object):
         self.label.setText(_translate("Form", "Distance threshold ends"))
         self.dsb_dist_thresh_ends.setToolTip(_translate("Form", "Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.\n"
 "            Only the ends with the smallest distance are connected. Defaults to 0.5."))
-        self.label_16.setToolTip(_translate("Form", "Maximal distance threshold for connecting/creating network edge for midline of the same midline.\n"
-"            All midline points within this distance are connected. Defaults to 0.5."))
+        self.label_16.setToolTip(_translate("Form", "Maximal distance threshold for connecting/creating network edge for midline points of the same midline.\n"
+"            All midline points of vectors within this distance are connected. Defaults to 0.5."))
         self.label_16.setText(_translate("Form", "Distance threshold midline points"))
         self.dsb_dist_thresh_pos_vectors.setToolTip(_translate("Form", "Maximal distance threshold for connecting/creating network edge for midline points of the same midline.\n"
 "            All midline points within this distance are connected. Defaults to 0.5."))

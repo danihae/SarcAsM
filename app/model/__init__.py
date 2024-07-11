@@ -131,18 +131,50 @@ class ApplicationModel:
         # endregion
 
         # region loi parameters
+        """
+                 frame: int = 0, n_lois: int = 4, n_seeds: int = 200, persistence: int = 2,
+                            threshold_distance: float = 0.3, score_threshold: Optional[float] = None,
+                            mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
+                            number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
+                            sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
+                            sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
+                            msc_lims: Tuple[float, float] = (0, 1), max_orient_change: float = 30,
+                            midline_mean_length_lims: Tuple[float, float] = (0, 20),
+                            midline_std_length_lims: Tuple[float, float] = (0, 5),
+                            midline_min_length_lims: Tuple[float, float] = (0, 20), distance_threshold_lois: float = 40,
+                            linkage: str = 'single', linewidth: float = 0.65, order: int = 0, export_raw: bool = False
+                """
         self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
-        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
+        self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
+        self.__parameters.get_parameter(name='loi.detect.n_seeds').set_value(200)
+        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(2)
         self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
         self.__parameters.get_parameter(name='loi.detect.score_threshold').set_value(10000.0)
         self.__parameters.get_parameter(name='loi.detect.score_threshold_automatic').set_value(True)
+        self.__parameters.get_parameter(name='loi.detect.mode').set_value('longest_in_cluster')
+        self.__parameters.get_parameter(name='loi.detect.random_seed.leave_empty').set_value(True)
+        self.__parameters.get_parameter(name='loi.detect.random_seed').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.number_limits_lower').set_value(10)
         self.__parameters.get_parameter(name='loi.detect.number_limits_upper').set_value(50)
-        self.__parameters.get_parameter(name='loi.detect.msc_limits_lower').set_value(0)
-        self.__parameters.get_parameter(name='loi.detect.msc_limits_upper').set_value(1000)
-        self.__parameters.get_parameter(name='loi.detect.distance_threshold_lois').set_value(40)
-        self.__parameters.get_parameter(name='loi.detect.n_longest').set_value(4)
-        self.__parameters.get_parameter(name='loi.detect.line_width').set_value(12)
+        self.__parameters.get_parameter(name='loi.detect.length_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.length_limits_upper').set_value(200.0)
+        self.__parameters.get_parameter(name='loi.detect.sarcomere_mean_length_limits_lower').set_value(1.0)
+        self.__parameters.get_parameter(name='loi.detect.sarcomere_mean_length_limits_upper').set_value(3.0)
+        self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_upper').set_value(1.0)
+        self.__parameters.get_parameter(name='loi.detect.msc_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.msc_limits_upper').set_value(1.0)
+        self.__parameters.get_parameter(name='loi.detect.max_orient_change').set_value(30.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_upper').set_value(20.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_upper').set_value(5.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_lower').set_value(0.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_upper').set_value(20.0)
+        self.__parameters.get_parameter(name='loi.detect.cluster_threshold_lois').set_value(40.0)
+        self.__parameters.get_parameter(name='loi.detect.linkage').set_value('single')
+        self.__parameters.get_parameter(name='loi.detect.line_width').set_value(0.65)
+        self.__parameters.get_parameter(name='loi.detect.order').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.plot').set_value(False)
         self.__parameters.get_parameter(name='loi.detect.export_raw').set_value(False)
         # endregion
@@ -249,17 +281,36 @@ class ApplicationModel:
 
         # region loi parameters
         self.__parameters.set_parameter(name='loi.detect.frame')
+        self.__parameters.set_parameter(name='loi.detect.n_lois')
+        self.__parameters.set_parameter(name='loi.detect.n_seeds')
         self.__parameters.set_parameter(name='loi.detect.persistence')
         self.__parameters.set_parameter(name='loi.detect.threshold_distance')
         self.__parameters.set_parameter(name='loi.detect.score_threshold')
         self.__parameters.set_parameter(name='loi.detect.score_threshold_automatic')
+        self.__parameters.set_parameter(name='loi.detect.mode')
+        self.__parameters.set_parameter(name='loi.detect.random_seed.leave_empty')
+        self.__parameters.set_parameter(name='loi.detect.random_seed')
         self.__parameters.set_parameter(name='loi.detect.number_limits_lower')
         self.__parameters.set_parameter(name='loi.detect.number_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.length_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.sarcomere_mean_length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.sarcomere_mean_length_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_upper')
         self.__parameters.set_parameter(name='loi.detect.msc_limits_lower')
         self.__parameters.set_parameter(name='loi.detect.msc_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.distance_threshold_lois')
-        self.__parameters.set_parameter(name='loi.detect.n_longest')
+        self.__parameters.set_parameter(name='loi.detect.max_orient_change')
+        self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.midline_std_length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.midline_std_length_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.midline_min_length_limits_lower')
+        self.__parameters.set_parameter(name='loi.detect.midline_min_length_limits_upper')
+        self.__parameters.set_parameter(name='loi.detect.cluster_threshold_lois')
+        self.__parameters.set_parameter(name='loi.detect.linkage')
         self.__parameters.set_parameter(name='loi.detect.line_width')
+        self.__parameters.set_parameter(name='loi.detect.order')
         self.__parameters.set_parameter(name='loi.detect.plot')
         self.__parameters.set_parameter(name='loi.detect.export_raw')
         # endregion
