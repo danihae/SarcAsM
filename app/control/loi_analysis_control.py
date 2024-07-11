@@ -129,17 +129,11 @@ class LOIAnalysisControl:
             width = int(p['loi_layer'].edge_width[index])
             start=(int(line[0][0]), int(line[0][1]))
             end=(int(line[-1][0]), int(line[-1][1]))
-            #line2 = ((int(line[0][1]), int(line[0][0])), (int(line[1][1]), int(line[1][0])))
             loi_file = p['cell'].folder + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'
-            #loi_file = p['cell'].folder + f'{line2[0][0]}_{line2[0][1]}_{line2[1][0]}_{line2[1][1]}_{width}_loi.json'
             if not os.path.exists(loi_file):
                 p['main_control'].on_update_loi_list(line_start=start,line_end=end, line_thickness=width)
-                #todo: hier ist noch ein fehler!
-                #zum testen von loi das bild 10pPa.tif in D:\Test\SarcasmTestBatch\not processed
-
                 # extract intensity profiles and save LOI files
                 p['cell'].structure.create_loi_data(np.asarray((start,end)), linewidth=width)
-                # todo: add the lines to self.__main_control.model.cell.structure.data['loi_lines']?
                 pass
             w.progress.emit(10 + index * step)
             pass
