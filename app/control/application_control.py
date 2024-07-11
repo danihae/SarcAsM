@@ -167,7 +167,7 @@ class ApplicationControl:
 
     @staticmethod
     def get_entry_key_for_line(line) -> str:
-        return '(%d,%d)->(%d,%d):%d' % (line[0][0],
+        return '(%d,%d)->(%d,%d):%.2f' % (line[0][0],
                                         line[0][1],
                                         line[1][0],
                                         line[1][1],

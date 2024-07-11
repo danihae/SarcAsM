@@ -787,7 +787,7 @@
          <string> Width of the scan line (in µm), perpendicular to the LOIs.</string>
         </property>
         <property name="decimals">
-         <number>3</number>
+         <number>2</number>
         </property>
         <property name="maximum">
          <double>99999999.000000000000000</double>

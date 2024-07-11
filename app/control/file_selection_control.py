@@ -5,6 +5,7 @@ import numpy as np
 from PyQt5.QtWidgets import QFileDialog
 from tifffile import tifffile
 
+from sarcasm import SarcAsM
 from .popup_export import ExportPopup
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
@@ -154,15 +155,14 @@ class FileSelectionControl:
         self.init_line_layer()  # initializes the layer for drawing loi's
 
         # todo: init or update dictionary
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
+        cell:SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
 
         if cell.filename not in self.__main_control.model.line_dictionary:
             self.__main_control.model.line_dictionary[cell.filename] = {}
             pass
 
-        self._init_loi_from_file()
         self._init_meta_data()
-
+        self._init_loi_from_file()
         self.__main_control.debug('Initialized: ' + file)
         self.__main_control.update_progress(100)
         self.__main_control.model.currentlyProcessing.set_value(False)
@@ -253,17 +253,26 @@ class FileSelectionControl:
 
     def _init_loi_from_file(self):
         # read loi files, store the line data in dictionary and in ui loi list
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
-        loi_files = glob.glob(
-           cell.folder + '*_loi' + self.__main_control.model.file_extension)
-        if len(loi_files) > 0:
-            for loi_file in loi_files:
-                tmp_profile = IOUtils.json_deserialize(loi_file)  # IOUtils.deserialize_profile_data(loi_file)
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
+        if 'loi_data' in cell.structure.data and 'loi_lines' in cell.structure.data['loi_data']:
+            for line in cell.structure.data['loi_data']['loi_lines']:
+                start = [line[0][0], line[0][1]]
+                end = [line[-1][0], line[-1][1]]
+                self.__main_control.on_update_loi_list(line_start=start, line_end=end, line_thickness=line_width)
+            pass
+        # add lois to ui
 
-                line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
-                line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
-                self.__main_control.on_update_loi_list(line_start, line_end,
-                                                       int(tmp_profile["linewidth"]),
-                                                       False)  # add line to loi list and dictionary
+        #loi_files = glob.glob(cell.folder + '/*_loi' + self.__main_control.model.file_extension)
+        #if len(loi_files) > 0:
+        #    for loi_file in loi_files:
+        #        tmp_profile = IOUtils.json_deserialize(loi_file)  # IOUtils.deserialize_profile_data(loi_file)
+        #        line_start = tmp_profile['line'][0]
+        #        line_end = tmp_profile['line'][1]
+        #        # line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
+        #        # line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
+        #        self.__main_control.on_update_loi_list(line_start, line_end,
+        #                                               int(tmp_profile["linewidth"]),
+        #                                               False)  # add line to loi list and dictionary
         else:
             self.__main_control.debug("no LOI's found for current image")

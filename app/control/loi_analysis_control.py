@@ -87,7 +87,6 @@ class LOIAnalysisControl:
             return
 
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        # todo: the key loi_lines is not found in cell.structure.data
         for line in self.__main_control.model.cell.structure.data['loi_data']['loi_lines']:
             start=[line[0][0],line[0][1]]
             end=[line[-1][0],line[-1][1]]
@@ -126,7 +125,7 @@ class LOIAnalysisControl:
         max_count = len(p['loi_layer'].data)
         step = 90 / max_count
         for index, line in enumerate(p['loi_layer'].data):
-            width = int(p['loi_layer'].edge_width[index])
+            width = float(p['loi_layer'].edge_width[index])
             start=(int(line[0][0]), int(line[0][1]))
             end=(int(line[-1][0]), int(line[-1][1]))
             loi_file = p['cell'].folder + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'

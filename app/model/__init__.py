@@ -19,7 +19,7 @@ class ApplicationModel:
         self.__file_extension = ".json"
         self.__line_dictionary = {}  # todo: remove the line dictionary
         self.__sarcomere: Optional[Motion] = None
-        self.__scheme = f'%d_%d_%d_%d_%d'
+        self.__scheme = f'%d_%d_%d_%d_%.2f'
         self.__parameters = Parameters()
         self.__create_parameters()
         self.set_to_default()
