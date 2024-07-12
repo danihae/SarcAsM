@@ -32,3 +32,5 @@ Installation via github
 #. Finally, install all the required packages from pip via::
 
         pip install -r requirements.txt
+
+The full installation usually takes less than 5 min, depending on internet connection.

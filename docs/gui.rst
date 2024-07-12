@@ -12,13 +12,6 @@ First, remember to activate your installation environment::
 
     conda activate sarcasm
 
-If you installed through pip, run this inside of your terminal::
+To start the app, run this inside the root directory of SarcAsM::
 
-    python -m sarcasm
-
-.. todo::
-    test this
-
-If you installed through GitHub, run this inside root directory of cloned repo::
-
-    python sarcasm/__main__.py
+    python -m app
