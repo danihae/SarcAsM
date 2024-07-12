@@ -437,6 +437,13 @@ class Ui_Form(object):
         self.label_9 = QtWidgets.QLabel(self.groupBox)
         self.label_9.setObjectName("label_9")
         self.formLayout_2.setWidget(3, QtWidgets.QFormLayout.LabelRole, self.label_9)
+        self.label_5 = QtWidgets.QLabel(self.groupBox)
+        self.label_5.setObjectName("label_5")
+        self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.label_5)
+        self.sb_time_consitent_frame = QtWidgets.QSpinBox(self.groupBox)
+        self.sb_time_consitent_frame.setMaximum(999999999)
+        self.sb_time_consitent_frame.setObjectName("sb_time_consitent_frame")
+        self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.FieldRole, self.sb_time_consitent_frame)
         self.formLayout.setWidget(2, QtWidgets.QFormLayout.SpanningRole, self.groupBox)
 
         self.retranslateUi(Form)
@@ -597,6 +604,9 @@ class Ui_Form(object):
         self.sb_predict_size_max.setToolTip(_translate("Form", "Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16."))
         self.label_9.setToolTip(_translate("Form", "Resize dimensions for convolutional neural network. Dims need to be dividable by 16."))
         self.label_9.setText(_translate("Form", "Resize dimensions [pixel]"))
+        self.label_5.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
+        self.label_5.setText(_translate("Form", "Label Time Consitent Frame"))
+        self.sb_time_consitent_frame.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union, Tuple
 
 import qtutils
 from PyQt5.QtWidgets import QFileDialog
@@ -45,16 +45,22 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
         cell: SarcAsM = TypeUtils.unbox(model.cell)
+        size: Union[Tuple[int, int], Tuple[int, int, int]]
+        time_consistent: bool = model.parameters.get_parameter('structure.predict.time_consistent').get_value()
+        if time_consistent:
+            size = (model.parameters.get_parameter('structure.predict.time_consistent.frame').get_value(),
+                    model.parameters.get_parameter('structure.predict.size_width').get_value(),
+                    model.parameters.get_parameter('structure.predict.size_height').get_value())
+            pass
+        else:
+            size = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
+                    model.parameters.get_parameter('structure.predict.size_height').get_value())
+            pass
+
         cell.structure.predict_z_bands(progress_notifier=progress_notifier,
                                        model_path=network_model,
-                                       time_consistent=model.parameters.get_parameter(
-                                           'structure.predict.time_consistent').get_value(),
-                                       size=(
-                                           model.parameters.get_parameter(
-                                               'structure.predict.size_width').get_value(),
-                                           model.parameters.get_parameter(
-                                               'structure.predict.size_height').get_value()
-                                       ),
+                                       time_consistent=time_consistent,
+                                       size=size,
                                        clip_thres=(
                                            model.parameters.get_parameter(
                                                'structure.predict.clip_thresh_min').get_value(),
@@ -394,6 +400,7 @@ class StructureAnalysisControl:
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
         parameters.get_parameter(name='structure.predict.time_consistent').connect(widget.chk_time_consistent)
+        parameters.get_parameter(name='structure.predict.time_consistent.frame').connect(widget.sb_time_consitent_frame)
         parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_min)
         parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_max)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_clip_thresh_min)
