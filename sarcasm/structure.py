@@ -484,16 +484,18 @@ class Structure:
             frames for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
         kernel : str, optional
-            Filter kernel ('gaussian' for double Gaussian kernel, 'half_gaussian' for Gaussian in minor axis direction
-            and binary step function in major axis direction, 'binary' for binary step function in both directions).
+            Filter kernel
+            - 'gaussian' for bivariate Gaussian kernel
+            - 'half_gaussian' for univariate Gaussian in minor axis direction and step function in major axis direction
+            - 'binary' for binary step function in both directions
             Defaults to 'half_gaussian'.
         size : float, optional
             Size of wavelet filters (in µm), needs to be larger than the upper limit of len_lims. Defaults to 3.0.
         minor : float, optional
-            Minor axis width, quantified by full width at half-maximum (FWHM), should match the thickness of Z-bands,
-            for kernel='gaussian' and kernel='half-gaussian'. Defaults to 0.33.
+            Minor axis width in µm, quantified by full width at half-maximum (FWHM, 2.33 * sigma in our paper),
+            should match the thickness of Z-bands, for kernel='gaussian' and kernel='half_gaussian'. Defaults to 0.33.
         major : float, optional
-            Major axis width, should match the width of Z-bands.
+            Major axis width (parameter 'w' in our paper) in µm, should match the width of Z-bands.
             Full width at half-maximum (FWHM) for kernel='gaussian' and full width for kernel='half_gaussian'.
             Defaults to 1.0.
         len_lims : tuple(float, float), optional
@@ -1873,7 +1875,8 @@ class Structure:
                              pixelsize: float, mode: str = 'both',
                              add_negative_center_kernel: bool = False) -> tuple[np.ndarray, np.ndarray]:
         """
-        Returns half-gaussian kernel pair for AND-gated double wavelet analysis
+        Returns kernel pair for AND-gated double wavelet analysis with univariate Gaussian profile in longitudinal minor
+        axis direction and step function in lateral major axis direction
 
         Parameters
         ----------
