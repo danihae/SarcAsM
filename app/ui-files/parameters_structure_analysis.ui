@@ -104,10 +104,10 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_32">
         <property name="toolTip">
-         <string>Resize dimensions for convolutional neural network. Dims need to be dividable by 16.</string>
+         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
         </property>
         <property name="text">
-         <string>Resize dimension [pixel]</string>
+         <string>Patch size</string>
         </property>
        </widget>
       </item>
@@ -116,17 +116,17 @@
         <item>
          <widget class="QLabel" name="label_34">
           <property name="toolTip">
-           <string>Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="text">
-           <string>Width:</string>
+           <string>Width [px]:</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QSpinBox" name="sb_cell_mask_size_width">
           <property name="toolTip">
-           <string>Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="maximum">
            <number>100000000</number>
@@ -139,17 +139,17 @@
         <item>
          <widget class="QLabel" name="label_39">
           <property name="toolTip">
-           <string>Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="text">
-           <string>Height:</string>
+           <string>Height [px]:</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QSpinBox" name="sb_cell_mask_size_height">
           <property name="toolTip">
-           <string>Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="maximum">
            <number>99999999</number>
@@ -1089,17 +1089,17 @@
         <item>
          <widget class="QLabel" name="label_11">
           <property name="toolTip">
-           <string>Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="text">
-           <string>Width:</string>
+           <string>Width [px]:</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QSpinBox" name="sb_predict_size_min">
           <property name="toolTip">
-           <string>Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -1115,17 +1115,17 @@
         <item>
          <widget class="QLabel" name="label_10">
           <property name="toolTip">
-           <string>Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="text">
-           <string>Height:</string>
+           <string>Height [px]:</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QSpinBox" name="sb_predict_size_max">
           <property name="toolTip">
-           <string>Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -1163,7 +1163,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_9">
         <property name="toolTip">
-         <string>Resize dimensions for convolutional neural network. Dims need to be dividable by 16.</string>
+         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
         </property>
         <property name="text">
          <string>Resize dimensions [pixel]</string>
