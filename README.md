@@ -50,9 +50,11 @@ from sarcasm import *
 ```
 The full installation usually takes less than 5 min, depending on internet connection. For computers equipped with an NVIDIA GPU, make sure the Pytorch and CUDA toolkit versions match.
 
+We recommend the notebook 'quickstart_demo.ipynb' for testing the capabilities of SarcAsM.
+
 ## Usage
 
-A detailed online documentation with tutorials and examples can be found [here](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/).
+Detailed online documentation with tutorials and examples can be found [here](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/).
 A data set for testing is available in the folder 'test_data'.
 
 ### Standalone application with GUI (beta version)
@@ -60,7 +62,8 @@ The app can be started by executing `sarcasm/app/__main__.py` or running `python
 
 ### Python package
 After installation, SarcAsM is imported by ``from sarcasm import *``. If SarcAsM is in a local directory, add the path to the system path (see above). 
-Examples and tutorials can be found under 'docs/notebooks' and in the [online documentation](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/). 
+The Jupyter Notebook 'quickstart_demo.ipynb' gives a short introduction into the functions of SarcAsM by analyzing two examples.
+Further examples and tutorials can be found under 'docs/notebooks' and in the [online documentation](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/). 
 
 ## Support
 
