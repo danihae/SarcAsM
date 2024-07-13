@@ -601,12 +601,12 @@ class Ui_Form(object):
         self.sb_predict_size_min.setToolTip(_translate("Form", "Resize dimensions(width) for convolutional neural network. Dims need to be dividable by 16."))
         self.label_10.setToolTip(_translate("Form", "Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16."))
         self.label_10.setText(_translate("Form", "Height:"))
-        self.sb_predict_size_max.setToolTip(_translate("Form", "Resize dimensions(height) for convolutional neural network. Dims need to be dividable by 16."))
-        self.label_9.setToolTip(_translate("Form", "Resize dimensions for convolutional neural network. Dims need to be dividable by 16."))
+        self.sb_predict_size_max.setToolTip(_translate("Form", "Resize dimensions (height) for neural network. Dims need to be dividable by 16."))
+        self.label_9.setToolTip(_translate("Form", "Resize dimensions (width) for neural network. Dims need to be dividable by 16."))
         self.label_9.setText(_translate("Form", "Resize dimensions [pixel]"))
         self.label_5.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
-        self.label_5.setText(_translate("Form", "Label Time Consitent Frame"))
-        self.sb_time_consitent_frame.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
+        self.label_5.setText(_translate("Form", "Frames [#]"))
+        self.sb_time_consitent_frame.setToolTip(_translate("Form", "Resize dimension (frames) for neural network. When time_consistent==True, this field has to be filled"))
 
 
 if __name__ == "__main__":

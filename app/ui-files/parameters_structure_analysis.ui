@@ -1156,7 +1156,7 @@
          <string>When time_consistent==True, this field has to be filled</string>
         </property>
         <property name="text">
-         <string>Label Time Consitent Frame</string>
+         <string>Frames [#]</string>
         </property>
        </widget>
       </item>
