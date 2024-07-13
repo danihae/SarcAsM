@@ -1138,6 +1138,26 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="toolTip">
+           <string>When time_consistent==True, this field has to be filled</string>
+          </property>
+          <property name="text">
+           <string>Frames [#]</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_time_consitent_frame">
+          <property name="toolTip">
+           <string>When time_consistent==True, this field has to be filled</string>
+          </property>
+          <property name="maximum">
+           <number>999999999</number>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
       <item row="3" column="0">
@@ -1147,26 +1167,6 @@
         </property>
         <property name="text">
          <string>Resize dimensions [pixel]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_5">
-        <property name="toolTip">
-         <string>When time_consistent==True, this field has to be filled</string>
-        </property>
-        <property name="text">
-         <string>Frames [#]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QSpinBox" name="sb_time_consitent_frame">
-        <property name="toolTip">
-         <string>When time_consistent==True, this field has to be filled</string>
-        </property>
-        <property name="maximum">
-         <number>999999999</number>
         </property>
        </widget>
       </item>
