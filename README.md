@@ -50,7 +50,7 @@ from sarcasm import *
 ```
 The full installation usually takes less than 5 min, depending on internet connection. For computers equipped with an NVIDIA GPU, make sure the Pytorch and CUDA toolkit versions match.
 
-We recommend the notebook 'quickstart_demo.ipynb' for testing the capabilities of SarcAsM.
+We recommend the notebook 'quickstart_demo.ipynb' for testing of SarcAsM.
 
 ## Usage
 
