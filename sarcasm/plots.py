@@ -827,18 +827,12 @@ class Plots:
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
                                                               'Run sarc_obj.analyze_sarcomere_vectors ')
 
-        _frames = sarc_obj.structure.data['params.wavelet_frames']
-        if isinstance(_frames, int) or isinstance(_frames, list) or isinstance(_frames, np.ndarray):
-            _frame = _frames[frame]
-        elif _frames == 'all':
-            _frame = frame
-        else:
-            raise ValueError('frames argument not valid')
+        assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=_frame)
+            Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
         else:
-            Plots.plot_image(ax, sarc_obj, frame=_frame, clip_thrs=clip_thrs)
+            Plots.plot_image(ax, sarc_obj, frame=frame, clip_thrs=clip_thrs)
 
         sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=frame)
 
