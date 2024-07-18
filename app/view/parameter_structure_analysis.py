@@ -600,13 +600,13 @@ class Ui_Form(object):
         self.label_11.setText(_translate("Form", "Width [px]:"))
         self.sb_predict_size_min.setToolTip(_translate("Form", "Patch size (width) for convolutional neural network. Dims need to be dividable by 16."))
         self.label_10.setToolTip(_translate("Form", "Patch size (height) for convolutional neural network. Dims need to be dividable by 16."))
-        self.label_10.setText(_translate("Form", "Height:"))
+        self.label_10.setText(_translate("Form", "Height [px]:"))
         self.sb_predict_size_max.setToolTip(_translate("Form", "Patch size (height) for convolutional neural network. Dims need to be dividable by 16."))
         self.label_5.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
         self.label_5.setText(_translate("Form", "Frames [#]"))
         self.sb_time_consitent_frame.setToolTip(_translate("Form", "When time_consistent==True, this field has to be filled"))
         self.label_9.setToolTip(_translate("Form", "Patch size  for convolutional neural network. Dims need to be dividable by 16."))
-        self.label_9.setText(_translate("Form", "Patch size"))
+        self.label_9.setText(_translate("Form", "Resize dimensions [pixel]"))
 
 
 if __name__ == "__main__":
