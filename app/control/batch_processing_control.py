@@ -1,4 +1,5 @@
 import glob
+from typing import Any, List
 
 import qtutils
 import traceback
@@ -39,12 +40,25 @@ class BatchProcessingControl:
 
         pass
 
+    def __get_progress_notifier(self, worker) -> ProgressNotifier:
+        progress_notifier = ProgressNotifier()
+
+        def __internal_function(p):
+            qtutils.inmain(lambda: self.__main_control.update_progress(int(p * 100)))  # wrap with qt main thread
+            pass
+
+        progress_notifier.set_progress_report(__internal_function)
+        progress_notifier.set_progress_detail(
+            lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: worker.progress_details.emit(
+                "%02d:%02d:%02d / %02d:%02d:%02d" % (
+                    hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
+        return progress_notifier
+
     def on_btn_batch_processing_structure(self):
 
         tif_files = glob.glob(self.__batch_processing_widget.le_root_directory.text() + '*/*.tif')
         print(len(tif_files))
 
-        # todo: call synchronous (with freezing ui) for testing if there is some issue with threading
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_structure_async,
                                                    start_message='Start batch processing structure ',
@@ -54,12 +68,7 @@ class BatchProcessingControl:
         pass
 
     def __batch_process_structure_async(self, worker, model):
-        progress_notifier = ProgressNotifier()
-        progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
-        progress_notifier.set_progress_detail(
-            lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: worker.progress_details.emit(
-                "%02d:%02d:%02d / %02d:%02d:%02d" % (
-                    hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
+        progress_notifier = self.__get_progress_notifier(worker)
 
         tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
 
@@ -67,7 +76,7 @@ class BatchProcessingControl:
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
-
+        # currently only run in sequential mode - no thread pool used
         for i, file in enumerate(progress_notifier.iterator(tif_files)):
             try:
                 self.__single_structure_analysis(file, frame_time, pixel_size, force_override, model)
@@ -82,32 +91,6 @@ class BatchProcessingControl:
 
                 pass
             pass
-
-        # todo: parallel method 1
-        # with Pool(n_pools) as p:
-        #    p.map(lambda f: self.__single_structure_analysis(f, frame_time, pixel_size, force_override,worker), tif_files)
-
-        # todo: parallel method 2
-        # from joblib import Parallel, delayed
-        # def yourfunction(k):
-        #    s = 3.14 * k * k
-        #    print
-        #    "Area of a circle with a radius ", k, " is:", s
-        # element_run = Parallel(n_jobs=-1)(delayed(yourfunction)(k) for k in range(1, 10))
-
-        # todo: parallel method 3  ---> this one seems programming wise the most appropriate?
-        # from dask.distributed import Client
-        # client = Client(n_workers=8) # In this example I have 8 cores and processes (can also use threads if desired)
-        # def my_function(i):
-        #    output = <code to execute in the for loop here>
-        #    return output
-        # futures = []
-        # for i in <whatever you want to loop across here>:
-        #    future = client.submit(my_function, i)
-        #    futures.append(future)
-        # results = client.gather(futures)
-        # client.close()
-
     pass
 
     def on_btn_batch_processing_motion(self):
@@ -119,12 +102,7 @@ class BatchProcessingControl:
         pass
 
     def __batch_process_motion_async(self, worker, model):
-        progress_notifier = ProgressNotifier()
-        progress_notifier.set_progress_report(lambda p: worker.progress.emit(p * 100))
-        progress_notifier.set_progress_detail(
-            lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: worker.progress_details.emit(
-                "%02d:%02d:%02d / %02d:%02d:%02d" % (
-                    hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
+        progress_notifier = self.__get_progress_notifier(worker)
 
         tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
         n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
@@ -148,8 +126,9 @@ class BatchProcessingControl:
 
     @staticmethod
     def __get_sarc_object(file: str, frame_time: float, pixel_size: float, force_override: bool) -> SarcAsM:
-        has_metadata = MetaDataHandler.check_meta_data_exists(file)
+
         sarc_obj = SarcAsM(file, use_gui=True)
+        has_metadata = MetaDataHandler.check_meta_data_exists(tif_file=file, channel=sarc_obj.channel)
         if not has_metadata or force_override:
             sarc_obj.metadata['pixelsize'] = pixel_size
             sarc_obj.metadata['frametime'] = frame_time
@@ -208,24 +187,65 @@ class BatchProcessingControl:
             self.__calculate_requirements_of_motion(sarc_obj, model)
             pass
 
-        sarc_obj.structure.detect_lois(frame=model.parameters.get_parameter('loi.detect.frame').get_value(),
-                                       persistence=model.parameters.get_parameter('loi.detect.persistence').get_value(),
+        sarc_obj.structure.detect_lois(frame=model.parameters.get_parameter(name='loi.detect.frame').get_value(),
+                                       n_lois=model.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
+                                       n_seeds=model.parameters.get_parameter(name='loi.detect.n_seeds').get_value(),
+                                       persistence=model.parameters.get_parameter(
+                                           name='loi.detect.persistence').get_value(),
                                        threshold_distance=model.parameters.get_parameter(
-                                           'loi.detect.threshold_distance').get_value(),
+                                           name='loi.detect.threshold_distance').get_value(),
                                        score_threshold=None if model.parameters.get_parameter(
                                            'loi.detect.score_threshold_automatic').get_value() else model.parameters.get_parameter(
                                            'loi.detect.score_threshold').get_value(),
-                                       number_lims=(
-                                           model.parameters.get_parameter('loi.detect.number_limits_lower').get_value(),
-                                           model.parameters.get_parameter('loi.detect.number_limits_upper').get_value()
-                                       ),
-                                       msc_lims=(
-                                           model.parameters.get_parameter('loi.detect.msc_limits_lower').get_value(),
-                                           model.parameters.get_parameter('loi.detect.msc_limits_upper').get_value()),
+                                       mode=model.parameters.get_parameter(name='loi.detect.mode').get_value(),
+                                       random_seed=None if model.parameters.get_parameter(
+                                           name='loi.detect.random_seed.leave_empty').get_value() else model.parameters.get_parameter(
+                                           name='loi.detect.random_seed').get_value(),
+                                       number_lims=[
+                                           model.parameters.get_parameter(
+                                               name='loi.detect.number_limits_lower').get_value(),
+                                           model.parameters.get_parameter(
+                                               name='loi.detect.number_limits_upper').get_value()],
+                                       length_lims=[
+                                           model.parameters.get_parameter(
+                                               name='loi.detect.length_limits_lower').get_value(),
+                                           model.parameters.get_parameter(
+                                               name='loi.detect.length_limits_upper').get_value()],
+                                       sarcomere_mean_length_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
+                                                                   model.parameters.get_parameter(
+                                                                       name='loi.detect.sarcomere_mean_length_limits_upper').get_value()],
+                                       sarcomere_std_length_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
+                                                                  model.parameters.get_parameter(
+                                                                      name='loi.detect.sarcomere_std_length_limits_upper').get_value()],
+                                       msc_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.msc_limits_lower').get_value(),
+                                                 model.parameters.get_parameter(
+                                                     name='loi.detect.msc_limits_upper').get_value()],
+                                       max_orient_change=model.parameters.get_parameter(
+                                           name='loi.detect.max_orient_change').get_value(),
+                                       midline_mean_length_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.midline_mean_length_limits_lower').get_value(),
+                                                                 model.parameters.get_parameter(
+                                                                     name='loi.detect.midline_mean_length_limits_upper').get_value()],
+                                       midline_std_length_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.midline_std_length_limits_lower').get_value(),
+                                                                model.parameters.get_parameter(
+                                                                    name='loi.detect.midline_std_length_limits_upper').get_value()],
+                                       midline_min_length_lims=[model.parameters.get_parameter(
+                                           name='loi.detect.midline_min_length_limits_lower').get_value(),
+                                                                model.parameters.get_parameter(
+                                                                    name='loi.detect.midline_min_length_limits_upper').get_value()],
                                        distance_threshold_lois=model.parameters.get_parameter(
-                                           'loi.detect.distance_threshold_lois').get_value(),
-                                       n_longest=model.parameters.get_parameter('loi.detect.n_longest').get_value(),
-                                       linewidth=model.parameters.get_parameter('loi.detect.line_width').get_value())
+                                           name='loi.detect.cluster_threshold_lois').get_value(),
+                                       linkage=model.parameters.get_parameter(name='loi.detect.linkage').get_value(),
+                                       linewidth=model.parameters.get_parameter(
+                                           name='loi.detect.line_width').get_value(),
+                                       order=model.parameters.get_parameter(name='loi.detect.order').get_value(),
+                                       export_raw=model.parameters.get_parameter(
+                                           name='loi.detect.export_raw').get_value())
+
         lois = Utils.get_lois_of_file(file)
         for file, loi in lois:
             try:
@@ -357,23 +377,23 @@ class BatchProcessingControl:
         )
 
         sarc_obj.structure.analyze_myofibrils(
-            frames=frames,
+            frames=model.parameters.get_parameter('structure.frames').get_value(),
             n_seeds=model.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
-            score_threshold=None if model.parameters.get_parameter(
-                'structure.myofibril.score_threshold_empty').get_value() else model.parameters.get_parameter(
-                'structure.myofibril.score_threshold').get_value(),
             persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
             threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value()
         )
 
         sarc_obj.structure.analyze_sarcomere_domains(
-            frames=frames,
-            score_threshold=model.parameters.get_parameter('structure.domain.analysis.score_threshold').get_value(),
-            reduce=model.parameters.get_parameter('structure.domain.analysis.reduce').get_value(),
-            weight_length=model.parameters.get_parameter('structure.domain.analysis.weight_length').get_value(),
-            distance_threshold=model.parameters.get_parameter(
-                'structure.domain.analysis.distance_threshold').get_value(),
-            area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value()
+            frames=model.parameters.get_parameter('structure.frames').get_value(),
+            dist_threshold_ends=model.parameters.get_parameter(
+                'structure.domain.analysis.dist_thresh_ends').get_value(),
+            dist_threshold_pos_vectors=model.parameters.get_parameter(
+                'structure.domain.analysis.dist_thresh_pos_vectors').get_value(),
+            louvain_resolution=model.parameters.get_parameter(
+                'structure.domain.analysis.louvain_resolution').get_value(),
+            louvain_seed=model.parameters.get_parameter('structure.domain.analysis.louvain_seed').get_value(),
+            area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
+            dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
         )
         sarc_obj.structure.store_structure_data()
         pass

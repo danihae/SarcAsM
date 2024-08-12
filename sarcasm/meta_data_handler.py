@@ -34,9 +34,10 @@ class MetaDataHandler:
             self.create_meta_data()
 
     @staticmethod
-    def check_meta_data_exists(tif_file: str) -> bool:
+    def check_meta_data_exists(tif_file: str, channel: Union[int, None]) -> bool:
         try:
-            frames, size, pixelsize, _, timestamps = MetaDataHandler.extract_meta_data(tif_file)
+            frames, size, pixelsize, _, timestamps = MetaDataHandler.extract_meta_data(tif_file=tif_file,
+                                                                                       channel=channel)
             return True
         except MetaDataError:
             return False
@@ -44,7 +45,8 @@ class MetaDataHandler:
 
     @staticmethod
     def extract_meta_data(tif_file: str, channel: Union[int, None], use_gui: bool = False,
-                          info: dict = {}) -> Tuple[Union[int, None], Union[int, None], Union[float, None], Union[float, None], Union[List[str], None]]:
+                          info: dict = {}) -> Tuple[
+        Union[int, None], Union[int, None], Union[float, None], Union[float, None], Union[List[str], None]]:
         # attempt to extract metadata from tif file
         with tifffile.TiffFile(tif_file) as tif:
             if hasattr(tif, 'imagej_metadata'):
@@ -206,10 +208,11 @@ class MetaDataHandler:
         """Create metadata for tif-file"""
         print('Creating metadata...')
         # get metadata from tif file
-        frames, size, pixelsize, frametime, timestamps = MetaDataHandler.extract_meta_data(tif_file=self.sarc_obj.filename,
-                                                                                           channel=self.sarc_obj.channel,
-                                                                                           use_gui=self.sarc_obj.use_gui,
-                                                                                           info=self.sarc_obj.info)
+        frames, size, pixelsize, frametime, timestamps = MetaDataHandler.extract_meta_data(
+            tif_file=self.sarc_obj.filename,
+            channel=self.sarc_obj.channel,
+            use_gui=self.sarc_obj.use_gui,
+            info=self.sarc_obj.info)
         # create time array
         if frametime is not None:
             time = np.arange(0, frames * frametime, frametime)
