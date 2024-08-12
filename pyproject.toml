@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "SarcAsM"
+version = "0.1.0"
+description = "Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
+authors = ["Daniel Haertter <dani.hae@posteo.de>"]
+readme = "README.md"
+packages = [
+    { include = "sarcasm" },
+    { include = "sarcasm_app" },
+    { include = "contraction_net" }
+]
+repository = "https://github.com/danihae/SarcAsM"
+
+
+[tool.poetry.dependencies]
+python = "^3.9"
+napari = "~0.4.18"
+torch = "^2.0.0"
+bio-image-unet = "^1.0.0"
+matplotlib = "^3.4.3"
+matplotlib-scalebar = "*"
+xmltodict = "~0.13.0"
+Pillow = "^10.0.0"
+PyQt5 = "~5.15.4"
+statsmodels = "^0.13.0"
+PeakUtils = "~1.3.3"
+pandas = ">=1.3.3,<=2.2.1"
+trackpy = ">=0.5.0,<=0.6.2"
+scikit-learn = ">=1.0.2,<=1.3.0"
+PyWavelets = "~1.5.0"
+imagecodecs = "~2024.1.1"
+qtutils = "*"
+networkx = "*"
+openpyxl = "*"
+tifffile = "*"
+notebook = "*"
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
