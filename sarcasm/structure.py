@@ -343,14 +343,14 @@ class Structure:
             Wraps progress notification, default is progress notification done with tqdm
         """
         assert self.sarc_obj.file_sarcomeres is not None, ("Z-band mask not found. Please run predict_z_bands first.")
-        if frames == 'all':
+        if isinstance(frames, str) and frames == 'all':
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             imgs_raw = self.read_imgs()
             list_frames = list(range(len(imgs_raw)))
-        elif isinstance(frames, int) or isinstance(frames, list) or type(frames) is np.ndarray:
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
             imgs_raw = self.read_imgs(frame=frames)
-            if isinstance(frames, int):
+            if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
                 list_frames = list(frames)
@@ -544,12 +544,12 @@ class Structure:
                 imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)
             elif len(list_frames) > 1:
                 imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=list_frames)
-        elif isinstance(frames, int) or isinstance(frames, list) or isinstance(frames, np.ndarray):
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             imgs = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frames)
-            if isinstance(frames, int):
+            if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
-                list_frames = list(frames)
+                list_frames = [int(f) for f in frames]
         else:
             raise ValueError('frames argument not valid')
         if len(imgs.shape) == 2:
@@ -769,9 +769,9 @@ class Structure:
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if frames == 'all':
+            if isinstance(frames, str) and frames == 'all':
                 frames = list(range(self.sarc_obj.metadata['frames']))
-            if isinstance(frames, int):
+            if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             assert set(frames).issubset(
                 self.data['params.wavelet_frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
@@ -884,9 +884,9 @@ class Structure:
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if frames == 'all':
+            if isinstance(frames, str) and frames == 'all':
                 frames = list(range(self.sarc_obj.metadata['frames']))
-            if isinstance(frames, int):
+            if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             assert set(frames).issubset(
                 self.data['params.wavelet_frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
@@ -1177,9 +1177,9 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _longest_in_cluster(self, n_lois):
+    def _longest_in_cluster(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][0][::-1]
+        pos_vectors = self.data['pos_vectors'][frame][::-1]
         lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
         longest_lines = []
         for label_i in range(self.data['loi_data']['n_lines_clusters']):
@@ -1200,9 +1200,9 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _random_from_cluster(self, n_lois):
+    def _random_from_cluster(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][0][::-1]
+        pos_vectors = self.data['pos_vectors'][frame][::-1]
         lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
         random_lines = []
         for label_i in range(self.data['loi_data']['n_lines_clusters']):
@@ -1219,9 +1219,9 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _random_lois(self, n_lois):
+    def _random_lois(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][0][::-1]
+        pos_vectors = self.data['pos_vectors'][frame][::-1]
         loi_lines = random.sample(lines, n_lois)
         loi_lines = [pos_vectors[:, line_i].T for line_i in loi_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
@@ -1368,11 +1368,11 @@ class Structure:
             if mode == 'fit_straight_line':
                 self._fit_straight_line(add_length=2, n_lois=n_lois)
             elif mode == 'longest_in_cluster':
-                self._longest_in_cluster(n_lois=n_lois)
+                self._longest_in_cluster(n_lois=n_lois, frame=frame)
             elif mode == 'random_from_cluster':
-                self._random_from_cluster(n_lois=n_lois)
+                self._random_from_cluster(n_lois=n_lois, frame=frame)
         elif mode == 'random_line':
-            self._random_lois(n_lois=n_lois)
+            self._random_lois(n_lois=n_lois, frame=frame)
         else:
             raise ValueError(f'mode {mode} not valid.')
 
