@@ -1,6 +1,6 @@
 # Usage of this software for commercial purposes without a license is strictly prohibited.
 
-from app import Application
+from sarcasm_app import Application
 
 
 def main():

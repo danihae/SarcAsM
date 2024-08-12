@@ -1,9 +1,9 @@
 import numpy as np
 from PyQt5.QtWidgets import QFileDialog
 
-from app.control.chain_execution import ChainExecution
-from app import ApplicationControl
-from app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
+from sarcasm_app.control.chain_execution import ChainExecution
+from sarcasm_app import ApplicationControl
+from sarcasm_app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
 from sarcasm.motion import Motion
 from sarcasm.type_utils import TypeUtils
 

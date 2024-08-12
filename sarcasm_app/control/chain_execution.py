@@ -5,7 +5,7 @@ class ChainExecution:
 
     def __init__(self, parameter_currently_processing, message_display_function=None):
         """
-        parameter_currently_processing: should be of type app.model.Parameter
+        parameter_currently_processing: should be of type sarcasm_app.model.Parameter
         message_display_function: a function/lambda which takes a string
         """
         self.__current_step = 0
