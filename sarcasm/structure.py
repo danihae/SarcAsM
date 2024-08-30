@@ -537,7 +537,7 @@ class Structure:
                                           f"length {len_lims[1]}")
         assert self.sarc_obj.file_sarcomeres is not None, "Z-band mask not found. Please run predict_z_bands first."
 
-        if frames == 'all':
+        if isinstance(frames, str) and frames == 'all':
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             if len(list_frames) == 1:
                 imgs = tifffile.imread(self.sarc_obj.file_sarcomeres)

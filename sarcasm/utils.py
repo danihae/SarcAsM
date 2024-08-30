@@ -8,7 +8,6 @@ from typing import Tuple, Any, List, Union
 
 import numpy as np
 import peakutils
-import statsmodels.api as sm
 import tifffile
 import torch
 from numpy import ndarray, dtype
@@ -196,56 +195,6 @@ class Utils:
                 filtered_data[i] = filter_1d(data[i])
 
         return filtered_data
-
-    @staticmethod
-    def hpfilter(data: np.ndarray, lamb=1600) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Apply the Hodrick-Prescott filter to data.
-
-        Parameters
-        ----------
-        data : array-like
-            Input data.
-        lamb : float, optional
-            Smoothing parameter. Default is 1600.
-
-        Returns
-        -------
-        tuple
-            Filtered data and the cyclical component.
-        """
-        data_filt = np.zeros_like(data) * np.nan
-        delta_data = np.zeros_like(data) * np.nan
-        idx_no_nan = np.where(~np.isnan(data))
-        data_no_nan = data[idx_no_nan]
-        filt_res = sm.tsa.filters.hpfilter(data_no_nan, lamb)
-        data_filt[idx_no_nan] = filt_res[1]
-        delta_data[idx_no_nan] = filt_res[0]
-        return data_filt, delta_data
-
-    @staticmethod
-    def nan_hilbert(data: np.ndarray, min_len: int = 20) -> np.ndarray:
-        """
-        Apply the Hilbert transform to data with NaN values.
-
-        Parameters
-        ----------
-        data : array-like
-            Input data.
-        min_len : int, optional
-            Minimum length of non-NaN values required to apply the Hilbert transform.
-            Default is 20.
-
-        Returns
-        -------
-        array-like
-            Hilbert-transformed data with NaN values preserved.
-        """
-        dat_hilbert = np.zeros(data.shape, dtype=complex) * np.nan
-        idx_no_nan = np.where(~np.isnan(data))[0]
-        if len(idx_no_nan) >= min_len:
-            dat_hilbert[idx_no_nan] = hilbert(data[idx_no_nan])
-        return dat_hilbert
 
     @staticmethod
     def nan_low_pass(x: np.ndarray, N: int = 6, crit_freq: float = 0.25, min_len: int = 31) -> np.ndarray:
