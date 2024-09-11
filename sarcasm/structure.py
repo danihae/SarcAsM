@@ -143,7 +143,7 @@ class Structure:
         for key in keys:
             new_key = key.replace('timepoints', 'frames')
             self.data[new_key] = self.data[key]
-            if self.data[new_key] == 'all':
+            if isinstance(self.data[new_key], str) and self.data[new_key] == 'all':
                 self.data[new_key] = list(range(self.sarc_obj.metadata['frames']))
 
         if self.data is None:
@@ -697,7 +697,6 @@ class Structure:
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
-        assert frame in self.data['params.z_frames'], f'Z-bands of frame {frame} not yet analyzed.'
         assert frame in self.data['params.wavelet_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         z_bands_t = tifffile.imread(self.sarc_obj.file_sarcomeres, key=frame)

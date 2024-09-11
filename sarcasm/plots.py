@@ -236,7 +236,7 @@ class Plots:
 
     @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, clip_thrs=(1, 99), rotate=False,
-                   invert=False, scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+                   invert=False, scalebar=True, title=None, show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
                    inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots microscopy raw image of the sarcomere object.
@@ -284,7 +284,7 @@ class Plots:
                 ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
             else:
                 ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
-        elif 'loi_data' in sarc_obj.structure.data:
+        elif 'loi_data' in sarc_obj.structure.data and show_loi:
             loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
             for line in loi_lines:
                 if rotate:
