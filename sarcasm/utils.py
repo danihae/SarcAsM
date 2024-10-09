@@ -601,14 +601,16 @@ class Utils:
 
     @staticmethod
     def max_orientation_change(angles):
-        # Convert angles to unit vectors
-        vectors = np.array([(np.cos(angle), np.sin(angle)) for angle in angles])
+        # Ensure angles are in the range [-π/2, π/2]
+        angles = np.mod(angles + np.pi / 2, np.pi) - np.pi / 2
 
-        # Calculate angles between adjacent vectors
-        angle_changes = [np.arccos(np.clip(np.dot(vectors[i], vectors[i + 1]), -1.0, 1.0)) for i in
-                         range(len(vectors) - 1)]
+        # Calculate angle differences
+        angle_diffs = np.diff(angles)
+
+        # Adjust for non-polar nature (180-degree symmetry)
+        angle_diffs = np.minimum(np.abs(angle_diffs), np.pi - np.abs(angle_diffs))
 
         # Find and return the maximum angle change
-        max_change = np.max(angle_changes)
+        max_change = np.max(angle_diffs)
 
         return max_change

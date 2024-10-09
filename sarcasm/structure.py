@@ -4,6 +4,7 @@
 import glob
 import os
 import random
+import shutil
 from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
@@ -974,8 +975,8 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _grow_lois(self, frame: int = 0, n_seeds: int = 500, score_threshold: Optional[float] = None,
-                   persistence: int = 2, threshold_distance: float = 0.5, random_seed: Optional[int] = None) -> None:
+    def _grow_lois(self, frame: int = 0, n_seeds: int = 500, persistence: int = 2, threshold_distance: float = 0.3,
+                   random_seed: Optional[int] = None) -> None:
         """
         Find LOIs (lines of interest) using a line growth algorithm. The parameters **lims can be used to filter LOIs.
 
@@ -984,10 +985,7 @@ class Structure:
         frame : int, optional
             Frame to select frame. Selects i-th frame of frames specified in wavelet analysis. Defaults to 0.
         n_seeds : int, optional
-            Number of random seeds for line growth. Defaults to 500.
-        score_threshold : float, optional
-            Score threshold for random seeds (needs to be <= score_threshold from get_sarcomere_vectors). If None, automated
-            score_threshold from wavelet analysis is used. Defaults to None.
+            Number of random seeds for line growth. Default 500.
         persistence : int, optional
             Persistence of line (average vector length and orientation for prior estimation). Defaults to 2.
         threshold_distance : float, optional
@@ -995,14 +993,6 @@ class Structure:
         random_seed : int, optional
             Random seed for reproducibility. Defaults to None.
         """
-        if score_threshold is None:
-            if 'params.score_threshold' in self.data.keys():
-                if len(self.data['params.score_threshold']) > 1:
-                    score_threshold = self.data['params.score_threshold'][frame]
-                else:
-                    score_threshold = self.data['params.score_threshold']
-            else:
-                raise ValueError('To use score_threshold from wavelet analysis, run wavelet analysis first!')
         # select midline point data at frame
         (pos_vectors, sarcomere_length_vectors,
          sarcomere_orientation_vectors, max_score_vectors, midline_length_vectors) = self.data['pos_vectors'][frame], \
@@ -1024,9 +1014,9 @@ class Structure:
     def _filter_lois(self, number_lims: Tuple[int, int] = (10, 100), length_lims: Tuple[float, float] = (0, 200),
                      sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
                      sarcomere_std_length_lims: Tuple[float, float] = (0, 0.4),
-                     msc_lims: Tuple[float, float] = (0, 1), midline_mean_length_lims: Tuple[float, float] = (2, 20),
+                     msc_lims: Tuple[float, float] = (0, 1), midline_mean_length_lims: Tuple[float, float] = (0, 20),
                      midline_std_length_lims: Tuple[float, float] = (0, 5),
-                     midline_min_length_lims: Tuple[float, float] = (2, 20),
+                     midline_min_length_lims: Tuple[float, float] = (0, 20),
                      max_orient_change: float = 30.0) -> None:
         """
         Filters Lines of Interest (LOIs) based on various geometric and morphological criteria.
@@ -1283,16 +1273,16 @@ class Structure:
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, frame: int = 0, n_lois: int = 4, n_seeds: int = 200, persistence: int = 2,
-                    threshold_distance: float = 0.3, score_threshold: Optional[float] = None,
+    def detect_lois(self, frame: int = 0, n_lois: int = 4, n_seeds: int = 500, persistence: int = 2,
+                    threshold_distance: float = 0.3,
                     mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
                     number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
                     sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
                     sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
-                    msc_lims: Tuple[float, float] = (0, 1), max_orient_change: float = 30,
-                    midline_mean_length_lims: Tuple[float, float] = (0, 20),
-                    midline_std_length_lims: Tuple[float, float] = (0, 5),
-                    midline_min_length_lims: Tuple[float, float] = (0, 20), distance_threshold_lois: float = 40,
+                    msc_lims: Tuple[float, float] = (0, 100), max_orient_change: float = 45,
+                    midline_mean_length_lims: Tuple[float, float] = (0, 50),
+                    midline_std_length_lims: Tuple[float, float] = (0, 50),
+                    midline_min_length_lims: Tuple[float, float] = (0, 50), distance_threshold_lois: float = 40,
                     linkage: str = 'single', linewidth: float = 0.65, order: int = 0, export_raw: bool = False) -> None:
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
@@ -1313,8 +1303,6 @@ class Structure:
             Persistence parameter influencing line growth direction and termination.
         threshold_distance : float
             Maximum distance for nearest neighbor estimation during line growth.
-        score_threshold : float, optional
-            Minimum score threshold for seed vectors. Uses automated threshold if None.
         mode : str
             Mode for selecting LOIs from identified clusters.
             - 'fit_straight_line' fits a straight line to all midline points in the cluster.
@@ -1363,8 +1351,7 @@ class Structure:
 
         # Grow LOIs based on seed vectors and specified parameters
         self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,
-                        threshold_distance=threshold_distance, score_threshold=score_threshold,
-                        random_seed=random_seed)
+                        threshold_distance=threshold_distance, random_seed=random_seed)
         # Filter LOIs based on geometric and morphological criteria
         self._filter_lois(number_lims=number_lims, length_lims=length_lims,
                           sarcomere_mean_length_lims=sarcomere_mean_length_lims,
@@ -1395,12 +1382,29 @@ class Structure:
 
     def delete_lois(self):
         """
-        Delete all LOIs
+        Delete all LOIs, their associated data files, and their directories.
         """
-        _ = self.data.pop('loi_data', 'No existing LOIs found.')
-        loi_files = glob.glob(self.sarc_obj.folder + '/*loi.json')
+        self.data.pop('loi_data', None)
+
+        loi_files = glob.glob(os.path.join(self.sarc_obj.folder, '*loi.json'))
         for loi_file in loi_files:
-            os.remove(loi_file)
+            try:
+                # Remove the LOI file
+                os.remove(loi_file)
+
+                # Remove the associated data file
+                data_file = os.path.join(self.sarc_obj.data_folder,
+                                         f"{os.path.splitext(os.path.basename(loi_file))[0]}_data.json")
+                if os.path.exists(data_file):
+                    os.remove(data_file)
+
+                # Remove the directory and its contents
+                directory = loi_file[:-len('_loi.json')] + '/'
+                if os.path.exists(directory):
+                    shutil.rmtree(directory)
+
+            except Exception:
+                pass  # Silently continue if an error occurs
 
     def full_analysis_structure(self, frames='all', save_all=False):
         """
@@ -2480,39 +2484,54 @@ class Structure:
 
     @staticmethod
     def _grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs,
-                   threshold_distance,
-                   pixelsize, persistence):
-
+                   threshold_distance, pixelsize, persistence):
         line_i = deque([seed])
         stop_right = stop_left = False
 
-        # threshold_distance from micrometer to pixels
         threshold_distance_pixels = threshold_distance / pixelsize
 
-        end_left = end_right = points_t[:, seed]
-        length_left = length_right = sarcomere_length_vectors_t[seed] / pixelsize
+        def calculate_mean_orientation(orientations):
+            # Convert orientations to complex numbers on the unit circle
+            complex_orientations = np.exp(2j * np.array(orientations))
+            # Calculate the mean of the complex numbers
+            mean_complex = np.mean(complex_orientations)
+            # Convert back to angle and halve it to get the original range
+            return np.angle(mean_complex) / 2
+
+        def adjust_orientation(current_orientation, previous_orientation):
+            diff = current_orientation - previous_orientation
+            if diff > np.pi / 2:
+                return current_orientation - np.pi
+            elif diff < -np.pi / 2:
+                return current_orientation + np.pi
+            return current_orientation
+
+        # Initialize orientations
         orientation_left = orientation_right = sarcomere_orientation_vectors_t[seed]
 
         while not stop_left or not stop_right:
             n_i = len(line_i)
-            if n_i > 1:
-                line_i_list = list(line_i)  # Convert deque to list for slicing
-                if not stop_left:
-                    end_left = points_t[:, line_i_list[0]]
-                    length_left = np.mean(sarcomere_length_vectors_t[line_i_list[:persistence]]) / pixelsize
-                    orientation_left = stats.circmean(sarcomere_orientation_vectors_t[line_i_list[:persistence]])
-                if not stop_right:
-                    end_right = points_t[:, line_i_list[-1]]
-                    length_right = np.mean(sarcomere_length_vectors_t[line_i_list[-persistence:]]) / pixelsize
-                    orientation_right = stats.circmean(sarcomere_orientation_vectors_t[line_i_list[-persistence:]])
+            line_i_list = list(line_i)
+
+            if not stop_left:
+                end_left = points_t[:, line_i_list[0]]
+                length_left = np.mean(sarcomere_length_vectors_t[line_i_list[:persistence]]) / pixelsize
+                new_orientation_left = calculate_mean_orientation(
+                    sarcomere_orientation_vectors_t[line_i_list[:persistence]])
+                orientation_left = adjust_orientation(new_orientation_left, orientation_left)
+
+            if not stop_right:
+                end_right = points_t[:, line_i_list[-1]]
+                length_right = np.mean(sarcomere_length_vectors_t[line_i_list[-persistence:]]) / pixelsize
+                new_orientation_right = calculate_mean_orientation(
+                    sarcomere_orientation_vectors_t[line_i_list[-persistence:]])
+                orientation_right = adjust_orientation(new_orientation_right, orientation_right)
 
             # grow left
             if not stop_left:
                 prior_left = [end_left[0] + np.sin(orientation_left) * length_left,
                               end_left[1] - np.cos(orientation_left) * length_left]
-                # nearest neighbor left
                 distance_left, index_left = nbrs.kneighbors([prior_left], return_distance=True)
-                # extend list
                 if distance_left[0][0] < threshold_distance_pixels:
                     line_i.appendleft(index_left[0][0].astype('int'))
                 else:
@@ -2522,9 +2541,7 @@ class Structure:
             if not stop_right:
                 prior_right = [end_right[0] - np.sin(orientation_right) * length_right,
                                end_right[1] + np.cos(orientation_right) * length_right]
-                # nearest neighbor right
                 distance_right, index_right = nbrs.kneighbors([prior_right], return_distance=True)
-                # extend list
                 if distance_right[0][0] < threshold_distance_pixels:
                     line_i.append(index_right[0][0].astype('int'))
                 else:
