@@ -60,14 +60,28 @@ class MetaDataHandler:
                         frames, _ = MetaDataHandler.__get_shape_from_file(tif_file, channel)
                 else:
                     frames, _ = MetaDataHandler.__get_shape_from_file(tif_file, channel)
+
                 # frame time
                 if tif.imagej_metadata is not None:
-                    if 'finterval' in tif.imagej_metadata.keys():
-                        frametime = tif.imagej_metadata['finterval']
-                    else:
-                        frametime = None
+                    frametime = (
+                            tif.imagej_metadata.get('finterval') or
+                            tif.imagej_metadata.get('Frame interval') or
+                            tif.imagej_metadata.get('frame_interval')
+                    )
+                    if frametime is None:
+                        fps = (
+                                tif.imagej_metadata.get('fps') or
+                                tif.imagej_metadata.get('Frames per second') or
+                                tif.imagej_metadata.get('frame_rate')
+                        )
+                        if fps is not None:
+                            try:
+                                frametime = 1 / float(fps)
+                            except (ValueError, ZeroDivisionError):
+                                frametime = None
                 else:
                     frametime = None
+
                 # timestamps
                 if tif.imagej_metadata is not None:
                     if 'timestamps' in tif.imagej_metadata.keys():
