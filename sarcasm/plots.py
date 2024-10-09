@@ -2,6 +2,7 @@
 
 import os.path
 from typing import Union, Tuple
+import numbers
 
 import matplotlib as mpl
 import numpy as np
@@ -189,7 +190,7 @@ class Plots:
         bd
         """
 
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, 2.3), constrained_layout=True)
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols), constrained_layout=True)
 
         if isinstance(sarc_obj.structure.data['params.wavelet_frames'], int):
             frame = sarc_obj.structure.data['params.wavelet_frames']
@@ -202,7 +203,7 @@ class Plots:
         Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, invert=True)
         Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, invert=True)
 
-        for i, pos_vectors_i in enumerate(sarc_obj.structure.data['loi_data']['lines_pos_vectors']):
+        for i, pos_vectors_i in enumerate(sarc_obj.structure.data['loi_data']['lines_vectors']):
             axs['a'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0], c='r', lw=0.2, alpha=0.6)
 
         axs['b'].hist(sarc_obj.structure.data['loi_data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
@@ -212,7 +213,7 @@ class Plots:
         axs['b'].set_xlabel('Hausdorff distance')
         axs['b'].set_ylabel('# LOI pairs')
 
-        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_pos_vectors'],
+        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_vectors'],
                                                     sarc_obj.structure.data['loi_data']['line_cluster'])):
             axs['c'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0],
                           c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
@@ -862,7 +863,8 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='mediumpurple',
-                               color_points='darkgreen', style='half', s_points=0.5, linewidths=0.0005, scalebar=True,
+                               color_points='darkgreen', style='half', s_points=0.5, linewidths=0.0005,
+                               linewidths_inset=0.0001, scalebar=True,
                                legend=False, invert_z_bands=True, alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_loc='upper right', inset_width="35%", inset_height="35%"):
@@ -887,7 +889,9 @@ class Plots:
         s_points : float, optional
             The size of the points. Defaults to 0.5.
         linewidths : float, optional
-            The width of the arrow lines. Defaults to 1.
+            The width of the arrow lines. Defaults to 0.0005.
+        linewidths_inset : float, optional
+            The width of the arrow lines in the inset plot. Defaults to 0.0001.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         legend : bool, optional
@@ -960,17 +964,18 @@ class Plots:
                              label='Midline points')
             if style == 'half':
                 ax_inset.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                                orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
+                                orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
                                 label='Sarcomere vectors')
                 ax_inset.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                                 -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
-                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
+                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+                                width=linewidths_inset)
             if style == 'full':
                 ax_inset.quiver(pos_vectors[1] - sarcomere_length_vectors * orientation_vectors[0] * 0.5,
                                 pos_vectors[0] + sarcomere_length_vectors * orientation_vectors[1] * 0.5,
                                 orientation_vectors[0] * sarcomere_length_vectors * 1,
-                                -orientation_vectors[1] * sarcomere_length_vectors * 1, widths=linewidths,
+                                -orientation_vectors[1] * sarcomere_length_vectors * 1, widths=linewidths_inset,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5)
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
@@ -1111,9 +1116,9 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='g', linewidth=2):
+    def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='g', linewidth=2, alpha=0.5):
         """
-        Plot all LOI lines.
+        Plot all LOI lines for SarcAsM object and LOI line Motion object.
 
         Parameters
         ----------
@@ -1125,11 +1130,17 @@ class Plots:
             Color of lines
         linewidth : float
             Width of lines
+        alpha : float
+            Transparency of lines
         """
-        loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
+        if hasattr(sarc_obj, 'loi_data'):
+            line = sarc_obj.loi_data['line']
+            ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth, alpha=alpha)
 
-        for line in loi_lines:
-            ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth)
+        else:
+            loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
+            for line in loi_lines:
+                ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth, alpha=alpha)
 
     @staticmethod
     def plot_histogram_structure(ax: Axes, sarc_obj: Union[SarcAsM, Motion], feature, frame=0, label=None, bins=20,
@@ -1216,7 +1227,7 @@ class Plots:
 
         # plot trajectories
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            ax.plot(time[:idxlim[1] - idxlim[0]], z_pos.T[idxlim[0]:idxlim[1]], linewidth=0.75, c=color)
+            ax.plot(time[:idxlim[1] - idxlim[0]], z_pos[:, idxlim[0]:idxlim[1]], linewidth=0.75, c=color)
             ax.set_xlim(0, tlim[1] - tlim[0])
         else:
             ax.plot(time, z_pos.T, linewidth=0.75, c=color)
@@ -1418,7 +1429,7 @@ class Plots:
         ax.xaxis.set_minor_locator(MultipleLocator(0.25))
 
     @staticmethod
-    def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, 4), number_contr=None):
+    def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, 4), number_contr=None, frame=None):
         """
         Plots sarcomere trajectory in length-change velocity phase space
 
@@ -1432,6 +1443,8 @@ class Plots:
             The time limits for the plot. Defaults to (0, 4).
         number_contr : int, optional
             The number of contractions to overlay. If None, all contractions are overlaid. Defaults to None.
+        frame : int, optional
+            The frame number to plot the individual sarcomeres in phase space. Defaults to None.
         """
         # get data
         delta_slen = motion_obj.loi_data['delta_slen']
@@ -1448,10 +1461,13 @@ class Plots:
             idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
         else:
             tlim, idxlim = (None, None), (None, None)
-        for vel_i, delta_i in zip(vel, delta_slen):
-            ax.plot(vel_i[idxlim[0]:idxlim[1]], delta_i[idxlim[0]:idxlim[1]], c='r', alpha=0.35, lw=0.5)
+        for i, (vel_i, delta_i) in enumerate(zip(vel, delta_slen)):
+            ax.plot(vel_i[idxlim[0]:idxlim[1]], delta_i[idxlim[0]:idxlim[1]], c='r', alpha=0.35, lw=0.2, zorder=1)
+            if isinstance(frame, numbers.Integral):
+                ax.scatter(vel_i[frame], delta_i[frame], c=cm[i], s=10,
+                           zorder=2)
 
-        ax.plot(vel_avg[idxlim[0]:idxlim[1]], delta_slen_avg[idxlim[0]:idxlim[1]], c='k', lw=2, label='Average')
+        ax.plot(vel_avg[idxlim[0]:idxlim[1]], delta_slen_avg[idxlim[0]:idxlim[1]], c='k', lw=1, label='Average')
         legend_elements = [Line2D([0], [0], color='k', lw=2), Line2D([0], [0], color='r', alpha=0.35, lw=0.5)]
         ax.legend(legend_elements, ['Average', 'Individual'], loc='upper right')
         PlotUtils.polish_xticks(ax, 5, 2.5)
