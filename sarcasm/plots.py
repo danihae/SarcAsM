@@ -353,9 +353,9 @@ class Plots:
         inset_height : str or float, optional
             The height of the inset axis. Defaults to "30%".
         """
-        assert os.path.exists(sarc_obj.file_sarcomeres), ('Z-band mask not found. Run predict_z_bands first.')
+        assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
 
-        img = tifffile.imread(sarc_obj.file_sarcomeres, key=frame)
+        img = tifffile.imread(sarc_obj.file_z_bands, key=frame)
         if invert:
             img = 255 - img
         if rotate:

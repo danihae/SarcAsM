@@ -54,8 +54,8 @@ class SarcAsM:
         Data folder path
     analysis_folder : str
         Analysis results folder path.
-    file_sarcomeres : str or None
-        Path to the segmented z-bands file, if exists.
+    file_z_bands : str or None
+        Path to the z-bands mask file, if exists.
     file_cell_mask : str or None
         Path to the cell mask file, if exists.
     file_sarcomere_mask : str or None
@@ -77,7 +77,7 @@ class SarcAsM:
         self.restart = restart
         self.info = info
 
-        self.folder = os.path.splitext(filename)[0]
+        self.folder = os.path.splitext(filename)[0] + '/'
         self.data_folder = os.path.join(self.folder, 'data')
         self.analysis_folder = os.path.join(self.folder, 'analysis')
 
@@ -87,7 +87,13 @@ class SarcAsM:
         os.makedirs(self.data_folder, exist_ok=True)
         os.makedirs(self.analysis_folder, exist_ok=True)
 
-        self.file_sarcomeres = os.path.join(self.folder, 'sarcomeres.tif')
+        if os.path.exists(os.path.join(self.folder, 'sarcomeres.tif')):  # todo remove
+            self.file_z_bands = os.path.join(self.folder, 'sarcomeres.tif')
+        else:
+            self.file_z_bands = os.path.join(self.folder, 'zbands.tif')
+        self.file_midlines = os.path.join(self.folder, 'midlines.tif')
+        self.file_distance = os.path.join(self.folder, 'distance.tif')
+        self.file_orientation = os.path.join(self.folder, 'orientation.tif')
         self.file_cell_mask = os.path.join(self.folder, 'cell_mask.tif')
         self.file_sarcomere_mask = os.path.join(self.folder, 'sarcomere_mask.tif')
 

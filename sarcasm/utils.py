@@ -11,8 +11,11 @@ import peakutils
 import tifffile
 import torch
 from numpy import ndarray, dtype
-from scipy.signal import correlate, savgol_filter, hilbert, butter, filtfilt
+from scipy.interpolate import griddata
+from scipy.ndimage import label
+from scipy.signal import correlate, savgol_filter, butter, filtfilt
 from scipy.stats import stats
+from skimage.draw import line
 
 warnings.filterwarnings("ignore")
 
@@ -442,6 +445,25 @@ class Utils:
         return peaks
 
     @staticmethod
+    def peak_by_first_moment(x: np.ndarray, y: np.ndarray):
+        """
+        Calculate the peak of y using the first moment method.
+
+        Parameters
+        ----------
+        x : numpy.ndarray
+            The x-values of the data.
+        y : numpy.ndarray
+            The y-values of the data.
+
+        Returns
+        -------
+        peak : float
+            The calculated peak value.
+        """
+        return np.sum(x * y) / np.sum(y)
+
+    @staticmethod
     def analyze_orientations(orientations: np.ndarray):
         """
         Calculate the orientational order parameter and mean vector of non-polar elements in 2D.
@@ -463,25 +485,6 @@ class Utils:
         oop = 1 / len(orientations) * np.abs(np.sum(np.exp(orientations * 2 * 1j)))
         angle = np.angle(np.sum(np.exp(orientations * 2 * 1j))) / 2
         return oop, angle
-
-    @staticmethod
-    def peak_by_first_moment(x: np.ndarray, y: np.ndarray):
-        """
-        Calculate the peak of y using the first moment method.
-
-        Parameters
-        ----------
-        x : numpy.ndarray
-            The x-values of the data.
-        y : numpy.ndarray
-            The y-values of the data.
-
-        Returns
-        -------
-        peak : float
-            The calculated peak value.
-        """
-        return np.sum(x * y) / np.sum(y)
 
     @staticmethod
     def correct_phase_confocal(tif_file: str, shift_max=30):
@@ -614,3 +617,118 @@ class Utils:
         max_change = np.max(angle_diffs)
 
         return max_change
+
+    @staticmethod
+    def create_distance_map(sarc_obj):
+        """
+        Creates distance map for sarcomeres from a SarcAsM object. The distance map is 0 at Z-bands and 1 at M-bands.
+
+        Parameters
+        ----------
+        sarc_obj : SarcAsM
+            An object of the SarcAsM class.
+
+        Returns
+        -------
+        distance : numpy.ndarray
+            A 2D array with normalized distances (0 to 1) along sarcomeres.
+        """
+
+        # Validate sarc_obj data
+        structure = sarc_obj.structure.data
+        pixelsize = sarc_obj.metadata.get('pixelsize', None)
+
+        if not all(key in structure for key in
+                   ['pos_vectors', 'sarcomere_orientation_vectors', 'sarcomere_length_vectors']):
+            raise Warning("Missing required data in sarc_obj.structure.")
+
+        if pixelsize is None:
+            raise Warning("Missing 'pixelsize' in sarc_obj.metadata.")
+
+        # Extract data from sarc_obj
+        pos_vectors = structure['pos_vectors'][0]
+        orientation_vectors = np.asarray([
+            -np.sin(structure['sarcomere_orientation_vectors'][0]),
+            np.cos(structure['sarcomere_orientation_vectors'][0])
+        ])
+        sarcomere_length_vectors = structure['sarcomere_length_vectors'][0] / pixelsize
+
+        # Calculate endpoints of each vector based on orientation and length
+        ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors / 2  # End point 1
+        ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors / 2  # End point 2
+
+        # Initialize output arrays
+        distance = np.full(sarc_obj.metadata['size'], np.nan, dtype='float32')
+
+        def create_distance_array(l):
+            """Creates a normalized distance array for a line segment."""
+            if l < 2:
+                raise ValueError("Length must be at least 2.")
+            midpoint = (l + 1) // 2
+            return np.concatenate((np.linspace(0, 1, midpoint), np.linspace(1, 0, l - midpoint)))
+
+        # Populate distance and length arrays for each sarcomere
+        for e0, e1, in zip(ends_0.T.astype('int'), ends_1.T.astype('int')):
+            rr, cc = line(*e0, *e1)  # Get pixel coordinates for the line
+
+            dist = create_distance_array(len(rr))  # Create normalized distance values
+
+            # Assign values to output arrays
+            try:
+                distance[rr, cc] = dist
+            except:
+                pass
+
+        return distance
+
+    @staticmethod
+    def interpolate_distance_map(image, N=50, method='linear'):
+        """
+        Interpolates NaN regions in a 2D image, filling only those regions whose size
+        is less than or equal to a specified threshold.
+
+        Parameters
+        ----------
+        image : numpy.ndarray
+            A 2D array representing the input image. NaN values represent gaps to be filled.
+        N : int
+            The maximum size (in pixels) of connected NaN regions to interpolate. Regions larger
+            than this threshold will remain unaltered.
+        method : str, optional
+            The interpolation method to use. Options are 'linear', 'nearest', and 'cubic'.
+            Default is 'linear'.
+
+        Returns
+        -------
+        numpy.ndarray
+            A 2D array with the same shape as the input `image`, where small NaN regions
+            (size <= N) have been interpolated. Larger NaN regions are left unchanged.
+        """
+
+        # Get indices and mask valid points
+        x, y = np.indices(image.shape)
+        valid_points = ~np.isnan(image)
+        valid_coords = np.array((x[valid_points], y[valid_points])).T
+        valid_values = image[valid_points]
+
+        # Label connected NaN regions
+        nan_mask = np.isnan(image)
+        labeled_nan_regions, num_features = label(nan_mask)
+
+        # Combine masks for all small regions
+        combined_small_nan_mask = np.zeros_like(image, dtype=bool)
+
+        for region_label in range(1, num_features + 1):
+            region_mask = labeled_nan_regions == region_label
+            region_size = np.sum(region_mask)
+
+            if region_size <= N:
+                combined_small_nan_mask |= region_mask
+
+        # Interpolate all small NaN regions at once
+        if np.any(combined_small_nan_mask):
+            invalid_coords = np.array((x[combined_small_nan_mask], y[combined_small_nan_mask])).T
+            interpolated_values = griddata(valid_coords, valid_values, invalid_coords, method=method)
+            image[combined_small_nan_mask] = interpolated_values
+
+        return image

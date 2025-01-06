@@ -3,7 +3,7 @@ import glob
 from sarcasm import *
 
 
-folder = 'D:/SarcAsM_drugs/'
+folder = 'D:/2024_competition_data/'
 
 # find files
 files = glob.glob(folder + '/*/*.tif')[::-1]
@@ -23,17 +23,14 @@ def analyze_motion(file):
         try:
             mot_obj = Motion(file, loi)
             mot_obj.full_analysis_loi()
+            Plots.plot_loi_summary_motion(mot_obj)
         except Exception as e:
             print(file, loi)
             print(repr(e))
 
 
 if __name__ == '__main__':
-    # find LOIs
-    with Pool(4) as p:
-        p.map(find_lois, files)
-
     # analyze ROIs
-    with Pool(12) as p:
+    with Pool(8) as p:
         p.map(analyze_motion, files)
 
