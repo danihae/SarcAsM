@@ -12,7 +12,7 @@ import tifffile
 import torch
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata
-from scipy.ndimage import label
+from scipy.ndimage import label, map_coordinates
 from scipy.signal import correlate, savgol_filter, butter, filtfilt
 from scipy.stats import stats
 from skimage.draw import line
@@ -732,3 +732,81 @@ class Utils:
             image[combined_small_nan_mask] = interpolated_values
 
         return image
+
+    @staticmethod
+    def fast_profile_lines(image, start_points, end_points, linewidth=1, mode='constant', cval=0.0):
+        """
+        Vectorized version of profile_line from scikit-image that processes multiple lines simultaneously.
+
+        Parameters
+        ----------
+        image : ndarray
+            The input image from which to sample the profile lines.
+        start_points : array_like
+            An array of shape (N, 2) containing the starting coordinates of the lines.
+        end_points : array_like
+            An array of shape (N, 2) containing the ending coordinates of the lines.
+        linewidth : int, optional
+            The width of the profile line. Default is 1.
+        mode : str, optional
+            The mode parameter for map_coordinates. Default is 'constant'.
+        cval : float, optional
+            The value used for points outside the boundaries of the input image. Default is 0.0.
+
+        Returns
+        -------
+        result : list of ndarray
+            A list containing the sampled profile values for each line.
+        """
+        # Convert to array and swap row/col order to match image coordinates
+        start_points = np.asarray(start_points).T
+        end_points = np.asarray(end_points).T
+
+        # Calculate pixel coordinates along each line
+        vectors = end_points - start_points
+        lengths = np.ceil(np.sqrt(np.sum(vectors ** 2, axis=1)) + 1).astype(int)
+
+        # Create coordinates matrix for each line
+        coords_list = []
+
+        for i in range(len(start_points)):
+            t = np.linspace(0, 1, lengths[i])[:, np.newaxis]
+            line_coords = start_points[i] + t * vectors[i]
+
+            if linewidth > 1:
+                # Calculate perpendicular vector
+                perp = np.array([-vectors[i, 1], vectors[i, 0]])
+                perp = perp / np.sqrt(np.sum(perp ** 2))
+
+                # Create parallel lines
+                offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
+                line_coords = (line_coords[:, np.newaxis, :] +
+                               perp[np.newaxis, np.newaxis, :] * offsets[:, np.newaxis])
+
+                # Reshape to separate rows and columns
+                rows = line_coords[..., 0].reshape(-1)
+                cols = line_coords[..., 1].reshape(-1)
+                line_coords = np.stack([rows, cols])
+            else:
+                line_coords = np.stack([line_coords[:, 0], line_coords[:, 1]])
+
+            coords_list.append(line_coords)
+
+        # Sample all points in one call to map_coordinates
+        all_coords = np.hstack(coords_list)
+        profiles = map_coordinates(image, all_coords, order=0, mode=mode, cval=cval)
+
+        # Split and average profiles
+        result = []
+        start_idx = 0
+        for i in range(len(start_points)):
+            if linewidth > 1:
+                profile = profiles[start_idx:start_idx + lengths[i] * linewidth]
+                profile = profile.reshape(lengths[i], linewidth).mean(axis=1)
+            else:
+                profile = profiles[start_idx:start_idx + lengths[i]]
+            result.append(profile)
+            start_idx += lengths[i] * linewidth if linewidth > 1 else lengths[i]
+
+        return result
+
