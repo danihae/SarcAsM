@@ -913,13 +913,13 @@ class Plots:
         """
         assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                             'run analyze_sarcomere_vectors first.')
-        assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.vector_frames'], f'Frame {frame} not yet analyzed.'
 
         pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
         sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
         sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
-        orientation_vectors = np.asarray([np.cos(sarcomere_orientation_vectors), np.sin(sarcomere_orientation_vectors)])
+        orientation_vectors = np.asarray([np.sin(sarcomere_orientation_vectors), -np.cos(sarcomere_orientation_vectors)])
 
         Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
                            frame=frame)
@@ -930,7 +930,7 @@ class Plots:
         if style == 'half':
             ax.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                       orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, label='Sarcomere vectors')
+                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, label='Sarcomere vectors')
             ax.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                       -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)

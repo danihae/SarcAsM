@@ -16,13 +16,14 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from bio_image_unet import unet, multi_output_unet
-from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
-from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
+from bio_image_unet import unet
 from bio_image_unet import unet3d as unet3d
+from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
+from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
+from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
@@ -37,7 +38,6 @@ from tqdm import tqdm as tqdm
 from .ioutils import IOUtils
 from .utils import Utils
 
-multi_output_unet
 
 class Structure:
     """
@@ -224,7 +224,8 @@ class Structure:
             self.store_structure_data()
 
     def predict_z_bands(self, time_consistent: bool = False, model_path: Optional[str] = None,
-                        size: Union[Tuple[int, int], Tuple[int, int, int]] = (1024, 1024), normalization_mode: str = 'all',
+                        size: Union[Tuple[int, int], Tuple[int, int, int]] = (1024, 1024),
+                        normalization_mode: str = 'all',
                         clip_thres: Tuple[float, float] = (0., 99.8),
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
@@ -513,15 +514,135 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
-                                  kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
-                                  major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
-                                  len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
-                                  orient_step: float = 10, add_negative_center_kernel: bool = False,
-                                  patch_size: int = 1024, score_threshold: float = 0.25,
-                                  abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
-                                  dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
-                                  save_all: bool = False,
+                                  radius=0.25, slen_lims=(1, 3),
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+        """
+        Extract sarcomere orientation and length vectors.
+
+        Parameters
+        ----------
+        frames : {'all', int, list, np.ndarray}, optional
+            frames for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
+            selected frames). Defaults to 'all'.
+        radius : float, optional
+            Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).
+        slen_lims : tuple of float, optional
+            Sarcomere size limits in micrometers (default is (1, 3)).
+        progress_notifier: ProgressNotifier
+            Wraps progress notification, default is progress notification done with tqdm
+
+        Returns
+        -------
+        sarcomere_orientation_points : np.ndarray
+            Sarcomere orientation values at midline points.
+        sarcomere_length_points : np.ndarray
+            Sarcomere length values at midline points.
+        """
+        assert self.sarc_obj.file_z_bands is not None, "Sarcomere data not found. Please run 'detect_sarcomeres' first."
+
+        if isinstance(frames, str) and frames == 'all':
+            list_frames = list(range(self.sarc_obj.metadata['frames']))
+            z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
+            midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
+            orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)
+            distance = tifffile.imread(self.sarc_obj.file_distance)
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
+            z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
+            midlines = tifffile.imread(self.sarc_obj.file_midlines, key=frames)
+            orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)[frames]
+            distance = tifffile.imread(self.sarc_obj.file_distance, key=frames)
+            if np.issubdtype(type(frames), np.integer):
+                list_frames = [frames]
+            else:
+                list_frames = [int(f) for f in frames]
+        else:
+            raise ValueError('frames argument not valid')
+        if len(z_bands.shape) == 2:
+            z_bands = np.expand_dims(z_bands, axis=0)
+        if len(midlines.shape) == 2:
+            midlines = np.expand_dims(midlines, axis=0)
+        if len(distance.shape) == 2:
+            distance = np.expand_dims(distance, axis=0)
+        if len(orientation_vectors.shape) == 3:
+            orientation_vectors = np.expand_dims(orientation_vectors, axis=0)
+
+        n_frames = len(z_bands)
+        pixelsize = self.sarc_obj.metadata['pixelsize']
+
+        # create empty arrays
+        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
+        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
+        (pos_vectors, sarcomere_length_vectors,
+         sarcomere_orientation_vectors) = (none_lists() for _ in range(3))
+        sarcomere_masks = np.zeros((self.sarc_obj.metadata['frames'], *self.sarc_obj.metadata['size']), dtype=bool)
+        (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
+        sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
+        oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(4))
+
+        # iterate images
+        print('\nStarting sarcomere length and orientation analysis...')
+        for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, distance_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_vectors, distance),
+                                           total=n_frames)):
+
+            (pos_vectors_i, sarcomere_orientation_vectors_i,
+             sarcomere_length_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
+                                                                                        orientation_vectors_i,
+                                                                                        distance_i, pixelsize=pixelsize,
+                                                                                        radius=radius,
+                                                                                        slen_lims=slen_lims)
+
+            # write in list
+            pos_vectors[frame_i] = pos_vectors_i
+            sarcomere_length_vectors[frame_i] = sarcomere_length_vectors_i
+            sarcomere_orientation_vectors[frame_i] = sarcomere_orientation_vectors_i
+
+            # calculate mean and std of sarcomere length and orientation
+            sarcomere_length_mean[frame_i], sarcomere_length_std[frame_i], = np.nanmean(
+                sarcomere_length_vectors_i), np.nanstd(sarcomere_length_vectors_i)
+            sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = stats.circmean(
+                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]), stats.circstd(sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
+
+            # orientation order parameter
+            if len(sarcomere_orientation_vectors_i) > 0:
+                oop[frame_i], _ = Utils.analyze_orientations(sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
+
+            # calculate sarcomere mask area
+            sarcomere_masks[frame_i] = sarcomere_mask_i
+            sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
+            if 'cell_area' in self.data.keys():
+                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
+            else:
+                area = self.sarc_obj.metadata['size'][0] * self.sarc_obj.metadata['size'][1] * self.sarc_obj.metadata[
+                    'pixelsize'] ** 2
+                sarcomere_area_ratio[frame_i] = sarcomere_area[i] / area
+
+        tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
+
+        wavelet_dict = {'params.vector_frames': list_frames, 'params.vector_radius': radius,
+                        'params.vector_slen_lims': slen_lims,
+                        'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
+                        'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
+                        'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
+                        'sarcomere_length_mean': sarcomere_length_mean,
+                        'sarcomere_length_std': sarcomere_length_std,
+                        'sarcomere_orientation_mean': sarcomere_orientation_mean,
+                        'sarcomere_orientation_std': sarcomere_orientation_std,
+                        'sarcomere_oop': oop}
+        self.data.update(wavelet_dict)
+        if self.sarc_obj.auto_save:
+            self.store_structure_data()
+
+    def analyze_sarcomere_vectors_wavelet(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
+                                          kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
+                                          major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
+                                          len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
+                                          orient_step: float = 10, add_negative_center_kernel: bool = False,
+                                          patch_size: int = 1024, score_threshold: float = 0.25,
+                                          abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
+                                          dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
+                                          save_all: bool = False,
+                                          progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         AND-gated double wavelet analysis of sarcomere structure.
 
@@ -636,7 +757,8 @@ class Structure:
         orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, z_bands_i, midlines_i) in enumerate(progress_notifier.iterator(zip(list_frames, z_bands, midlines), total=n_imgs)):
+        for i, (frame_i, z_bands_i, midlines_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, z_bands, midlines), total=n_imgs)):
             result_i = self.convolve_image_with_bank(z_bands_i, bank, device=self.sarc_obj.device, gating=gating,
                                                      dtype=dtype, save_memory=save_memory, patch_size=patch_size)
             (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
@@ -647,7 +769,7 @@ class Structure:
             # evaluate wavelet results at sarcomere midlines
             (pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
              sarcomere_orientation_vectors_i, max_score_vectors_i, midline_i,
-             score_threshold_i) = self.get_sarcomere_vectors(
+             score_threshold_i) = self.get_sarcomere_vectors_wavelet(
                 wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i,
                 len_range=len_range, midlines=midlines_i,
                 score_threshold=score_threshold,
@@ -707,7 +829,7 @@ class Structure:
         wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_minor': minor, 'params.wavelet_major': major,
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
-                        'params.kernel': kernel,
+                        'params.kernel': kernel, 'params.vector_frames': list_frames,
                         'params.wavelet_frames': list_frames, 'params.len_range': len_range[1:-2],
                         'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
@@ -1457,7 +1579,7 @@ class Structure:
             except Exception:
                 pass  # Silently continue if an error occurs
 
-    def full_analysis_structure(self, frames='all', save_all=False):
+    def full_analysis_structure(self, frames='all'):
         """
         Analyze sarcomere structure with default parameters at specified frames
 
@@ -1466,12 +1588,9 @@ class Structure:
         frames : {'all', int, list, np.ndarray}
             frames for analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames).
-        save_all : bool
-            If True, all intermediary data is saved. Can take up large storage, and is only recommended for visualizing
-            data.
         """
         self.analyze_z_bands(frames=frames)
-        self.analyze_sarcomere_vectors(frames=frames, save_all=save_all)
+        self.analyze_sarcomere_vectors(frames=frames)
         self.analyze_myofibrils(frames=frames)
         self.analyze_sarcomere_domains(frames=frames)
         if not self.sarc_obj.auto_save:
@@ -2229,10 +2348,145 @@ class Structure:
 
         return length.cpu().numpy(), orient.cpu().numpy(), max_score.cpu().numpy()
 
+
     @staticmethod
-    def get_sarcomere_vectors(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
-                              len_range: torch.Tensor, midlines: np.ndarray = None,
-                              score_threshold: float = 90., abs_threshold: bool = False) -> Tuple:
+    def get_sarcomere_vectors(
+            zbands: np.ndarray,
+            midlines: np.ndarray,
+            orientation_vectors: np.ndarray,
+            distance: np.ndarray,
+            pixelsize: float,
+            radius: float = 0.25,
+            slen_lims: Tuple[float, float] = (1, 3)
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Extract sarcomere orientation and length vectors.
+
+        Parameters
+        ----------
+        zbands : np.ndarray
+            2D array representing the semantic segmentation map of Z-bands.
+        midlines : np.ndarray
+            2D array representing the semantic segmentation map of midlines.
+        orientation_vectors : np.ndarray
+            2D array representing the orientation vectors.
+        distance : np.ndarray
+            2D array representing the distance transform map.
+        pixelsize : float
+            Size of a pixel in micrometers.
+        radius : float, optional
+            Readout radius of orientation field around midline points in micrometers (default is 0.25).
+        slen_lims : tuple of float, optional
+            Sarcomere size limits in micrometers (default is (1, 3)).
+
+        Returns
+        -------
+        pos_vectors : np.ndarray
+            Array of position vectors for sarcomeres.
+        sarcomere_orientation_vectors : np.ndarray
+            Sarcomere orientation values at midline points.
+        sarcomere_length_vectors : np.ndarray
+            Sarcomere length values at midline points.
+        sarcomere_mask : np.ndarray
+            Mask indicating the presence of sarcomeres.
+        """
+        radius_pixels = int(round(radius / pixelsize, 0))
+
+        # create sarcomere mask
+        gradient_x, gradient_y = np.gradient(distance)
+        max_slope = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
+        sarcomere_mask = max_slope > 0
+
+        # skeletonize midlines
+        midlines_skel = skeletonize(midlines > 0.5, method='lee')
+
+        # calculate orientation map
+        orientation = np.arctan2(orientation_vectors[1], orientation_vectors[0])
+
+        def map_angles(angles: np.ndarray) -> np.ndarray:
+            mapped_angles = (angles + 2 * np.pi) % (2 * np.pi)
+            mapped_angles = np.where(mapped_angles > np.pi, mapped_angles - np.pi, mapped_angles)
+            return - mapped_angles + np.pi / 2
+
+        orientation = map_angles(orientation)
+
+        # get orientation at midline points using a disk-shaped filter
+        pos_vectors = np.asarray(np.where(midlines_skel))
+        footprint = disk(radius_pixels, strict_radius=False)
+        filtered_orientation = median_filter(
+            orientation,
+            footprint=footprint,
+            mode='constant'
+        )
+
+        sarcomere_orientation_vectors = filtered_orientation[
+            pos_vectors[0],
+            pos_vectors[1]
+        ]
+
+        ends1 = pos_vectors - (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+            (np.cos(sarcomere_orientation_vectors), np.sin(sarcomere_orientation_vectors))
+        )
+        ends2 = pos_vectors + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+            (np.cos(sarcomere_orientation_vectors), np.sin(sarcomere_orientation_vectors))
+        )
+
+        # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
+        sarcomere_length_vectors = np.full(pos_vectors.shape[1], np.nan, dtype=float)
+        profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=3)
+
+        for i, profile_i in enumerate(profiles):
+            if len(profile_i) <= 5:
+                continue
+
+            pos_array = np.arange(len(profile_i)) * pixelsize
+            peaks = Utils.peakdetekt(pos_array, profile_i,
+                                     min_dist=5,
+                                     thres=0.25,
+                                     thres_abs=True,
+                                     width=5)
+            peaks = peaks[~np.isnan(peaks)]
+
+            if len(peaks) >= 2:
+                if len(peaks) > 2:
+                    peaks = peaks[np.argsort(np.abs(peaks - pos_array.mean()))[:2]]
+                slen_profile = np.diff(peaks)[0]
+                if slen_lims[0] < slen_profile < slen_lims[1]:
+                    sarcomere_length_vectors[i] = slen_profile
+
+        # label midlines
+        midline_labels, n_midlines = ndimage.label(midlines_skel,
+                                                   ndimage.generate_binary_structure(2, 2))
+
+        # iterate midlines and create an additional list with labels and midline length (approx. by max. Feret diameter)
+        # props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
+        # list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
+        #
+        # midline_id_vectors, midline_length_vectors = [], []
+        # if n_midlines > 0:
+        #     for i, (label_i, coords_i, length_midline_i) in enumerate(
+        #             zip(list_labels, coords_midlines, length_midlines)):
+        #         midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
+        #         midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
+        #
+        #     # pos_vectors = np.concatenate(pos_vectors, axis=0).T
+        #     midline_id_vectors = np.concatenate(midline_id_vectors)
+        #     midline_length_vectors = np.concatenate(midline_length_vectors)
+
+        # remove NaNs
+        nan_mask = np.isnan(sarcomere_length_vectors)
+        pos_vectors = pos_vectors[:, ~nan_mask]
+        # midline_id_vectors = midline_id_vectors[~nan_mask]
+        sarcomere_orientation_vectors = sarcomere_orientation_vectors[~nan_mask]
+        sarcomere_length_vectors = sarcomere_length_vectors[~nan_mask]
+
+        return (pos_vectors, sarcomere_orientation_vectors,
+                sarcomere_length_vectors, sarcomere_mask)
+
+    @staticmethod
+    def get_sarcomere_vectors_wavelet(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
+                                      len_range: torch.Tensor, midlines: np.ndarray = None,
+                                      score_threshold: float = 90., abs_threshold: bool = False) -> Tuple:
         """
         Extracts vector positions on sarcomere midlines and calculates sarcomere length and orientation.
 

@@ -380,37 +380,7 @@ class Utils:
         return v
 
     @staticmethod
-    def hilbert_transform(data: np.ndarray, dt: float):
-        """
-            Perform a Hilbert transform on the input data to get the analytic signal for amplitude,
-            instantaneous phase and frequency, ignores NaN values.
-
-            Parameters
-            ----------
-            data : numpy.ndarray
-                The input data to be transformed.
-            dt : float
-                The time interval between frames.
-
-            Returns
-            -------
-            amplitude_envelope : numpy.ndarray
-                The amplitude envelope of the transformed data.
-            instantaneous_phase : numpy.ndarray
-                The instantaneous phase of the transformed data.
-            instantaneous_frequency : numpy.ndarray
-                The instantaneous frequency of the transformed data.
-            """
-        analytic_signal = Utils.nan_hilbert(data)
-        amplitude_envelope = np.abs(analytic_signal)
-        instantaneous_phase = np.angle(analytic_signal)
-        instantaneous_phase[~np.isnan(instantaneous_phase)] = np.unwrap(
-            instantaneous_phase[~np.isnan(instantaneous_phase)])
-        instantaneous_frequency = (np.diff(instantaneous_phase) / (2.0 * np.pi) / dt)
-        return amplitude_envelope, instantaneous_phase, instantaneous_frequency
-
-    @staticmethod
-    def peakdetekt(x_pos, y, thres=0.3, min_dist=10, width=6):
+    def peakdetekt(x_pos, y, thres=0.3, thres_abs=True, min_dist=10, width=6):
         """
         A customized peak detection algorithm.
 
@@ -425,7 +395,9 @@ class Utils:
         y : ndarray
             The intensity profile.
         thres : float, optional
-            Threshold for the peak detection. Default is 0.3.
+            Threshold for the peak detection. Default is 0.5.
+        thres_abs : bool, optional
+            Whether the peak detection threshold is absolute. Default is True.
         min_dist : int, optional
             Minimum distance between detected peaks. Default is 10.
         width : int, optional
@@ -439,7 +411,7 @@ class Utils:
 
         """
         # approximate peak position
-        peaks_idx = peakutils.indexes(y, thres=thres, min_dist=min_dist)
+        peaks_idx = peakutils.indexes(y, thres=thres, min_dist=min_dist, thres_abs=thres_abs)
         # get mean of peak sum(x*y)/sum(y)
         peaks = peakutils.interpolate(x_pos, y, ind=peaks_idx, width=width, func=Utils.peak_by_first_moment)
         return peaks

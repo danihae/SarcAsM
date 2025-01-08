@@ -94,6 +94,7 @@ class SarcAsM:
         self.file_midlines = os.path.join(self.folder, 'midlines.tif')
         self.file_distance = os.path.join(self.folder, 'distance.tif')
         self.file_orientation = os.path.join(self.folder, 'orientation.tif')
+        self.file_distance = os.path.join(self.folder, 'distance.tif')
         self.file_cell_mask = os.path.join(self.folder, 'cell_mask.tif')
         self.file_sarcomere_mask = os.path.join(self.folder, 'sarcomere_mask.tif')
 
