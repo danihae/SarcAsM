@@ -1,18 +1,19 @@
 # Usage of this software for commercial purposes without a license is strictly prohibited.
 
+import numbers
 import os.path
 from typing import Union, Tuple
-import numbers
 
-import matplotlib as mpl
+import matplotlib
 import numpy as np
 from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 from matplotlib_scalebar.scalebar import ScaleBar
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from scipy.ndimage import median_filter
 from tifffile import tifffile
 
 from .core import SarcAsM
@@ -172,7 +173,8 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: Union[SarcAsM, Motion], frame: int = 0, filepath: str = None):
+    def plot_loi_detection(sarc_obj: Union[SarcAsM, Motion], frame: int = 0, filepath: str = None,
+                           cmap_z_bands='Greys'):
         """
         Plots all steps of automated LOI finding algorithm
 
@@ -184,13 +186,16 @@ class Plots:
             The time point to plot.
         filepath: str
             Path to save the plot. If None, plot is not saved.
+        cmap_z_bands : str, optional
+            Colormap of Z-bands. Defaults to 'Greys'.
         """
         mosaic = """
         ac
         bd
         """
 
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols), constrained_layout=True)
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols),
+                                      constrained_layout=True)
 
         if isinstance(sarc_obj.structure.data['params.wavelet_frames'], int):
             frame = sarc_obj.structure.data['params.wavelet_frames']
@@ -199,9 +204,9 @@ class Plots:
         else:
             frame = sarc_obj.structure.data['params.wavelet_frames'][frame]
 
-        Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, invert=True)
-        Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, invert=True)
-        Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, invert=True)
+        Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, cmap=cmap_z_bands)
+        Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, cmap=cmap_z_bands)
+        Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, cmap=cmap_z_bands)
 
         for i, pos_vectors_i in enumerate(sarc_obj.structure.data['loi_data']['lines_vectors']):
             axs['a'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0], c='r', lw=0.2, alpha=0.6)
@@ -214,7 +219,7 @@ class Plots:
         axs['b'].set_ylabel('# LOI pairs')
 
         for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_vectors'],
-                                                    sarc_obj.structure.data['loi_data']['line_cluster'])):
+                                                         sarc_obj.structure.data['loi_data']['line_cluster'])):
             axs['c'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0],
                           c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
 
@@ -236,8 +241,8 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, clip_thrs=(1, 99), rotate=False,
-                   invert=False, scalebar=True, title=None, show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
+    def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap='grey', alpha=1, clip_thrs=(1, 99),
+                   scalebar=True, title=None, show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
                    inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots microscopy raw image of the sarcomere object.
@@ -250,10 +255,12 @@ class Plots:
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
-        rotate : bool, optional
-            Whether to rotate the image. Defaults to False.
-        invert : bool, optional
-            Whether to invert the image. Defaults to False.
+        cmap : matplotlib.cm.Colormap, optional
+            The colormap to use. Defaults to 'gray'.
+        alpha : float, optional
+            The transparency to use. Defaults to 1.
+        clip_thrs : tuple, optional
+            Clipping thresholds to normalize intensity, in percentiles. Defaults to (1, 99).
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -271,27 +278,16 @@ class Plots:
         """
 
         img = sarc_obj.structure.read_imgs(frame=frame)
-        if rotate:
-            img = img.T
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
-        if invert:
-            img = 1 - img/np.max(img)
-        else:
-            img = img / np.max(img)
-        plot = ax.imshow(img, cmap='gray')
+
+        plot = ax.imshow(img, cmap=cmap, alpha=alpha)
         if hasattr(sarc_obj, 'loi_data') and show_loi:
             line = sarc_obj.loi_data['line']
-            if rotate:
-                ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
-            else:
-                ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         elif 'loi_data' in sarc_obj.structure.data and show_loi:
             loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
             for line in loi_lines:
-                if rotate:
-                    ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
-                else:
-                    ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+                ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -318,8 +314,9 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, rotate=False, invert=False,
-                     alpha=1, scalebar=True, title=None, show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='Blues_r',
+                     alpha=1, scalebar=True, title=None, color_scalebar='k',
+                     show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                      inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
         Plots the Z-bands of the sarcomere object.
@@ -332,10 +329,8 @@ class Plots:
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
-        rotate : bool, optional
-            Whether to rotate the image. Defaults to False.
-        invert : bool, optional
-            Whether to invert the image. Defaults to False.
+        cmap : matplotlib.cm.Colormap, optional
+            Colormap to use. Defaults to 'Blues_r'.
         alpha : float, optional
             Alpha value to change opacity of image. Defaults to 1
         scalebar : bool, optional
@@ -356,20 +351,15 @@ class Plots:
         assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
 
         img = tifffile.imread(sarc_obj.file_z_bands, key=frame)
-        if invert:
-            img = 255 - img
-        if rotate:
-            img = img.T
-        ax.imshow(img, cmap='gray', alpha=alpha)
+
+        masked_img = np.ma.masked_where(img < 0.05, img)
+        ax.imshow(masked_img, cmap=cmap, alpha=alpha)
         if hasattr(sarc_obj, 'loi_data') and show_loi:
             line = sarc_obj.loi_data['line']
-            if rotate:
-                ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
-            else:
-                ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(
-                ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k' if invert else 'w',
+                ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
                          sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -388,8 +378,74 @@ class Plots:
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
+    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='berlin',
+                              alpha=1, scalebar=True, title=None, color_scalebar='w',
+                              show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+                              inset_loc='upper right', inset_width="35%", inset_height="35%"):
+        """
+        Plots the Z-bands and midlines of the sarcomere object.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : SarcAsM or Motion
+            The sarcomere object to plot.
+        frame : int, optional
+            The frame to plot. Defaults to 0.
+        cmap : matplotlib.cm.Colormap, optional
+            Colormap to use. Defaults to 'Blues_r'.
+        alpha : float, optional
+            Alpha value to change opacity of image. Defaults to 1
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Defaults to True.
+        title : str, optional
+            The title for the plot. Defaults to None.
+        show_loi : bool, optional
+            Whether to show the line of interest (LOI). Defaults to True.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_loc : str, optional
+            The location of the inset axis. Defaults to 'upper right'.
+        inset_width : str or float, optional
+            The width of the inset axis. Defaults to "30%".
+        inset_height : str or float, optional
+            The height of the inset axis. Defaults to "30%".
+        """
+        assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
+
+        zbands = tifffile.imread(sarc_obj.file_z_bands, key=frame)
+        midlines = tifffile.imread(sarc_obj.file_midlines, key=frame)
+        joined = zbands - midlines
+
+        ax.imshow(joined, cmap=cmap, alpha=alpha)
+
+        if hasattr(sarc_obj, 'loi_data') and show_loi:
+            line = sarc_obj.loi_data['line']
+            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+        if scalebar:
+            ax.add_artist(
+                ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
+                         sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                         font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            PlotUtils.change_color_spines(ax_inset, 'w')
+            ax_inset.imshow(joined[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
     @staticmethod
-    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, rotate=False, invert=False,
+    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='gray', alpha=0.5,
                        scalebar=True, title=None):
         """
         Plots the cell mask of the sarcomere object.
@@ -402,10 +458,10 @@ class Plots:
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
-        rotate : bool, optional
-            Whether to rotate the image. Defaults to False.
-        invert : bool, optional
-            Whether to invert the image. Defaults to False.
+        cmap : matplotlib.colors.Colormap, optional
+            The colormap to use. Defaults to 'gray'
+        alpha : float, optional
+            Transparency value to change opacity of mask. Defaults to 0.5.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -414,11 +470,8 @@ class Plots:
         assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_mask first.')
 
         img = tifffile.imread(sarc_obj.file_cell_mask, key=frame)
-        if invert:
-            img = 255 - img
-        if rotate:
-            img = img.T
-        ax.imshow(img, cmap='gray')
+        ax.imshow(img, cmap=cmap, alpha=alpha)
+
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -568,7 +621,7 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset.imshow(labels_plot[y1:y2, x1:x2], cmap='prism')
+            ax_inset.imshow(masked_labels, cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
             for (i, k, j, l) in z_links.T:
@@ -579,6 +632,8 @@ class Plots:
                              edgecolors='none')
             ax_inset.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3,
                              edgecolors='none')
+            ax_inset.set_xlim(x1, x2)
+            ax_inset.set_ylim(y1, y2)
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
@@ -684,9 +739,183 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_sarcomere_lengths(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
-                               lim=(1.6, 2.1), scalebar=True, colorbar=True, shrink_colorbar=0.7,
-                               orient_colorbar='vertical', title=None):
+    def plot_sarcomere_orientation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
+                                   lim=(-90, 90), radians=False, scalebar=True, colorbar=True,
+                                   shrink_colorbar=0.7,
+                                   orient_colorbar='vertical', title=None,
+                                   zoom_region: Tuple[int, int, int, int] = None,
+                                   inset_loc='upper right', inset_width="35%", inset_height="35%"):
+        """
+            Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
+
+            Parameters
+            ----------
+            ax : matplotlib.axes.Axes
+                The axes to draw the plot on.
+            sarc_obj : object
+                The sarcomere object to plot.
+            frame : int, optional
+                The frame to plot. Defaults to 0.
+            lim : tuple, optional
+                The limits for the colorbar. Defaults to (-90, 90).
+            scalebar : bool, optional
+                Whether to add a scalebar to the plot. Defaults to True.
+            colorbar : bool, optional
+                Whether to add a colorbar to the plot. Defaults to True.
+            shrink_colorbar : float, optional
+                The factor by which to shrink the colorbar. Defaults to 0.7.
+            orient_colorbar : str, optional
+                The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
+            title : str, optional
+                The title for the plot. Defaults to None.
+            zoom_region : tuple of int, optional
+                The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            inset_loc : str, optional
+                The location of the inset axis. Defaults to 'upper right'.
+            inset_width : str or float, optional
+                The width of the inset axis. Defaults to "30%".
+            inset_height : str or float, optional
+                The height of the inset axis. Defaults to "30%".
+            """
+        assert os.path.exists(
+            sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
+
+        orientation_field = tifffile.imread(sarc_obj.file_orientation, key=[frame * 2, frame * 2 + 1])
+        distance = tifffile.imread(sarc_obj.file_distance, key=frame)
+        orientation = np.arctan2(orientation_field[1], orientation_field[0])
+
+        gradient_x, gradient_y = np.gradient(distance)
+        max_slope = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
+        sarcomere_mask = max_slope > 0
+        orientation[sarcomere_mask == 0] = np.nan
+
+        # sarcomere orientation
+        def map_angles(angles):
+            # Map angles to the interval [0, π] using modulo operation
+            mapped_angles = (angles + 2 * np.pi) % (2 * np.pi)
+            mapped_angles = np.where(mapped_angles > np.pi, mapped_angles - np.pi, mapped_angles)
+
+            return mapped_angles
+
+        orientation = - map_angles(orientation) + np.pi / 2
+
+        radius_pixels = 2
+
+        orientation = median_filter(
+            orientation,
+            size=(2 * radius_pixels + 1, 2 * radius_pixels + 1),
+            mode='nearest'
+        )
+
+        if not radians:
+            orientation = np.degrees(orientation)
+
+        plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv')
+
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if colorbar:
+            plt.colorbar(plot, ax=ax, label=r'Angle $\theta$ [°]', shrink=shrink_colorbar, orientation=orient_colorbar)
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset.imshow(orientation[y1:y2, x1:x2], vmin=lim[0], vmax=lim[1], cmap='hsv')
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
+
+    @staticmethod
+    def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='vanimo',
+                                         scalebar=True, colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
+                                         zoom_region: Tuple[int, int, int, int] = None,
+                                         inset_loc='upper right', inset_width="35%", inset_height="35%"):
+        """
+            Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
+
+            Parameters
+            ----------
+            ax1 : matplotlib.axes.Axes
+                The axes to draw the plot on.
+            sarc_obj : object
+                The sarcomere object to plot.
+            frame : int, optional
+                The frame to plot. Defaults to 0.
+            lim : tuple, optional
+                The limits for the colorbar. Defaults to (-90, 90).
+            scalebar : bool, optional
+                Whether to add a scalebar to the plot. Defaults to True.
+            colorbar : bool, optional
+                Whether to add a colorbar to the plot. Defaults to True.
+            shrink_colorbar : float, optional
+                The factor by which to shrink the colorbar. Defaults to 0.7.
+            orient_colorbar : str, optional
+                The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
+            zoom_region : tuple of int, optional
+                The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            inset_loc : str, optional
+                The location of the inset axis. Defaults to 'upper right'.
+            inset_width : str or float, optional
+                The width of the inset axis. Defaults to "30%".
+            inset_height : str or float, optional
+                The height of the inset axis. Defaults to "30%".
+            """
+        assert os.path.exists(
+            sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
+
+        orientation_field = tifffile.imread(sarc_obj.file_orientation, key=[frame * 2, frame * 2 + 1])
+
+        plot1 = ax1.imshow(orientation_field[0], cmap=cmap)
+        plot2 = ax2.imshow(orientation_field[1], cmap=cmap)
+
+        if scalebar:
+            ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                    height_fraction=0.07, location='lower right', scale_loc='top',
+                                    font_properties={'size': PlotUtils.fontsize - 1}))
+            ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                    height_fraction=0.07, location='lower right', scale_loc='top',
+                                    font_properties={'size': PlotUtils.fontsize - 1}))
+
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+        ax2.set_xticks([])
+        ax2.set_yticks([])
+        if colorbar:
+            plt.colorbar(plot1, ax=ax1, label=r'X-Field', shrink=shrink_colorbar, orientation=orient_colorbar)
+            plt.colorbar(plot2, ax=ax2, label=r'Y-Field', shrink=shrink_colorbar, orientation=orient_colorbar)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset1 = inset_axes(ax1, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset2 = inset_axes(ax2, width=inset_width, height=inset_height, loc=inset_loc)
+
+            ax_inset1.imshow(orientation_field[0][y1:y2, x1:x2], cmap=cmap)
+            ax_inset2.imshow(orientation_field[1][y1:y2, x1:x2], cmap=cmap)
+            ax_inset1.set_xticks([])
+            ax_inset1.set_yticks([])
+            ax_inset2.set_xticks([])
+            ax_inset2.set_yticks([])
+
+            PlotUtils.change_color_spines(ax_inset1, c='w')
+            PlotUtils.change_color_spines(ax_inset2, c='w')
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax1, xlim=(x1, x2), ylim=(y1, y2), c='w')
+            PlotUtils.plot_box(ax2, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
+    @staticmethod
+    def plot_sarcomere_lengths_wavelet(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
+                                       lim=(1.6, 2.1), scalebar=True, colorbar=True, shrink_colorbar=0.7,
+                                       orient_colorbar='vertical', title=None):
         """
         Plots the sarcomere length obtained by wavelet analysis of the sarcomere object.
 
@@ -734,9 +963,10 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_sarcomere_orientations(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
-                                    lim=(-90, 90), radians=False, scalebar=True, colorbar=True, shrink_colorbar=0.7,
-                                    orient_colorbar='vertical', title=None):
+    def plot_sarcomere_orientations_wavelet(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
+                                            lim=(-90, 90), radians=False, scalebar=True, colorbar=True,
+                                            shrink_colorbar=0.7,
+                                            orient_colorbar='vertical', title=None):
         """
             Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
 
@@ -788,7 +1018,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
-                            alpha=0.5, invert_z_bands=True, alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
+                            alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
                             zoom_region: Tuple[int, int, int, int] = None,
                             inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
@@ -808,8 +1038,8 @@ class Plots:
             Whether to show Z-bands. If False, the raw image is shown. Defaults to False.
         alpha : float, optional
             The transparency of sarcomere mask. Defaults to 0.5.
-        invert_z_bands : bool, optional
-            Whether to invert binary mask of Z-bands. Defaults to True. Only applied if show_z_bands is True.
+        cmap_z_bands : bool, optional
+            Colormap for Z-bands. Defaults to 'gray'.
         alpha_z_bands : float, optional
             Alpha value of Z-bands. Defaults to 1.
         clip_thrs : tuple of float, optional
@@ -831,7 +1061,7 @@ class Plots:
         assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
+            Plots.plot_z_bands(ax, sarc_obj, alpha=alpha_z_bands, frame=frame)
         else:
             Plots.plot_image(ax, sarc_obj, frame=frame, clip_thrs=clip_thrs)
 
@@ -849,7 +1079,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
             if show_z_bands:
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
+                Plots.plot_z_bands(ax_inset, sarc_obj, alpha=alpha_z_bands, cmap=cmap_z_bands, frame=frame)
             else:
                 Plots.plot_image(ax_inset, sarc_obj, frame=frame, clip_thrs=clip_thrs)
             ax_inset.set_ylim(y2, y1)
@@ -862,10 +1092,10 @@ class Plots:
             PlotUtils.change_color_spines(ax_inset, 'w')
 
     @staticmethod
-    def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='mediumpurple',
+    def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='k',
                                color_points='darkgreen', style='half', s_points=0.5, linewidths=0.0005,
                                linewidths_inset=0.0001, scalebar=True,
-                               legend=False, invert_z_bands=True, alpha_z_bands=1, title=None,
+                               legend=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
@@ -896,8 +1126,8 @@ class Plots:
             Whether to add a scalebar to the plot. Defaults to True.
         legend : bool, optional
             Whether to add a legend to the plot. Defaults to False.
-        invert_z_bands : bool, optional
-            Whether to invert color of Z-bands. Defaults to True.
+        cmap_z_bands : str, optional
+            Colormap of Z-bands. Defaults to 'Greys'.
         alpha_z_bands : float, optional
             Alpha value of Z-bands. Defaults to 1.
         title : str, optional
@@ -912,21 +1142,21 @@ class Plots:
             The height of the inset axis. Defaults to "30%".
         """
         assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
-                                                            'run analyze_sarcomere_vectors first.')
+                                                                 'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.structure.data['params.vector_frames'], f'Frame {frame} not yet analyzed.'
 
         pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
         sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
         sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
-        orientation_vectors = np.asarray([np.sin(sarcomere_orientation_vectors), -np.cos(sarcomere_orientation_vectors)])
+        orientation_vectors = np.asarray(
+            [np.cos(sarcomere_orientation_vectors), -np.sin(sarcomere_orientation_vectors)])
 
-        Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands,
+        Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands,
                            frame=frame)
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-        ax.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
-                   label='Midline pos_vectors')
+
         if style == 'half':
             ax.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                       orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
@@ -940,6 +1170,9 @@ class Plots:
                       orientation_vectors[0] * sarcomere_length_vectors * 1,
                       -orientation_vectors[1] * sarcomere_length_vectors * 1, width=linewidths,
                       angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35)
+
+        ax.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
+                   label='Midline pos_vectors')
 
         if legend:
             ax.legend(loc=3, fontsize=PlotUtils.fontsize - 2)
@@ -957,13 +1190,14 @@ class Plots:
             linewidths *= 10
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, alpha=alpha_z_bands, frame=frame)
+            Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands, frame=frame)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
             ax_inset.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points,
                              label='Midline points')
             if style == 'half':
-                ax_inset.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                ax_inset.quiver(pos_vectors[1], pos_vectors[0],
+                                -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                                 orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
                                 angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
                                 label='Sarcomere vectors')
@@ -987,7 +1221,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
-                               scalebar=True, plot_raw_data=False, title=None):
+                               scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', title=None):
         """
         Plots the sarcomere domains of the sarcomere object.
 
@@ -1007,6 +1241,8 @@ class Plots:
             Whether to add a scalebar to the plot. Defaults to True.
         plot_raw_data : bool, optional
             Whether to plot the raw data. Defaults to False.
+        cmap_z_bands : str, optional
+            Colormap for Z-bands. Defaults to 'Greys'.
         title : str, optional
             The title for the plot. Defaults to None.
 
@@ -1017,14 +1253,14 @@ class Plots:
                                                                           f'analyzed.')
 
         domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
-        domain_mask_masked = np.ma.masked_where(domain_mask==0, domain_mask)
+        domain_mask_masked = np.ma.masked_where(domain_mask == 0, domain_mask)
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
 
         if plot_raw_data:
             Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False)
         else:
-            Plots.plot_z_bands(ax, sarc_obj, invert=True, frame=frame, scalebar=False)
+            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, scalebar=False)
 
         ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
 
@@ -1036,7 +1272,7 @@ class Plots:
 
     @staticmethod
     def plot_myofibrils(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
-                        alpha=0.2, invert_z_bands=True, scalebar=True, title=None, zoom_region=None,
+                        alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None, zoom_region=None,
                         inset_loc='lower left',
                         inset_width='40%', inset_height='40%'):
         """
@@ -1056,8 +1292,8 @@ class Plots:
             The width of the lines. Defaults to 1.
         alpha : float, optional
             The transparency of the lines. Defaults to 0.2.
-        invert_z_bands : bool, optional
-            Whether to invert the Z-bands. Defaults to True.
+        cmap_z_bands : str, optional
+            Colormap of Z-bands. Defaults to 'Greys'.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -1076,7 +1312,7 @@ class Plots:
         assert frame in sarc_obj.structure.data['params.myof_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, invert=invert_z_bands, frame=frame)
+            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
         lines = sarc_obj.structure.data['myof_lines'][frame]
         pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
@@ -1094,10 +1330,10 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
+            Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
             if show_z_bands:
-                Plots.plot_z_bands(ax_inset, sarc_obj, invert=invert_z_bands, frame=frame)
+                Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
             if scalebar:
                 ax_inset.add_artist(
