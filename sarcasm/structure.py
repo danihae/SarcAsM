@@ -21,10 +21,11 @@ from bio_image_unet import unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
+from matplotlib import pyplot as plt
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
 from scipy.ndimage import median_filter
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, linear_sum_assignment
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology
@@ -299,7 +300,7 @@ class Structure:
             Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
         threshold : float, optional
             Threshold value for binarizing the cell mask image. Pixels with intensity
-            above threshold * 255 are considered cell. Defaults to 0.1.
+            above threshold are considered cell. Defaults to 0.1.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
         """
@@ -332,7 +333,7 @@ class Structure:
         ----------
         threshold : float, optional
             Threshold value for binarizing the cell mask image. Pixels with intensity
-            above threshold * 255 are considered cell. Defaults to 0.1.
+            above threshold are considered cell. Defaults to 0.1.
         """
         assert self.sarc_obj.file_cell_mask is not None, "Cell mask not found. Please run predict_cell_mask first."
 
@@ -358,8 +359,8 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1,
-                        min_length: float = 0.5, end_radius: float = 0.75, theta_phi_min: float = 0.6,
+    def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
+                        min_length: float = 0.5, end_radius: float = 2, theta_phi_min: float = 0.4, a_min: float = 0.1,
                         d_max: float = 4.0, d_min: float = 0.25,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
@@ -379,6 +380,8 @@ class Structure:
         theta_phi_min : float, optional
             Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
             Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.
+        a_min: float, optional
+            Minimal lateral alignment between z-band ends. Defaults to 0.1.
         d_max : float, optional
             Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
             (for lateral alignment and distance analysis). Defaults to 5.0.
@@ -390,22 +393,23 @@ class Structure:
         """
         assert self.sarc_obj.file_z_bands is not None, ("Z-band mask not found. Please run predict_z_bands first.")
         if isinstance(frames, str) and frames == 'all':
-            imgs = tifffile.imread(self.sarc_obj.file_z_bands)
-            imgs_raw = self.read_imgs()
-            list_frames = list(range(len(imgs_raw)))
+            zbands = tifffile.imread(self.sarc_obj.file_z_bands)
+            images = self.read_imgs()
+            list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            imgs = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
-            imgs_raw = self.read_imgs(frame=frames)
+            zbands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
+            images = self.read_imgs(frame=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
                 list_frames = list(frames)
         else:
             raise ValueError('frames argument not valid')
-        if len(imgs.shape) == 2:
-            imgs = np.expand_dims(imgs, 0)
-            imgs_raw = np.expand_dims(imgs_raw, 0)
-        n_imgs = len(imgs)
+
+        if len(zbands.shape) == 2:
+            zbands = np.expand_dims(zbands, 0)
+            images = np.expand_dims(images, 0)
+        n_imgs = len(zbands)
 
         # create empty lists
         none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
@@ -429,15 +433,17 @@ class Structure:
 
         # iterate images
         print('\nStarting Z-band analysis...')
-        for i, (frame_i, img_i) in enumerate(progress_notifier.iterator(zip(list_frames, imgs), total=n_imgs)):
+        for i, (frame_i, zbands_i, image_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, zbands, images), total=n_imgs)):
+
             # segment z-bands
-            labels_i, labels_skel_i = self.segment_z_bands(img_i)
+            labels_i, labels_skel_i = self.segment_z_bands(zbands_i)
 
             # analyze z-band features
-            z_band_features = self._analyze_z_bands(img_i, labels_i, labels_skel_i, imgs_raw[i],
+            z_band_features = self._analyze_z_bands(zbands_i, labels_i, labels_skel_i, image_i,
                                                     pixelsize=self.sarc_obj.metadata['pixelsize'], threshold=threshold,
                                                     min_length=min_length, end_radius=end_radius,
-                                                    theta_phi_min=theta_phi_min,
+                                                    a_min=a_min, theta_phi_min=theta_phi_min,
                                                     d_max=d_max, d_min=d_min)
 
             (
@@ -587,12 +593,12 @@ class Structure:
                                            total=n_frames)):
 
             (pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
-                sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
-                                                                              orientation_vectors_i,
-                                                                              distance_i, pixelsize=pixelsize,
-                                                                              radius=radius,
-                                                                              slen_lims=slen_lims)
-
+             sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
+                                                                                             orientation_vectors_i,
+                                                                                             distance_i,
+                                                                                             pixelsize=pixelsize,
+                                                                                             radius=radius,
+                                                                                             slen_lims=slen_lims)
 
             # write in list
             pos_vectors[frame_i] = pos_vectors_i
@@ -605,11 +611,13 @@ class Structure:
             sarcomere_length_mean[frame_i], sarcomere_length_std[frame_i], = np.nanmean(
                 sarcomere_length_vectors_i), np.nanstd(sarcomere_length_vectors_i)
             sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = stats.circmean(
-                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]), stats.circstd(sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
+                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]), stats.circstd(
+                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
 
             # orientation order parameter
             if len(sarcomere_orientation_vectors_i) > 0:
-                oop[frame_i], _ = Utils.analyze_orientations(sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
+                oop[frame_i], _ = Utils.analyze_orientations(
+                    sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
 
             # calculate sarcomere mask area
             sarcomere_masks[frame_i] = sarcomere_mask_i
@@ -834,7 +842,8 @@ class Structure:
         wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_minor': minor, 'params.wavelet_major': major,
                         'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
                         'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
-                        'params.kernel': kernel, 'params.vector_frames': list_frames, 'params.len_range': len_range[1:-2],
+                        'params.kernel': kernel, 'params.vector_frames': list_frames,
+                        'params.len_range': len_range[1:-2],
                         'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
@@ -1624,9 +1633,10 @@ class Structure:
         return labels, labels_skel
 
     @staticmethod
-    def _analyze_z_bands(image_unet: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray, image_raw: np.ndarray,
+    def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray, image_raw: np.ndarray,
                          pixelsize: float, min_length: float = 1.0, threshold: float = 0.1, end_radius: float = 0.75,
-                         theta_phi_min: float = 0.25, d_max: float = 5.0, d_min: float = 0.25) -> Tuple:
+                         a_min: float = 0., theta_phi_min: float = 0.2, d_max: float = 4.0,
+                         d_min: float = 0.25) -> Tuple:
         """
         Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
         straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
@@ -1634,8 +1644,8 @@ class Structure:
 
         Parameters
         ----------
-        image_unet : np.ndarray
-            The segmented image of z-bands.
+        zbands : np.ndarray
+            The segmented map of z-bands.
         labels : np.ndarray
             The labeled image of z-bands.
         labels_skel : np.ndarray
@@ -1650,8 +1660,10 @@ class Structure:
             The threshold value for intensity. Default is 0.1.
         end_radius : float, optional
             The radius of z-band ends. Default is 0.75.
+        a_min : float, optional
+            The minimum value for alignment. Default is 0.25. Links with smaller alignment are set to np.nan.
         theta_phi_min : float, optional
-            The minimum value for theta and phi. Default is 0.25.
+            The minimum dot product/cosine between the direction of a Z-band end and the direction of line from end to other Z-band end.
         d_max : float, optional
             The maximum distance between z-band ends. Default is 5.0 µm. Larger distances are set to np.nan.
         d_min : float, optional
@@ -1694,9 +1706,7 @@ class Structure:
         intensity = props['mean_intensity']
 
         # ratio sum(sarcomere intensity) to sum(background intensity)
-        ratio_intensity, avg_intensity = Structure.intensity_sarcomeres(image_unet, image_raw,
-                                                                        pixelsize=pixelsize,
-                                                                        threshold=threshold)
+        ratio_intensity, avg_intensity = Structure.intensity_sarcomeres(zbands, image_raw, threshold=threshold)
 
         # z band orientational order parameter
         orientation = props['orientation']
@@ -1715,11 +1725,11 @@ class Structure:
             z_orientation = np.zeros((n_z, 2)) * np.nan  # (z-band idx, upper/lower)
             end_radius_px = int(round(end_radius / pixelsize, 0))
 
-            for i, img_i in enumerate(props['image']):
-                img_i = np.pad(props['image'][i], (end_radius_px, end_radius_px))
+            for i, zbands_i in enumerate(props['image']):
+                zbands_i = np.pad(zbands_i, (end_radius_px, end_radius_px))
 
                 # skeletonize
-                skel_i = skeletonize(img_i)
+                skel_i = skeletonize(zbands_i, method='lee')
 
                 # detect line ends
                 def line_end_filter(d):
@@ -1762,18 +1772,21 @@ class Structure:
 
             # lateral alignment index and distance of z-bands
             def lateral_alignment(pos_i, pos_j, theta_i, theta_j):
-                phi_ij = np.arctan2((pos_j[1] - pos_i[1]), (pos_j[0] - pos_i[0]))
-                phi_ji = phi_ij + np.pi
+                phi_ij = np.arctan2((pos_j[1] - pos_i[1]), (pos_j[0] - pos_i[0])) % (2 * np.pi)
+                phi_ji = (phi_ij + np.pi) % (2 * np.pi)
+
+                a_ji = np.cos(theta_i - theta_j + np.pi) * np.cos(theta_i - phi_ij) * np.cos(theta_j - phi_ji)
 
                 if np.cos(theta_i - theta_j + np.pi) > 0 and np.cos(theta_i - phi_ij) > theta_phi_min and np.cos(
                         theta_j - phi_ji) > theta_phi_min:
-                    return np.cos(theta_i - theta_j + np.pi) * np.cos(theta_i - phi_ij) * np.cos(theta_j - phi_ji)
+                    return a_ji
                 else:
                     return np.nan
 
             # distance of z-band ends
             _z_ends = np.reshape(z_ends, (n_z * 2, 2), order='F')
             D = squareform(pdist(_z_ends, 'euclidean'))
+
             # Set NaNs for specified indices (ends of same objects) and the lower triangle
             indices = np.arange(0, n_z * 2, 2)
             mask = np.ones((n_z * 2, n_z * 2))
@@ -1782,6 +1795,7 @@ class Structure:
             mask[indices + 1, indices] = 0
             mask[indices + 1, indices + 1] = 0
             mask[np.tril(mask) > 0] = np.nan
+
             # filter distance matrix
             D[(D > d_max) | (D < d_min) | (mask == 0)] = np.nan
 
@@ -1798,23 +1812,109 @@ class Structure:
             # make matrices symmetric for undirected graph
             D = (D + D.T) / 2
             A = (A + A.T) / 2
-            links = ~np.isnan(D)
 
-            def prune_edges(L, D):
-                N = L.shape[0]
-                for i in range(N):
-                    connected_nodes = np.where(L[i] == 1)[0]
-                    if len(connected_nodes) > 0:
-                        min_distance_node = connected_nodes[np.argmin(D[i, connected_nodes])]
-                        L[i, :] = 0  # Remove all connections
-                        L[:, i] = 0  # Symmetrically for undirected graph
-                        L[i, min_distance_node] = 1  # Add back the connection with the smallest distance
-                        L[min_distance_node, i] = 1  # Symmetrically for undirected graph
-                return L
+            def compute_cost_matrix(D, A, w_dist=1.0, w_align=5.0, C_max=1e6, penalty=1e6):
+                """
+                Compute the cost matrix for linking Z-band ends based on a multiplicative relationship
+                between distance and alignment.
 
-            links = prune_edges(links, D)
-            A[links == 0] = np.nan
-            D[links == 0] = np.nan
+                Parameters:
+                ----------
+                D : ndarray
+                    Distance matrix between Z-band ends.
+                A : ndarray
+                    Alignment matrix between Z-band ends.
+                w_dist : float
+                    Weight for distance in the cost function.
+                w_align : float
+                    Weight for alignment in the cost function.
+                penalty : float
+                    Penalty for invalid links (e.g., NaN or out-of-range values).
+
+                Returns:
+                -------
+                C : ndarray
+                    Cost matrix for linking Z-band ends.
+                """
+                # Ensure alignment values are valid (replace NaNs with 0)
+                A = np.nan_to_num(A, nan=0.0)
+
+                # Compute multiplicative cost matrix
+                C = w_dist * (D / d_max) ** 2 * (1 + w_align * (1 - A))
+
+                # Set invalid links (e.g., NaNs in D) to a very high cost
+                C[(np.isnan(D)) | (C > C_max)] = penalty
+
+                return C
+
+            def solve_linking(C):
+                """
+                Solve the optimal linking problem using the Hungarian algorithm.
+
+                Parameters:
+                ----------
+                C : ndarray
+                    Cost matrix for linking Z-band ends.
+
+                Returns:
+                -------
+                row_ind : ndarray
+                    Row indices of the optimal assignment.
+                col_ind : ndarray
+                    Column indices of the optimal assignment.
+                """
+                # Use scipy's linear_sum_assignment to solve the assignment problem
+                row_ind, col_ind = linear_sum_assignment(C)
+
+                return row_ind, col_ind
+
+            def filter_links(row_ind, col_ind, D, A, d_max=1.0, a_min=0.33):
+                """
+                Filter links based on distance and alignment constraints.
+
+                Parameters:
+                ----------
+                row_ind : ndarray
+                    Row indices of the optimal assignment.
+                col_ind : ndarray
+                    Column indices of the optimal assignment.
+                D : ndarray
+                    Distance matrix between Z-band ends.
+                A : ndarray
+                    Alignment matrix between Z-band ends.
+                d_max : float
+                    Maximum allowed distance for a link.
+                a_min : float
+                    Minimum required alignment score for a link.
+
+                Returns:
+                -------
+                valid_links : list of tuples
+                    List of valid links after filtering.
+                """
+                valid_links = []
+
+                for i, j in zip(row_ind, col_ind):
+                    if D[i, j] <= d_max and A[i, j] >= a_min:
+                        valid_links.append((i, j))
+
+                return valid_links
+
+            # Step 1: Compute cost matrix
+            C = compute_cost_matrix(D, A, w_dist=1.0, w_align=5.0)
+
+            print(np.nanmean(C), np.nanmin(C), np.nanmax(C))
+
+            # Step 2: Solve optimal linking using Hungarian algorithm
+            row_ind, col_ind = solve_linking(C)
+
+            # Step 3: Filter links based on constraints (distance and alignment thresholds)
+            valid_links = filter_links(row_ind, col_ind, D, A, d_max=d_max, a_min=a_min)
+
+            # Step 4: Create adjacency matrix for valid links
+            links = np.zeros_like(D)
+            for i, j in valid_links:
+                links[i, j] = 1
 
             # reshape arrays
             links = links.reshape((n_z, 2, n_z, 2), order='F')
@@ -1875,19 +1975,17 @@ class Structure:
                 alignment_groups)
 
     @staticmethod
-    def intensity_sarcomeres(image_unet: np.ndarray, image_raw: np.ndarray, pixelsize: float, threshold: float = 0.1) -> \
+    def intensity_sarcomeres(zbands: np.ndarray, image_raw: np.ndarray, threshold: float = 0.1) -> \
             Tuple[float, float]:
         """
         Get ratio of sarcomere fluorescence to off-sarcomere fluorescence intensity.
 
         Parameters
         ----------
-        image_unet : np.ndarray
+        zbands : np.ndarray
             U-Net result.
         image_raw : np.ndarray
             Raw microscopy image.
-        pixelsize : float
-            Size of pixel in x,y in µm.
         threshold : float, optional
             Binary threshold for masks. Defaults to 0.1.
 
@@ -1899,7 +1997,7 @@ class Structure:
             Average intensity of the Z-bands.
         """
         # Binarize the U-Net result
-        mask = image_unet >= (threshold * 255)
+        mask = zbands >= threshold
 
         # Calculate sarcomere and off-sarcomere intensities
         sarcomere_intensity = np.sum(image_raw[mask])
@@ -2346,12 +2444,11 @@ class Structure:
 
         return length.cpu().numpy(), orient.cpu().numpy(), max_score.cpu().numpy()
 
-
     @staticmethod
     def get_sarcomere_vectors(
             zbands: np.ndarray,
             midlines: np.ndarray,
-            orientation_vectors: np.ndarray,
+            orientation_field: np.ndarray,
             distance: np.ndarray,
             pixelsize: float,
             radius: float = 0.25,
@@ -2366,8 +2463,8 @@ class Structure:
             2D array representing the semantic segmentation map of Z-bands.
         midlines : np.ndarray
             2D array representing the semantic segmentation map of midlines.
-        orientation_vectors : np.ndarray
-            2D array representing the orientation vectors.
+        orientation_field : np.ndarray
+            2D array representing the orientation field.
         distance : np.ndarray
             2D array representing the distance transform map.
         pixelsize : float
@@ -2399,21 +2496,7 @@ class Structure:
         midlines_skel = skeletonize(midlines > 0.5, method='lee')
 
         # calculate and preprocess orientation map
-        orientation = np.arctan2(orientation_vectors[1], orientation_vectors[0])
-
-        def map_angles(angles: np.ndarray) -> np.ndarray:
-            mapped_angles = (angles + 2 * np.pi) % (2 * np.pi)
-            mapped_angles = np.where(mapped_angles > np.pi, mapped_angles - np.pi, mapped_angles)
-            return mapped_angles
-
-        orientation = map_angles(orientation)
-
-        footprint = disk(radius_pixels, strict_radius=False)
-        filtered_orientation = median_filter(
-            orientation,
-            footprint=footprint,
-            mode='constant'
-        )
+        orientation = Utils.get_orientation_angles(orientation_field, use_median_filter=True, radius=radius_pixels)
 
         # label midlines
         midline_labels, n_midlines = ndimage.label(midlines_skel,
@@ -2435,7 +2518,7 @@ class Structure:
             midline_id_vectors = np.concatenate(midline_id_vectors)
             midline_length_vectors = np.concatenate(midline_length_vectors)
 
-            sarcomere_orientation_vectors = filtered_orientation[pos_vectors[0], pos_vectors[1]]
+            sarcomere_orientation_vectors = orientation[pos_vectors[0], pos_vectors[1]]
 
             ends1 = pos_vectors + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
                 (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
@@ -2487,7 +2570,6 @@ class Structure:
 
         return (pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, sarcomere_mask)
-
 
     @staticmethod
     def get_sarcomere_vectors_wavelet(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
@@ -2801,7 +2883,7 @@ class Structure:
         line_i = deque([seed])
         stop_right = stop_left = False
 
-        sarcomere_orientation_vectors_t = sarcomere_orientation_vectors_t + np.pi/2
+        sarcomere_orientation_vectors_t = sarcomere_orientation_vectors_t + np.pi / 2
 
         threshold_distance_pixels = threshold_distance / pixelsize
 
@@ -3076,7 +3158,7 @@ class Structure:
             Binary mask of sarcomeres.
         """
         # Calculate orientation vectors using trigonometry
-        sarcomere_orientation_vectors += np.pi/2
+        sarcomere_orientation_vectors += np.pi / 2
 
         orientation_vectors = np.asarray([np.cos(sarcomere_orientation_vectors),
                                           -np.sin(sarcomere_orientation_vectors)])

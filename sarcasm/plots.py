@@ -633,10 +633,10 @@ class Plots:
             ax_inset.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3,
                              edgecolors='none')
             ax_inset.set_xlim(x1, x2)
-            ax_inset.set_ylim(y1, y2)
+            ax_inset.set_ylim(y2, y1)
 
             # Mark the zoomed region on the main plot
-            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
     def plot_wavelet_bank(ax: Axes, sarc_obj: Union[SarcAsM, Motion], gap=0.005):

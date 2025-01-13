@@ -12,10 +12,11 @@ import tifffile
 import torch
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata
-from scipy.ndimage import label, map_coordinates
+from scipy.ndimage import label, map_coordinates, median_filter
 from scipy.signal import correlate, savgol_filter, butter, filtfilt
 from scipy.stats import stats
 from skimage.draw import line
+from skimage.morphology import disk
 
 warnings.filterwarnings("ignore")
 
@@ -589,6 +590,69 @@ class Utils:
         max_change = np.max(angle_diffs)
 
         return max_change
+
+    @staticmethod
+    def get_orientation_angles(orientation_field: np.ndarray,
+                               use_median_filter: bool = False,
+                               radius: int = 2) -> np.ndarray:
+        """
+        Convert a polar vector field into a map of angles for sarcomere orientations.
+
+        The function supports both single-image and multi-image inputs. For single-image
+        inputs, the expected shape is (2, H, W). For multi-image inputs, the expected
+        shape is (N, 2, H, W), where N is the number of images.
+
+        Parameters
+        ----------
+        orientation_field : numpy.ndarray
+            Polar vector field(s). For a single image, a 3D array of shape (2, H, W).
+            For multiple images, a 4D array of shape (N, 2, H, W).
+        use_median_filter : bool, optional
+            Whether to apply a median filter to the resulting angle map. Default is False.
+        radius : int, optional
+            Radius of the disk-shaped footprint for the median filter. Default is 2.
+
+        Returns
+        -------
+        numpy.ndarray
+            A 2D or 3D array of angles in radians, mapped to the range [0, π].
+            If the input is a single image of shape (2, H, W), the output shape is (H, W).
+            If the input contains multiple images of shape (N, 2, H, W), the output
+            shape is (N, H, W).
+
+        Notes
+        -----
+        The angles are first wrapped within [0, 2π) and then mapped to [0, π] to enforce
+        orientation symmetry.
+
+        """
+
+        # Reshape input to (N, 2, H, W) if necessary
+        if orientation_field.ndim == 3 and orientation_field.shape[0] == 2:
+            orientation_field = orientation_field[np.newaxis, ...]
+        elif not (orientation_field.ndim == 4 and orientation_field.shape[1] == 2):
+            raise ValueError(
+                "orientation_field must have shape (2, H, W) or (N, 2, H, W)."
+            )
+
+        # Compute angles
+        angles = np.arctan2(orientation_field[:, 1], orientation_field[:, 0])
+        angles = (angles + 2 * np.pi) % (2 * np.pi)
+        angles = np.where(angles > np.pi, angles - np.pi, angles)
+
+        # Optionally apply median filter to each image
+        if use_median_filter:
+            footprint = disk(radius, strict_radius=False)
+            filtered = np.empty_like(angles)
+            for i in range(angles.shape[0]):
+                filtered[i] = median_filter(
+                    angles[i],
+                    footprint=footprint,
+                    mode='constant'
+                )
+            angles = filtered
+
+        return angles.squeeze()
 
     @staticmethod
     def create_distance_map(sarc_obj):
