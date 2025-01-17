@@ -9,6 +9,8 @@ from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
 
+import igraph as ig
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -21,10 +23,8 @@ from bio_image_unet import unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
-from matplotlib import pyplot as plt
 from networkx.algorithms import community
 from scipy import ndimage, stats, sparse
-from scipy.ndimage import median_filter
 from scipy.optimize import curve_fit, linear_sum_assignment
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
@@ -578,8 +578,8 @@ class Structure:
         # create empty arrays
         none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
         nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
-        (pos_vectors, sarcomere_length_vectors,
-         sarcomere_orientation_vectors) = (none_lists() for _ in range(3))
+        (pos_vectors, pos_vectors_px, sarcomere_length_vectors,
+         sarcomere_orientation_vectors) = (none_lists() for _ in range(4))
         midline_id_vectors, midline_length_vectors = (none_lists() for _ in range(2))
         sarcomere_masks = np.zeros((self.sarc_obj.metadata['frames'], *self.sarc_obj.metadata['size']), dtype=bool)
         (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
@@ -592,7 +592,7 @@ class Structure:
                 progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_vectors, distance),
                                            total=n_frames)):
 
-            (pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
+            (pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
              sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
                                                                                              orientation_vectors_i,
                                                                                              distance_i,
@@ -601,6 +601,7 @@ class Structure:
                                                                                              slen_lims=slen_lims)
 
             # write in list
+            pos_vectors_px[frame_i] = pos_vectors_px_i
             pos_vectors[frame_i] = pos_vectors_i
             sarcomere_length_vectors[frame_i] = sarcomere_length_vectors_i
             sarcomere_orientation_vectors[frame_i] = sarcomere_orientation_vectors_i
@@ -632,7 +633,7 @@ class Structure:
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
         wavelet_dict = {'params.vector_frames': list_frames, 'params.vector_radius': radius,
-                        'params.vector_slen_lims': slen_lims,
+                        'params.vector_slen_lims': slen_lims, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
                         'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
@@ -952,8 +953,8 @@ class Structure:
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
-        assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                   'Run analyze_sarcomere_vectors first.')
+        assert 'pos_vectors_px' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
+                                                        'Run analyze_sarcomere_vectors first.')
         if frames is not None:
             if isinstance(frames, str) and frames == 'all':
                 frames = list(range(self.sarc_obj.metadata['frames']))
@@ -979,7 +980,7 @@ class Structure:
         else:
             raise ValueError('Selection of frames not valid!')
 
-        pos_vectors = [self.data['pos_vectors'][frame] for frame in list_frames]
+        pos_vectors = [self.data['pos_vectors_px'][frame] for frame in list_frames]
         sarcomere_length_vectors = [self.data['sarcomere_length_vectors'][frame] for frame in list_frames]
         sarcomere_orientation_vectors = [self.data['sarcomere_orientation_vectors'][frame] for frame in list_frames]
         midline_length_vectors = [self.data['midline_length_vectors'][frame] for frame in list_frames]
@@ -1034,12 +1035,11 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
-                                  dist_threshold_ends: float = 0.5, dist_threshold_pos_vectors: float = 0.5,
-                                  louvain_resolution: float = 0.06, louvain_seed: int = 2, area_min: float = 20.0,
-                                  dilation_radius: int = 3,
+                                  d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
+                                  random_seed: int = 42, area_min: float = 20.0, dilation_radius: int = 3,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
-        Cluster sarcomeres into domains based on their spatial and orientational properties using the Louvain method
+        Cluster sarcomeres into domains based on their spatial and orientational properties using the Leiden algorithm
         for community detection.
 
         Parameters
@@ -1047,17 +1047,15 @@ class Structure:
         frames : {'all', int, list, np.ndarray}, optional
             frames for domain analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). If None, frames from wavelet analysis are used. Defaults to None.
-        dist_threshold_ends : float, optional
-            Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
-            Only the ends with the smallest distance are connected. Defaults to 0.5.
-        dist_threshold_pos_vectors : float, optional
-            Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
-            All points within this distance are connected. Defaults to 0.5.
-        louvain_resolution : float, optional
+        d_max : float
+            Max. distance threshold for creating a network edge between vector ends
+        cosine_min : float
+            Minimal absolute cosine between vector angles for creating a network edge between vector ends
+        leiden_resolution : float, optional
             Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
             Greater resolution favors smaller domains. Defaults to 0.05.
-        louvain_seed : int, optional
-            Random seed for Louvain algorithm, to ensure reproducibility. Defaults to 2.
+        random_seed : int, optional
+            Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.
         area_min : float, optional
             Minimal area of domains/clusters (in µm^2). Defaults to 50.0.
         dilation_radius : int, optional
@@ -1092,11 +1090,9 @@ class Structure:
         else:
             raise ValueError('Selection of frames not valid!')
 
-        pos_vectors = [np.asarray(self.data['pos_vectors'][t]) * self.sarc_obj.metadata['pixelsize'] for t in
-                       list_frames]
+        pos_vectors = [np.asarray(self.data['pos_vectors'][t]) for t in list_frames]
         sarcomere_length_vectors = [np.asarray(self.data['sarcomere_length_vectors'][t]) for t in list_frames]
         sarcomere_orientation_vectors = [np.asarray(self.data['sarcomere_orientation_vectors'][t]) for t in list_frames]
-        max_score_vectors = [np.asarray(self.data['max_score_vectors'][t]) for t in list_frames]
         midline_id_vectors = [np.asarray(self.data['midline_id_vectors'][t]) for t in list_frames]
 
         # create empty arrays
@@ -1122,9 +1118,8 @@ class Structure:
                                                      midline_id_vectors_i,
                                                      pixelsize=self.sarc_obj.metadata['pixelsize'],
                                                      size=self.sarc_obj.metadata['size'],
-                                                     dist_threshold_ends=dist_threshold_ends,
-                                                     dist_threshold_pos_vectors=dist_threshold_pos_vectors,
-                                                     louvain_resolution=louvain_resolution, louvain_seed=louvain_seed,
+                                                     d_max=d_max, cosine_min=cosine_min,
+                                                     leiden_resolution=leiden_resolution, random_seed=random_seed,
                                                      area_min=area_min, dilation_radius=dilation_radius)
             (n_domains[frame_i], domains[frame_i], domain_area[frame_i], domain_slen[frame_i], domain_slen_std[frame_i],
              domain_oop[frame_i], domain_orientation[frame_i], domain_mask_i) = cluster_data_t
@@ -1150,10 +1145,9 @@ class Structure:
                        'domain_oop_std': domain_oop_std,
                        'domain_orientation': domain_orientation, 'domain_mask': domain_mask,
                        'params.domain_frames': list_frames,
-                       'params.dist_threshold_ends': dist_threshold_ends,
-                       'params.dist_threshold_pos_vectors': dist_threshold_pos_vectors,
-                       'params.louvain_resolution': louvain_resolution,
-                       'params.domain_area_min': area_min}
+                       'params.domain.d_max': d_max, 'params.domain.cosine_min': cosine_min,
+                       'params.domain.leiden_resolution': leiden_resolution,
+                       'params.domain.area_min': area_min}
 
         self.data.update(domain_data)
         if self.sarc_obj.auto_save:
@@ -2506,29 +2500,29 @@ class Structure:
         props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
         list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
 
-        pos_vectors, midline_id_vectors, midline_length_vectors = [], [], []
+        pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
         if n_midlines > 0:
             for i, (label_i, coords_i, length_midline_i) in enumerate(
                     zip(list_labels, coords_midlines, length_midlines)):
-                pos_vectors.append(coords_i)
+                pos_vectors_px.append(coords_i)
                 midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
                 midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
 
-            pos_vectors = np.concatenate(pos_vectors, axis=0).T
+            pos_vectors_px = np.concatenate(pos_vectors_px, axis=0)
             midline_id_vectors = np.concatenate(midline_id_vectors)
             midline_length_vectors = np.concatenate(midline_length_vectors)
 
-            sarcomere_orientation_vectors = orientation[pos_vectors[0], pos_vectors[1]]
+            sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
 
-            ends1 = pos_vectors + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+            ends1 = pos_vectors_px.T + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
                 (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
             )
-            ends2 = pos_vectors - (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+            ends2 = pos_vectors_px.T - (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
                 (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
             )
 
             # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
-            sarcomere_length_vectors = np.full(pos_vectors.shape[1], np.nan, dtype=float)
+            sarcomere_length_vectors = np.full(pos_vectors_px.shape[0], np.nan, dtype=float)
             profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=3)
 
             for i, profile_i in enumerate(profiles):
@@ -2543,15 +2537,6 @@ class Structure:
                                          width=5)
                 peaks = peaks[~np.isnan(peaks)]
 
-                # fig, ax = plt.subplots(figsize=(2, 1.5))
-                # ax.plot(pos_array, profile_i, c='k')
-                # ax.set_xlabel('Line coordinate [µm]')
-                # ax.set_ylabel('Intensity')
-                # for peak in peaks:
-                #     ax.axvline(peak, c='k', linestyle='--', color='red')
-                # ax.set_ylim(-0.1, 1.1)
-                # plt.show()
-
                 if len(peaks) >= 2:
                     if len(peaks) > 2:
                         peaks = peaks[np.argsort(np.abs(peaks - pos_array.mean()))[:2]]
@@ -2561,14 +2546,16 @@ class Structure:
 
             # remove NaNs
             nan_mask = np.isnan(sarcomere_length_vectors)
-            pos_vectors = pos_vectors[:, ~nan_mask]
+            pos_vectors_px = pos_vectors_px[~nan_mask]
             midline_id_vectors = midline_id_vectors[~nan_mask]
             sarcomere_orientation_vectors = sarcomere_orientation_vectors[~nan_mask]
             sarcomere_length_vectors = sarcomere_length_vectors[~nan_mask]
+            # get vector positions in µm
+            pos_vectors = pos_vectors_px * pixelsize
         else:
-            sarcomere_length_vectors, sarcomere_orientation_vectors, max_score_vectors = [], [], []
+            sarcomere_length_vectors, sarcomere_orientation_vectors = [], []
 
-        return (pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
+        return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, sarcomere_mask)
 
     @staticmethod
@@ -2606,10 +2593,10 @@ class Structure:
         Returns
         -------
         tuple
-            * **pos_vectors** (list): List of (x, y) coordinates for each midline point.
+            * **pos_vectors_px** (list): List of (x, y) coordinates for each midline point. In pixels.
             * **midline_id_vectors** (list): List of corresponding midline labels for each point.
             * **midline_length_vectors** (list): List of approximate midline lengths associated with each point. In pixels.
-            * **sarcomere_length_vectors** (list): List of sarcomere lengths at each midline point.
+            * **sarcomere_length_vectors** (list): List of sarcomere lengths at each midline point. In µm.
             * **sarcomere_orientation_vectors** (list): List of sarcomere orientation angles at each midline point.
             * **max_score_vectors** (list): List of maximal wavelet scores at each midline point.
             * **midline** (np.ndarray): The binarized midline mask.
@@ -2638,26 +2625,26 @@ class Structure:
         props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
         list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
 
-        pos_vectors, midline_id_vectors, midline_length_vectors = [], [], []
+        pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
         if n_midlines > 0:
             for i, (label_i, coords_i, length_midline_i) in enumerate(
                     zip(list_labels, coords_midlines, length_midlines)):
-                pos_vectors.append(coords_i)
+                pos_vectors_px.append(coords_i)
                 midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
                 midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
 
-            pos_vectors = np.concatenate(pos_vectors, axis=0).T
+            pos_vectors_px = np.concatenate(pos_vectors_px, axis=0)
             midline_id_vectors = np.concatenate(midline_id_vectors)
             midline_length_vectors = np.concatenate(midline_length_vectors)
 
             # get sarcomere orientation and distance at vectors, additionally filter score
-            sarcomere_length_vectors = length[pos_vectors[0], pos_vectors[1]]
-            sarcomere_orientation_vectors = orientation[pos_vectors[0], pos_vectors[1]]
-            max_score_vectors = max_score[pos_vectors[0], pos_vectors[1]]
+            sarcomere_length_vectors = length[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
+            sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
+            max_score_vectors = max_score[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
 
             # remove vectors outside range of sarcomere lengths in wavelet bank
             ids_in = (sarcomere_length_vectors >= len_range[1]) & (sarcomere_length_vectors <= len_range[-2])
-            pos_vectors = pos_vectors[:, ids_in]
+            pos_vectors_px = pos_vectors_px[ids_in]
             midline_length_vectors = midline_length_vectors[ids_in]
             midline_id_vectors = midline_id_vectors[ids_in]
             sarcomere_length_vectors = sarcomere_length_vectors[ids_in]
@@ -2666,7 +2653,7 @@ class Structure:
         else:
             sarcomere_length_vectors, sarcomere_orientation_vectors, max_score_vectors = [], [], []
 
-        return (pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
+        return (pos_vectors_px, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, max_score_vectors, midline, score_threshold)
 
     @staticmethod
@@ -2676,15 +2663,15 @@ class Structure:
                            midline_id_vectors: np.ndarray,
                            pixelsize: float,
                            size: Tuple[int, int],
-                           dist_threshold_ends: float = 0.5,
-                           dist_threshold_pos_vectors: float = 0.5,
-                           louvain_resolution: float = 0.06,
-                           louvain_seed: int = 2,
-                           area_min: float = 50,
+                           d_max: float = 3,
+                           cosine_min: float = 0.65,
+                           leiden_resolution: float = 0.06,
+                           random_seed: int = 42,
+                           area_min: float = 20,
                            dilation_radius: int = 3) -> Tuple[int, List, List, List, List, List, np.ndarray]:
         """
         This function clusters sarcomeres into domains based on their spatial and orientational properties
-        using the Louvain method for community detection. It considers sarcomere lengths, orientations,
+        using the Leiden method for community detection in igraph. It considers sarcomere lengths, orientations,
         and positions along midlines to form networks of connected sarcomeres. Domains are then identified
         as communities within these networks, with additional criteria for minimum domain area
         and connectivity thresholds. Finally, this function quantifies the mean and std of sarcomere lengths,
@@ -2693,187 +2680,189 @@ class Structure:
         Parameters
         ----------
         pos_vectors : np.ndarray
-            List of sarcomere midline point positions
+            Array of sarcomere midline point positions in µm.
         sarcomere_length_vectors : np.ndarray
             List of midline point sarcomere lengths
         sarcomere_orientation_vectors : np.ndarray
             List of midline point sarcomere orientations, in radians
         midline_id_vectors : np.ndarray
-            List of midline indices, vectors of the same midline have same index.
+            List of midline indices, vectors of the same midline have same index
         pixelsize : float
             Pixel size in µm
         size : tuple(int, int)
-            Shape of the image in pixels.
-        dist_threshold_ends : float
-            Max. distance threshold for connecting / creating network edge for adjacent sarcomere vector ends.
-            Only the ends with the smallest distance are connected.
-        dist_threshold_pos_vectors : float
-            Max. distance threshold for connecting / creating network edge for vectors of the same midline.
-            All vectors within this distance are connected.
-        louvain_resolution : float
-            Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains.
-        louvain_seed : int
-            Random seed for Louvain algorithm, to ensure reproducibility.
+            Shape of the image in pixels
+        d_max : float
+            Max. distance threshold for creating a network edge between vector ends
+        cosine_min : float
+            Minimal absolute cosine between vector angles for creating a network edge between vector ends
+        leiden_resolution : float
+            Resolution parameter for the Leiden algorithm
+        random_seed : int
+            Random seed for reproducibility
         area_min : float
-            Minimal area of domains / clusters (in µm^2).
+            Minimal area (in µm²) for a domain to be kept
         dilation_radius : int
-            Dilation radius to refine calculation of domain areas (in pixels).
+            Dilation radius for refining domain area masks (in pixels)
 
         Returns
         -------
         n_domains : int
-            Number of domains.
+            Number of domains
         domains : list
-            List of domain sets with point indices.
+            List of domain sets with point indices
         area_domains : list
-            List with domain areas.
-        sarcomere_length_domains : list
-            List with mean sarcomere length within each domain
-        oop_domains : list
-            Orientational order parameter of sarcomeres in each domains
-        orientation_domains : list
+            List with domain areas
+        sarcomere_length_mean_domains : list
+            Mean sarcomere length within each domain
+        sarcomere_length_std_domains : list
+            Standard deviation of sarcomere length within each domain
+        sarcomere_oop_domains : list
+            Orientational order parameter of sarcomeres in each domain
+        sarcomere_orientation_domains : list
             Main orientation of domains
         mask_domains : ndarray
             Masks of domains with value representing domain label
         """
 
-        if len(pos_vectors.T) > 10:
+        if len(pos_vectors) > 10:
+            n_vectors = sarcomere_length_vectors.shape[0]
+
             # Calculate orientation vectors using trigonometry
-            orientation_vectors = np.asarray([np.sin(sarcomere_orientation_vectors),
-                                              np.cos(sarcomere_orientation_vectors)])
+            orientation_vectors = np.column_stack([np.sin(sarcomere_orientation_vectors),
+                                                   np.cos(sarcomere_orientation_vectors)])
 
-            # Calculate the ends of the vectors based on their orientation and length
-            ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors / 2  # End point 1 of each vector
-            ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors / 2  # End point 2 of each vector
-            ends = np.concatenate((ends_0[:, :, None],
-                                   ends_1[:, :, None]), axis=2).reshape(2, -1)  # Combine and reshape for KDTree
-            midline_id_ends = np.repeat(midline_id_vectors, 2)
-            orientation_ends = np.repeat(orientation_vectors, 2)
+            # Calculate end points of the vectors
+            ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors[:, None] / 2
+            ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors[:, None] / 2
 
-            # Create a KDTree for efficient nearest neighbor search
-            tree_ends = cKDTree(ends.T)
+            # Interleave ends_0 and ends_1
+            ends = np.empty((2 * n_vectors, 2), dtype=np.float64)
+            ends[0::2] = ends_0
+            ends[1::2] = ends_1
 
-            nearest_neighbors = []
-            for i, point in enumerate(ends.T):
-                # Start with k=2 since the first returned neighbor is the point itself
-                distances, indices = tree_ends.query(point, k=10)  # Query more neighbors to ensure finding a valid one
-                valid_neighbors = [(dist, idx) for dist, idx in zip(distances[1:], indices[1:]) if
-                                   midline_id_ends[idx] != midline_id_ends[i] if dist < dist_threshold_ends if
-                                   np.cos(orientation_ends[idx] - orientation_ends[i]) > np.cos(np.pi / 4)]
+            # Interleave orientation vectors
+            orientation_ends = np.empty((2 * n_vectors, 2), dtype=np.float64)
+            orientation_ends[0::2] = orientation_vectors
+            orientation_ends[1::2] = -orientation_vectors
 
-                if valid_neighbors:
-                    # Sort valid neighbors by distance and select the closest one
-                    closest_valid_neighbor = sorted(valid_neighbors, key=lambda x: x[0])[0]
-                    nearest_neighbors.append((i, closest_valid_neighbor[1]))
+            # Use cKDTree to find pairs within the distance threshold
+            tree = cKDTree(ends)
+            pairs = tree.query_pairs(d_max, output_type='ndarray')
 
-            # Map pairs of ends back to their original vector indices
-            pairs_vectors = set([(x // 2, y // 2) for x, y in nearest_neighbors])
+            # Compute cosine similarity for all pairs at once
+            dot_products = np.sum(orientation_ends[pairs[:, 0]] * orientation_ends[pairs[:, 1]], axis=1)
+            norms = np.linalg.norm(orientation_ends[pairs[:, 0]], axis=1) * np.linalg.norm(
+                orientation_ends[pairs[:, 1]], axis=1)
+            cosine_similarities = np.abs(dot_products / norms)
 
-            # connect adjacent midline points
-            tree_vectors = cKDTree(pos_vectors.T)
+            # Filter pairs based on cosine similarity
+            valid_pairs = cosine_similarities > cosine_min
+            filtered_pairs = pairs[valid_pairs]
 
-            # Find indices of neighbors for all points
-            indices_list = tree_vectors.query_ball_tree(tree_vectors, dist_threshold_pos_vectors)
+            # Calculate distances for valid pairs
+            distances = (np.sqrt(np.sum((ends[filtered_pairs[:, 0]] - ends[filtered_pairs[:, 1]]) ** 2, axis=1))
+                         / cosine_similarities[valid_pairs])
 
-            # build graph
-            G = nx.Graph()
 
-            # Add nodes to the graph
-            for i in range(len(pos_vectors)):
-                G.add_node(i)
+            # Create edges list
+            edges = filtered_pairs.tolist()
 
-            def cosine_similarity(i, j):
-                orient_i, orient_j = sarcomere_orientation_vectors[i], sarcomere_orientation_vectors[j]
-                return round(np.cos(orient_i - orient_j) ** 2,
-                             4)  # round to avoid issues with floating point comparisons
+            # Add zero-cost connections between the two ends of each vector
+            zero_cost_edges = [(2 * i, 2 * i + 1) for i in range(n_vectors)]
+            edges.extend(zero_cost_edges)
 
-            # Add edges to the graph based on pairs of ends
+            # Create weights list
+            weights = distances.tolist()
+            weights.extend([0] * n_vectors)
 
-            for i, j in pairs_vectors:
-                G.add_edge(i, j, weight=cosine_similarity(i, j))
+            # Create the graph
+            graph = ig.Graph(2 * n_vectors)
+            graph.add_edges(edges)
+            graph.es['weight'] = weights
 
-            # Connect adjacent vectors
-            for i, indices in enumerate(indices_list):
-                for j in indices:
-                    if i != j:
-                        G.add_edge(i, j, weight=1)
+            # Create a mapping to contract pairs of vertices
+            mapping = [i // 2 for i in range(graph.vcount())]
 
-            # Detect communities using the Louvain method
-            communities_generator = community.louvain_communities(G, seed=louvain_seed, resolution=louvain_resolution,
-                                                                  weight='weight')
-            domains = list(communities_generator)
-            n_domains = len(domains)
+            # Contract the vertices
+            graph.contract_vertices(mapping)
 
-            # shuffle domains
-            random.seed(123)
+            # Set random seed
+            random.seed(random_seed)
+
+            # Run Leiden
+            # CommunityLeiden returns a VertexClustering, from which we can get memberships
+            clusters = graph.community_leiden(
+                weights="weight",
+                resolution_parameter=leiden_resolution,
+                n_iterations=-1,
+                objective_function="modularity"
+            )
+
+            # Build domain sets
+            membership = clusters.membership
+            domains_dict = {}
+            for idx, c_id in enumerate(membership):
+                domains_dict.setdefault(c_id, []).append(idx)
+            domains = list(domains_dict.values())
+
+            # Shuffle domains for random ordering
             random.shuffle(domains)
 
-            # calculate domain areas and remove small domains
-            _area_domains = np.zeros(n_domains) * np.nan
-            _indices_to_remove = []
+            # calculate domain properties and remove small domains
+            (area_domains, sarcomere_orientation_domains, sarcomere_oop_domains, sarcomere_length_mean_domains,
+             sarcomere_length_std_domains) = [], [], [], [], []
+            mask_domains = np.zeros(size, dtype='uint16')
+
+            j = 1
             for i, domain_i in enumerate(domains):
-                pos_vectors_i = pos_vectors[:, list(domain_i)]
-                orientations_i = sarcomere_orientation_vectors[list(domain_i)]
-                lengths_i = sarcomere_length_vectors[list(domain_i)]
-                if pos_vectors_i.shape[1] > 10:
+                pos_vectors_i = pos_vectors[domain_i]
+                orientations_i = sarcomere_orientation_vectors[domain_i]
+                lengths_i = sarcomere_length_vectors[domain_i]
+                if pos_vectors_i.shape[0] > 10:
                     # bounding box
                     min_i = (
-                        max(int((pos_vectors_i[0].min() - 3) // pixelsize), 0),
-                        max(int((pos_vectors_i[1].min() - 3) // pixelsize), 0))
-                    max_i = (min(int((pos_vectors_i[0].max() + 3) // pixelsize), size[0]),
-                             min(int((pos_vectors_i[1].max() + 3) // pixelsize), size[1]))
+                        max(int((pos_vectors_i[:, 0].min() - 3) // pixelsize), 0),
+                        max(int((pos_vectors_i[:, 1].min() - 3) // pixelsize), 0))
+                    max_i = (min(int((pos_vectors_i[:, 0].max() + 3) // pixelsize), size[0]),
+                             min(int((pos_vectors_i[:, 1].max() + 3) // pixelsize), size[1]))
                     size_i = (max_i[0] - min_i[0], max_i[1] - min_i[1])
-                    _vectors_i = pos_vectors_i.copy()
-                    _vectors_i[0] -= min_i[0] * pixelsize
-                    _vectors_i[1] -= min_i[1] * pixelsize
-                    mask_i = Structure.sarcomere_mask(_vectors_i, orientations_i, lengths_i, size_i,
+
+                    _pos_vectors_i = pos_vectors_i.copy()
+                    _pos_vectors_i[:, 0] -= min_i[0] * pixelsize
+                    _pos_vectors_i[:, 1] -= min_i[1] * pixelsize
+
+                    mask_i = Structure.sarcomere_mask(_pos_vectors_i, orientations_i, lengths_i, size_i,
                                                       pixelsize=pixelsize,
                                                       dilation_radius=dilation_radius)
                     area_i = np.sum(mask_i) * pixelsize ** 2
-                    _area_domains[i] = area_i
-                    if area_i <= area_min:
-                        _indices_to_remove.append(i)
-                else:
-                    _indices_to_remove.append(i)
-            _indices_to_remove.sort(reverse=True)
-            domains = [list(domain) for i, domain in enumerate(domains) if i not in _indices_to_remove]
-            n_domains = len(domains)
+                    if area_i >= area_min:
+                        ind_i = np.where(mask_i)
+                        ind_i = (ind_i[0] + min_i[0], ind_i[1] + min_i[1])
+                        mask_domains[ind_i] = j
+                        area_i = np.sum(mask_i) * pixelsize ** 2
+                        area_domains.append(area_i)
+                        sarcomere_length_mean_domains.append(np.mean(lengths_i))
+                        sarcomere_length_std_domains.append(np.std(lengths_i))
+                        oop, angle = Utils.analyze_orientations(orientations_i)
+                        sarcomere_oop_domains.append(oop)
+                        sarcomere_orientation_domains.append(angle)
+                        j += 1
 
-            # quantify domains
-            (sarcomere_orientation_domains, sarcomere_oop_domains, sarcomere_length_mean_domains,
-             sarcomere_length_std_domains) = np.zeros(n_domains), np.zeros(n_domains), np.zeros(n_domains), np.zeros(
-                n_domains)
-            area_domains = np.zeros(n_domains)
-            mask_domains = np.zeros(size, dtype='uint16')
-            for i, domain_i in enumerate(domains):
-                pos_ = pos_vectors[:, list(domain_i)]
-                lengths_i = sarcomere_length_vectors[list(domain_i)]
-                orientations_i = sarcomere_orientation_vectors[list(domain_i)]
-                # bounding box
-                min_i = (
-                    max(int((pos_[0].min() - 3) // pixelsize), 0),
-                    max(int((pos_[1].min() - 3) // pixelsize), 0))
-                max_i = (min(int((pos_[0].max() + 3) // pixelsize), size[0]),
-                         min(int((pos_[1].max() + 3) // pixelsize), size[1]))
-                size_i = (max_i[0] - min_i[0], max_i[1] - min_i[1])
-                _pos_ = pos_.copy()
-                _pos_[0] -= min_i[0] * pixelsize
-                _pos_[1] -= min_i[1] * pixelsize
-                mask_i = Structure.sarcomere_mask(_pos_, orientations_i, lengths_i, size_i, pixelsize=pixelsize,
-                                                  dilation_radius=dilation_radius)
-                ind_i = np.where(mask_i)
-                ind_i = (ind_i[0] + min_i[0], ind_i[1] + min_i[1])
-                mask_domains[ind_i] = i
-                area_i = np.sum(mask_i) * pixelsize ** 2
-                area_domains[i] = area_i
-                sarcomere_length_mean_domains[i] = np.mean(lengths_i)
-                sarcomere_length_std_domains[i] = np.std(lengths_i)
-                oop, angle = Utils.analyze_orientations(orientations_i)
-                sarcomere_oop_domains[i] = oop
-                sarcomere_orientation_domains[i] = angle
-            return (n_domains, domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
-                    sarcomere_oop_domains, sarcomere_orientation_domains, mask_domains)
+            area_domains = np.asarray(area_domains)
+            sarcomere_length_mean_domains = np.asarray(sarcomere_length_mean_domains)
+            sarcomere_length_std_domains = np.asarray(sarcomere_length_std_domains)
+            sarcomere_oop_domains = np.asarray(sarcomere_oop_domains)
+            sarcomere_orientation_domains = np.asarray(sarcomere_orientation_domains)
+            n_domains = len(area_domains)
+
+            return (n_domains,
+                    domains,
+                    area_domains,
+                    sarcomere_length_mean_domains,
+                    sarcomere_length_std_domains,
+                    sarcomere_oop_domains,
+                    sarcomere_orientation_domains,
+                    mask_domains)
         else:
             return 0, [], [], [], [], [], [], []
 
@@ -2906,8 +2895,9 @@ class Structure:
         # Initialize orientations
         orientation_left = orientation_right = sarcomere_orientation_vectors_t[seed]
 
+        points_t = points_t.T
+
         while not stop_left or not stop_right:
-            n_i = len(line_i)
             line_i_list = list(line_i)
 
             if not stop_left:
@@ -2982,11 +2972,11 @@ class Structure:
         points_t = np.asarray(points_t)
         assert len(points_t) > 0, 'No sarcomeres in image (len(points) = 0), could not grow lines.'
         random.seed(random_seed)
-        n_vectors = len(points_t.T)
+        n_vectors = len(points_t)
         seed_idx = random.sample(range(n_vectors), min(n_seeds, n_vectors))
 
         # Precompute Nearest Neighbors
-        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t.T)
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t)
 
         # Prepare arguments for parallel processing
         args = [
@@ -3011,7 +3001,7 @@ class Structure:
         midline_std_length_lines = [np.nanstd(midline_length_vectors_t[l]) for l in lines]
         midline_min_length_lines = [np.nanmin(midline_length_vectors_t[l]) for l in lines]
         # mean squared curvature
-        tangential_vector_line_segments = [np.diff(points_t.T[l], axis=0) for l in lines]
+        tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
         tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
                                           tangential_vector_line_segments]
         curvature_line_segments = [np.diff(angle_i) / length_line_segments[i][1:-1] for i, angle_i in
@@ -3140,7 +3130,7 @@ class Structure:
         Parameters
         ----------
         points : ndarray
-            Positions of sarcomere vectors in µm.
+            Positions of sarcomere vectors in µm. (n_vectors, 2)
         sarcomere_orientation_vectors : ndarray
             Orientations of sarcomere vectors.
         sarcomere_length_vectors : ndarray
@@ -3163,8 +3153,8 @@ class Structure:
         orientation_vectors = np.asarray([np.cos(sarcomere_orientation_vectors),
                                           -np.sin(sarcomere_orientation_vectors)])
         # Calculate the ends of the vectors based on their orientation and length
-        ends_0 = points + orientation_vectors * sarcomere_length_vectors / 2  # End point 1 of each vector
-        ends_1 = points - orientation_vectors * sarcomere_length_vectors / 2  # End point 2 of each vector
+        ends_0 = points.T + orientation_vectors * sarcomere_length_vectors / 2  # End point 1 of each vector
+        ends_1 = points.T - orientation_vectors * sarcomere_length_vectors / 2  # End point 2 of each vector
         ends_0, ends_1 = ends_0 / pixelsize, ends_1 / pixelsize
         mask = np.zeros(size, dtype='bool')
         for e0, e1 in zip(ends_0.T.astype('int'), ends_1.T.astype('int')):

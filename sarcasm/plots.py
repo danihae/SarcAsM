@@ -1093,7 +1093,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='k',
-                               color_points='darkgreen', style='half', s_points=0.5, linewidths=0.0005,
+                               color_points='darkgreen', s_points=0.5, linewidths=0.0005,
                                linewidths_inset=0.0001, scalebar=True,
                                legend=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
@@ -1114,8 +1114,6 @@ class Plots:
             The color of the arrows. Defaults to 'mediumpurple'.
         color_points : str, optional
             The color of the points. Defaults to 'darkgreen'.
-        style : str, optional
-            The style of arrows ('half', 'full'). Defaults to 'half'.
         s_points : float, optional
             The size of the points. Defaults to 0.5.
         linewidths : float, optional
@@ -1145,7 +1143,7 @@ class Plots:
                                                                  'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.structure.data['params.vector_frames'], f'Frame {frame} not yet analyzed.'
 
-        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
         sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
         sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
@@ -1157,21 +1155,14 @@ class Plots:
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
 
-        if style == 'half':
-            ax.quiver(pos_vectors[1], pos_vectors[0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                      orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, label='Sarcomere vectors')
-            ax.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                      -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)
-        if style == 'full':
-            ax.quiver(pos_vectors[1] - sarcomere_length_vectors * orientation_vectors[0] * 0.5,
-                      pos_vectors[0] + sarcomere_length_vectors * orientation_vectors[1] * 0.5,
-                      orientation_vectors[0] * sarcomere_length_vectors * 1,
-                      -orientation_vectors[1] * sarcomere_length_vectors * 1, width=linewidths,
-                      angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35)
+        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                  orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
+                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, label='Sarcomere vectors')
+        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                  -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
+                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)
 
-        ax.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
+        ax.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
                    label='Midline pos_vectors')
 
         if legend:
@@ -1193,24 +1184,18 @@ class Plots:
             Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands, frame=frame)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-            ax_inset.scatter(pos_vectors[1], pos_vectors[0], marker='.', c=color_points, edgecolors='none', s=s_points,
+            ax_inset.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none', s=s_points,
                              label='Midline points')
-            if style == 'half':
-                ax_inset.quiver(pos_vectors[1], pos_vectors[0],
-                                -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                                orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
-                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
-                                label='Sarcomere vectors')
-                ax_inset.quiver(pos_vectors[1], pos_vectors[0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                                -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
-                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
-                                width=linewidths_inset)
-            if style == 'full':
-                ax_inset.quiver(pos_vectors[1] - sarcomere_length_vectors * orientation_vectors[0] * 0.5,
-                                pos_vectors[0] + sarcomere_length_vectors * orientation_vectors[1] * 0.5,
-                                orientation_vectors[0] * sarcomere_length_vectors * 1,
-                                -orientation_vectors[1] * sarcomere_length_vectors * 1, widths=linewidths_inset,
-                                angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5)
+            ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0],
+                            -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                            orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
+                            angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+                            label='Sarcomere vectors')
+            ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
+                            -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
+                            angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+                            width=linewidths_inset)
+
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
             ax_inset.set_xticks([])
@@ -1315,7 +1300,7 @@ class Plots:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
         lines = sarc_obj.structure.data['myof_lines'][frame]
-        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
@@ -1323,7 +1308,7 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         for i, line_i in enumerate(lines):
-            ax.plot(pos_vectors[1, line_i], pos_vectors[0, line_i], c='r', alpha=alpha, lw=linewidth)
+            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
@@ -1341,7 +1326,7 @@ class Plots:
                              height_fraction=0.07, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
-                ax_inset.plot(pos_vectors[1, line_i], pos_vectors[0, line_i], c='r', alpha=alpha, lw=linewidth)
+                ax_inset.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
 
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)

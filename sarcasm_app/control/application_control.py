@@ -260,9 +260,9 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             # load myofibril lines and as multi-segment paths
             myof_lines = self.model.cell.structure.data['myof_lines']
-            pos_vectors = self.model.cell.structure.data['pos_vectors']
+            pos_vectors = self.model.cell.structure.data['pos_vectors_px']
             myof_lines_pos_vectors = [
-                [np.column_stack((np.full((len(line_j), 1), i), pos_vectors_i[:, line_j].T)) for line_j in lines_i]
+                [np.column_stack((np.full((len(line_j), 1), i), pos_vectors_i[line_j])) for line_j in lines_i]
                 if pos_vectors_i is not None and lines_i is not None else None
                 for i, (lines_i, pos_vectors_i) in enumerate(zip(myof_lines, pos_vectors))]
             _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
@@ -285,7 +285,7 @@ class ApplicationControl:
             for frame in range(self.model.cell.metadata['frames']):
                 if 'params.wavelet_frames' in self.model.cell.structure.data and frame in \
                         self.model.cell.structure.data['params.wavelet_frames']:
-                    pos_vectors_frame = self.model.cell.structure.data['pos_vectors'][frame]
+                    pos_vectors_frame = self.model.cell.structure.data['pos_vectors_px'][frame]
                     if len(pos_vectors_frame) > 0:
                         sarc_orientation_vectors = self.model.cell.structure.data['sarcomere_orientation_vectors'][
                             frame]
@@ -295,7 +295,7 @@ class ApplicationControl:
                         orientation_vectors = np.asarray(
                             [-np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
                         for i in range(len(pos_vectors_frame[0])):
-                            start_point = [frame, pos_vectors_frame[0][i], pos_vectors_frame[1][i]]
+                            start_point = [frame, pos_vectors_frame[i][0], pos_vectors_frame[i][1]]
                             vector_1 = [frame, orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
                                         orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
                             vector_2 = [frame, -orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
