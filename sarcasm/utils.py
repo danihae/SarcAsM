@@ -6,14 +6,15 @@ import subprocess
 import warnings
 from typing import Tuple, Any, List, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import peakutils
 import tifffile
 import torch
 from numpy import ndarray, dtype
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, interp1d, Akima1DInterpolator
 from scipy.ndimage import label, map_coordinates, median_filter
-from scipy.signal import correlate, savgol_filter, butter, filtfilt
+from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
 from skimage.draw import line
 from skimage.morphology import disk
@@ -23,6 +24,7 @@ warnings.filterwarnings("ignore")
 
 class Utils:
     """ Miscellaneous utility functions """
+
     @staticmethod
     def get_device(print_device=False, no_cuda_warning=False):
         """
@@ -381,6 +383,106 @@ class Utils:
         return v
 
     @staticmethod
+    def process_profile(profile: np.ndarray, pixelsize, slen_lims=(1, 3), thres=0.3,
+                        min_dist=10, width=6, interp_factor=4) -> float:
+        """Find peak separation distance in 1D intensity profile using interpolation and COM.
+
+        Parameters
+        ----------
+        profile : ndarray
+            1D intensity profile
+        pixelsize : float
+            Physical size per pixel
+        slen_lims : tuple, optional
+            (min, max) valid peak separation range, by default (1, 3)
+        thres : float, optional
+            Peak detection height threshold [0-1], by default 0.3
+        min_dist : int, optional
+            Minimum peak separation in pixels, by default 10
+        width : int, optional
+            Half-width of COM window in pixels, by default 6
+        interp_factor : int, optional
+            Interpolation upsampling factor, by default 4
+
+        Returns
+        -------
+        float
+            Peak separation distance or np.nan if invalid
+        """
+        # Normalize profile to [0,1] range
+        profile = (profile - profile.min()) / (profile.max() - profile.min())
+
+        # Create position array
+        pos_array = np.arange(len(profile)) * pixelsize
+
+        # Interpolate data with padding to avoid edge effects
+        pad_width = width
+        profile_padded = np.pad(profile, pad_width, mode='reflect')
+        pos_padded = np.linspace(pos_array[0] - pad_width * pixelsize,
+                                 pos_array[-1] + pad_width * pixelsize,
+                                 len(profile_padded))
+
+        # Create interpolation function with padded data
+        interp_func = Akima1DInterpolator(pos_padded, profile_padded, method='akima')
+        x_interp = np.linspace(pos_array[0], pos_array[-1],
+                               num=len(profile) * interp_factor)
+        y_interp = interp_func(x_interp)
+
+        # Find peaks with prominence to avoid noise
+        peaks_idx, properties = find_peaks(y_interp,
+                                           height=thres,
+                                           distance=min_dist * interp_factor,
+                                           prominence=0.2,
+                                           width=3)
+
+        if len(peaks_idx) < 2:
+            return np.nan
+
+        # Calculate refined peak positions using center of mass
+        peaks = []
+        for idx in peaks_idx:
+            start = max(0, idx - width * interp_factor)
+            end = min(len(x_interp), idx + width * interp_factor + 1)
+            x_window = x_interp[start:end]
+            y_window = y_interp[start:end]
+            # Subtract baseline to improve COM calculation
+            y_window = y_window - y_window.min()
+            peak_pos = np.sum(x_window * y_window) / np.sum(y_window)
+            peaks.append(peak_pos)
+
+        # if False:
+        #     dir_temp = '../temp/profile_peaks/'
+        #     os.makedirs(dir_temp, exist_ok=True)
+        #     plt.figure(figsize=(5, 2), dpi=200)
+        #     plt.plot(x_interp, y_interp, c='k', lw=1.5)
+        #     plt.plot(pos_array, profile, c='c', lw=1.5)
+        #     for peak in peaks_idx:
+        #         plt.axvline(x_interp[peak], c='y', linestyle='--', lw=1)
+        #     for peak in peaks:
+        #         plt.axvline(peak, c='r', linestyle='--', lw=1)
+        #     plt.savefig(dir_temp + f'profile_peaks_{np.random.randint(0, 1000)}.png')
+        #     plt.close()
+
+        peaks = np.array(peaks)
+        center = (pos_array[-1] + pos_array[0]) / 2
+
+        # Split peaks into left and right of center
+        left_peaks = peaks[peaks < center]
+        right_peaks = peaks[peaks > center]
+
+        if len(left_peaks) == 0 or len(right_peaks) == 0:
+            return np.nan
+
+        # Take rightmost peak from left side and leftmost peak from right side
+        left_peak = left_peaks[-1]  # rightmost peak from left side
+        right_peak = right_peaks[0]  # leftmost peak from right side
+        slen_profile = np.abs(right_peak - left_peak)
+
+        if slen_lims[0] <= slen_profile <= slen_lims[1]:
+            return slen_profile
+        return np.nan
+
+    @staticmethod
     def peakdetekt(x_pos, y, thres=0.3, thres_abs=True, min_dist=10, width=6):
         """
         A customized peak detection algorithm.
@@ -409,7 +511,6 @@ class Utils:
         -------
         peaks : ndarray
             An array containing the detected peak positions in µm.
-
         """
         # approximate peak position
         peaks_idx = peakutils.indexes(y, thres=thres, min_dist=min_dist, thres_abs=thres_abs)
@@ -770,7 +871,7 @@ class Utils:
         return image
 
     @staticmethod
-    def fast_profile_lines(image, start_points, end_points, linewidth=1, mode='constant', cval=0.0):
+    def fast_profile_lines(image, start_points, end_points, linewidth=3, mode='constant', cval=0.0):
         """
         Vectorized version of profile_line from scikit-image that processes multiple lines simultaneously.
 
@@ -783,7 +884,7 @@ class Utils:
         end_points : array_like
             An array of shape (N, 2) containing the ending coordinates of the lines.
         linewidth : int, optional
-            The width of the profile line. Default is 1.
+            The width of the profile line, in pixels. Default is 1.
         mode : str, optional
             The mode parameter for map_coordinates. Default is 'constant'.
         cval : float, optional
@@ -845,4 +946,3 @@ class Utils:
             start_idx += lengths[i] * linewidth if linewidth > 1 else lengths[i]
 
         return result
-
