@@ -6,13 +6,11 @@ import subprocess
 import warnings
 from typing import Tuple, Any, List, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
-import peakutils
 import tifffile
 import torch
 from numpy import ndarray, dtype
-from scipy.interpolate import griddata, interp1d, Akima1DInterpolator
+from scipy.interpolate import griddata, Akima1DInterpolator
 from scipy.ndimage import label, map_coordinates, median_filter
 from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
@@ -483,13 +481,9 @@ class Utils:
         return np.nan
 
     @staticmethod
-    def peakdetekt(x_pos, y, thres=0.3, thres_abs=True, min_dist=10, width=6):
+    def peakdetekt(x_pos, y, thres=0.2, thres_abs=False, min_dist=10, width=6, interp_factor=6):
         """
-        A customized peak detection algorithm.
-
-        This function uses peakutils to detect the peaks in the intensity profile `y`
-        against `x_pos`. The detected peaks are then fine-tuned by calculating their
-        mean position using the method of moments.
+        A customized peak detection algorithm using scipy with Akima interpolation.
 
         Parameters
         ----------
@@ -498,25 +492,50 @@ class Utils:
         y : ndarray
             The intensity profile.
         thres : float, optional
-            Threshold for the peak detection. Default is 0.5.
+            Threshold for the peak detection. Default is 0.3.
         thres_abs : bool, optional
             Whether the peak detection threshold is absolute. Default is True.
         min_dist : int, optional
-            Minimum distance between detected peaks. Default is 10.
+            Minimum distance between detected peaks, in pixels. Default is 10.
         width : int, optional
             Width of the region of interest around the detected peaks for the
             method of moments computation. Default is 6.
+        interp_factor : int, optional
+            Factor by which to increase the resolution through interpolation. Default is 10.
 
         Returns
         -------
-        peaks : ndarray
-            An array containing the detected peak positions in µm.
+        refined_peaks : ndarray
+            An array containing the refined peak positions in µm.
         """
-        # approximate peak position
-        peaks_idx = peakutils.indexes(y, thres=thres, min_dist=min_dist, thres_abs=thres_abs)
-        # get mean of peak sum(x*y)/sum(y)
-        peaks = peakutils.interpolate(x_pos, y, ind=peaks_idx, width=width, func=Utils.peak_by_first_moment)
-        return peaks
+        # Apply Akima interpolation to refine the intensity profile
+        akima_interpolator = Akima1DInterpolator(x_pos, y)
+        x_interp = np.linspace(x_pos[0], x_pos[-1], len(x_pos) * interp_factor)
+        y_interp = akima_interpolator(x_interp)
+
+        # Approximate peak position using scipy's find_peaks
+        height = thres if thres_abs else thres * np.max(y_interp)
+        peaks_idx, _ = find_peaks(y_interp, height=height, distance=min_dist * interp_factor, prominence=0.5)
+
+        # Refine peak positions using the center of mass method
+        refined_peaks = []
+        for idx in peaks_idx:
+            start = max(0, idx - width * interp_factor)
+            end = min(len(y_interp), idx + width * interp_factor + 1)
+            roi_x = x_interp[start:end]
+            roi_y = y_interp[start:end]
+            com = np.sum(roi_x * roi_y) / np.sum(roi_y)
+            refined_peaks.append(com)
+
+        # plt.figure(figsize=(12, 4), dpi=200)
+        # plt.plot(x_interp, y_interp)
+        # for peak in peaks_idx:
+        #     plt.axvline(x_interp[peak], color='r')
+        # for peak in refined_peaks:
+        #     plt.axvline(peak, color='k', lw=2)
+        # plt.show()
+
+        return np.array(refined_peaks)
 
     @staticmethod
     def peak_by_first_moment(x: np.ndarray, y: np.ndarray):

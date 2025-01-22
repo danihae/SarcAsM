@@ -87,10 +87,12 @@ class SarcAsM:
         os.makedirs(self.data_folder, exist_ok=True)
         os.makedirs(self.analysis_folder, exist_ok=True)
 
-        if os.path.exists(os.path.join(self.folder, 'sarcomeres.tif')):  # todo remove
+        if (os.path.exists(os.path.join(self.folder, 'sarcomeres.tif')) and not
+        os.path.exists(os.path.join(self.folder, 'zbands.tif'))):  # todo remove later
             self.file_z_bands = os.path.join(self.folder, 'sarcomeres.tif')
         else:
             self.file_z_bands = os.path.join(self.folder, 'zbands.tif')
+        self.file_z_bands_fast_movie = os.path.join(self.folder, 'zbands_fast_movie.tif')
         self.file_midlines = os.path.join(self.folder, 'midlines.tif')
         self.file_distance = os.path.join(self.folder, 'distance.tif')
         self.file_orientation = os.path.join(self.folder, 'orientation.tif')

@@ -146,7 +146,7 @@ class Motion(SarcAsM):
         else:
             raise ValueError('LOI-File is not .json')
 
-    def detekt_peaks(self, thres: float = 0.05, min_dist: float = 1., width: int = 7):
+    def detekt_peaks(self, thres: float = 0.2, min_dist: float = 1.4, width: int = 0.5):
         """
         Detect peaks of z-band intensity profiles
 
@@ -156,17 +156,18 @@ class Motion(SarcAsM):
             Threshold for peak finder
         min_dist : float
             Minimal distance of z-band peaks in µm
-        width : int
-            Width of interval around peak for precise determination of peak center, in pixels
+        width : float
+            Width of interval around peak for precise determination of peak center, in µm.
         """
         peaks = []
         if not self.loi_data:
             raise ValueError('loi_data is not initialized, create intensity profiles first')
         self.loi_data['parameters.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
-        min_dist_frames = int(min_dist / self.metadata['pixelsize'])
+        min_dist_pixels = int(round(min_dist / self.metadata['pixelsize'], 0))
+        width_pixels = int(round(width / self.metadata['pixelsize'], 0))
         for i, y in enumerate(self.loi_data['y_int']):
-
-            peaks_i = Utils.peakdetekt(self.loi_data['x_pos'], y, thres, min_dist_frames, width)
+            peaks_i = Utils.peakdetekt(self.loi_data['x_pos'], y, thres=thres, min_dist=min_dist_pixels,
+                                       width=width_pixels)
             peaks.append(peaks_i[~np.isnan(peaks_i)])
 
         # save peaks
@@ -174,7 +175,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def track_z_bands(self, search_range: float = 1, memory_tracking: int = 10, memory_interpol: int = 6,
+    def track_z_bands(self, search_range: float = 2, memory_tracking: int = 10, memory_interpol: int = 3,
                       t_range: Union[Tuple[int, int], None] = None, z_range: Union[Tuple[int, int], None] = None,
                       min_length: float = 1, filter_params: Tuple[int, int] = (13, 7)):
         """
@@ -203,14 +204,18 @@ class Motion(SarcAsM):
         peaks = self.loi_data['peaks'].copy()
         # make x,y array
         peaks = [np.asarray([p, np.zeros_like(p)]).T for p in peaks]
-        # make iterator of peaks
-        peaks_iter = iter(peaks)
 
+        # track positions with Crocker-Grier algorithm
         with contextlib.redirect_stdout(io.StringIO()):
-            # Crocker-Grier linking algorithm
             trajs_idx = pd.DataFrame(
-                link_iter(peaks_iter, search_range=search_range, memory=memory_tracking, link_strategy='auto'))[1]
-            trajs_idx = trajs_idx.to_numpy()
+                link_iter(peaks,
+                          search_range=search_range,
+                          memory=memory_tracking,
+                          neighbor_strategy='KDTree',
+                          link_strategy='auto',
+                          adaptive_stop=1,
+                          adaptive_step=0.8)
+            )[1].to_numpy()
 
         # sort array into z-band trajectories
         z_pos = np.zeros((len(trajs_idx[0]), len(self.loi_data['time']))) * np.nan
@@ -221,7 +226,8 @@ class Motion(SarcAsM):
 
         # interpolate gaps in trajectories (interpolate with pandas)
         z_pos = pd.DataFrame(z_pos)
-        z_pos = z_pos.interpolate(limit=memory_interpol, axis=1)
+        z_pos = z_pos.interpolate(limit=memory_interpol, axis=1, method='cubic', limit_area='inside',
+                                  limit_direction='both')
         z_pos = z_pos.to_numpy()
 
         # set short trajectories (len<min_length) to np.nan

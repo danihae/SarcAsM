@@ -277,7 +277,7 @@ class Plots:
             The height of the inset axis. Defaults to "30%".
         """
 
-        img = sarc_obj.structure.read_imgs(frame=frame)
+        img = sarc_obj.structure.read_imgs(frames=frame)
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
 
         plot = ax.imshow(img, cmap=cmap, alpha=alpha)
