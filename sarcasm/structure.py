@@ -153,12 +153,12 @@ class Structure:
         if self.data is None:
             raise Exception('Loading of structure failed')
 
-    def read_imgs(self, frame: Union[str, int, List[int]] = None):
+    def read_imgs(self, frames: Union[str, int, List[int]] = None):
         """Load tif file, and optionally select channel"""
-        if frame is None or frame == 'all':
+        if frames is None or frames == 'all':
             data = tifffile.imread(self.sarc_obj.filename)
         else:
-            data = tifffile.imread(self.sarc_obj.filename, key=frame)
+            data = tifffile.imread(self.sarc_obj.filename, key=frames)
 
         if self.sarc_obj.channel is not None:
             if self.sarc_obj.channel == 'RGB':
@@ -181,7 +181,8 @@ class Structure:
         """Returns list of LOIs"""
         return Utils.get_lois_of_file(self.sarc_obj.filename)
 
-    def detect_sarcomeres(self, model_path: str = None, size: Tuple[int, int] = (1024, 1024),
+    def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
+                          model_path: str = None, size: Tuple[int, int] = (1024, 1024),
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.95),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
@@ -189,6 +190,9 @@ class Structure:
 
         Parameters
         ----------
+        frames : Union[str, int, List[int], np.ndarray]
+            Frames for sarcomere detection ('all' for all frames, int for a single frame, list or ndarray for
+            selected frames). Defaults to 'all'.
         model_path : str, optional
             Path of trained network weights for U-Net. Default is None.
         size : tuple of int, optional
@@ -205,38 +209,47 @@ class Structure:
         -------
         None
         """
-        print('\nPredicting sarcomeres ...')
+        if isinstance(frames, str) and frames == 'all':
+            images = self.read_imgs()
+            list_frames = list(range(len(images)))
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
+            images = self.read_imgs(frames=frames)
+            if np.issubdtype(type(frames), np.integer):
+                list_frames = [frames]
+            else:
+                list_frames = list(frames)
+        else:
+            raise ValueError('frames argument not valid')
 
+        print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.sarc_obj.model_dir, 'unet_sarcomeres_generalist.pth')
-        _ = Predict_UNet(self.read_imgs(), model_params=model_path, result_path=self.sarc_obj.folder,
+        _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.folder,
                          resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
                          progress_notifier=progress_notifier)
         del _
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        _dict = {'params.predict_z_bands_model': model_path,
-                 'params.predict_z_bands_normalization_mode': normalization_mode,
-                 'params.predict_z_bands_clip_threshold': clip_thres}
+        _dict = {'params.detect_sarcomeres.frames': list_frames, 'params.detect_sarcomeres.model': model_path,
+                 'params.detect_z_bands.normalization_mode': normalization_mode,
+                 'params.detect_z_bands.clip_threshold': clip_thres}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def predict_z_bands(self, time_consistent: bool = False, model_path: Optional[str] = None,
-                        size: Union[Tuple[int, int], Tuple[int, int, int]] = (1024, 1024),
-                        normalization_mode: str = 'all',
-                        clip_thres: Tuple[float, float] = (0., 99.8),
-                        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+    def detect_z_bands_fast_movie(self, model_path: Optional[str] = None,
+                                  size: Tuple[int, int, int] = (32, 256, 256),
+                                  normalization_mode: str = 'all',
+                                  clip_thres: Tuple[float, float] = (0., 99.8),
+                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
-        Predict sarcomere z-bands with U-Net (single images or long time-lapses) or 3D U-Net (high framerate movies).
+        Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.
 
         Parameters
         ----------
-        time_consistent : bool, optional
-            If True, the temporally more consistent Siam-U-Net is used. Default is False.
         model_path : str, optional
-            Path of trained network weights for U-Net or Siam-U-Net. Default is None.
+            Path of trained network weights for 3D U-Net. Default is None.
         size : tuple of int, optional
             Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16. Default is (1024, 1024).
             When time_consistent==True, specify tuple with (n_frames, n_x, n_y), e.g., (64, 128, 256).
@@ -253,28 +266,19 @@ class Structure:
         None
         """
         print('\nPredicting sarcomere z-bands ...')
-        if time_consistent:
-            if model_path is None:
-                model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pth')
-            assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
-            _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_z_bands, model_params=model_path,
-                               resize_dim=size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
-                               clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
-            del _
-        else:
-            if model_path is None or model_path == 'generalist':
-                model_path = os.path.join(self.sarc_obj.model_dir, 'unet_z_bands_generalist_v0.pth')
-            _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_z_bands, model_params=model_path,
-                             resize_dim=size, normalization_mode=normalization_mode, network='Unet_v0',
-                             clip_threshold=clip_thres, normalize_result=True, device=self.sarc_obj.device,
-                             progress_notifier=progress_notifier)
-            del _
+
+        if model_path is None:
+            model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pth')
+        assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
+        _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_z_bands_fast_movie, model_params=model_path,
+                           resize_dim=size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
+                           clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+        del _
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        _dict = {'params.predict_z_bands_model': model_path,
-                 'params.predict_z_bands_time_consistent': time_consistent,
-                 'params.predict_z_bands_normalization_mode': normalization_mode,
-                 'params.predict_z_bands_clip_threshold': clip_thres}
+        _dict = {'params.detect_z_bands_fast_movie.model': model_path,
+                 'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,
+                 'params.predict_z_bands_fast_movie.clip_threshold': clip_thres}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -368,7 +372,7 @@ class Structure:
         Parameters
         ----------
         frames: {'all', int, list, np.ndarray}, optional
-            frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
+            Frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
         threshold : float, optional
             Threshold for binarizing z-bands prior to labeling (0 - 1). Defaults to 0.1.
@@ -397,7 +401,7 @@ class Structure:
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
             zbands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
-            images = self.read_imgs(frame=frames)
+            images = self.read_imgs(frames=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
@@ -519,7 +523,8 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', radius: float = 0.25,
-                                  linewidth: float = 0.3, interp_factor: int = 4, slen_lims: Tuple[float, float] = (1, 3),
+                                  linewidth: float = 0.3, interp_factor: int = 4,
+                                  slen_lims: Tuple[float, float] = (1, 3),
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -596,15 +601,16 @@ class Structure:
                                            total=n_frames)):
 
             (
-            pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
-            sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
-                                                                                            orientation_vectors_i,
-                                                                                            distance_i,
-                                                                                            pixelsize=pixelsize,
-                                                                                            radius=radius,
-                                                                                            slen_lims=slen_lims,
-                                                                                            interp_factor=interp_factor,
-                                                                                            linewidth=linewidth)
+                pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
+                sarcomere_length_vectors_i,
+                sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
+                                                                                                orientation_vectors_i,
+                                                                                                distance_i,
+                                                                                                pixelsize=pixelsize,
+                                                                                                radius=radius,
+                                                                                                slen_lims=slen_lims,
+                                                                                                interp_factor=interp_factor,
+                                                                                                linewidth=linewidth)
 
             # write in list
             pos_vectors_px[frame_i] = pos_vectors_px_i
@@ -1189,7 +1195,6 @@ class Structure:
             self.data['max_score_vectors'][frame], \
             self.data['midline_length_vectors'][frame]
         loi_data = self.line_growth(pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
-                                    max_score_vectors,
                                     midline_length_vectors, self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
                                     random_seed=random_seed, persistence=persistence,
                                     threshold_distance=threshold_distance)
@@ -1435,7 +1440,11 @@ class Structure:
         export_raw : bool, optional
             If True, intensity kymograph along LOI from raw microscopy image is additionally stored. Defaults to False.
         """
-        imgs_sarcomeres = tifffile.imread(self.sarc_obj.file_z_bands)
+        if os.path.exists(self.sarc_obj.file_z_bands_fast_movie):
+            file_z_bands = self.sarc_obj.file_z_bands_fast_movie
+        else:
+            file_z_bands = self.sarc_obj.file_z_bands
+        imgs_sarcomeres = tifffile.imread(file_z_bands)
         profiles = self.kymograph_movie(imgs_sarcomeres, line, order=order,
                                         linewidth=int(linewidth / self.sarc_obj.metadata['pixelsize']))
         profiles = np.asarray(profiles)
@@ -1535,7 +1544,7 @@ class Structure:
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
-        assert frame in self.data['params.vector_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
+        # assert frame in self.data['params.vector_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         # Grow LOIs based on seed vectors and specified parameters
         self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,
@@ -2458,7 +2467,7 @@ class Structure:
             interp_factor: int = 4,
             linewidth: float = 0.3,
     ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
-        Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], np.ndarray]:
+    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], np.ndarray]:
         """
         Extract sarcomere orientation and length vectors.
 
@@ -2975,6 +2984,9 @@ class Structure:
         """
         # select random origins for line growth
         points_t = np.asarray(points_t)
+        if points_t.shape[0] == 2:
+            points_t = points_t.T
+
         assert len(points_t) > 0, 'No sarcomeres in image (len(points) = 0), could not grow lines.'
         random.seed(random_seed)
         n_vectors = len(points_t)
