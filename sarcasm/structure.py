@@ -223,7 +223,7 @@ class Structure:
 
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
-            model_path = os.path.join(self.sarc_obj.model_dir, 'unet_sarcomeres_generalist.pth')
+            model_path = os.path.join(self.sarc_obj.model_dir, 'nested_unet_sarcomeres_generalist.pth')
         _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.folder,
                          resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
@@ -232,8 +232,8 @@ class Structure:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         _dict = {'params.detect_sarcomeres.frames': list_frames, 'params.detect_sarcomeres.model': model_path,
-                 'params.detect_z_bands.normalization_mode': normalization_mode,
-                 'params.detect_z_bands.clip_threshold': clip_thres}
+                 'params.detect_sarcomeres.normalization_mode': normalization_mode,
+                 'params.detect_sarcomeres.clip_threshold': clip_thres}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -283,51 +283,6 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def predict_cell_mask(self, model_path: Optional[str] = None, size: Tuple[int, int] = (1024, 1024),
-                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0.05, 99.95),
-                          threshold=0.1,
-                          progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
-        """
-        Predict binary mask of cells vs. background with U-Net.
-
-        Parameters
-        ----------
-        model_path : str, optional
-            Path of trained network weights for U-Net. Default is None, chooses default U-Net model.
-        size : tuple of int, optional
-            Resize dimensions for convolutional neural network. Dimensions need to be divisible by 16. Default is (1024, 1024).
-        normalization_mode : str, optional
-            Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.
-        clip_thres : tuple of float, optional
-            Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
-        threshold : float, optional
-            Threshold value for binarizing the cell mask image. Pixels with intensity
-            above threshold are considered cell. Defaults to 0.1.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
-        """
-        print('\nPredicting binary mask of cells ...')
-
-        if model_path is None or model_path == 'generalist':
-            model_path = self.sarc_obj.model_dir + 'unet_cell_mask_generalist.pth'
-        _ = unet.Predict(self.read_imgs(), self.sarc_obj.file_cell_mask, model_params=model_path,
-                         resize_dim=size, normalization_mode=normalization_mode, network='AttentionUnet',
-                         device=self.sarc_obj.device,
-                         clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
-        del _
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        # analyze cell mask
-        self.analyze_cell_mask(threshold=threshold)
-
-        _dict = {'params.predict_cell_mask_model': model_path,
-                 'params.predict_cell_mask_normalization_mode': normalization_mode,
-                 'params.predict_cell_mask_clip_threshold': clip_thres}
-        self.data.update(_dict)
-        self.store_structure_data()
-
     def analyze_cell_mask(self, threshold: float = 0.1) -> None:
         """
         Analyzes the area occupied by cells in the given image(s) and calculates the cell area ratio.
@@ -348,16 +303,16 @@ class Structure:
         n_imgs = len(imgs)
 
         # create empty array
-        cell_area, cell_area_ratio = np.zeros(n_imgs) * np.nan, np.zeros(n_imgs) * np.nan
+        cell_area, cell_area_ratio = np.full(n_imgs, fill_value=np.nan), np.full(n_imgs, fill_value=np.nan)
 
-        for i, img in enumerate(tqdm(imgs)):
+        for i, img in enumerate(imgs):
             # binarize mask
-            mask = np.zeros_like(img)
-            mask[img > threshold * 255] = 1
+            mask = img > threshold
 
             cell_area[i] = np.sum(mask) * self.sarc_obj.metadata['pixelsize'] ** 2
             cell_area_ratio[i] = cell_area[i] / (img.shape[0] * img.shape[1] * self.sarc_obj.metadata['pixelsize'] ** 2)
-        _dict = {'cell_area': cell_area, 'cell_area_ratio': cell_area_ratio, 'params.cell_area_threshold': threshold}
+        _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
+                 'params.cell_mask_area.threshold': threshold}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -594,6 +549,9 @@ class Structure:
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(4))
 
+        # analyze cell mask - needed for calculation of sarcomere_area_ratio
+        self.analyze_cell_mask()
+
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
         for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, distance_i) in enumerate(
@@ -635,19 +593,13 @@ class Structure:
             # calculate sarcomere mask area
             sarcomere_masks[frame_i] = sarcomere_mask_i
             sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
-            if 'cell_area' in self.data.keys():
-                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
-            else:
-                area = self.sarc_obj.metadata['size'][0] * self.sarc_obj.metadata['size'][1] * self.sarc_obj.metadata[
-                    'pixelsize'] ** 2
-                sarcomere_area_ratio[frame_i] = sarcomere_area[i] / area
+            sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
         wavelet_dict = {'params.vector_frames': list_frames, 'params.vector_radius': radius,
                         'params.vector_slen_lims': slen_lims, 'params.vector_interp_factor': interp_factor,
-                        'params.vector_linewidth': linewidth,
-                        'pos_vectors_px': pos_vectors_px,
+                        'params.vector_linewidth': linewidth, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
                         'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
@@ -1000,7 +952,6 @@ class Structure:
         sarcomere_length_vectors = [self.data['sarcomere_length_vectors'][frame] for frame in list_frames]
         sarcomere_orientation_vectors = [self.data['sarcomere_orientation_vectors'][frame] for frame in list_frames]
         midline_length_vectors = [self.data['midline_length_vectors'][frame] for frame in list_frames]
-        max_score_vectors = [self.data['max_score_vectors'][frame] for frame in list_frames]
 
         # create empty arrays
         none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
