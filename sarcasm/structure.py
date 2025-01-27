@@ -183,7 +183,7 @@ class Structure:
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           model_path: str = None, size: Tuple[int, int] = (1024, 1024),
-                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.95),
+                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
         Predict sarcomeres (Z-bands, midlines, distance, orientation) with U-Net.
@@ -223,7 +223,7 @@ class Structure:
 
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
-            model_path = os.path.join(self.sarc_obj.model_dir, 'nested_unet_sarcomeres_generalist.pth')
+            model_path = os.path.join(self.sarc_obj.model_dir, 'model_sarcomeres_generalist.pt')
         _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.folder,
                          resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
@@ -268,7 +268,7 @@ class Structure:
         print('\nPredicting sarcomere z-bands ...')
 
         if model_path is None:
-            model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pth')
+            model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pt')
         assert len(size) == 3, 'patch size for prediction has to be be (frames, x, y)'
         _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_z_bands_fast_movie, model_params=model_path,
                            resize_dim=size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
@@ -1564,12 +1564,15 @@ class Structure:
             frames for analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames).
         """
+        self.sarc_obj.auto_save = False
+        self.detect_sarcomeres(frames=frames)
         self.analyze_z_bands(frames=frames)
         self.analyze_sarcomere_vectors(frames=frames)
         self.analyze_myofibrils(frames=frames)
         self.analyze_sarcomere_domains(frames=frames)
         if not self.sarc_obj.auto_save:
             self.store_structure_data()
+            self.sarc_obj.auto_save = True
 
     @staticmethod
     def segment_z_bands(image: np.ndarray, threshold: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
@@ -2958,7 +2961,7 @@ class Structure:
         # remove short lines (< n_min)
         lines = [l for l in lines if len(l) >= n_min]
         # calculate features of lines
-        n_vectors_lines = np.asarray([len(l) for l in lines])  # number of sarcomere in line
+        n_vectors_lines = np.asarray([len(l) for l in lines])  # number of sarcomeres in line
         length_line_segments = [sarcomere_length_vectors_t[l] for l in lines]
         length_lines = [np.sum(lengths) for lengths in length_line_segments]
         # sarcomere lengths

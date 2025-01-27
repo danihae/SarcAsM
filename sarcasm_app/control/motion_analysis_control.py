@@ -194,7 +194,7 @@ class MotionAnalysisControl:
 
     def on_btn_systoles_search_weights(self):
         # f_name is a tuple
-        f_name = QFileDialog.getOpenFileName(caption='Open Weights File', filter="Network Files (*.pth)")
+        f_name = QFileDialog.getOpenFileName(caption='Open Weights File', filter="Network Files (*.pt)")
         if f_name is not None:
             self.__motion_analysis_widget.le_systoles_weights.setText(f_name[0])
         pass

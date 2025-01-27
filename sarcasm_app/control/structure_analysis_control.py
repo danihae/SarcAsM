@@ -311,12 +311,12 @@ class StructureAnalysisControl:
 
     def on_btn_search_network(self):
         # f_name is a tuple
-        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pth)")
+        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
         if f_name is not None:
             self.__structure_parameters_widget.le_network.setText(f_name[0])
 
     def on_btn_cell_mask_search_network(self):
-        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pth)")
+        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
         if f_name is not None:
             self.__structure_parameters_widget.le_cell_mask_network.setText(f_name[0])
 
