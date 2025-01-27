@@ -16,7 +16,7 @@ def predict_contractions(data, model, network=ContractionNet):
     data : ndarray
         1D array with time-series of contraction
     model : str
-        trained model weights (.pth file)
+        trained model weights (.pt file)
     network : nn.Module
         Network to predict contractions from time-series
     standard_normalizer : bool, ndarray

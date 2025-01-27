@@ -53,7 +53,7 @@ class Trainer:
     """
     def __init__(self, dataset, num_epochs, network=ContractionNet, in_channels=1, out_channels=2,
                  batch_size=16, lr=1e-3, n_filter=64, val_split=0.2,
-                 save_dir='./', save_name='model.pth', save_iter=False, loss_function='BCEDice',
+                 save_dir='./', save_name='model.pt', save_iter=False, loss_function='BCEDice',
                  loss_params=(1, 1)):
 
         self.network = network
@@ -167,5 +167,5 @@ class Trainer:
                 self.state['best_loss'] = self.best_loss = val_loss_i
                 torch.save(self.state, self.save_dir + '/' + self.save_name)
             if self.save_iter:
-                torch.save(self.state, self.save_dir + '/' + f'model_epoch_{epoch}.pth')
+                torch.save(self.state, self.save_dir + '/' + f'model_epoch_{epoch}.pt')
 

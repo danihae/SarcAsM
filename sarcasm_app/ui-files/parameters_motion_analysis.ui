@@ -270,7 +270,7 @@
          </font>
         </property>
         <property name="toolTip">
-         <string>Neural network parameters (.pth file)</string>
+         <string>Neural network parameters (.pt file)</string>
         </property>
         <property name="text">
          <string>Network model</string>
@@ -461,7 +461,7 @@
         <item>
          <widget class="QLineEdit" name="le_systoles_weights">
           <property name="toolTip">
-           <string>Neural network parameters (.pth file)</string>
+           <string>Neural network parameters (.pt file)</string>
           </property>
           <property name="text">
            <string>default</string>
