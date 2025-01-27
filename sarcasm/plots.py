@@ -314,7 +314,7 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='Blues_r',
+    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='Greys_r', zero_transparent=False,
                      alpha=1, scalebar=True, title=None, color_scalebar='k',
                      show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                      inset_loc='upper right', inset_width="35%", inset_height="35%"):
@@ -330,7 +330,7 @@ class Plots:
         frame : int, optional
             The frame to plot. Defaults to 0.
         cmap : matplotlib.cm.Colormap, optional
-            Colormap to use. Defaults to 'Blues_r'.
+            Colormap to use. Defaults to 'Greys_r'.
         alpha : float, optional
             Alpha value to change opacity of image. Defaults to 1
         scalebar : bool, optional
@@ -351,9 +351,9 @@ class Plots:
         assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
 
         img = tifffile.imread(sarc_obj.file_z_bands, key=frame)
-
-        masked_img = np.ma.masked_where(img < 0.05, img)
-        ax.imshow(masked_img, cmap=cmap, alpha=alpha)
+        if zero_transparent:
+            img = np.ma.masked_where(img < 0.05, img)
+        ax.imshow(img, cmap=cmap, alpha=alpha)
         if hasattr(sarc_obj, 'loi_data') and show_loi:
             line = sarc_obj.loi_data['line']
             ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
@@ -371,7 +371,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
             PlotUtils.change_color_spines(ax_inset, 'w')
-            ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray', alpha=alpha)
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -445,7 +445,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
-    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='gray', alpha=0.5,
+    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
                        scalebar=True, title=None):
         """
         Plots the cell mask of the sarcomere object.
@@ -458,6 +458,8 @@ class Plots:
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
+        threshold : float, optional
+            Binarization threshold to use for cell mask. Defaults to 0.5.
         cmap : matplotlib.colors.Colormap, optional
             The colormap to use. Defaults to 'gray'
         alpha : float, optional
@@ -469,7 +471,7 @@ class Plots:
         """
         assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_mask first.')
 
-        img = tifffile.imread(sarc_obj.file_cell_mask, key=frame)
+        img = tifffile.imread(sarc_obj.file_cell_mask, key=frame) > threshold
         ax.imshow(img, cmap=cmap, alpha=alpha)
 
         if scalebar:
@@ -1057,8 +1059,6 @@ class Plots:
         """
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
                                                               'Run sarc_obj.analyze_sarcomere_vectors ')
-
-        assert frame in sarc_obj.structure.data['params.wavelet_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, alpha=alpha_z_bands, frame=frame)
