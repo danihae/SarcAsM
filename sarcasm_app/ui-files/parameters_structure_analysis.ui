@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>616</width>
-    <height>1449</height>
+    <width>735</width>
+    <height>1182</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -59,110 +59,41 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_6">
+   <item row="2" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
      <property name="font">
       <font>
        <pointsize>11</pointsize>
       </font>
      </property>
      <property name="title">
-      <string>Prediction of cell mask</string>
+      <string>Detection of sarcomeres</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_7">
+     <property name="flat">
+      <bool>false</bool>
+     </property>
+     <layout class="QFormLayout" name="formLayout_2">
+      <property name="topMargin">
+       <number>5</number>
+      </property>
+      <property name="bottomMargin">
+       <number>5</number>
+      </property>
       <item row="0" column="0">
-       <widget class="QLabel" name="label_20">
+       <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>Path of trained network weights for cell mask prediction</string>
+         <string>Path of trained network weights for U-Net or Siam-U-Net</string>
         </property>
         <property name="text">
          <string>Network model</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_4">
-        <item>
-         <widget class="QLineEdit" name="le_cell_mask_network">
-          <property name="toolTip">
-           <string>Path of trained network weights for cell mask prediction</string>
-          </property>
-          <property name="text">
-           <string>generalist</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_cell_mask_network_search">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_32">
-        <property name="toolTip">
-         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
-        </property>
-        <property name="text">
-         <string>Patch size</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_9">
-        <item>
-         <widget class="QLabel" name="label_34">
-          <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="text">
-           <string>Width [px]:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_cell_mask_size_width">
-          <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="maximum">
-           <number>100000000</number>
-          </property>
-          <property name="value">
-           <number>512</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_39">
-          <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="text">
-           <string>Height [px]:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_cell_mask_size_height">
-          <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="maximum">
-           <number>99999999</number>
-          </property>
-          <property name="value">
-           <number>512</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_33">
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_12">
         <property name="toolTip">
          <string>Clip threshold (lower / upper) for intensity normalization.</string>
         </property>
@@ -171,10 +102,10 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_10">
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
         <item>
-         <widget class="QLabel" name="label_40">
+         <widget class="QLabel" name="label_13">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
           </property>
@@ -184,7 +115,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_cell_mask_clip_threshold_min">
+         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_min">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
           </property>
@@ -192,7 +123,7 @@
            <number>2</number>
           </property>
           <property name="maximum">
-           <double>999999.000000000000000</double>
+           <double>100.000000000000000</double>
           </property>
           <property name="value">
            <double>0.100000000000000</double>
@@ -200,7 +131,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="label_41">
+         <widget class="QLabel" name="label_14">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
           </property>
@@ -210,18 +141,15 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_cell_mask_clip_threshold_max">
+         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_max">
           <property name="toolTip">
            <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="frame">
-           <bool>true</bool>
           </property>
           <property name="decimals">
            <number>2</number>
           </property>
           <property name="maximum">
-           <double>99999999.000000000000000</double>
+           <double>100.000000000000000</double>
           </property>
           <property name="value">
            <double>99.900000000000006</double>
@@ -230,20 +158,141 @@
         </item>
        </layout>
       </item>
-      <item row="4" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_cell_mask_predict">
+      <item row="5" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_predict">
         <property name="toolTip">
-         <string>execute cell mask prediction based on the given network</string>
+         <string>execute sarcomere prediction based on the given network</string>
         </property>
         <property name="text">
-         <string>Predict cell mask</string>
+         <string>Predict sarcomere Z-bands</string>
         </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLineEdit" name="le_network">
+          <property name="toolTip">
+           <string>Path of trained network weights for U-Net or Siam-U-Net</string>
+          </property>
+          <property name="text">
+           <string>generalist</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_search_network">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="3" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QLabel" name="label_11">
+          <property name="toolTip">
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
+          </property>
+          <property name="text">
+           <string>Width [px]:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_predict_size_width">
+          <property name="toolTip">
+           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
+          </property>
+          <property name="maximum">
+           <number>1000000</number>
+          </property>
+          <property name="singleStep">
+           <number>16</number>
+          </property>
+          <property name="value">
+           <number>512</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_10">
+          <property name="toolTip">
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
+          </property>
+          <property name="text">
+           <string>Height [px]:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_predict_size_height">
+          <property name="toolTip">
+           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
+          </property>
+          <property name="maximum">
+           <number>1000000</number>
+          </property>
+          <property name="singleStep">
+           <number>16</number>
+          </property>
+          <property name="value">
+           <number>512</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_9">
+        <property name="toolTip">
+         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
+        </property>
+        <property name="text">
+         <string>Resize dimensions [pixel]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="toolTip">
+         <string>Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
+            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.</string>
+        </property>
+        <property name="text">
+         <string>Normalization Mode</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="cb_predict_normalization_mode">
+        <property name="toolTip">
+         <string>Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
+            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.</string>
+        </property>
+        <item>
+         <property name="text">
+          <string>all</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>single</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>first</string>
+         </property>
+        </item>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item row="4" column="0" colspan="2">
+   <item row="3" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="font">
       <font>
@@ -309,7 +358,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0" colspan="2">
+      <item row="7" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_z_band">
         <property name="toolTip">
          <string>execute z band analysis, check parameters before</string>
@@ -319,10 +368,131 @@
         </property>
        </widget>
       </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>Radius around z-band ends to quantify orientation of ends (in µm). Defaults to 0.75.</string>
+        </property>
+        <property name="text">
+         <string>End radius [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_end_radius">
+        <property name="toolTip">
+         <string>Radius around z-band ends to quantify orientation of ends (in µm). Defaults to 0.75.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_8">
+        <property name="toolTip">
+         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
+            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+        </property>
+        <property name="text">
+         <string>Theta phi min </string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_theta_phi_min">
+        <property name="toolTip">
+         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
+            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_17">
+        <property name="toolTip">
+         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+        </property>
+        <property name="text">
+         <string>A min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_a_min">
+        <property name="toolTip">
+         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_20">
+        <property name="toolTip">
+         <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
+            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+        </property>
+        <property name="text">
+         <string>D max [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_d_max">
+        <property name="toolTip">
+         <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
+            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_32">
+        <property name="toolTip">
+         <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
+            Defaults to 0.25.</string>
+        </property>
+        <property name="text">
+         <string>D min [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_d_min">
+        <property name="toolTip">
+         <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
+            Defaults to 0.25.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
+   <item row="4" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
      <property name="enabled">
       <bool>true</bool>
@@ -333,84 +503,9 @@
       </font>
      </property>
      <property name="title">
-      <string>Sarcomere length and orientation analysis using double wavelets</string>
+      <string>Sarcomere length and orientation analysis</string>
      </property>
      <layout class="QFormLayout" name="formLayout_4">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_18">
-        <property name="toolTip">
-         <string>Size of wavelet filters (in µm), needs to be larger than upper limit len_lims.</string>
-        </property>
-        <property name="text">
-         <string>Filter size [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_wavelet_filter_size">
-        <property name="toolTip">
-         <string>Size of wavelet filters (in µm), needs to be larger than upper limit len_lims.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>10000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>2.500000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_21">
-        <property name="toolTip">
-         <string>Minor axis width of single wavelets</string>
-        </property>
-        <property name="text">
-         <string>Minor axis [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_wavelet_minor">
-        <property name="toolTip">
-         <string>Minor axis length of single wavelets</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>100000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.300000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_22">
-        <property name="toolTip">
-         <string>Major axis length of single wavelets</string>
-        </property>
-        <property name="text">
-         <string>Major axis length [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_wavelet_width">
-        <property name="toolTip">
-         <string>Major axis width of single wavelets</string>
-        </property>
-        <property name="maximum">
-         <double>10000000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>1.000000000000000</double>
-        </property>
-       </widget>
-      </item>
       <item row="3" column="0">
        <widget class="QLabel" name="label_23">
         <property name="toolTip">
@@ -434,7 +529,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_wavelet_len_lims_min">
+         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_min">
           <property name="toolTip">
            <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
           </property>
@@ -460,7 +555,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QDoubleSpinBox" name="dsb_wavelet_len_lims_max">
+         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_max">
           <property name="toolTip">
            <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
           </property>
@@ -475,178 +570,88 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QLabel" name="label_26">
-          <property name="toolTip">
-           <string>Step size of sarcomere lengths in µm</string>
-          </property>
-          <property name="text">
-           <string> Step:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_wavelet_len_step">
-          <property name="toolTip">
-           <string>Step size of sarcomere lengths in µm</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>1000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>0.050000000000000</double>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_27">
-        <property name="toolTip">
-         <string>Limits of sarcomere orientation angles in degree</string>
-        </property>
-        <property name="text">
-         <string>Orientation limits [°]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_6">
-        <item>
-         <widget class="QLabel" name="label_29">
-          <property name="toolTip">
-           <string>Limits of sarcomere orientation angles in degree</string>
-          </property>
-          <property name="text">
-           <string>Min:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_wavelet_theta_lims_min">
-          <property name="toolTip">
-           <string>Limits of sarcomere orientation angles in degree</string>
-          </property>
-          <property name="minimum">
-           <number>-360</number>
-          </property>
-          <property name="maximum">
-           <number>360</number>
-          </property>
-          <property name="value">
-           <number>-90</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_28">
-          <property name="toolTip">
-           <string>Limits of sarcomere orientation angles in degree</string>
-          </property>
-          <property name="text">
-           <string>Max:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_wavelet_theta_lims_max">
-          <property name="toolTip">
-           <string>Limits of sarcomere orientation angles in degree</string>
-          </property>
-          <property name="minimum">
-           <number>-360</number>
-          </property>
-          <property name="maximum">
-           <number>360</number>
-          </property>
-          <property name="value">
-           <number>90</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_30">
-          <property name="toolTip">
-           <string>Step size of orientation angles in degree</string>
-          </property>
-          <property name="text">
-           <string>Step:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_wavelet_theta_step">
-          <property name="toolTip">
-           <string>Step size of orientation angles in degree</string>
-          </property>
-          <property name="minimum">
-           <number>-360</number>
-          </property>
-          <property name="maximum">
-           <number>360</number>
-          </property>
-          <property name="value">
-           <number>15</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_6">
-        <property name="toolTip">
-         <string>Threshold score for clipping of length and orientation map</string>
-        </property>
-        <property name="text">
-         <string>Score threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_7">
-        <item>
-         <widget class="QCheckBox" name="chk_wavelet_abs_thresh">
-          <property name="toolTip">
-           <string> If True, absolute threshold value is applied, else if False, adaptive threshold based on percentile</string>
-          </property>
-          <property name="text">
-           <string>absolute</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_wavelet_score_threshold">
-          <property name="toolTip">
-           <string>Threshold score for clipping of length and orientation map (if abs_threshold=False, score_threshold is
-            percentile (e.g., 90) for adaptive thresholding)</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>99999999.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="6" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_wavelet">
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_vectors">
         <property name="toolTip">
          <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>
         </property>
         <property name="text">
-         <string>Analyze sarcomere lengths and orientations</string>
+         <string>Analyze sarcomere vectors</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="toolTip">
+         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
+        </property>
+        <property name="text">
+         <string>Radius [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_vectors_radius">
+        <property name="toolTip">
+         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_18">
+        <property name="toolTip">
+         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
+        </property>
+        <property name="text">
+         <string>Line width [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_vectors_line_width">
+        <property name="toolTip">
+         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_21">
+        <property name="toolTip">
+         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
+        </property>
+        <property name="text">
+         <string>Interpolation factor</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_vectors_interpolation_factor">
+        <property name="toolTip">
+         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
+        </property>
+        <property name="maximum">
+         <number>99999999</number>
         </property>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_5">
      <property name="font">
       <font>
@@ -654,7 +659,7 @@
       </font>
      </property>
      <property name="title">
-      <string>Myofibril analysis using line growth algorithm</string>
+      <string>Myofibril analysis</string>
      </property>
      <layout class="QFormLayout" name="formLayout_6">
       <item row="0" column="0">
@@ -681,16 +686,6 @@
        </widget>
       </item>
       <item row="1" column="0">
-       <widget class="QLabel" name="label_36">
-        <property name="toolTip">
-         <string>Score threshold for random seeds </string>
-        </property>
-        <property name="text">
-         <string>Score threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
        <widget class="QLabel" name="label_37">
         <property name="toolTip">
          <string>Persistence of line (average length and orientation for prior estimation)</string>
@@ -700,7 +695,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="1" column="1">
        <widget class="QSpinBox" name="sb_myofibril_persistence">
         <property name="toolTip">
          <string>Persistence of line (average length and orientation for prior estimation)</string>
@@ -713,7 +708,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label_38">
         <property name="toolTip">
          <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
@@ -723,17 +718,7 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_myofibril">
-        <property name="toolTip">
-         <string>execute myofibril length calculation</string>
-        </property>
-        <property name="text">
-         <string>Analyze myofibrils</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
+      <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_myofibril_thresh_dist">
         <property name="toolTip">
          <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
@@ -749,39 +734,40 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_8">
-        <item>
-         <widget class="QCheckBox" name="chk_myofibril_score_threshold_empty">
-          <property name="toolTip">
-           <string>If True,
-            score_threshold from previous wavelet midline analysis is used.</string>
-          </property>
-          <property name="text">
-           <string>empty</string>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_myofibril_score_threshold">
-          <property name="toolTip">
-           <string>Score threshold for random seeds (needs to be &lt;=score_threshold from get_points_midline). If empty,
-            score_threshold from previous wavelet midline analysis is used.</string>
-          </property>
-          <property name="maximum">
-           <number>10000000</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_22">
+        <property name="toolTip">
+         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
+        </property>
+        <property name="text">
+         <string>N min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QSpinBox" name="sb_myofibril_n_min">
+        <property name="toolTip">
+         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
+        </property>
+        <property name="maximum">
+         <number>10000008</number>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_myofibril">
+        <property name="toolTip">
+         <string>execute myofibril length calculation</string>
+        </property>
+        <property name="text">
+         <string>Analyze myofibrils</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item row="7" column="0" colspan="2">
+   <item row="6" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
      <property name="font">
       <font>
@@ -792,117 +778,59 @@
       <string>Sarcomere domains analysis using clustering algorithm</string>
      </property>
      <layout class="QFormLayout" name="formLayout_5">
-      <item row="2" column="0">
+      <item row="0" column="0">
        <widget class="QLabel" name="label">
         <property name="toolTip">
-         <string>Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
-            Only the ends with the smallest distance are connected. Defaults to 0.5.</string>
+         <string>Max. distance threshold for creating a network edge between vector ends</string>
         </property>
         <property name="text">
-         <string>Distance threshold ends</string>
+         <string>D max </string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_ends">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_16">
         <property name="toolTip">
-         <string>Maximal distance threshold for connecting/creating network edge for adjacent sarcomere vector ends.
-            Only the ends with the smallest distance are connected. Defaults to 0.5.</string>
+         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
         </property>
-        <property name="maximum">
-         <double>9999999.000000000000000</double>
+        <property name="text">
+         <string>Cosine min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_19">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="text">
+         <string>Leiden resolution</string>
         </property>
        </widget>
       </item>
       <item row="3" column="0">
-       <widget class="QLabel" name="label_16">
+       <widget class="QLabel" name="label_26">
         <property name="toolTip">
-         <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
-            All midline points of vectors within this distance are connected. Defaults to 0.5.</string>
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
         </property>
         <property name="text">
-         <string>Distance threshold midline points</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_dist_thresh_pos_vectors">
-        <property name="toolTip">
-         <string>Maximal distance threshold for connecting/creating network edge for midline points of the same midline.
-            All midline points within this distance are connected. Defaults to 0.5.</string>
-        </property>
-        <property name="maximum">
-         <double>999999.000000000000000</double>
+         <string>Area min [µm]</string>
         </property>
        </widget>
       </item>
       <item row="4" column="0">
-       <widget class="QLabel" name="label_31">
+       <widget class="QLabel" name="label_27">
         <property name="toolTip">
-         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
         </property>
         <property name="text">
-         <string>Louvain resolution</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_louvain_resolution">
-        <property name="toolTip">
-         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains. Defaults to 0.05.</string>
-        </property>
-        <property name="maximum">
-         <double>999999.000000000000000</double>
+         <string>Random seed</string>
         </property>
        </widget>
       </item>
       <item row="5" column="0">
-       <widget class="QLabel" name="label_42">
-        <property name="toolTip">
-         <string>Random seed for Louvain algorithm, to ensure reproducibility. Defaults to 2.</string>
-        </property>
-        <property name="text">
-         <string>Louvain seed</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QSpinBox" name="sb_louvain_seed">
-        <property name="toolTip">
-         <string>Random seed for Louvain algorithm, to ensure reproducibility. Defaults to 2.</string>
-        </property>
-        <property name="maximum">
-         <number>99999999</number>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="label_19">
-        <property name="toolTip">
-         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
-        </property>
-        <property name="text">
-         <string>Min. domain area [µm²]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domain_analysis_area_min">
-        <property name="toolTip">
-         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="label_43">
+       <widget class="QLabel" name="label_28">
         <property name="toolTip">
          <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
         </property>
@@ -911,17 +839,7 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="1">
-       <widget class="QSpinBox" name="sb_dilation_radius">
-        <property name="toolTip">
-         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
-        </property>
-        <property name="maximum">
-         <number>9999999</number>
-        </property>
-       </widget>
-      </item>
-      <item row="11" column="0" colspan="2">
+      <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_domain_analysis">
         <property name="toolTip">
          <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>
@@ -931,242 +849,76 @@
         </property>
        </widget>
       </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="2" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Prediction of sarcomere Z-bands</string>
-     </property>
-     <property name="flat">
-      <bool>false</bool>
-     </property>
-     <layout class="QFormLayout" name="formLayout_2">
-      <property name="topMargin">
-       <number>5</number>
-      </property>
-      <property name="bottomMargin">
-       <number>5</number>
-      </property>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_2">
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_d_max">
         <property name="toolTip">
-         <string>Path of trained network weights for U-Net or Siam-U-Net</string>
+         <string>Max. distance threshold for creating a network edge between vector ends</string>
         </property>
-        <property name="text">
-         <string>Network model</string>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999995.000000000000000</double>
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_12">
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_cosine_min">
         <property name="toolTip">
-         <string>Clip threshold (lower / upper) for intensity normalization.</string>
+         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
         </property>
-        <property name="text">
-         <string>Clip threshold intensity [%]</string>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_leiden_resolution">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_area_min">
+        <property name="toolTip">
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
         </property>
        </widget>
       </item>
       <item row="4" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
-        <item>
-         <widget class="QLabel" name="label_13">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="text">
-           <string>Min:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_clip_thresh_min">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="decimals">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>0.100000000000000</double>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_14">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="text">
-           <string>Max:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_clip_thresh_max">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="decimals">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>99.900000000000006</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_predict">
+       <widget class="QSpinBox" name="sb_domains_random_seed">
         <property name="toolTip">
-         <string>execute sarcomere prediction based on the given network</string>
+         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
         </property>
-        <property name="text">
-         <string>Predict sarcomere Z-bands</string>
+        <property name="maximum">
+         <number>999999999</number>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
-         <widget class="QLineEdit" name="le_network">
-          <property name="toolTip">
-           <string>Path of trained network weights for U-Net or Siam-U-Net</string>
-          </property>
-          <property name="text">
-           <string>generalist</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_search_network">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="chk_time_consistent">
-          <property name="toolTip">
-           <string>If True, the temporally more consistent Siam-U-Net is used. Requires Siam-U-Net network weights.</string>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_8">
-          <property name="toolTip">
-           <string>If True, the temporally more consistent Siam-U-Net is used. Requires Siam-U-Net network weights</string>
-          </property>
-          <property name="text">
-           <string>Time Consistent</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_2">
-        <item>
-         <widget class="QLabel" name="label_11">
-          <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="text">
-           <string>Width [px]:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_predict_size_min">
-          <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="maximum">
-           <number>1000000</number>
-          </property>
-          <property name="singleStep">
-           <number>16</number>
-          </property>
-          <property name="value">
-           <number>512</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_10">
-          <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="text">
-           <string>Height [px]:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_predict_size_max">
-          <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
-          </property>
-          <property name="maximum">
-           <number>1000000</number>
-          </property>
-          <property name="singleStep">
-           <number>16</number>
-          </property>
-          <property name="value">
-           <number>512</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_5">
-          <property name="toolTip">
-           <string>When time_consistent==True, this field has to be filled</string>
-          </property>
-          <property name="text">
-           <string>Frames [#]</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_time_consitent_frame">
-          <property name="toolTip">
-           <string>When time_consistent==True, this field has to be filled</string>
-          </property>
-          <property name="maximum">
-           <number>999999999</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_9">
+      <item row="5" column="1">
+       <widget class="QSpinBox" name="sb_domains_dilation_radius">
         <property name="toolTip">
-         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
+         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
         </property>
-        <property name="text">
-         <string>Resize dimensions [pixel]</string>
+        <property name="maximum">
+         <number>99999999</number>
         </property>
        </widget>
       </item>

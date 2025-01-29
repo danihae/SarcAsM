@@ -82,8 +82,12 @@ class ApplicationModel:
         # endregion
         # region structure parameters
         self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
-        self.__parameters.get_parameter(name='structure.predict.time_consistent').set_value(False)
-        self.__parameters.get_parameter(name='structure.predict.time_consistent.frame').set_value(32)
+
+        # was removed
+        #self.__parameters.get_parameter(name='structure.predict.time_consistent').set_value(False)
+        #self.__parameters.get_parameter(name='structure.predict.time_consistent.frame').set_value(32)
+
+        self.__parameters.get_parameter(name='structure.predict.normalization_mode').set_value('all')
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
             1024)  # is the predict_size_min from ui
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
@@ -91,44 +95,39 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.8)
 
-        self.__parameters.get_parameter(name='structure.predict.cell_mask.network_path').set_value('generalist')
-        self.__parameters.get_parameter(name='structure.predict.cell_mask.size_width').set_value(1024)
-        self.__parameters.get_parameter(name='structure.predict.cell_mask.size_height').set_value(1024)
-        self.__parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_min').set_value(0.)
-        self.__parameters.get_parameter(name='structure.predict.cell_mask.clip_thresh_max').set_value(99.8)
 
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
 
+
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.1)
         self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(1.0)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.end_radius').set_value(0.75)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').set_value(0.25)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.1)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(5.0)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.d_min').set_value(0.25)
 
-        self.__parameters.get_parameter(name='structure.wavelet.filter_size').set_value(3.0)
-        self.__parameters.get_parameter(name='structure.wavelet.minor').set_value(0.3)
-        self.__parameters.get_parameter(name='structure.wavelet.major').set_value(1.0)
-        self.__parameters.get_parameter(name='structure.wavelet.length_limit_lower').set_value(1.4)
-        self.__parameters.get_parameter(name='structure.wavelet.length_limit_upper').set_value(2.7)
-        self.__parameters.get_parameter(name='structure.wavelet.length_step').set_value(0.05)
-        self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_lower').set_value(-90)
-        self.__parameters.get_parameter(name='structure.wavelet.orientation_limit_upper').set_value(90)
-        self.__parameters.get_parameter(name='structure.wavelet.orientation_step').set_value(10)
-        self.__parameters.get_parameter(name='structure.wavelet.absolute_threshold').set_value(True)
-        self.__parameters.get_parameter(name='structure.wavelet.score_threshold').set_value(0.25)
-        self.__parameters.get_parameter(name='structure.wavelet.save_all').set_value(False)
 
-        self.__parameters.get_parameter(name='structure.myofibril.n_seeds').set_value(500)
-        self.__parameters.get_parameter(name='structure.myofibril.score_threshold_empty').set_value(True)
-        self.__parameters.get_parameter(name='structure.myofibril.score_threshold').set_value(0)
+        self.__parameters.get_parameter(name='structure.vectors.radius').set_value(0.25)
+        self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(4)
+        self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
+        self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
+
+
+        self.__parameters.get_parameter(name='structure.myofibril.n_seeds').set_value(1000)
         self.__parameters.get_parameter(name='structure.myofibril.persistence').set_value(3)
         self.__parameters.get_parameter(name='structure.myofibril.threshold_distance').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.myofibril.n_min').set_value(5)
 
-        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_ends').set_value(0.5)
-        self.__parameters.get_parameter(name='structure.domain.analysis.dist_thresh_pos_vectors').set_value(0.5)
-        self.__parameters.get_parameter(name='structure.domain.analysis.louvain_resolution').set_value(0.05)
-        self.__parameters.get_parameter(name='structure.domain.analysis.louvain_seed').set_value(2)
-        self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(50.0)
+
+        self.__parameters.get_parameter(name='structure.domain.analysis.d_max').set_value(3.0)
+        self.__parameters.get_parameter(name='structure.domain.analysis.cosine_min').set_value(0.65)
+        self.__parameters.get_parameter(name='structure.domain.analysis.leiden_resolution').set_value(0.06)
+        self.__parameters.get_parameter(name='structure.domain.analysis.random_seed').set_value(42)
+        self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(20.0)
         self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(3)
-
         # endregion
 
         # region loi parameters
@@ -232,53 +231,48 @@ class ApplicationModel:
         # endregion
         # region structure parameters
         self.__parameters.set_parameter(name='structure.predict.network_path')
-        self.__parameters.set_parameter(name='structure.predict.time_consistent')
-        self.__parameters.set_parameter(name='structure.predict.time_consistent.frame')
+
+        # was removed
+        #self.__parameters.set_parameter(name='structure.predict.time_consistent')
+        #self.__parameters.set_parameter(name='structure.predict.time_consistent.frame')
+        self.__parameters.set_parameter(name='structure.predict.normalization_mode')
         self.__parameters.set_parameter(name='structure.predict.size_width')  # is the predict_size_min from ui
         self.__parameters.set_parameter(name='structure.predict.size_height')  # is the predict_size_max from ui
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.predict.cell_mask.network_path')
-        self.__parameters.set_parameter(
-            name='structure.predict.cell_mask.size_width')  # is the predict_size_min from ui
-        self.__parameters.set_parameter(
-            name='structure.predict.cell_mask.size_height')  # is the predict_size_max from ui
-        self.__parameters.set_parameter(name='structure.predict.cell_mask.clip_thresh_min')
-        self.__parameters.set_parameter(name='structure.predict.cell_mask.clip_thresh_max')
 
         self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
 
         self.__parameters.set_parameter(name='structure.z_band_analysis.threshold')
         self.__parameters.set_parameter(name='structure.z_band_analysis.min_length')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.end_radius')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.theta_phi_min')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.a_min')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.d_max')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.d_min')
 
-        self.__parameters.set_parameter(name='structure.wavelet.filter_size')
-        self.__parameters.set_parameter(name='structure.wavelet.minor')
-        self.__parameters.set_parameter(name='structure.wavelet.major')
-        self.__parameters.set_parameter(name='structure.wavelet.length_limit_lower')
-        self.__parameters.set_parameter(name='structure.wavelet.length_limit_upper')
-        self.__parameters.set_parameter(name='structure.wavelet.length_step')
-        self.__parameters.set_parameter(name='structure.wavelet.orientation_limit_lower')
-        self.__parameters.set_parameter(name='structure.wavelet.orientation_limit_upper')
-        self.__parameters.set_parameter(name='structure.wavelet.orientation_step')
-        self.__parameters.set_parameter(name='structure.wavelet.absolute_threshold')
-        self.__parameters.set_parameter(name='structure.wavelet.score_threshold')
-        self.__parameters.set_parameter(name='structure.wavelet.save_all')
+
+        self.__parameters.set_parameter(name='structure.vectors.radius')
+        self.__parameters.set_parameter(name='structure.vectors.line_width')
+        self.__parameters.set_parameter(name='structure.vectors.interpolation_factor')
+        self.__parameters.set_parameter(name='structure.vectors.length_limit_lower')
+        self.__parameters.set_parameter(name='structure.vectors.length_limit_upper')
+
 
         self.__parameters.set_parameter(name='structure.myofibril.n_seeds')
-        self.__parameters.set_parameter(name='structure.myofibril.score_threshold_empty')
-        self.__parameters.set_parameter(name='structure.myofibril.score_threshold')
         self.__parameters.set_parameter(name='structure.myofibril.persistence')
         self.__parameters.set_parameter(name='structure.myofibril.threshold_distance')
+        self.__parameters.set_parameter(name='structure.myofibril.n_min')
 
-        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_ends')
-        self.__parameters.set_parameter(name='structure.domain.analysis.dist_thresh_pos_vectors')
-        self.__parameters.set_parameter(name='structure.domain.analysis.louvain_resolution')
-        self.__parameters.set_parameter(name='structure.domain.analysis.louvain_seed')
+
+        self.__parameters.set_parameter(name='structure.domain.analysis.d_max')
+        self.__parameters.set_parameter(name='structure.domain.analysis.cosine_min')
+        self.__parameters.set_parameter(name='structure.domain.analysis.leiden_resolution')
+        self.__parameters.set_parameter(name='structure.domain.analysis.random_seed')
         self.__parameters.set_parameter(name='structure.domain.analysis.area_min')
         self.__parameters.set_parameter(name='structure.domain.analysis.dilation_radius')
-
         # endregion
 
         # region loi parameters
