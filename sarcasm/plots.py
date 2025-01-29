@@ -197,12 +197,12 @@ class Plots:
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols),
                                       constrained_layout=True)
 
-        if isinstance(sarc_obj.structure.data['params.wavelet_frames'], int):
-            frame = sarc_obj.structure.data['params.wavelet_frames']
-        elif sarc_obj.structure.data['params.wavelet_frames'] == 'all':
+        if isinstance(sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'], int):
+            frame = sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames']
+        elif sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'] == 'all':
             frame = frame
         else:
-            frame = sarc_obj.structure.data['params.wavelet_frames'][frame]
+            frame = sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'][frame]
 
         Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, cmap=cmap_z_bands)
         Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, cmap=cmap_z_bands)
@@ -514,7 +514,7 @@ class Plots:
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
-        assert frame in sarc_obj.structure.data['params.z_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.structure.data['z_labels'][frame].toarray()
         if shuffle:
@@ -581,7 +581,7 @@ class Plots:
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
-        assert frame in sarc_obj.structure.data['params.z_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.structure.data['z_labels'][frame].toarray()
 
@@ -1141,7 +1141,7 @@ class Plots:
         """
         assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                                  'run analyze_sarcomere_vectors first.')
-        assert frame in sarc_obj.structure.data['params.vector_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
 
         pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
         sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
@@ -1234,7 +1234,7 @@ class Plots:
         """
         assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
-        assert frame in sarc_obj.structure.data['params.domain_frames'], (f'Domains in frame {frame} are not yet '
+        assert frame in sarc_obj.structure.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
                                                                           f'analyzed.')
 
         domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
@@ -1294,7 +1294,7 @@ class Plots:
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.myof_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame)

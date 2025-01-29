@@ -17,7 +17,6 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from bio_image_unet import unet
 from bio_image_unet import unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
@@ -33,7 +32,6 @@ from skimage.measure import label, regionprops_table, regionprops, profile_line
 from skimage.morphology import skeletonize, disk, binary_dilation
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
-from tqdm import tqdm as tqdm
 
 from .ioutils import IOUtils
 from .utils import Utils
@@ -283,7 +281,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_cell_mask(self, threshold: float = 0.1) -> None:
+    def analyze_cell_mask(self, threshold: float = 0.01) -> None:
         """
         Analyzes the area occupied by cells in the given image(s) and calculates the cell area ratio.
 
@@ -293,7 +291,7 @@ class Structure:
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold are considered cell. Defaults to 0.1.
         """
-        assert self.sarc_obj.file_cell_mask is not None, "Cell mask not found. Please run predict_cell_mask first."
+        assert self.sarc_obj.file_cell_mask is not None, "Cell mask not found. Please run detect_sarcomeres first."
 
         imgs = tifffile.imread(self.sarc_obj.file_cell_mask)
 
@@ -312,7 +310,7 @@ class Structure:
             cell_area[i] = np.sum(mask) * self.sarc_obj.metadata['pixelsize'] ** 2
             cell_area_ratio[i] = cell_area[i] / (img.shape[0] * img.shape[1] * self.sarc_obj.metadata['pixelsize'] ** 2)
         _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
-                 'params.cell_mask_area.threshold': threshold}
+                 'params.analyze_cell_mask.threshold': threshold}
         self.data.update(_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -470,9 +468,10 @@ class Structure:
                        'z_lat_length_groups_std': z_lat_length_groups_std,
                        'z_lat_alignment_groups_mean': z_lat_alignment_groups_mean,
                        'z_lat_alignment_groups_std': z_lat_alignment_groups_std,
-                       'params.z_frames': list_frames, 'params.z_threshold': threshold,
-                       'params.z_min_length': min_length, 'params.z_end_radius': end_radius,
-                       'params.z_theta_phi_min': theta_phi_min, 'params.z_d_max': d_max, 'params.z_d_min': d_min}
+                       'params.analyze_z_bands.frames': list_frames, 'params.analyze_z_bands.threshold': threshold,
+                       'params.analyze_z_bands.min_length': min_length, 'params.analyze_z_bands.end_radius': end_radius,
+                       'params.analyze_z_bands.theta_phi_min': theta_phi_min, 'params.analyze_z_bands.d_max': d_max,
+                       'params.analyze_z_bands.d_min': d_min}
         self.data.update(z_band_data)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -593,13 +592,15 @@ class Structure:
             # calculate sarcomere mask area
             sarcomere_masks[frame_i] = sarcomere_mask_i
             sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
-            sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
+            sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
-        wavelet_dict = {'params.vector_frames': list_frames, 'params.vector_radius': radius,
-                        'params.vector_slen_lims': slen_lims, 'params.vector_interp_factor': interp_factor,
-                        'params.vector_linewidth': linewidth, 'pos_vectors_px': pos_vectors_px,
+        wavelet_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
+                        'params.analyze_sarcomere_vectors.radius': radius,
+                        'params.analyze_sarcomere_vectors.slen_lims': slen_lims,
+                        'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
+                        'params.analyze_sarcomere_vectors.linewidth': linewidth, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
                         'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
@@ -799,8 +800,8 @@ class Structure:
                 mask_i = np.zeros(self.sarc_obj.metadata['size'], dtype='bool')
             sarcomere_masks[frame_i] = mask_i
             sarcomere_area[frame_i] = np.sum(mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
-            if 'cell_area' in self.data.keys():
-                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_area'][i]
+            if 'cell_mask_area' in self.data.keys():
+                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
             else:
                 area = self.sarc_obj.metadata['size'][0] * self.sarc_obj.metadata['size'][1] * self.sarc_obj.metadata[
                     'pixelsize'] ** 2
@@ -808,12 +809,7 @@ class Structure:
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
-        wavelet_dict = {'params.wavelet_size': size, 'params.wavelet_minor': minor, 'params.wavelet_major': major,
-                        'params.wavelet_len_lims': len_lims, 'params.wavelet_len_step': len_step,
-                        'params.orient_lims': orient_lims, 'params.orient_step': orient_step,
-                        'params.kernel': kernel, 'params.vector_frames': list_frames,
-                        'params.len_range': len_range[1:-2],
-                        'params.orient_range': orient_range, 'wavelet_sarcomere_length': wavelet_sarcomere_length,
+        wavelet_dict = {'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
@@ -826,8 +822,20 @@ class Structure:
                         'sarcomere_orientation_mean': sarcomere_orientation_mean,
                         'sarcomere_orientation_std': sarcomere_orientation_std,
                         'sarcomere_oop': oop,
-                        'params.score_threshold': score_thresholds, 'params.abs_threshold': abs_threshold,
-                        'params.sarcomere_area_closing_radius': dilation_radius}
+                        'params.analyze_sarcomere_vectors_wavelet.size': size,
+                        'params.analyze_sarcomere_vectors_wavelet.minor': minor,
+                        'params.analyze_sarcomere_vectors_wavelet.major': major,
+                        'params.analyze_sarcomere_vectors_wavelet.len_lims': len_lims,
+                        'params.analyze_sarcomere_vectors_wavelet.len_step': len_step,
+                        'params.analyze_sarcomere_vectors_wavelet.orient_lims': orient_lims,
+                        'params.analyze_sarcomere_vectors_wavelet.orient_step': orient_step,
+                        'params.analyze_sarcomere_vectors_wavelet.kernel': kernel,
+                        'params.analyze_sarcomere_vectors_wavelet.frames': list_frames,
+                        'params.analyze_sarcomere_vectors_wavelet.len_range': len_range,
+                        'params.analyze_sarcomere_vectors_wavelet.orient_range': orient_range,
+                        'params.analyze_sarcomere_vectors_wavelet.score_threshold': score_thresholds,
+                        'params.analyze_sarcomere_vectors_wavelet.abs_threshold': abs_threshold,
+                        'params.analyze_sarcomere_vectors_wavelet.dilation_radius': dilation_radius}
         self.data.update(wavelet_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -853,7 +861,8 @@ class Structure:
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
-        assert frame in self.data['params.vector_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
+        assert frame in self.data['params.analyze_sarcomere_vectors.frames'], \
+            f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         z_bands_t = tifffile.imread(self.sarc_obj.file_z_bands, key=frame)
         points_t = self.data['pos_vectors'][frame]
@@ -899,8 +908,7 @@ class Structure:
         return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
-                           n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.4,
-                           n_min: int = 5,
+                           n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.4, n_min: int = 5,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -929,10 +937,10 @@ class Structure:
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             assert set(frames).issubset(
-                self.data['params.vector_frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
+                self.data['params.analyze_sarcomere_vectors.frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
         elif frames is None:
-            if 'params.vector_frames' in self.data.keys():
-                frames = self.data['params.vector_frames']
+            if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
+                frames = self.data['params.analyze_sarcomere_vectors.frames']
             else:
                 raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
 
@@ -995,8 +1003,12 @@ class Structure:
                           'myof_length_std': length_std, 'myof_lines': myof_lines,
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_msc': msc, 'myof_msc_mean': msc_mean,
-                          'myof_msc_std': msc_std, 'params.n_seeds': n_seeds, 'params.persistence': persistence,
-                          'params.threshold_distance': threshold_distance, 'params.myof_frames': list_frames}
+                          'myof_msc_std': msc_std, 'params.analyze_myofibrils.n_seeds': n_seeds,
+                          'params.analyze_myofibrils': {'persistence': persistence,
+                                                        'threshold_distance': threshold_distance,
+                                                        'list_frames': list_frames, 'n_min': n_min, 'n_seeds': n_seeds}
+                          }
+
         self.data.update(myofibril_data)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -1038,10 +1050,10 @@ class Structure:
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             assert set(frames).issubset(
-                self.data['params.vector_frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
+                self.data['params.analyze_sarcomere_vectors.frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
         elif frames is None:
-            if 'params.vector_frames' in self.data.keys():
-                frames = self.data['params.vector_frames']
+            if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
+                frames = self.data['params.analyze_sarcomere_vectors.frames']
             else:
                 raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
 
@@ -1111,10 +1123,11 @@ class Structure:
                        'domain_oop': domain_oop, 'domain_oop_mean': domain_oop_mean,
                        'domain_oop_std': domain_oop_std,
                        'domain_orientation': domain_orientation, 'domain_mask': domain_mask,
-                       'params.domain_frames': list_frames,
-                       'params.domain.d_max': d_max, 'params.domain.cosine_min': cosine_min,
-                       'params.domain.leiden_resolution': leiden_resolution,
-                       'params.domain.area_min': area_min}
+                       'params.analyze_sarcomere_domains.frames': list_frames,
+                       'params.analyze_sarcomere_domains.d_max': d_max,
+                       'params.analyze_sarcomere_domains.cosine_min': cosine_min,
+                       'params.analyze_sarcomere_domains.leiden_resolution': leiden_resolution,
+                       'params.analyze_sarcomere_domains.area_min': area_min,}
 
         self.data.update(domain_data)
         if self.sarc_obj.auto_save:
@@ -1495,7 +1508,6 @@ class Structure:
         """
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
-        # assert frame in self.data['params.vector_frames'], f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         # Grow LOIs based on seed vectors and specified parameters
         self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,

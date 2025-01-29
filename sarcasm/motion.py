@@ -162,7 +162,7 @@ class Motion(SarcAsM):
         peaks = []
         if not self.loi_data:
             raise ValueError('loi_data is not initialized, create intensity profiles first')
-        self.loi_data['parameters.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
+        self.loi_data['params.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
         min_dist_pixels = int(round(min_dist / self.metadata['pixelsize'], 0))
         width_pixels = int(round(width / self.metadata['pixelsize'], 0))
         for i, y in enumerate(self.loi_data['y_int']):
@@ -198,9 +198,13 @@ class Motion(SarcAsM):
         filter_params : tuple(float, float)
             Parameters window length and poly order of Savitzky-Golay filter to smooth z position
         """
-        self.loi_data['parameters.track_peaks'] = {'search_range': search_range, 'memory_tracking': memory_tracking,
-                                                   'memory_interpol': memory_interpol, 't_range': t_range,
-                                                   'z_range': z_range}
+        params_dict = {'params.track_z_bands.search_range': search_range,
+                       'params.track_z_bands.memory_tracking': memory_tracking,
+                       'params.track_z_bands.memory_interpol': memory_interpol,
+                       'params.track_z_bands.t_range': t_range,
+                       'params.track_z_bands.z_range': z_range}
+
+        self.loi_data.update(params_dict)
         peaks = self.loi_data['peaks'].copy()
         # make x,y array
         peaks = [np.asarray([p, np.zeros_like(p)]).T for p in peaks]
@@ -250,10 +254,13 @@ class Motion(SarcAsM):
 
         # save data
         dict_temp = {'z_pos_raw': z_pos, 'z_pos': z_pos_filt, 'slen': slen,
-                     'parameters.track_z_bands': {'search_range': search_range, 'memory_tracking': memory_tracking,
-                                                  'memory_interpol': memory_interpol, 't_range': t_range,
-                                                  'z_range': z_range, 'min_length': min_length,
-                                                  'filter_params': filter_params}}
+                     'params.track_z_bands': search_range,
+                     'params.track_z_bands.memory_tracking': memory_tracking,
+                     'params.track_z_bands.memory_interpol': memory_interpol,
+                     'params.track_z_bands.t_range': t_range,
+                     'params.track_z_bands.z_range': z_range,
+                     'params.track_z_bands.min_length': min_length,
+                     'params.track_z_bands.filter_params': filter_params}
 
         self.loi_data.update(dict_temp)
         if self.auto_save:
@@ -334,11 +341,12 @@ class Motion(SarcAsM):
         time_cycle = time_contr[:-1] + time_quiet
 
         # store in LOI dict
-        dict_temp = {'parameters.detect_analyze_contractions': {'model': model, 'slen_lims': slen_lims,
-                                                                'n_sarcomeres_min': n_sarcomeres_min,
-                                                                'buffer_frames': buffer_frames,
-                                                                'contr_time_min': contr_time_min,
-                                                                'merge_time_max': merge_time_max},
+        dict_temp = {'params.detect_analyze_contractions.model': model,
+                     'params.detect_analyze_contractions.slen_lims': slen_lims,
+                     'params.detect_analyze_contractions.n_sarcomeres_min': n_sarcomeres_min,
+                     'params.detect_analyze_contractions.buffer_frames': buffer_frames,
+                     'params.detect_analyze_contractions.contr_time_min': contr_time_min,
+                     'params.detect_analyze_contractions.merge_time_max': merge_time_max,
                      'contr': contr, 'start_contr_frame': start_contr_frame, 'start_contr': start_contr,
                      'quiet': quiet, 'start_quiet_frame': start_quiet_frame, 'start_quiet': start_quiet,
                      'labels_contr': labels_contr, 'labels_quiet': labels_quiet,
@@ -405,8 +413,8 @@ class Motion(SarcAsM):
 
         # store data in LOI dictionary
         dict_temp = {
-            'parameters.get_sarcomere_trajectories': {'slen_lims': slen_lims,
-                                                      'filter_params_vel': filter_params_vel},
+            'params.get_sarcomere_trajectories.slen_lims': slen_lims,
+            'params.get_sarcomere_trajectories.filter_params_vel': filter_params_vel,
             'slen': slen, 'slen_avg': slen_avg, 'vel': vel, 'vel_avg': vel_avg, 'n_sarcomeres': n_sarcomeres,
             'n_sarcomeres_time': n_sarcomeres_time, 'equ': equ, 'delta_slen': delta_slen,
             'delta_slen_avg': delta_slen_avg, 'ratio_nans': ratio_nans}
@@ -607,7 +615,8 @@ class Motion(SarcAsM):
 
         # dictionary
         dict_popping = {'popping_rate_contr': rate_contr, 'popping_rate_sarcomeres': rate_sarcomeres,
-                        'popping_rate': rate, 'popping_events': popping}
+                        'popping_rate': rate, 'popping_events': popping,
+                        'params.analyze_popping.thres_popping': thres_popping}
 
         popping_events = dict_popping['popping_events']
         idxs_popping_s, idxs_popping_c = np.where(popping_events == 1)
@@ -803,9 +812,11 @@ class Motion(SarcAsM):
             peak_2_single = np.nan
             amp_2_single = np.nan
 
-        dict_oscill = {'parameters.analyze_oscillations': {'min_scale': min_scale, 'max_scale': max_scale,
-                                                           'num_scales': num_scales, 'wavelet': wavelet,
-                                                           'freq_thres': freq_thres},
+        dict_oscill = {'params.analyze_oscillations.min_scale': min_scale,
+                       'params.analyze_oscillations.max_scale': max_scale,
+                       'params.analyze_oscillations.num_scales': num_scales,
+                       'params.analyze_oscillations.wavelet': wavelet,
+                       'params.analyze_oscillations.freq_thres': freq_thres,
                        'oscill_frequencies': frequencies,
                        'oscill_cfs_avg': cfs_avg,
                        'oscill_cfs': np.asarray(cfs),
