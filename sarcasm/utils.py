@@ -415,13 +415,14 @@ class Utils:
 
         # Interpolate data with padding to avoid edge effects
         pad_width = width
-        profile_padded = np.pad(profile, pad_width, mode='reflect')
+        profile_padded = np.pad(profile, pad_width, mode='constant', constant_values=0)
         pos_padded = np.linspace(pos_array[0] - pad_width * pixelsize,
                                  pos_array[-1] + pad_width * pixelsize,
                                  len(profile_padded))
 
         # Create interpolation function with padded data
-        interp_func = Akima1DInterpolator(pos_padded, profile_padded, method='akima')
+        interp_func = Akima1DInterpolator(pos_padded[np.isfinite(profile_padded)],
+                                          profile_padded[np.isfinite(profile_padded)], method='akima')
         x_interp = np.linspace(pos_array[0], pos_array[-1],
                                num=len(profile) * interp_factor)
         y_interp = interp_func(x_interp)
