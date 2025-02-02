@@ -18,7 +18,7 @@ import tifffile
 import torch
 import torch.nn.functional as F
 from bio_image_unet import unet3d as unet3d
-from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet
+from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet_3Levels
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
 from joblib import Parallel, delayed
@@ -223,7 +223,7 @@ class Structure:
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.sarc_obj.model_dir, 'model_sarcomeres_generalist.pt')
         _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.folder,
-                         resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet,
+                         resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet_3Levels,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
                          progress_notifier=progress_notifier)
         del _
@@ -580,9 +580,10 @@ class Structure:
             # calculate mean and std of sarcomere length and orientation
             sarcomere_length_mean[frame_i], sarcomere_length_std[frame_i], = np.nanmean(
                 sarcomere_length_vectors_i), np.nanstd(sarcomere_length_vectors_i)
-            sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = stats.circmean(
-                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]), stats.circstd(
-                sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
+            if np.count_nonzero(~np.isnan(sarcomere_orientation_vectors_i)) > 1:
+                sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = stats.circmean(
+                    sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]), stats.circstd(
+                    sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
 
             # orientation order parameter
             if len(sarcomere_orientation_vectors_i) > 0:
