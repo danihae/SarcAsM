@@ -894,6 +894,14 @@ class Plots:
             plt.colorbar(plot1, ax=ax1, label=r'X-Field', shrink=shrink_colorbar, orientation=orient_colorbar)
             plt.colorbar(plot2, ax=ax2, label=r'Y-Field', shrink=shrink_colorbar, orientation=orient_colorbar)
 
+        if scalebar:
+            ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+            ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
@@ -913,6 +921,14 @@ class Plots:
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax1, xlim=(x1, x2), ylim=(y1, y2), c='w')
             PlotUtils.plot_box(ax2, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
+            if scalebar:
+                ax_inset1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                                        height_fraction=0.07, location='lower right', scale_loc='top',
+                                        font_properties={'size': PlotUtils.fontsize - 1}))
+                ax_inset2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                                        height_fraction=0.07, location='lower right', scale_loc='top',
+                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
     def plot_sarcomere_lengths_wavelet(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
@@ -1094,8 +1110,8 @@ class Plots:
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='k',
                                color_points='darkgreen', s_points=0.5, linewidths=0.0005,
-                               linewidths_inset=0.0001, scalebar=True,
-                               legend=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
+                               s_points_inset=0.5, linewidths_inset=0.0001, scalebar=True,
+                               legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_loc='upper right', inset_width="35%", inset_height="35%"):
         """
@@ -1115,15 +1131,19 @@ class Plots:
         color_points : str, optional
             The color of the points. Defaults to 'darkgreen'.
         s_points : float, optional
-            The size of the points. Defaults to 0.5.
+            The size of midline points. Defaults to 0.5.
         linewidths : float, optional
             The width of the arrow lines. Defaults to 0.0005.
+        s_points_inset : float, optional
+            The size of midline points. Defaults to 0.5.
         linewidths_inset : float, optional
             The width of the arrow lines in the inset plot. Defaults to 0.0001.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         legend : bool, optional
             Whether to add a legend to the plot. Defaults to False.
+        show_image : bool, optional
+            Whether to show the image (True) or the Z-bands (False). Defaults to False.
         cmap_z_bands : str, optional
             Colormap of Z-bands. Defaults to 'Greys'.
         alpha_z_bands : float, optional
@@ -1150,8 +1170,10 @@ class Plots:
         orientation_vectors = np.asarray(
             [np.cos(sarcomere_orientation_vectors), -np.sin(sarcomere_orientation_vectors)])
 
-        Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands,
-                           frame=frame)
+        if show_image:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        else:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
 
@@ -1181,11 +1203,15 @@ class Plots:
             linewidths *= 10
             x1, x2, y1, y2 = zoom_region
             ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
-            Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands, frame=frame)
+
+            if show_image:
+                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+            else:
+                Plots.plot_z_bands(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
-            ax_inset.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none', s=s_points,
-                             label='Midline points')
+            ax_inset.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none',
+                             s=s_points_inset, label='Midline points')
             ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0],
                             -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                             orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
@@ -1203,6 +1229,11 @@ class Plots:
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
+
+            if scalebar:
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k',
+                                             sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                                             font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
