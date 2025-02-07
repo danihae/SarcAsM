@@ -415,7 +415,7 @@ class Utils:
 
         # Interpolate data with padding to avoid edge effects
         pad_width = width
-        profile_padded = np.pad(profile, pad_width, mode='constant', constant_values=0)
+        profile_padded = np.pad(profile, pad_width, mode='reflect')
         pos_padded = np.linspace(pos_array[0] - pad_width * pixelsize,
                                  pos_array[-1] + pad_width * pixelsize,
                                  len(profile_padded))
@@ -714,7 +714,7 @@ class Utils:
 
     @staticmethod
     def get_orientation_angles(orientation_field: np.ndarray,
-                               use_median_filter: bool = False,
+                               use_median_filter: bool = True,
                                radius: int = 2) -> np.ndarray:
         """
         Convert a polar vector field into a map of angles for sarcomere orientations.

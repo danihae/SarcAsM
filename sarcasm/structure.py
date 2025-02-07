@@ -477,7 +477,7 @@ class Structure:
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', radius: float = 0.25,
-                                  linewidth: float = 0.3, interp_factor: int = 4,
+                                  linewidth: float = 0.2, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3),
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
@@ -548,9 +548,6 @@ class Structure:
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(4))
 
-        # analyze cell mask - needed for calculation of sarcomere_area_ratio
-        self.analyze_cell_mask()
-
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
         for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, distance_i) in enumerate(
@@ -593,7 +590,8 @@ class Structure:
             # calculate sarcomere mask area
             sarcomere_masks[frame_i] = sarcomere_mask_i
             sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
-            sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
+            if 'cell_mask_area' in self.data:
+                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
