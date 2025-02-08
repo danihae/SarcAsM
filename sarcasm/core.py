@@ -114,3 +114,25 @@ class SarcAsM:
         else:
             assert isinstance(device, torch.device), "Device must be of type 'torch.device', e.g. torch.device('cpu')"
             self.device = device
+
+    def remove_intermediate_tiffs(self):
+        """
+        Removes all intermediate TIFF files in the analysis folder,
+        keeping only the original input file.
+        """
+        # List of TIFF files to potentially remove
+        tiff_files_to_remove = [
+            self.file_z_bands,
+            self.file_zbands_old,
+            self.file_z_bands_fast_movie,
+            self.file_midlines,
+            self.file_distance,
+            self.file_orientation,
+            self.file_cell_mask,
+            self.file_sarcomere_mask
+        ]
+
+        # Remove each TIFF file if it exists
+        for tiff_file in tiff_files_to_remove:
+            if os.path.exists(tiff_file):
+                os.remove(tiff_file)
