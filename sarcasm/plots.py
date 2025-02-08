@@ -12,7 +12,6 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.ndimage import median_filter
 from tifffile import tifffile
 
@@ -299,7 +298,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -369,7 +368,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
             ax_inset.set_xticks([])
@@ -435,7 +434,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(joined[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
             ax_inset.set_xticks([])
@@ -534,7 +533,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             ax_inset.imshow(masked_labels[y1:y2, x1:x2], cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -622,7 +621,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             ax_inset.imshow(masked_labels, cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -827,7 +826,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             ax_inset.imshow(orientation[y1:y2, x1:x2], vmin=lim[0], vmax=lim[1], cmap='hsv')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -905,8 +904,8 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset1 = inset_axes(ax1, width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset2 = inset_axes(ax2, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset1 = ax1.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset2 = ax2.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
 
             ax_inset1.imshow(orientation_field[0][y1:y2, x1:x2], cmap=cmap)
             ax_inset2.imshow(orientation_field[1][y1:y2, x1:x2], cmap=cmap)
@@ -1093,7 +1092,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             if show_z_bands:
                 Plots.plot_z_bands(ax_inset, sarc_obj, alpha=alpha_z_bands, cmap=cmap_z_bands, frame=frame)
             else:
@@ -1202,7 +1201,7 @@ class Plots:
         if zoom_region:
             linewidths *= 10
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
 
             if show_image:
                 Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
@@ -1345,7 +1344,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
             Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
             if show_z_bands:

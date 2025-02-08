@@ -281,7 +281,7 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def analyze_cell_mask(self, threshold: float = 0.01) -> None:
+    def analyze_cell_mask(self, threshold: float = 0.1) -> None:
         """
         Analyzes the area occupied by cells in the given image(s) and calculates the cell area ratio.
 
@@ -2952,7 +2952,10 @@ class Structure:
         if points_t.shape[0] == 2:
             points_t = points_t.T
 
-        assert len(points_t) > 0, 'No sarcomeres in image (len(points) = 0), could not grow lines.'
+        if len(points_t) == 0:
+            print('No sarcomeres in image (len(points) = 0), could not grow lines.')
+            return {'lines': [], 'line_features': None}
+
         random.seed(random_seed)
         n_vectors = len(points_t)
         seed_idx = random.sample(range(n_vectors), min(n_seeds, n_vectors))
