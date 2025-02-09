@@ -242,7 +242,7 @@ class Plots:
     @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap='grey', alpha=1, clip_thrs=(1, 99),
                    scalebar=True, title=None, show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
-                   inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots microscopy raw image of the sarcomere object.
 
@@ -268,12 +268,8 @@ class Plots:
             Whether to show the line of interest (LOI). Defaults to True.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
 
         img = sarc_obj.structure.read_imgs(frames=frame)
@@ -298,7 +294,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -316,7 +312,7 @@ class Plots:
     def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='Greys_r', zero_transparent=False,
                      alpha=1, scalebar=True, title=None, color_scalebar='k',
                      show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
-                     inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                     inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots the Z-bands of the sarcomere object.
 
@@ -340,12 +336,8 @@ class Plots:
             Whether to show the line of interest (LOI). Defaults to True.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
 
@@ -368,7 +360,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
             ax_inset.set_xticks([])
@@ -380,7 +372,7 @@ class Plots:
     def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='berlin',
                               alpha=1, scalebar=True, title=None, color_scalebar='w',
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
-                              inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                              inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots the Z-bands and midlines of the sarcomere object.
 
@@ -404,12 +396,8 @@ class Plots:
             Whether to show the line of interest (LOI). Defaults to True.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
 
@@ -434,7 +422,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(joined[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
             ax_inset.set_xticks([])
@@ -484,7 +472,7 @@ class Plots:
     @staticmethod
     def plot_z_segmentation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, shuffle=True,
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
-                            inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                            inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots the Z-band segmentation result of the sarcomere object.
 
@@ -504,12 +492,8 @@ class Plots:
             The title for the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
@@ -533,7 +517,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(masked_labels[y1:y2, x1:x2], cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -545,7 +529,7 @@ class Plots:
     def plot_z_lateral_connections(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, markersize=1.5,
                                    linewidth=0.25, plot_groups=True, shuffle=True, title=None,
                                    zoom_region: Tuple[int, int, int, int] = None,
-                                   inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots lateral Z-band connections of a SarcAsM object.
 
@@ -571,12 +555,8 @@ class Plots:
             The title for the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
                                                               'Run analyze_z_bands first.')
@@ -621,7 +601,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(masked_labels, cmap=cmap)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -745,7 +725,7 @@ class Plots:
                                    shrink_colorbar=0.7,
                                    orient_colorbar='vertical', title=None,
                                    zoom_region: Tuple[int, int, int, int] = None,
-                                   inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
             Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
 
@@ -771,12 +751,8 @@ class Plots:
                 The title for the plot. Defaults to None.
             zoom_region : tuple of int, optional
                 The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-            inset_loc : str, optional
-                The location of the inset axis. Defaults to 'upper right'.
-            inset_width : str or float, optional
-                The width of the inset axis. Defaults to "30%".
-            inset_height : str or float, optional
-                The height of the inset axis. Defaults to "30%".
+            inset_bounds : tuple of float, optional
+                Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
             """
         assert os.path.exists(
             sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
@@ -826,7 +802,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(orientation[y1:y2, x1:x2], vmin=lim[0], vmax=lim[1], cmap='hsv')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
@@ -838,7 +814,7 @@ class Plots:
     def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='vanimo',
                                          scalebar=True, colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                          zoom_region: Tuple[int, int, int, int] = None,
-                                         inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                                         inset_bounds=(0.6, 0.6, 0.4, 0.4),):
         """
             Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
 
@@ -862,12 +838,8 @@ class Plots:
                 The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
             zoom_region : tuple of int, optional
                 The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-            inset_loc : str, optional
-                The location of the inset axis. Defaults to 'upper right'.
-            inset_width : str or float, optional
-                The width of the inset axis. Defaults to "30%".
-            inset_height : str or float, optional
-                The height of the inset axis. Defaults to "30%".
+            inset_bounds : tuple of float, optional
+                Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
             """
         assert os.path.exists(
             sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
@@ -904,8 +876,8 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset1 = ax1.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
-            ax_inset2 = ax2.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset1 = ax1.inset_axes(bounds=inset_bounds)
+            ax_inset2 = ax2.inset_axes(bounds=inset_bounds)
 
             ax_inset1.imshow(orientation_field[0][y1:y2, x1:x2], cmap=cmap)
             ax_inset2.imshow(orientation_field[1][y1:y2, x1:x2], cmap=cmap)
@@ -1037,7 +1009,7 @@ class Plots:
     def plot_sarcomere_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
                             alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
                             zoom_region: Tuple[int, int, int, int] = None,
-                            inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                            inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots binary mask of sarcomeres, derived from sarcomere vectors.
 
@@ -1065,12 +1037,8 @@ class Plots:
             The title for the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
                                                               'Run sarc_obj.analyze_sarcomere_vectors ')
@@ -1092,7 +1060,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             if show_z_bands:
                 Plots.plot_z_bands(ax_inset, sarc_obj, alpha=alpha_z_bands, cmap=cmap_z_bands, frame=frame)
             else:
@@ -1112,7 +1080,7 @@ class Plots:
                                s_points_inset=0.5, linewidths_inset=0.0001, scalebar=True,
                                legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
-                               inset_loc='upper right', inset_width="35%", inset_height="35%"):
+                               inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots quiver plot reflecting local sarcomere length and orientation based on
         wavelet analysis result of the sarcomere object.
@@ -1151,12 +1119,8 @@ class Plots:
             The title for the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                                  'run analyze_sarcomere_vectors first.')
@@ -1201,7 +1165,7 @@ class Plots:
         if zoom_region:
             linewidths *= 10
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
 
             if show_image:
                 Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
@@ -1288,8 +1252,7 @@ class Plots:
     @staticmethod
     def plot_myofibrils(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
                         alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None, zoom_region=None,
-                        inset_loc='lower left',
-                        inset_width='40%', inset_height='40%'):
+                        inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1315,12 +1278,8 @@ class Plots:
             The titlefor the plot. Defaults to None.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-        inset_loc : str, optional
-            The location of the inset axis. Defaults to 'upper right'.
-        inset_width : str or float, optional
-            The width of the inset axis. Defaults to "30%".
-        inset_height : str or float, optional
-            The height of the inset axis. Defaults to "30%".
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
@@ -1344,7 +1303,7 @@ class Plots:
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
-            ax_inset = ax.inset_axes(width=inset_width, height=inset_height, loc=inset_loc)
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
             Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
             if show_z_bands:
