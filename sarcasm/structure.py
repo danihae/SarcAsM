@@ -985,17 +985,18 @@ class Structure:
                                                n_min=n_min)
                 lines_i = line_data_i['lines']
 
-                # line lengths and mean squared curvature (msc)
-                lengths_i = line_data_i['line_features']['length_lines']
-                msc_i = line_data_i['line_features']['msc_lines']
-                if len(lengths_i) > 0:
-                    length_mean[frame_i], length_std[frame_i], length_max[frame_i] = np.mean(
-                        lengths_i), np.std(lengths_i), np.max(lengths_i)
-                    msc_mean[frame_i], msc_std[frame_i] = np.mean(msc_i), np.std(
-                        msc_i)
-                myof_lines[frame_i] = lines_i
-                lengths[frame_i] = lengths_i
-                msc[frame_i] = msc_i
+                if len(lines_i) > 0:
+                    # line lengths and mean squared curvature (msc)
+                    lengths_i = line_data_i['line_features']['length_lines']
+                    msc_i = line_data_i['line_features']['msc_lines']
+                    if len(lengths_i) > 0:
+                        length_mean[frame_i], length_std[frame_i], length_max[frame_i] = np.mean(
+                            lengths_i), np.std(lengths_i), np.max(lengths_i)
+                        msc_mean[frame_i], msc_std[frame_i] = np.mean(msc_i), np.std(
+                            msc_i)
+                    myof_lines[frame_i] = lines_i
+                    lengths[frame_i] = lengths_i
+                    msc[frame_i] = msc_i
 
         # update structure dictionary
         myofibril_data = {'myof_length_mean': length_mean,
@@ -1576,7 +1577,8 @@ class Structure:
             selected frames).
         """
         self.sarc_obj.auto_save = False
-        self.detect_sarcomeres(frames=frames)
+        #  self.detect_sarcomeres(frames=frames)
+        self.analyze_cell_mask()
         self.analyze_z_bands(frames=frames)
         self.analyze_sarcomere_vectors(frames=frames)
         self.analyze_myofibrils(frames=frames)
@@ -2954,7 +2956,7 @@ class Structure:
 
         if len(points_t) == 0:
             print('No sarcomeres in image (len(points) = 0), could not grow lines.')
-            return {'lines': [], 'line_features': None}
+            return {'lines': [], 'line_features': {}}
 
         random.seed(random_seed)
         n_vectors = len(points_t)
