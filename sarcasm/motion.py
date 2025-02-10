@@ -46,7 +46,7 @@ class Motion(SarcAsM):
         self.loi_name = Motion.get_loi_name_from_file_name(loi_name)  # loi_name is the file name of the json self file
 
         # create folder for LOI (sub-folder in cell folder) for analysis
-        self.loi_folder = os.path.join(self.folder, self.loi_name)
+        self.loi_folder = os.path.join(self.base_dir, self.loi_name)
         os.makedirs(self.loi_folder, exist_ok=True)
 
         # flag to automatically save dict after processing
@@ -81,9 +81,9 @@ class Motion(SarcAsM):
 
     def __get_loi_data_file_name(self, is_temp_file=False) -> str:
         if is_temp_file:
-            return os.path.join(self.data_folder, self.loi_name + "_loi_data.temp.json")
+            return os.path.join(self.data_dir, self.loi_name + "_loi_data.temp.json")
         else:
-            return os.path.join(self.data_folder, self.loi_name + "_loi_data.json")
+            return os.path.join(self.data_dir, self.loi_name + "_loi_data.json")
 
     def load_loi_data(self):
         if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)):

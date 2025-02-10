@@ -142,7 +142,7 @@ class Plots:
         """
 
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
-        title = f'File: {motion_obj.filename}, \nLOI: {motion_obj.loi_name}'
+        title = f'File: {motion_obj.filepath}, \nLOI: {motion_obj.loi_name}'
         fig.suptitle(title, fontsize=PlotUtils.fontsize)
 
         # A- image cell w/ LOI

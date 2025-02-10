@@ -95,7 +95,7 @@ class StructureAnalysisControl:
         if not self.__chk_prediction_network():
             return
         cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Z-bands detected and saved in {cell.folder}'
+        message_finished = f'Z-bands detected and saved in {cell.base_dir}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',

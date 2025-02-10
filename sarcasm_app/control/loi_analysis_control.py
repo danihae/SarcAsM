@@ -128,7 +128,7 @@ class LOIAnalysisControl:
             width = float(p['loi_layer'].edge_width[index])
             start=(int(line[0][0]), int(line[0][1]))
             end=(int(line[-1][0]), int(line[-1][1]))
-            loi_file = p['cell'].folder + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'
+            loi_file = p['cell'].base_dir + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'
             if not os.path.exists(loi_file):
                 p['main_control'].on_update_loi_list(line_start=start,line_end=end, line_thickness=width)
                 # extract intensity profiles and save LOI files

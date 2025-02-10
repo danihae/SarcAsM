@@ -157,8 +157,8 @@ class FileSelectionControl:
         # todo: init or update dictionary
         cell:SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
 
-        if cell.filename not in self.__main_control.model.line_dictionary:
-            self.__main_control.model.line_dictionary[cell.filename] = {}
+        if cell.filepath not in self.__main_control.model.line_dictionary:
+            self.__main_control.model.line_dictionary[cell.filepath] = {}
             pass
 
         self._init_meta_data()
@@ -197,7 +197,7 @@ class FileSelectionControl:
             return
 
         cell = TypeUtils.unbox(self.__main_control.model.cell)
-        str_path = cell.folder
+        str_path = cell.base_dir
 
         if platform.system() == 'Windows':
             os.startfile(str_path)

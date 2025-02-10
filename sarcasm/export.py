@@ -333,7 +333,7 @@ class Export:
         dict_ = {**dict_metadata_select, **dict_structure_select}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
-                dict_[condition] = value(sarc_obj.filename)
+                dict_[condition] = value(sarc_obj.filepath)
             else:
                 dict_[condition] = value
         return dict_
@@ -431,7 +431,7 @@ class Export:
         dict_ = {**dict_metadata_select, **dict_loi_select, 'loi_name': motion_obj.loi_name}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
-                dict_[condition] = value(motion_obj.filename)
+                dict_[condition] = value(motion_obj.filepath)
             else:
                 dict_[condition] = value
         if concat:
@@ -439,7 +439,7 @@ class Export:
                 if isinstance(value, np.ndarray):
                     if len(value.shape) == 2:
                         dict_[key] = np.concatenate(value)
-        dict_['tif_name'] = motion_obj.filename
+        dict_['tif_name'] = motion_obj.filepath
         return dict_
 
     @staticmethod

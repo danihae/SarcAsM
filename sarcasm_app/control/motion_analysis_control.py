@@ -48,8 +48,8 @@ class MotionAnalysisControl:
         # line objects müssten also alle im line_dict drin sein
         cell = TypeUtils.unbox(self.__main_control.model.cell)
 
-        line = self.__main_control.model.line_dictionary[cell.filename][txt]
-        file_name, scan_line = self.__main_control.get_file_name_from_scheme(cell.filename, txt)
+        line = self.__main_control.model.line_dictionary[cell.filepath][txt]
+        file_name, scan_line = self.__main_control.get_file_name_from_scheme(cell.filepath, txt)
         if self.__main_control.model.sarcomere is None or \
                 self.__main_control.model.sarcomere.loi_name != Motion.get_loi_name_from_file_name(file_name):
             self.__main_control.model.init_sarcomere(file_name)

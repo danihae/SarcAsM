@@ -137,23 +137,23 @@ class ApplicationControl:
             return
         line = (line_start, line_end, line_thickness)
         list_entry = self.get_entry_key_for_line(line)
-        if list_entry in self.model.line_dictionary[self.model.cell.filename]:  # if element already contained, ignore
+        if list_entry in self.model.line_dictionary[self.model.cell.filepath]:  # if element already contained, ignore
             # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
-            if 'last' in self.model.line_dictionary[self.model.cell.filename] and line == \
-                    self.model.line_dictionary[self.model.cell.filename]['last']:
-                file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filename, 'last')
+            if 'last' in self.model.line_dictionary[self.model.cell.filepath] and line == \
+                    self.model.line_dictionary[self.model.cell.filepath]['last']:
+                file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filepath, 'last')
                 self.model.init_sarcomere(file_name)
             return
 
         # add line and line_ux to dictionary for later usage
-        self.model.line_dictionary[self.model.cell.filename][list_entry] = line
+        self.model.line_dictionary[self.model.cell.filepath][list_entry] = line
         # add line to napari
         self.__add_line_to_napari(line)
 
         # todo: update combo box on motion analysis parameters page
         # todo: should be done via callback method
         if self.__callback_loi_list_updated is not None:
-            self.__callback_loi_list_updated(self.model.line_dictionary[self.model.cell.filename])
+            self.__callback_loi_list_updated(self.model.line_dictionary[self.model.cell.filepath])
 
         # select the element if it was drawn by user
         if drawn_by_user:
