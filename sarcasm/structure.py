@@ -82,15 +82,12 @@ class Structure:
         str
             The path to the structure data file, either temporary or final.
         """
-        if is_temp_file:
-            return os.path.join(self.sarc_obj.data_folder, "structure.temp.json")
-        else:
-            return os.path.join(self.sarc_obj.data_folder, "structure.json")
+        file_name = "structure.temp.json" if is_temp_file else "structure.json"
+        return os.path.join(self.sarc_obj.data_dir, file_name)
 
     def commit(self) -> None:
         """
-        Commit data by either renaming the temporary file to the normal data file name or just writing it again
-        and removing the temporary file.
+        Commit data by renaming the temporary file to the final data file.
         """
         temp_file_path = self.__get_structure_data_file(is_temp_file=True)
         final_file_path = self.__get_structure_data_file()
@@ -107,8 +104,7 @@ class Structure:
         Parameters
         ----------
         override : bool, optional
-            If True, overrides the existing file. If False, only stores the data if the file does not exist.
-            Default is True.
+            If True, override the file.
         """
         if override or not os.path.exists(self.__get_structure_data_file(is_temp_file=False)):
             IOUtils.json_serialize(self.data, self.__get_structure_data_file(is_temp_file=True))
@@ -116,13 +112,11 @@ class Structure:
 
     def _load_structure_data(self) -> None:
         """
-        Load structure data. If the normal data file exists, load it. If it fails and a temporary file exists,
-        load the temporary file.
-
+        Load structure data from the final data file; fall back to the temporary file if needed.
         Raises
         ------
         Exception
-            If loading of structure data fails.
+            If no valid structure data could be loaded.
         """
         try:
             if os.path.exists(self.__get_structure_data_file(is_temp_file=False)):
@@ -154,9 +148,9 @@ class Structure:
     def read_imgs(self, frames: Union[str, int, List[int]] = None):
         """Load tif file, and optionally select channel"""
         if frames is None or frames == 'all':
-            data = tifffile.imread(self.sarc_obj.filename)
+            data = tifffile.imread(self.sarc_obj.filepath)
         else:
-            data = tifffile.imread(self.sarc_obj.filename, key=frames)
+            data = tifffile.imread(self.sarc_obj.filepath, key=frames)
 
         if self.sarc_obj.channel is not None:
             if self.sarc_obj.channel == 'RGB':
@@ -177,7 +171,7 @@ class Structure:
 
     def get_list_lois(self):
         """Returns list of LOIs"""
-        return Utils.get_lois_of_file(self.sarc_obj.filename)
+        return Utils.get_lois_of_file(self.sarc_obj.filepath)
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           model_path: str = None, size: Tuple[int, int] = (1024, 1024),
@@ -222,7 +216,7 @@ class Structure:
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.sarc_obj.model_dir, 'model_sarcomeres_generalist.pt')
-        _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.folder,
+        _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.base_dir,
                          resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet_3Levels,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
                          progress_notifier=progress_notifier)
@@ -1413,7 +1407,7 @@ class Structure:
                                         linewidth=int(linewidth / self.sarc_obj.metadata['pixelsize']))
         profiles = np.asarray(profiles)
         if export_raw:
-            imgs_raw = tifffile.imread(self.sarc_obj.filename)
+            imgs_raw = tifffile.imread(self.sarc_obj.filepath)
             profiles_raw = self.kymograph_movie(imgs_raw, line, order=order,
                                                 linewidth=int(linewidth / self.sarc_obj.metadata['pixelsize']))
         else:
@@ -1430,7 +1424,7 @@ class Structure:
                     'line': line, 'linewidth': linewidth, 'length': length}
         for key, value in loi_data.items():
             loi_data[key] = np.asarray(value)
-        save_name = os.path.join(self.sarc_obj.folder,
+        save_name = os.path.join(self.sarc_obj.base_dir,
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
@@ -1546,14 +1540,14 @@ class Structure:
         """
         self.data.pop('loi_data', None)
 
-        loi_files = glob.glob(os.path.join(self.sarc_obj.folder, '*loi.json'))
+        loi_files = glob.glob(os.path.join(self.sarc_obj.base_dir, '*loi.json'))
         for loi_file in loi_files:
             try:
                 # Remove the LOI file
                 os.remove(loi_file)
 
                 # Remove the associated data file
-                data_file = os.path.join(self.sarc_obj.data_folder,
+                data_file = os.path.join(self.sarc_obj.data_dir,
                                          f"{os.path.splitext(os.path.basename(loi_file))[0]}_data.json")
                 if os.path.exists(data_file):
                     os.remove(data_file)
