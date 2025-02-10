@@ -1,17 +1,14 @@
-# Usage of this software for commercial purposes without a license is strictly prohibited.
-
+import datetime
 import os
-import pathlib
 import shutil
-from typing import Union
+from typing import Union, Literal, Dict, Any
 
 import torch
 
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-
-from .utils import Utils
+from ._version import __version__
 from .meta_data_handler import MetaDataHandler
 from .structure import Structure
+from .utils import Utils
 
 
 class SarcAsM:
@@ -20,110 +17,120 @@ class SarcAsM:
 
     Parameters
     ----------
-    filename : str
-        Filename of the TIFF file for analysis.
+    filepath : str | os.PathLike
+        Path to the TIFF file for analysis.
     restart : bool, optional
-        If True, deletes existing analysis and starts fresh. Defaults to False.
-    channel : int or None, optional
-        Specifies the channel with sarcomeres in multicolor stacks. Defaults to None.
+        If True, deletes existing analysis and starts fresh (default: False).
+    channel : int, None or Literal['RGB'], optional
+        Specifies the channel with sarcomeres in multicolor stacks (default: None).
     auto_save : bool, optional
-        If True, automatically saves analysis results. Defaults to True.
+        Automatically saves analysis results when True (default: True).
     use_gui : bool, optional
-        Indicates if SarcAsM is used through the application. Defaults to False.
-    device : torch.device, optional
-        Device on which to run Pytorch computations.
-        Defaults to 'auto', which selects CUDA or MPS device if available, else CPU.
-    **info : dict
-        Additional metadata for analysis as kwargs (e.g. cell_line='wt').
+        Indicates GUI mode operation (default: False).
+    device : Union[torch.device, Literal['auto']], optional
+        Device for PyTorch computations. 'auto' selects CUDA/MPS if available (default: 'auto').
+    **info : Any
+        Additional metadata as keyword arguments (e.g. cell_line='wt').
 
     Attributes
     ----------
-    filename : str
-        Path to the TIFF file for analysis.
-    auto_save : bool
-        Whether to save analysis results automatically.
-    channel : int or None or str
-        Channel containing sarcomeres in multichannel images/movies, or 'RGB' for RGB images.
-    use_gui : bool
-        Whether SarcAsM is used through GUI.
-    info : dict
-        Arbitrary keyword arguments for additional metadata.
-    folder : str
-        Main folder path where all analyses and data are stored.
-    data_folder : str
-        Data folder path
-    analysis_folder : str
-        Analysis results folder path.
-    file_z_bands : str or None
-        Path to the z-bands mask file, if exists.
-    file_cell_mask : str or None
-        Path to the cell mask file, if exists.
-    file_sarcomere_mask : str or None
-        Path to the sarcomere mask file, if exists.
+    filepath : str
+        Absolute path to the input TIFF file.
+    base_dir : str
+        Base directory for analysis of the TIFF file.
+    data_dir : str
+        Directory for processed data storage.
+    analysis_dir : str
+        Directory for analysis results.
+    device : torch.device
+        Active computation device for PyTorch operations.
     """
+    meta_data_handler: MetaDataHandler
+    metadata: dict[str, Any]
+    structure: Structure
 
-    def __init__(self, filename: str, restart: bool = False, channel: Union[int, None, str] = None, auto_save: bool = True,
-                 use_gui: bool = False, device: Union[torch.device, str] = 'auto', **info):
-        """
-        Initializes a SarcAsM object with specified parameters and directory structure.
-        """
-        if not os.path.exists(filename):
-            raise FileExistsError(f'The file {filename} does not exist!')
+    def __init__(
+            self,
+            filepath: Union[str, os.PathLike],
+            restart: bool = False,
+            channel: Union[int, None, Literal['RGB']] = None,
+            auto_save: bool = True,
+            use_gui: bool = False,
+            device: Union[torch.device, Literal['auto']] = 'auto',
+            **info: Dict[str, Any]
+    ):
+        # Convert filename to absolute path (as a string)
+        self.filepath = os.path.abspath(str(filepath))
+        if not os.path.exists(self.filepath):
+            raise FileNotFoundError(f"Input file not found: {self.filepath}")
 
-        self.filename = filename
+        # Add version and analysis timestamp to metadata
+        info['version'] = __version__
+        info['timestamp_analysis'] = datetime.datetime.now().isoformat()
+
+        # Configuration
         self.auto_save = auto_save
         self.channel = channel
         self.use_gui = use_gui
         self.restart = restart
         self.info = info
 
-        self.folder = os.path.splitext(filename)[0] + '/'
-        self.data_folder = os.path.join(self.folder, 'data')
-        self.analysis_folder = os.path.join(self.folder, 'analysis')
+        # Directory structure: use the filename without extension as the base directory
+        base_name = os.path.splitext(self.filepath)[0]
+        self.base_dir = base_name + '/'  # This is a directory path as a string.
+        self.data_dir = os.path.join(self.base_dir, "data/")
+        self.analysis_dir = os.path.join(self.base_dir, "analysis/")
 
-        if restart and os.path.exists(self.folder):
-            shutil.rmtree(self.folder)
-        os.makedirs(self.folder, exist_ok=True)
-        os.makedirs(self.data_folder, exist_ok=True)
-        os.makedirs(self.analysis_folder, exist_ok=True)
+        # Handle restart: if restart is True and base_dir exists, remove it
+        if restart and os.path.exists(self.base_dir):
+            shutil.rmtree(self.base_dir)
 
-        if (os.path.exists(os.path.join(self.folder, 'sarcomeres.tif')) and not
-        os.path.exists(os.path.join(self.folder, 'zbands.tif'))):  # todo remove later
-            self.file_z_bands = os.path.join(self.folder, 'sarcomeres.tif')
+        # Ensure directories exist
+        os.makedirs(self.base_dir, exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
+        os.makedirs(self.analysis_dir, exist_ok=True)
+
+        # File paths: determine the z-bands file based on legacy naming
+        if os.path.exists(os.path.join(self.base_dir, "sarcomeres.tif")) and not os.path.exists(os.path.join(self.base_dir, "zbands.tif")):
+            self.file_z_bands = os.path.join(self.base_dir, "sarcomeres.tif")
         else:
-            self.file_z_bands = os.path.join(self.folder, 'zbands.tif')
-        self.file_z_bands_fast_movie = os.path.join(self.folder, 'zbands_fast_movie.tif')
-        self.file_midlines = os.path.join(self.folder, 'midlines.tif')
-        self.file_distance = os.path.join(self.folder, 'distance.tif')
-        self.file_orientation = os.path.join(self.folder, 'orientation.tif')
-        self.file_distance = os.path.join(self.folder, 'distance.tif')
-        self.file_cell_mask = os.path.join(self.folder, 'cell_mask.tif')
-        self.file_sarcomere_mask = os.path.join(self.folder, 'sarcomere_mask.tif')
+            self.file_z_bands = os.path.join(self.base_dir, "zbands.tif")
 
-        # Initialize MetaDataHandler and Structure (Assuming these are defined elsewhere)
-        self.meta_data_handler: MetaDataHandler = MetaDataHandler(self)
-        self.metadata = self.meta_data_handler.metadata
+        self.file_z_bands_fast_movie = os.path.join(self.base_dir, "zbands_fast_movie.tif")
+        self.file_midlines = os.path.join(self.base_dir, "midlines.tif")
+        self.file_distance = os.path.join(self.base_dir, "distance.tif")
+        self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
+        self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
+        self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
+
+        # Initialize subsystems: metadata handler and structure
+        self.meta_data_handler = MetaDataHandler(self)
         self.structure = Structure(self)
 
-        # default path of models (U-Net, contraction CNN)
-        self.model_dir = str(pathlib.Path(__file__).resolve().parent.parent / 'models/') + '/'
-
-        # determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
-        if device == 'auto':
+        # Device configuration: auto-detect or validate provided device
+        if device == "auto":
             self.device = Utils.get_device(print_device=False)
         else:
-            assert isinstance(device, torch.device), "Device must be of type 'torch.device', e.g. torch.device('cpu')"
+            if not isinstance(device, torch.device):
+                raise ValueError(f"Invalid device: {device}. Expected torch.device instance.")
             self.device = device
 
-    def remove_intermediate_tiffs(self):
+    @property
+    def model_dir(self) -> str:
         """
-        Removes all intermediate TIFF files in the analysis folder,
-        keeping only the original input file.
+        Returns the path to the model directory.
         """
-        # List of TIFF files to potentially remove
-        tiff_files_to_remove = [
+        current_file = os.path.abspath(__file__)
+        # Move two directories up to get the parent directory, then append 'models'
+        parent_dir = os.path.dirname(os.path.dirname(current_file))
+        return os.path.join(parent_dir, "models") + os.sep
+
+    def remove_intermediate_tiffs(self) -> None:
+        """
+        Removes intermediate TIFF files while preserving the original input.
+        """
+        targets = [
             self.file_z_bands,
-            self.file_zbands_old,
             self.file_z_bands_fast_movie,
             self.file_midlines,
             self.file_distance,
@@ -132,7 +139,6 @@ class SarcAsM:
             self.file_sarcomere_mask
         ]
 
-        # Remove each TIFF file if it exists
-        for tiff_file in tiff_files_to_remove:
-            if os.path.exists(tiff_file):
-                os.remove(tiff_file)
+        for path in targets:
+            if os.path.exists(path):
+                os.remove(path)
