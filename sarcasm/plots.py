@@ -2,7 +2,7 @@
 
 import numbers
 import os.path
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional, Literal
 
 import matplotlib
 import numpy as np
@@ -64,55 +64,6 @@ class Plots:
 
             ax_t.set_xlim(xlim)
             ax_t.set_ylim(ylim)
-
-    # @staticmethod
-    # def plot_summary_structure(sarc_obj: Union[SarcAsM, Motion], save_format='png'):
-    #     """
-    #     Plots a summary of the structure of the sarcomere object.
-    #
-    #     Parameters
-    #     ----------
-    #     sarc_obj : SarcAsM or Motion
-    #         The object to plot, which can be an instance of SarcAsM or Motion.
-    #     save_format : str, optional
-    #         The format to save the plot. Defaults to 'png'.
-    #     """
-    #
-    #     mosaic = """
-    #     AAADDD
-    #     BBBEEE
-    #     CCCFFF
-    #     GGHHII
-    #     JJKKLL
-    #     """
-    #
-    #     fig, axs = plt.subplot_mosaic(mosaic=mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
-    #
-    #     # image
-    #     title = f'{sarc_obj.filename}'
-    #     fig.suptitle(title)
-    #
-    #     Plots.plot_image(axs['A'], sarc_obj)
-    #     Plots.plot_z_bands(axs['B'], sarc_obj)
-    #     Plots.plot_z_segmentation(axs['C'], sarc_obj)
-    #     Plots.plot_sarcomere_lengths(axs['D'], sarc_obj)
-    #     Plots.plot_sarcomere_orientations(axs['E'], sarc_obj)
-    #     Plots.plot_myofibrils(axs['F'], sarc_obj)
-    #
-    #     Plots.plot_histogram_structure(axs['G'], sarc_obj, feature='z_length', label='Z-band lengths [µm]')
-    #     Plots.plot_histogram_structure(axs['H'], sarc_obj, feature='z_intensity', label='Z-band intensity [a.u.]')
-    #     Plots.plot_histogram_structure(axs['I'], sarc_obj, feature='z_straightness', label='Z-band straightness [a.u.]')
-    #     Plots.plot_histogram_structure(axs['J'], sarc_obj, feature='sarcomere_length_vectors',
-    #                                    label='Sarcomere lengths [µm]')
-    #     Plots.plot_histogram_structure(axs['K'], sarc_obj, feature='sarcomere_orientation_vectors',
-    #                                    label='Sarcomere orientation [°]')
-    #     Plots.plot_histogram_structure(axs['L'], sarc_obj, feature='myof_line_lengths', label='Myofibril lengths [µm]')
-    #
-    #     PlotUtils.label_all_panels(axs)
-    #     plt.tight_layout()
-    #
-    #     fig.savefig(sarc_obj.analysis_folder + 'summary_structure.' + save_format, dpi=PlotUtils.dpi)
-    #     plt.show()
 
     @staticmethod
     def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
@@ -403,7 +354,7 @@ class Plots:
 
         zbands = tifffile.imread(sarc_obj.file_z_bands, key=frame)
         midlines = tifffile.imread(sarc_obj.file_midlines, key=frame)
-        joined = zbands - midlines
+        joined = midlines - zbands
 
         ax.imshow(joined, cmap=cmap, alpha=alpha)
 
@@ -522,6 +473,11 @@ class Plots:
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
+            if scalebar:
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                       height_fraction=0.07, location='lower right', scale_loc='top',
+                                       font_properties={'size': PlotUtils.fontsize - 1}))
+
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
@@ -615,6 +571,11 @@ class Plots:
                              edgecolors='none')
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
+
+            if scalebar:
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                       height_fraction=0.07, location='lower right', scale_loc='top',
+                                       font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
@@ -720,7 +681,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_sarcomere_orientation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
+    def plot_sarcomere_orientation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, median_radius=2, alpha=1,
                                    lim=(-90, 90), radians=False, scalebar=True, colorbar=True,
                                    shrink_colorbar=0.7,
                                    orient_colorbar='vertical', title=None,
@@ -737,6 +698,10 @@ class Plots:
                 The sarcomere object to plot.
             frame : int, optional
                 The frame to plot. Defaults to 0.
+            median_radius : int, optional
+                The radius of the median filter to apply to the sarcomere orientation. Defaults to 3 pixels.
+            alpha : float, optional
+                Alpha/transparency value for the sarcomere orientation. Defaults to 1.
             lim : tuple, optional
                 The limits for the colorbar. Defaults to (-90, 90).
             scalebar : bool, optional
@@ -776,18 +741,16 @@ class Plots:
 
         orientation = - map_angles(orientation) + np.pi / 2
 
-        radius_pixels = 2
-
         orientation = median_filter(
             orientation,
-            size=(2 * radius_pixels + 1, 2 * radius_pixels + 1),
+            size=(2 * median_radius + 1, 2 * median_radius + 1),
             mode='nearest'
         )
 
         if not radians:
             orientation = np.degrees(orientation)
 
-        plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv')
+        plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv', alpha=alpha)
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
@@ -1142,10 +1105,10 @@ class Plots:
 
         ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                   orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
-                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, label='Sarcomere vectors')
+                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, label='Sarcomere vectors')
         ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
                   -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
-                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.35, width=linewidths)
+                  angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
 
         ax.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
                    label='Midline pos_vectors')
@@ -1353,38 +1316,87 @@ class Plots:
                 ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth, alpha=alpha)
 
     @staticmethod
-    def plot_histogram_structure(ax: Axes, sarc_obj: Union[SarcAsM, Motion], feature, frame=0, label=None, bins=20,
-                                 range=None):
+    def plot_histogram_structure(ax: Axes,
+                                 sarc_obj: Union[SarcAsM, Motion],
+                                 feature: str,
+                                 frame: int = 0,
+                                 bins: int = 20,
+                                 density: bool = False,
+                                 range: Optional[tuple] = None,
+                                 label: Optional[str] = None,
+                                 ylabel: Optional[str] = None,
+                                 rwidth: float = 0.6,
+                                 color: str = 'darkslategray',
+                                 edge_color: str = 'k',
+                                 align: Literal['mid', 'left', 'right'] = 'mid',
+                                 rotate_yticks: bool = False) -> None:
         """
-        Plots the histogram of a structural feature of the sarcomere object.
+        Plots the histogram of a specified structural feature from a sarcomere object on a given Axes.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            The axes to draw the plot on.
-        sarc_obj : object
-            The sarcomere object to plot.
+            The axes on which to draw the histogram.
+        sarc_obj : Union[SarcAsM, Motion]
+            The sarcomere object containing structural data.
         feature : str
-            The feature to plot.
+            The name of the structural feature to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
-        label : str, optional
-            The label for the x-axis. Defaults to None.
+            The frame index from which to extract the data. Defaults to 0.
         bins : int, optional
             The number of bins for the histogram. Defaults to 20.
+        density : bool, optional
+            If True, the histogram is normalized to show the probability density rather than raw counts.
+            Defaults to False.
         range : tuple, optional
-            The range for the histogram. Defaults to None.
+            The lower and upper range of the bins. If not provided, the range is determined from the data.
+        label : str, optional
+            The label for the x-axis. If not specified, a default label based on the feature will be used.
+        ylabel : str, optional
+            The label for the y-axis. Overrides the default label if provided.
+        rwidth : float, optional
+            The relative width of the histogram bars. Defaults to 0.7.
+        color : str, optional
+            The fill color of the histogram bars. Defaults to 'darkslategray'.
+        edge_color : str, optional
+            The color of the edges of the histogram bars. Defaults to 'k'.
+        align : str, optional
+            The alignment of the histogram bars. Defaults to 'mid'.
+        rotate_yticks : bool, optional
+            If True, rotates the y-axis tick labels by 90 degrees for improved readability.
+            Defaults to False.
         """
         data = sarc_obj.structure.data[feature][frame]
-        if len(data.shape) > 1:
+        # Flatten data if it has more than one dimension
+        if data.ndim > 1:
             data = data.flatten()
+        # Remove NaN values from the data
         data = data[~np.isnan(data)]
-        ax.hist(data, rwidth=0.8, color='k', alpha=0.7, density=True, bins=bins,
-                range=range)
+
+        ax.hist(
+            data,
+            bins=bins,
+            density=density,
+            range=range,
+            rwidth=rwidth,
+            color=color,
+            edgecolor=edge_color,
+            align=align
+        )
+
+        # Use a default label if none is provided
         if label is None:
-            label = structure_feature_dict[feature]['name']
+            label = structure_feature_dict.get(feature, {}).get('name', feature)
         ax.set_xlabel(label)
-        ax.set_ylabel('Frequency')
+
+        # Set y-axis label based on whether density is True
+        ax.set_ylabel('Frequency' if density else 'Count')
+        if ylabel is not None:
+            ax.set_ylabel(ylabel)
+        if rotate_yticks:
+            ax.tick_params(axis='y', labelrotation=90)
+            plt.setp(ax.get_yticklabels(), va='center')
+
         PlotUtils.remove_spines(ax)
 
     @staticmethod
