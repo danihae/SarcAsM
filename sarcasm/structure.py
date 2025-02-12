@@ -1894,7 +1894,8 @@ class Structure:
             lat_alignment = A.reshape((n_z, 2, n_z, 2), order='F')
 
             # number of lateral neighbors
-            lat_neighbors = np.count_nonzero(~np.isnan(lat_dist), axis=(1, 2, 3))
+            links_z = np.sum(links, axis=(1, 3))
+            lat_neighbors = np.count_nonzero(links_z, axis=1)
 
             # convert links, lat_dist and lat_alignment to lists
             links = np.where(links == 1)
