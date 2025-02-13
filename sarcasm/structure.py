@@ -998,9 +998,10 @@ class Structure:
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_msc': msc, 'myof_msc_mean': msc_mean,
                           'myof_msc_std': msc_std, 'params.analyze_myofibrils.n_seeds': n_seeds,
-                          'params.analyze_myofibrils': {'persistence': persistence,
-                                                        'threshold_distance': threshold_distance,
-                                                        'list_frames': list_frames, 'n_min': n_min, 'n_seeds': n_seeds}
+                          'params.analyze_myofibrils.persistence': persistence,
+                          'params.analyze_myofibrils.threshold_distance': threshold_distance,
+                          'params.analyze_myofibrils.list_frames': list_frames,
+                          'params.analyze_myofibrils.n_min': n_min, 'params.analyze_myofibrils.n_seeds': n_seeds,
                           }
 
         self.data.update(myofibril_data)
