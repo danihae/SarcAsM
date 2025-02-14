@@ -483,8 +483,8 @@ class Plots:
 
     @staticmethod
     def plot_z_lateral_connections(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, markersize=1.5,
-                                   linewidth=0.25, plot_groups=True, shuffle=True, title=None,
-                                   zoom_region: Tuple[int, int, int, int] = None,
+                                   markersize_inset=3, linewidth=0.25, linewidth_inset=0.5, plot_groups=True,
+                                   shuffle=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                    inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots lateral Z-band connections of a SarcAsM object.
@@ -500,9 +500,13 @@ class Plots:
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         markersize : int, optional
-            The size of the markers. Defaults to 5.
+            The size of the markers of the Z-band ends. Defaults to 5.
+        markersize_inset : int, optional
+            The size of the markers of the Z-band ends in the inset plot. Defaults to 5.
         linewidth : int, optional
-            The width of the lines. Defaults to 1.
+            The width of the connection lines. Defaults to 0.25.
+        linewidth : int, optional
+            The width of the connection lines in the inset plot. Defaults to 0.5.
         plot_groups : bool
             Whether to show the Z-bands of each lateral group with the same color. Defaults to True.
         shuffle : bool, optional
@@ -564,10 +568,10 @@ class Plots:
             for (i, k, j, l) in z_links.T:
                 ax_inset.plot([z_ends[i, k, 1], z_ends[j, l, 1]],
                               [z_ends[i, k, 0], z_ends[j, l, 0]],
-                              c='k', lw=linewidth, linestyle='-', alpha=0.8, zorder=2)
-            ax_inset.scatter(z_ends[:, 0, 1], z_ends[:, 0, 0], c='k', marker='.', s=markersize, zorder=3,
+                              c='k', lw=linewidth_inset, linestyle='-', alpha=0.8, zorder=2)
+            ax_inset.scatter(z_ends[:, 0, 1], z_ends[:, 0, 0], c='k', marker='.', s=markersize_inset, zorder=3,
                              edgecolors='none')
-            ax_inset.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3,
+            ax_inset.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize_inset, zorder=3,
                              edgecolors='none')
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
@@ -1214,7 +1218,7 @@ class Plots:
 
     @staticmethod
     def plot_myofibrils(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
-                        alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None, zoom_region=None,
+                        linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None, zoom_region=None,
                         inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots result of myofibril line growth algorithm of the sarcomere object.
@@ -1229,8 +1233,10 @@ class Plots:
             The frame to plot. Defaults to 0.
         show_z_bands : bool
             Whether or not to show Z-bands. Defaults to True
-        linewidth : int, optional
+        linewidth : float, optional
             The width of the lines. Defaults to 1.
+        linewidth_inset : float, optional
+            Thickness of the lines in inset. Defaults to 1.
         alpha : float, optional
             The transparency of the lines. Defaults to 0.2.
         cmap_z_bands : str, optional
@@ -1246,7 +1252,7 @@ class Plots:
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.list_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame)
@@ -1278,7 +1284,8 @@ class Plots:
                              height_fraction=0.07, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
-                ax_inset.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
+                ax_inset.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha,
+                              lw=linewidth_inset)
 
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_ylim(y2, y1)
