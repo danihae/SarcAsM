@@ -1789,7 +1789,7 @@ class Structure:
             D = (D + D.T) / 2
             A = (A + A.T) / 2
 
-            def compute_cost_matrix(D, A, w_dist=1.0, w_align=5.0, C_max=1e6, penalty=1e6):
+            def compute_cost_matrix(D, A, penalty=1e6):
                 """
                 Compute the cost matrix for linking Z-band ends based on a multiplicative relationship
                 between distance and alignment.
@@ -1815,11 +1815,11 @@ class Structure:
                 # Ensure alignment values are valid (replace NaNs with 0)
                 A = np.nan_to_num(A, nan=0.0)
 
-                # Compute multiplicative cost matrix
-                C = w_dist * (D / d_max) ** 2 * (1 + w_align * (1 - A))
+                # Compute cost matrix
+                C = 1 - A
 
                 # Set invalid links (e.g., NaNs in D) to a very high cost
-                C[(np.isnan(D)) | (C > C_max)] = penalty
+                C[np.isnan(D)] = penalty
 
                 return C
 
@@ -1845,7 +1845,7 @@ class Structure:
                 return row_ind, col_ind
 
             # Step 1: Compute cost matrix
-            C = compute_cost_matrix(D, A, w_dist=1.0, w_align=5.0)
+            C = compute_cost_matrix(D, A)
 
             # Step 2: Solve optimal linking using Hungarian algorithm
             row_ind, col_ind = solve_linking(C)
