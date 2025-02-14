@@ -1610,8 +1610,8 @@ class Structure:
     @staticmethod
     def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray, image_raw: np.ndarray,
                          pixelsize: float, min_length: float = 1.0, threshold: float = 0.1, end_radius: float = 0.75,
-                         a_min: float = 0.35, theta_phi_min: float = 0.2, d_max: float = 4.0,
-                         d_min: float = 0.) -> Tuple:
+                         a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
+                         d_min: float = 0.25) -> Tuple:
         """
         Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
         straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
@@ -1642,7 +1642,7 @@ class Structure:
         d_max : float, optional
             The maximum distance between z-band ends. Default is 5.0 µm. Larger distances are set to np.nan.
         d_min : float, optional
-            The minimum distance between z-band ends. Default is 0. µm. Smaller distances are set to np.nan.
+            The minimum distance between z-band ends. Default is 0 µm. Smaller distances are set to np.nan.
 
         Returns
         -------
