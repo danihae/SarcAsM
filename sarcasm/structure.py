@@ -310,8 +310,8 @@ class Structure:
             self.store_structure_data()
 
     def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
-                        min_length: float = 0.5, end_radius: float = 2, theta_phi_min: float = 0.4, a_min: float = 0.1,
-                        d_max: float = 4.0, d_min: float = 0.25,
+                        min_length: float = 0.5, end_radius: float = 2, theta_phi_min: float = 0.4, a_min: float = 0.25,
+                        d_max: float = 4.0, d_min: float = 0.0,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
@@ -1610,8 +1610,8 @@ class Structure:
     @staticmethod
     def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray, image_raw: np.ndarray,
                          pixelsize: float, min_length: float = 1.0, threshold: float = 0.1, end_radius: float = 0.75,
-                         a_min: float = 0., theta_phi_min: float = 0.2, d_max: float = 4.0,
-                         d_min: float = 0.25) -> Tuple:
+                         a_min: float = 0.35, theta_phi_min: float = 0.2, d_max: float = 4.0,
+                         d_min: float = 0.) -> Tuple:
         """
         Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
         straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
@@ -1642,7 +1642,7 @@ class Structure:
         d_max : float, optional
             The maximum distance between z-band ends. Default is 5.0 µm. Larger distances are set to np.nan.
         d_min : float, optional
-            The minimum distance between z-band ends. Default is 0.25 µm. Smaller distances are set to np.nan.
+            The minimum distance between z-band ends. Default is 0. µm. Smaller distances are set to np.nan.
 
         Returns
         -------
@@ -1781,7 +1781,8 @@ class Structure:
             # matrix with lateral alignments A
             A = np.zeros_like(D) * np.nan
             for (i, j) in _idxs.T:
-                A[i, j] = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
+                A_ij = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
+                A[i, j] = A_ij if A_ij > a_min else np.nan
             D[np.isnan(A)] = np.nan
 
             # make matrices symmetric for undirected graph
@@ -1843,51 +1844,16 @@ class Structure:
 
                 return row_ind, col_ind
 
-            def filter_links(row_ind, col_ind, D, A, d_max=1.0, a_min=0.33):
-                """
-                Filter links based on distance and alignment constraints.
-
-                Parameters:
-                ----------
-                row_ind : ndarray
-                    Row indices of the optimal assignment.
-                col_ind : ndarray
-                    Column indices of the optimal assignment.
-                D : ndarray
-                    Distance matrix between Z-band ends.
-                A : ndarray
-                    Alignment matrix between Z-band ends.
-                d_max : float
-                    Maximum allowed distance for a link.
-                a_min : float
-                    Minimum required alignment score for a link.
-
-                Returns:
-                -------
-                valid_links : list of tuples
-                    List of valid links after filtering.
-                """
-                valid_links = []
-
-                for i, j in zip(row_ind, col_ind):
-                    if D[i, j] <= d_max and A[i, j] >= a_min:
-                        valid_links.append((i, j))
-
-                return valid_links
-
             # Step 1: Compute cost matrix
             C = compute_cost_matrix(D, A, w_dist=1.0, w_align=5.0)
 
             # Step 2: Solve optimal linking using Hungarian algorithm
             row_ind, col_ind = solve_linking(C)
 
-            # Step 3: Filter links based on constraints (distance and alignment thresholds)
-            valid_links = filter_links(row_ind, col_ind, D, A, d_max=d_max, a_min=a_min)
-
-            # Step 4: Create adjacency matrix for valid links
+            # Step 3: Create adjacency matrix for valid links
             links = np.zeros_like(D)
-            for i, j in valid_links:
-                links[i, j] = 1
+            for i, j in zip(row_ind, col_ind):
+                links[i, j] = 1 if D[i, j] <= d_max and A[i, j] >= a_min else 0
 
             # reshape arrays
             links = links.reshape((n_z, 2, n_z, 2), order='F')
