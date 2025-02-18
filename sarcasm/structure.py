@@ -10,6 +10,7 @@ from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
 
 import igraph as ig
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -902,6 +903,7 @@ class Structure:
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                            n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.4, n_min: int = 5,
+                           median_filter_radius: float = 0.5,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -914,11 +916,14 @@ class Structure:
         n_seeds : int, optional
             Number of random seeds for line growth. Defaults to 1000.
         persistence : int, optional
-            Persistence of line (average vector length and orientation for prior estimation), needs to be > 0. Defaults to 3.
+            Persistence of line (average vector length and orientation for prior estimation), needs to be > 0.
+            Defaults to 3.
         threshold_distance : float, optional
             Maximal distance for nearest neighbor estimation (in micrometers). Defaults to 0.3.
         n_min : int, optional
             Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.
+        median_filter_radius : float, optional
+            Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
@@ -941,15 +946,14 @@ class Structure:
             n_imgs = self.sarc_obj.metadata['frames']
             list_frames = list(range(n_imgs))
         elif isinstance(frames, int):
-            n_imgs = 1
             list_frames = [frames]
         elif isinstance(frames, list) or type(frames) is np.ndarray:
-            n_imgs = len(frames)
             list_frames = list(frames)
         else:
             raise ValueError('Selection of frames not valid!')
 
-        pos_vectors = [self.data['pos_vectors_px'][frame] for frame in list_frames]
+        pos_vectors_px = [self.data['pos_vectors_px'][frame] for frame in list_frames]
+        pos_vectors = [self.data['pos_vectors'][frame] for frame in list_frames]
         sarcomere_length_vectors = [self.data['sarcomere_length_vectors'][frame] for frame in list_frames]
         sarcomere_orientation_vectors = [self.data['sarcomere_orientation_vectors'][frame] for frame in list_frames]
         midline_length_vectors = [self.data['midline_length_vectors'][frame] for frame in list_frames]
@@ -959,19 +963,19 @@ class Structure:
         nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         msc_mean, msc_std = (nan_arrays() for _ in range(2))
-        myof_lines, lengths, msc = (none_lists() for _ in range(3))
+        myof_lines, lengths, msc, myof_length_map = (none_lists() for _ in range(4))
 
         # iterate frames
         print('\nStarting myofibril line analysis...')
         for i, (
-                frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
+                frame_i, pos_vectors_px_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
                 midline_length_vectors_i) in enumerate(
             progress_notifier.iterator(
-                zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
+                zip(list_frames, pos_vectors_px, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     midline_length_vectors),
-                total=len(pos_vectors))):
-            if len(np.asarray(pos_vectors_i).T) > 0:
-                line_data_i = self.line_growth(pos_vectors_i, sarcomere_length_vectors_i,
+                total=len(pos_vectors_px))):
+            if len(np.asarray(pos_vectors_px_i).T) > 0:
+                line_data_i = self.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
                                                sarcomere_orientation_vectors_i,
                                                midline_length_vectors_t=midline_length_vectors_i,
                                                pixelsize=self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
@@ -984,24 +988,44 @@ class Structure:
                     lengths_i = line_data_i['line_features']['length_lines']
                     msc_i = line_data_i['line_features']['msc_lines']
                     if len(lengths_i) > 0:
-                        length_mean[frame_i], length_std[frame_i], length_max[frame_i] = np.mean(
-                            lengths_i), np.std(lengths_i), np.max(lengths_i)
-                        msc_mean[frame_i], msc_std[frame_i] = np.mean(msc_i), np.std(
-                            msc_i)
+                        # create myofibril length map
+                        myof_map_i = self.create_myofibril_length_map(myof_lines=lines_i, myof_length=lengths_i,
+                                                                    pos_vectors=pos_vectors_i,
+                                                                    sarcomere_orientation_vectors=sarcomere_orientation_vectors_i,
+                                                                    sarcomere_length_vectors=sarcomere_length_vectors_i,
+                                                                    size=self.sarc_obj.metadata['size'],
+                                                                    pixelsize=self.sarc_obj.metadata['pixelsize'],
+                                                                    median_filter_radius=median_filter_radius)
+
+                        myof_map_flat_i = myof_map_i.flatten()
+                        myof_map_flat_i = myof_map_flat_i[~np.isnan(myof_map_flat_i)]
+                        weights_i = 1.0 / myof_map_flat_i
+                        weighted_mean_length_i = np.average(myof_map_flat_i, weights=weights_i)
+                        weighted_std_length_i = np.sqrt(np.average((myof_map_flat_i - weighted_mean_length_i)**2,
+                                                                                 weights=weights_i))
+                        length_mean[frame_i], length_std[frame_i], length_max[frame_i] = (weighted_mean_length_i,
+                                                                                          weighted_std_length_i,
+                                                                                          np.nanmax(myof_map_flat_i))
+                        msc_mean[frame_i], msc_std[frame_i] = np.mean(msc_i), np.std(msc_i)
+                        myof_map_i_sparse = myof_map_i.copy()
+                        myof_map_i_sparse[np.isnan(myof_map_i)] = 0
+                        myof_map_i_sparse = sparse.csr_matrix(myof_map_i_sparse)
+                        myof_length_map[frame_i] = myof_map_i_sparse
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
                     msc[frame_i] = msc_i
 
         # update structure dictionary
-        myofibril_data = {'myof_length_mean': length_mean,
+        myofibril_data = {'myof_length_mean': length_mean, 'myof_length_map': myof_length_map,
                           'myof_length_std': length_std, 'myof_lines': myof_lines,
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_msc': msc, 'myof_msc_mean': msc_mean,
-                          'myof_msc_std': msc_std, 'params.analyze_myofibrils.n_seeds': n_seeds,
+                          'myof_msc_std': msc_std,
                           'params.analyze_myofibrils.persistence': persistence,
                           'params.analyze_myofibrils.threshold_distance': threshold_distance,
-                          'params.analyze_myofibrils.list_frames': list_frames,
-                          'params.analyze_myofibrils.n_min': n_min, 'params.analyze_myofibrils.n_seeds': n_seeds,
+                          'params.analyze_myofibrils.frames': list_frames,
+                          'params.analyze_myofibrils.n_min': n_min,
+                          'params.analyze_myofibrils.n_seeds': n_seeds,
                           }
 
         self.data.update(myofibril_data)
@@ -3114,3 +3138,90 @@ class Structure:
                 pass
         mask = binary_dilation(mask, disk(dilation_radius))
         return mask
+
+    @staticmethod
+    def create_myofibril_length_map(
+            myof_lines: np.ndarray,
+            myof_length: np.ndarray,
+            pos_vectors: np.ndarray,
+            sarcomere_orientation_vectors: np.ndarray,
+            sarcomere_length_vectors: np.ndarray,
+            size: tuple,
+            pixelsize: float,
+            median_filter_radius: float = 0.6,
+    ) -> np.ndarray:
+        """
+        The `create_myofibril_length_map` function generates a **2D spatial map** of myofibril lengths represented
+        as pixel values. It achieves this by rasterizing myofibril line segments, assigning their corresponding lengths
+        to the pixels they occupy, and averaging these values at overlapping pixels. The resulting map is optionally
+        smoothed using a median filter to reduce noise and provide a more coherent spatial representation.
+
+        Parameters
+        ----------
+        myof_lines : ndarray
+            Line indices for myofibril structures.
+        myof_length : ndarray
+            Length values for each myofibril line.
+        pos_vectors : ndarray
+            Position vectors in micrometers.
+        sarcomere_orientation_vectors : ndarray
+            Orientation angles in radians.
+        sarcomere_length_vectors : ndarray
+            Sarcomere lengths in micrometers.
+        size : tuple of int
+            Output map dimensions (height, width) in pixels.
+        pixelsize : float
+            Physical size of one pixel in micrometers.
+        median_filter_radius : float, optional
+            Filter radius in micrometers, by default 0.6.
+
+        Returns
+        -------
+        ndarray
+            2D array of calculated myofibril lengths with NaN for empty regions.
+        """
+        # Convert median filter radius to pixels
+        median_radius_px = int(round(median_filter_radius / pixelsize))
+
+        # Initialize accumulation maps
+        length_sum_map = np.zeros(size, dtype=np.float32)
+        weight_map = np.zeros(size, dtype=np.float32)
+
+        # Process each myofibril segment
+        for line_idx, line_length in zip(myof_lines, myof_length):
+            # Extract vector data for current line
+            points = pos_vectors[line_idx]
+            orientations = sarcomere_orientation_vectors[line_idx] + np.pi / 2
+            lengths = sarcomere_length_vectors[line_idx]
+
+            # Calculate direction vectors
+            dir_x = np.cos(orientations)
+            dir_y = -np.sin(orientations)
+            directions = np.vstack([dir_x, dir_y])
+
+            # Calculate endpoints in pixel coordinates
+            end_offset = directions * lengths / 2
+            end_points = np.stack([
+                (points.T + end_offset) / pixelsize,
+                (points.T - end_offset) / pixelsize
+            ]).astype(np.int32)
+
+            # Rasterize lines
+            for (x0, y0), (x1, y1) in zip(end_points[0].T, end_points[1].T):
+                rr, cc = line(x0, y0, x1, y1)
+                # Apply boundary constraints
+                valid = (rr >= 0) & (rr < size[0]) & (cc >= 0) & (cc < size[1])
+                np.add.at(length_sum_map, (rr[valid], cc[valid]), line_length)
+                np.add.at(weight_map, (rr[valid], cc[valid]), 1)
+
+        # Calculate weighted average
+        myof_map = np.divide(length_sum_map, weight_map,
+                             out=np.full_like(length_sum_map, np.nan),
+                             where=weight_map > 0)
+
+        # Apply median filtering if required
+        if median_radius_px > 0:
+            window_size = 2 * median_radius_px + 1
+            myof_map = Utils.nanmedian_filter_numba(myof_map, window_size)
+
+        return myof_map

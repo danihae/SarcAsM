@@ -9,6 +9,7 @@ from typing import Tuple, Any, List, Union
 import numpy as np
 import tifffile
 import torch
+from numba import njit, prange
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata, Akima1DInterpolator
 from scipy.ndimage import label, map_coordinates, median_filter
@@ -449,17 +450,19 @@ class Utils:
             peak_pos = np.sum(x_window * y_window) / np.sum(y_window)
             peaks.append(peak_pos)
 
-        # if False:
-        #     dir_temp = '../temp/profile_peaks/'
+        # if True:
+        #     dir_temp = '/Users/daniel/Code/SarcAsM/temp/profile_peaks/'
         #     os.makedirs(dir_temp, exist_ok=True)
-        #     plt.figure(figsize=(5, 2), dpi=200)
+        #     plt.figure(figsize=(0.9, 0.7), dpi=400, tight_layout=True)
         #     plt.plot(x_interp, y_interp, c='k', lw=1.5)
-        #     plt.plot(pos_array, profile, c='c', lw=1.5)
-        #     for peak in peaks_idx:
-        #         plt.axvline(x_interp[peak], c='y', linestyle='--', lw=1)
+        #     # plt.plot(pos_array, profile, c='c', lw=1.5)
+        #     # for peak in peaks_idx:
+        #     #     plt.axvline(x_interp[peak], c='y', linestyle='--', lw=1)
+        #     plt.xticks([])
+        #     plt.yticks([])
         #     for peak in peaks:
         #         plt.axvline(peak, c='r', linestyle='--', lw=1)
-        #     plt.savefig(dir_temp + f'profile_peaks_{np.random.randint(0, 1000)}.png')
+        #     plt.savefig(dir_temp + f'profile_peaks_{np.random.randint(0, 5000)}.pdf')
         #     plt.close()
 
         peaks = np.array(peaks)
@@ -966,3 +969,61 @@ class Utils:
             start_idx += lengths[i] * linewidth if linewidth > 1 else lengths[i]
 
         return result
+
+    @staticmethod
+    @njit(parallel=True)
+    def nanmedian_filter_numba(data, window_size):
+        """
+        Applies a nanmedian filter to a 2D array using a sliding window.
+        The function computes the median of each window ignoring NaN values.
+
+        text
+        Parameters:
+          data : 2D numpy array of float
+            Input array with possible NaN values.
+          window_size : int
+            The size (assumed odd) of the square window.
+
+        Returns:
+          out : 2D numpy array of the same shape as data containing the filtered result.
+        """
+        H, W = data.shape
+        pad = window_size // 2
+        out = np.empty((H, W), dtype=data.dtype)
+
+        # Create a padded array filled with NaNs.
+        padded = np.empty((H + 2 * pad, W + 2 * pad), dtype=data.dtype)
+        for i in range(H + 2 * pad):
+            for j in range(W + 2 * pad):
+                padded[i, j] = np.nan
+        for i in range(H):
+            for j in range(W):
+                padded[i + pad, j + pad] = data[i, j]
+
+        # Process each row in parallel.
+        for i in prange(H):
+            # Allocate a temporary array to hold one window's values. (private to each row)
+            temp = np.empty(window_size * window_size, dtype=data.dtype)
+            for j in range(W):
+                count = 0
+                # Extract values from the window, ignoring NaNs.
+                for m in range(window_size):
+                    for n in range(window_size):
+                        val = padded[i + m, j + n]
+                        # Use Numba-friendly check for NaN.
+                        if not (val != val):
+                            temp[count] = val
+                            count += 1
+
+                if count == 0:
+                    out[i, j] = np.nan
+                else:
+                    sorted_vals = np.sort(temp[:count])
+                    # Compute median from sorted values.
+                    if count & 1:  # odd number of valid elements
+                        out[i, j] = sorted_vals[count // 2]
+                    else:
+                        mid = count // 2
+                        out[i, j] = (sorted_vals[mid - 1] + sorted_vals[mid]) / 2.0
+
+        return out
