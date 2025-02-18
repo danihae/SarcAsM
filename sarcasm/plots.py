@@ -15,6 +15,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from scipy.ndimage import median_filter
 from tifffile import tifffile
 
+from .structure import Structure
 from .core import SarcAsM
 from .feature_dict import structure_feature_dict
 from .motion import Motion
@@ -639,8 +640,7 @@ class Plots:
 
     @staticmethod
     def plot_wavelet_score(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, score_threshold=None,
-                           lim=(1.6, 2.1),
-                           scalebar=True, colorbar=True, shrink_colorbar=0.7, title=None):
+                           lim=(1.6, 2.1), scalebar=True, colorbar=True, shrink_colorbar=0.7, title=None):
         """
             Plots the maximal wavelet score of the sarcomere object.
 
@@ -692,37 +692,37 @@ class Plots:
                                    zoom_region: Tuple[int, int, int, int] = None,
                                    inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-            Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
+        Plots sarcomere orientation obtained by wavelet analysis of the sarcomere object.
 
-            Parameters
-            ----------
-            ax : matplotlib.axes.Axes
-                The axes to draw the plot on.
-            sarc_obj : object
-                The sarcomere object to plot.
-            frame : int, optional
-                The frame to plot. Defaults to 0.
-            median_radius : int, optional
-                The radius of the median filter to apply to the sarcomere orientation. Defaults to 3 pixels.
-            alpha : float, optional
-                Alpha/transparency value for the sarcomere orientation. Defaults to 1.
-            lim : tuple, optional
-                The limits for the colorbar. Defaults to (-90, 90).
-            scalebar : bool, optional
-                Whether to add a scalebar to the plot. Defaults to True.
-            colorbar : bool, optional
-                Whether to add a colorbar to the plot. Defaults to True.
-            shrink_colorbar : float, optional
-                The factor by which to shrink the colorbar. Defaults to 0.7.
-            orient_colorbar : str, optional
-                The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
-            title : str, optional
-                The title for the plot. Defaults to None.
-            zoom_region : tuple of int, optional
-                The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-            inset_bounds : tuple of float, optional
-                Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
-            """
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : object
+            The sarcomere object to plot.
+        frame : int, optional
+            The frame to plot. Defaults to 0.
+        median_radius : int, optional
+            The radius of the median filter to apply to the sarcomere orientation. Defaults to 3 pixels.
+        alpha : float, optional
+            Alpha/transparency value for the sarcomere orientation. Defaults to 1.
+        lim : tuple, optional
+            The limits for the colorbar. Defaults to (-90, 90).
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Defaults to True.
+        colorbar : bool, optional
+            Whether to add a colorbar to the plot. Defaults to True.
+        shrink_colorbar : float, optional
+            The factor by which to shrink the colorbar. Defaults to 0.7.
+        orient_colorbar : str, optional
+            The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
+        title : str, optional
+            The title for the plot. Defaults to None.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+        """
         assert os.path.exists(
             sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
 
@@ -1165,7 +1165,7 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
-                               scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', title=None):
+                               scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', alpha_z_bands=1, title=None):
         """
         Plots the sarcomere domains of the sarcomere object.
 
@@ -1187,6 +1187,8 @@ class Plots:
             Whether to plot the raw data. Defaults to False.
         cmap_z_bands : str, optional
             Colormap for Z-bands. Defaults to 'Greys'.
+        alpha_z_bands : float, optional
+            Transparency of Z-bands. Defaults to 1.
         title : str, optional
             The title for the plot. Defaults to None.
 
@@ -1195,16 +1197,27 @@ class Plots:
                                                                'Run analyze_sarcomere_domains first.')
         assert frame in sarc_obj.structure.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
                                                                           f'analyzed.')
+        domains = sarc_obj.structure.data['domains'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
+        area_min = sarc_obj.structure.data['params.analyze_sarcomere_domains.area_min']
+        dilation_radius = sarc_obj.structure.data['params.analyze_sarcomere_domains.dilation_radius']
+        domain_mask = Structure._analyze_domains(domains, pos_vectors=pos_vectors,
+                                                 sarcomere_length_vectors=sarcomere_length_vectors,
+                                                 sarcomere_orientation_vectors=sarcomere_orientation_vectors,
+                                                 size=sarc_obj.metadata['size'],
+                                                 pixelsize=sarc_obj.metadata['pixelsize'],
+                                                 dilation_radius=dilation_radius, area_min=area_min)[0]
 
-        domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
         domain_mask_masked = np.ma.masked_where(domain_mask == 0, domain_mask)
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
 
         if plot_raw_data:
-            Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False)
+            Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False, alpha=alpha_z_bands, cmap=cmap_z_bands)
         else:
-            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, scalebar=False)
+            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands, frame=frame, scalebar=False)
 
         ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
 
@@ -1215,9 +1228,9 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_myofibrils(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
-                        linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None, zoom_region=None,
-                        inset_bounds=(0.6, 0.6, 0.4, 0.4)):
+    def plot_myofibril_lines(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
+                             linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None,
+                             zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1250,7 +1263,7 @@ class Plots:
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.list_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=0.5)
@@ -1273,7 +1286,6 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
-            Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
 
             if show_z_bands:
                 Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
@@ -1298,7 +1310,9 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_myofibril_length_map(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, vmax=None,
+    def plot_myofibril_length_map(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, vmax=None, alpha=1,
+                                  show_z_bands=False, cmap_z_bands='Greys', alpha_z_bands=1,
+                                  colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                   scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -1314,6 +1328,20 @@ class Plots:
             The frame to plot. Defaults to 0.
         vmax : float, optional
             Maximum value for the colormap. If None, the maximum value in the data is used. Defaults to None.
+        alpha : float, optional
+            Transparency of the colormap. Defaults to 1.
+        show_z_bands : bool, optional
+            Whether to show Z-band mask, else raw image is shown. Defaults to False.
+        cmap_z_bands : str, optional
+            Colormap of Z-bands. Defaults to 'Greys'.
+        alpha_z_bands : float, optional
+            Transparency of Z-bands or raw image. Defaults to 1.
+        colorbar : bool, optional
+            Whether to show the colorbar. Defaults to True.
+        shrink_colorbar: float, optional
+            Shrinkage of the colorbar. Defaults to 0.7.
+        orient_colorbar : str, optional
+            Orientation of the colorbar. Defaults to 'vertical'.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -1323,21 +1351,42 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'myof_length_map' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
-                                                                     'Run analyze_myofibrils first.')
+        # create myofibril length map
+        assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
+                                                                'Run analyze_myofibrils first.')
         assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
-        myof_length_map = sarc_obj.structure.data['myof_length_map'][frame].toarray()
+        myof_lines = sarc_obj.structure.data['myof_lines'][frame]
+        myof_lengths = sarc_obj.structure.data['myof_length'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
+        length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
+        median_filter_radius = sarc_obj.structure.data['params.analyze_myofibrils.median_filter_radius']
+        myof_length_map = sarc_obj.structure.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
+                                                      pos_vectors=pos_vectors,
+                                                      sarcomere_orientation_vectors=orientation_vectors,
+                                                      sarcomere_length_vectors=length_vectors,
+                                                      size=sarc_obj.metadata['size'],
+                                                      pixelsize=sarc_obj.metadata['pixelsize'],
+                                                      median_filter_radius=median_filter_radius)
+
+        if show_z_bands:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        else:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
         masked_myof_length_map = np.ma.masked_array(myof_length_map, mask=(myof_length_map == 0))
         cmap = plt.cm.inferno
         cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
         vmin, vmax = 0, np.nanmax(myof_length_map) if vmax is None else vmax
-        ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax)
+        plot = ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax, alpha=alpha)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.07, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
+        if colorbar:
+            cbar = plt.colorbar(mappable=plot, ax=ax, shrink=shrink_colorbar, orientation=orient_colorbar,
+                                label='Myofibril length [µm]')
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
@@ -1346,9 +1395,18 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
-            ax_inset.imshow(masked_myof_length_map[y1:y2, x1:x2], cmap=cmap)
+
+            if show_z_bands:
+                Plots.plot_z_bands(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+            else:
+                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+
+            ax_inset.imshow(masked_myof_length_map, cmap=cmap, alpha=alpha, vmin=vmin, vmax=vmax)
+
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
+            ax_inset.set_xlim(x1, x2)
+            ax_inset.set_ylim(y2, y1)
 
             if scalebar:
                 ax_inset.add_artist(
