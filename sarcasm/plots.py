@@ -54,7 +54,7 @@ class Plots:
         """
         ax.axis('off')
         for i, t in enumerate(frames):
-            ax_t = ax.inset_axes([0.1 + offset * i, 0.1 - offset * i, 0.8, 0.8])
+            ax_t = ax.inset_axes((0.1 + offset * i, 0.1 - offset * i, 0.8, 0.8))
 
             plot_func(ax_t, sarc_obj, t)
             ax_t.spines['bottom'].set_color(spine_color)
@@ -627,7 +627,7 @@ class Plots:
                 height = 1 / rows - gap
 
                 # Create an inset axis for each filter
-                inset = ax.inset_axes([x, y, width, height])
+                inset = ax.inset_axes((x, y, width, height))
 
                 # Plot the filter
                 kernel_0, kernel_1 = bank[i, j, 0], bank[i, j, 1]
@@ -793,8 +793,6 @@ class Plots:
                 The sarcomere object to plot.
             frame : int, optional
                 The frame to plot. Defaults to 0.
-            lim : tuple, optional
-                The limits for the colorbar. Defaults to (-90, 90).
             scalebar : bool, optional
                 Whether to add a scalebar to the plot. Defaults to True.
             colorbar : bool, optional
@@ -973,7 +971,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_sarcomere_area(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
+    def plot_sarcomere_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
                             alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
                             zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -1255,7 +1253,9 @@ class Plots:
         assert frame in sarc_obj.structure.data['params.analyze_myofibrils.list_frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame)
+            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=0.5)
+        else:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=0.5)
 
         lines = sarc_obj.structure.data['myof_lines'][frame]
         pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
@@ -1266,7 +1266,7 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         for i, line_i in enumerate(lines):
-            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
+            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth, zorder=-1)
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
@@ -1277,6 +1277,8 @@ class Plots:
 
             if show_z_bands:
                 Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
+            else:
+                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands)
 
             if scalebar:
                 ax_inset.add_artist(
@@ -1291,6 +1293,68 @@ class Plots:
             ax_inset.set_ylim(y2, y1)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
+
+            # Mark the zoomed region on the main plot
+            PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
+
+    @staticmethod
+    def plot_myofibril_length_map(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, vmax=None,
+                                  scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
+                                  inset_bounds=(0.6, 0.6, 0.4, 0.4)):
+        """
+        Plots the spatial map of myofibril lengths for a given frame.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : SarcAsM or Motion
+            The sarcomere object to plot.
+        frame : int, optional
+            The frame to plot. Defaults to 0.
+        vmax : float, optional
+            Maximum value for the colormap. If None, the maximum value in the data is used. Defaults to None.
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Defaults to True.
+        title : str, optional
+            The title for the plot. Defaults to None.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+        """
+        assert 'myof_length_map' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
+                                                                     'Run analyze_myofibrils first.')
+        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+
+        myof_length_map = sarc_obj.structure.data['myof_length_map'][frame].toarray()
+
+        masked_myof_length_map = np.ma.masked_array(myof_length_map, mask=(myof_length_map == 0))
+        cmap = plt.cm.inferno
+        cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
+        vmin, vmax = 0, np.nanmax(myof_length_map) if vmax is None else vmax
+        ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax)
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+        # Add inset axis if zoom_region is specified
+        if zoom_region:
+            x1, x2, y1, y2 = zoom_region
+            ax_inset = ax.inset_axes(bounds=inset_bounds)
+            ax_inset.imshow(masked_myof_length_map[y1:y2, x1:x2], cmap=cmap)
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            if scalebar:
+                ax_inset.add_artist(
+                    ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                             height_fraction=0.07, location='lower right', scale_loc='top',
+                             font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
@@ -1496,7 +1560,7 @@ class Plots:
         delta_slen = motion_obj.loi_data['delta_slen']
         list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
         for i, y in enumerate(list_y):
-            ax_i = ax.inset_axes([0., y, 1, 1 / n_rows - 0.02])
+            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - 0.02))
             ax_i.plot(motion_obj.loi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
             ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
             if show_contr:
@@ -1724,9 +1788,9 @@ class Plots:
         bottom, height = 0.1, 0.65
         spacing = 0.02
 
-        rect_scatter = [left, bottom, width, height]
-        rect_histx = [left, bottom + height + spacing, width, 0.2]
-        rect_histy = [left + width + spacing, bottom, 0.2, height]
+        rect_scatter = (left, bottom, width, height)
+        rect_histx = (left, bottom + height + spacing, width, 0.2)
+        rect_histy = (left + width + spacing, bottom, 0.2, height)
 
         fig_events = plt.figure(figsize=(PlotUtils.width_1cols * 0.9, 3.))
         ax = fig_events.add_axes(rect_scatter)
