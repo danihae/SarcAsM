@@ -631,7 +631,9 @@ class Utils:
         tifffile.imwrite(tif_file, data_correct, imagej=True, metadata=metadata, resolution=resolution)
 
     @staticmethod
-    def map_array(array: np.ndarray, from_values: List, to_values: List) -> np.ndarray:
+    def map_array(array: np.ndarray,
+                  from_values: Union[List, np.ndarray],
+                  to_values: Union[List, np.ndarray]) -> np.ndarray:
         """
         Map a numpy array from one set of values to a new set of values.
 

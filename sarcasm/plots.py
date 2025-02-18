@@ -15,6 +15,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from scipy.ndimage import median_filter
 from tifffile import tifffile
 
+from .structure import Structure
 from .core import SarcAsM
 from .feature_dict import structure_feature_dict
 from .motion import Motion
@@ -1195,8 +1196,19 @@ class Plots:
                                                                'Run analyze_sarcomere_domains first.')
         assert frame in sarc_obj.structure.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
                                                                           f'analyzed.')
+        domains = sarc_obj.structure.data['domains'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
+        area_min = sarc_obj.structure.data['params.analyze_sarcomere_domains.area_min']
+        dilation_radius = sarc_obj.structure.data['params.analyze_sarcomere_domains.dilation_radius']
+        domain_mask = Structure._analyze_domains(domains, pos_vectors=pos_vectors,
+                                                 sarcomere_length_vectors=sarcomere_length_vectors,
+                                                 sarcomere_orientation_vectors=sarcomere_orientation_vectors,
+                                                 size=sarc_obj.metadata['size'],
+                                                 pixelsize=sarc_obj.metadata['pixelsize'],
+                                                 dilation_radius=dilation_radius, area_min=area_min)[0]
 
-        domain_mask = sarc_obj.structure.data['domain_mask'][frame].toarray()
         domain_mask_masked = np.ma.masked_where(domain_mask == 0, domain_mask)
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
@@ -1250,7 +1262,7 @@ class Plots:
         """
         assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.list_frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=0.5)
@@ -1323,11 +1335,24 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'myof_length_map' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
-                                                                     'Run analyze_myofibrils first.')
+        # create myofibril length map
+        assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
+                                                                'Run analyze_myofibrils first.')
         assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
-        myof_length_map = sarc_obj.structure.data['myof_length_map'][frame].toarray()
+        myof_lines = sarc_obj.structure.data['myof_lines'][frame]
+        myof_lengths = sarc_obj.structure.data['myof_length'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
+        orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
+        length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
+        median_filter_radius = sarc_obj.structure.data['params.analyze_myofibrils.median_filter_radius']
+        myof_length_map = sarc_obj.structure.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
+                                                      pos_vectors=pos_vectors,
+                                                      sarcomere_orientation_vectors=orientation_vectors,
+                                                      sarcomere_length_vectors=length_vectors,
+                                                      size=sarc_obj.metadata['size'],
+                                                      pixelsize=sarc_obj.metadata['pixelsize'],
+                                                      median_filter_radius=median_filter_radius)
 
         masked_myof_length_map = np.ma.masked_array(myof_length_map, mask=(myof_length_map == 0))
         cmap = plt.cm.inferno
