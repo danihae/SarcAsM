@@ -901,8 +901,8 @@ class Structure:
         return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
-                           n_seeds: int = 2000, persistence: int = 3, threshold_distance: float = 0.4, n_min: int = 5,
-                           median_filter_radius: float = 0.5,
+                           ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
+                           n_min: int = 4, median_filter_radius: float = 0.5,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -912,8 +912,8 @@ class Structure:
         frames : {'all', int, list, np.ndarray}, optional
             frames for myofibril analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). If None, frames from wavelet analysis are used. Defaults to None.
-        n_seeds : int, optional
-            Number of random seeds for line growth. Defaults to 1000.
+        ratio_seeds : float, optional
+            Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.
         persistence : int, optional
             Persistence of line (average vector length and orientation for prior estimation), needs to be > 0.
             Defaults to 3.
@@ -978,7 +978,7 @@ class Structure:
                 line_data_i = self.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
                                                sarcomere_orientation_vectors_i,
                                                midline_length_vectors_t=midline_length_vectors_i,
-                                               pixelsize=self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
+                                               pixelsize=self.sarc_obj.metadata['pixelsize'], ratio_seeds=ratio_seeds,
                                                persistence=persistence, threshold_distance=threshold_distance,
                                                n_min=n_min)
                 lines_i = line_data_i['lines']
@@ -1021,7 +1021,7 @@ class Structure:
                           'params.analyze_myofibrils.threshold_distance': threshold_distance,
                           'params.analyze_myofibrils.frames': list_frames,
                           'params.analyze_myofibrils.n_min': n_min,
-                          'params.analyze_myofibrils.n_seeds': n_seeds,
+                          'params.analyze_myofibrils.ratio_seeds': ratio_seeds,
                           'params.analyze_myofibrils.median_filter_radius': median_filter_radius
                           }
 
@@ -2866,7 +2866,7 @@ class Structure:
     @staticmethod
     def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
                     sarcomere_orientation_vectors_t: np.ndarray,
-                    midline_length_vectors_t: np.ndarray, pixelsize: float, n_seeds: int = 1000, random_seed=None,
+                    midline_length_vectors_t: np.ndarray, pixelsize: float, ratio_seeds: float = 0.1,
                     persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5):
         """
         Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
@@ -2883,10 +2883,8 @@ class Structure:
             Length of sarcomere midlines of midline points
         pixelsize : float
             Pixel size in µm
-        n_seeds : int
-            Number of random seed for line growth
-        random_seed : int
-            Random seed for line growth starting points. If None, no random seed is set.
+        ratio_seeds : float
+            Ratio of sarcomere vectors to be takes as seeds for line growth
         persistence : int
             Number of points to consider for averaging length and orientation.
 
@@ -2904,9 +2902,9 @@ class Structure:
             print('No sarcomeres in image (len(points) = 0), could not grow lines.')
             return {'lines': [], 'line_features': {}}
 
-        random.seed(random_seed)
+        random.seed(42)
         n_vectors = len(points_t)
-        seed_idx = random.sample(range(n_vectors), min(n_seeds, n_vectors))
+        seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))
 
         # Precompute Nearest Neighbors
         nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t)
