@@ -962,8 +962,10 @@ class Structure:
         none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
         nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
-        msc_mean, msc_std = (nan_arrays() for _ in range(2))
-        myof_lines, lengths, msc = (none_lists() for _ in range(3))
+        straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
+        frechet_straightness_mean, frechet_straightness_std = (nan_arrays() for _ in range(2))
+        bending_energy_mean, bending_energy_std = (nan_arrays() for _ in range(2))
+        myof_lines, lengths, straightness, frechet_straightness, bending_energy = (none_lists() for _ in range(5))
 
         # iterate frames
         print('\nStarting myofibril line analysis...')
@@ -986,7 +988,10 @@ class Structure:
                 if len(lines_i) > 0:
                     # line lengths and mean squared curvature (msc)
                     lengths_i = line_data_i['line_features']['length_lines']
-                    msc_i = line_data_i['line_features']['msc_lines']
+                    straightness_i = line_data_i['line_features']['straightness_lines']
+                    frechet_straightness_i = line_data_i['line_features']['frechet_straightness_lines']
+                    bending_energy_i = line_data_i['line_features']['bending_energy_lines']
+
                     if len(lengths_i) > 0:
                         # create myofibril length map
                         myof_map_i = self.create_myofibril_length_map(myof_lines=lines_i, myof_length=lengths_i,
@@ -1006,17 +1011,30 @@ class Structure:
                         length_mean[frame_i], length_std[frame_i], length_max[frame_i] = (weighted_mean_length_i,
                                                                                           weighted_std_length_i,
                                                                                           np.nanmax(myof_map_flat_i))
-                        msc_mean[frame_i], msc_std[frame_i] = np.mean(msc_i), np.std(msc_i)
+                        straightness_mean[frame_i], straightness_std[frame_i] = (np.mean(straightness_i),
+                                                                                 np.std(straightness_i))
+                        frechet_straightness_mean[frame_i], frechet_straightness_std[frame_i] = (np.mean(frechet_straightness_i),
+                                                                                                 np.std(frechet_straightness_i))
+                        bending_energy_mean[frame_i], bending_energy_std[frame_i] = (np.mean(bending_energy_i),
+                                                                                     np.std(bending_energy_i))
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
-                    msc[frame_i] = msc_i
+                    straightness[frame_i] = straightness_i
+                    frechet_straightness[frame_i] = frechet_straightness_i
+                    bending_energy[frame_i] = bending_energy_i
 
         # update structure dictionary
         myofibril_data = {'myof_length_mean': length_mean,
                           'myof_length_std': length_std, 'myof_lines': myof_lines,
                           'myof_length_max': length_max, 'myof_length': lengths,
-                          'myof_msc': msc, 'myof_msc_mean': msc_mean,
-                          'myof_msc_std': msc_std,
+                          'myof_straightness': straightness, 'myof_straightness_mean': straightness_mean,
+                          'myof_straightness_std': straightness_std,
+                          'myof_frechet_straightness': frechet_straightness,
+                          'myof_frechet_straightness_mean': frechet_straightness_mean,
+                          'myof_frechet_straightness_std': frechet_straightness_std,
+                          'myof_bending_energy': bending_energy,
+                          'myof_bending_energy_mean': bending_energy_mean,
+                          'myof_bending_energy_std': bending_energy_std,
                           'params.analyze_myofibrils.persistence': persistence,
                           'params.analyze_myofibrils.threshold_distance': threshold_distance,
                           'params.analyze_myofibrils.frames': list_frames,
@@ -2803,6 +2821,11 @@ class Structure:
 
         threshold_distance_pixels = threshold_distance / pixelsize
 
+        def angle_diff(alpha, beta):
+            """Return the signed difference between angles alpha and beta.
+            The result is in the range [-pi, pi]."""
+            return np.arctan2(np.sin(beta - alpha), np.cos(beta - alpha))
+
         def calculate_mean_orientation(orientations):
             # Convert orientations to complex numbers on the unit circle
             complex_orientations = np.exp(2j * np.array(orientations))
@@ -2812,7 +2835,7 @@ class Structure:
             return np.angle(mean_complex) / 2
 
         def adjust_orientation(current_orientation, previous_orientation):
-            diff = current_orientation - previous_orientation
+            diff = angle_diff(current_orientation, previous_orientation)
             if diff > np.pi / 2:
                 return current_orientation - np.pi
             elif diff < -np.pi / 2:
@@ -2831,14 +2854,14 @@ class Structure:
                 end_left = points_t[:, line_i_list[0]]
                 length_left = np.mean(sarcomere_length_vectors_t[line_i_list[:persistence]]) / pixelsize
                 new_orientation_left = calculate_mean_orientation(
-                    sarcomere_orientation_vectors_t[line_i_list[:persistence]])
+                    sarcomere_orientation_vectors_t[line_i_list[:persistence]]) if persistence > 1 else sarcomere_orientation_vectors_t[line_i_list[0]]
                 orientation_left = adjust_orientation(new_orientation_left, orientation_left)
 
             if not stop_right:
                 end_right = points_t[:, line_i_list[-1]]
                 length_right = np.mean(sarcomere_length_vectors_t[line_i_list[-persistence:]]) / pixelsize
                 new_orientation_right = calculate_mean_orientation(
-                    sarcomere_orientation_vectors_t[line_i_list[-persistence:]])
+                    sarcomere_orientation_vectors_t[line_i_list[-persistence:]]) if persistence > 1 else sarcomere_orientation_vectors_t[line_i_list[-1]]
                 orientation_right = adjust_orientation(new_orientation_right, orientation_right)
 
             # grow left
@@ -2912,43 +2935,108 @@ class Structure:
         # Prepare arguments for parallel processing
         args = [
             (seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs, threshold_distance,
-             pixelsize,
-             persistence) for seed in seed_idx]
+             pixelsize, persistence) for seed in seed_idx]
 
         # grow lines
         lines = [Structure._grow_line(*arg) for arg in args]
 
         # remove short lines (< n_min)
         lines = [l for l in lines if len(l) >= n_min]
+
         # calculate features of lines
         n_vectors_lines = np.asarray([len(l) for l in lines])  # number of sarcomeres in line
         length_line_segments = [sarcomere_length_vectors_t[l] for l in lines]
         length_lines = [np.sum(lengths) for lengths in length_line_segments]
+
         # sarcomere lengths
         sarcomere_mean_length_lines = [np.mean(sarcomere_length_vectors_t[l]) for l in lines]
         sarcomere_std_length_lines = [np.std(sarcomere_length_vectors_t[l]) for l in lines]
+
         # midline lengths
         midline_mean_length_lines = [np.nanmean(midline_length_vectors_t[l]) for l in lines]
         midline_std_length_lines = [np.nanstd(midline_length_vectors_t[l]) for l in lines]
         midline_min_length_lines = [np.nanmin(midline_length_vectors_t[l]) for l in lines]
-        # mean squared curvature
+
+        # Straightness: end-to-end distance / total path length
+        def compute_straightness(line):
+            pts = points_t[line]
+            # Calculate the path length from consecutive point differences
+            seg_dists = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+            path_length = np.sum(seg_dists)
+            if path_length > 0:
+                return np.linalg.norm(pts[-1] - pts[0]) / path_length
+            else:
+                return 0.0
+        straightness_lines = [compute_straightness(line) for line in lines]
+
+        def frechet_straightness(points):
+            """
+            Compute a Fréchet-inspired straightness measure:
+            1 - (max perpendicular deviation from chord / chord length)
+
+            Parameters
+            ----------
+            points : np.ndarray
+                Array of shape (n_points, 2) representing polyline vertices
+
+            Returns
+            -------
+            float
+                Straightness measure (1 = perfectly straight)
+            """
+
+            if len(points) < 2:
+                return 1.0  # Single point is trivially straight
+
+            # Calculate chord vector between first and last points
+            chord_vector = points[-1] - points[0]
+            chord_length = np.linalg.norm(chord_vector)
+
+            if chord_length < 1e-9:  # Handle degenerate chord
+                return 0.0
+
+            # Unit vector along chord direction
+            unit_chord = chord_vector / chord_length
+
+            # Vectors from first point to each polyline vertex
+            displacement_vectors = points - points[0]
+
+            # Scalar projections onto chord (dot product with unit vector)
+            chord_projections = np.sum(displacement_vectors * unit_chord, axis=1)
+
+            # Ideal points along chord line
+            projected_points = points[0] + chord_projections[:, np.newaxis] * unit_chord
+
+            # Perpendicular deviations from actual path
+            deviation_vectors = points - projected_points
+            perpendicular_deviations = np.linalg.norm(deviation_vectors, axis=1)
+
+            max_deviation = np.max(perpendicular_deviations)
+
+            return 1.0 - (max_deviation / chord_length)
+
+        frechet_straightness_lines = [
+            frechet_straightness(points_t[line])
+            for line in lines
+        ]
+
+        # Bending energy: mean squared angular change
         tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
         tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
                                           tangential_vector_line_segments]
-        curvature_line_segments = [np.diff(angle_i) / length_line_segments[i][1:-1] for i, angle_i in
-                                   enumerate(tangential_angle_line_segments)]
-        msc_lines = [np.sum(curvature_line_segments[i] ** 2) / length_lines[i] for i in range(len(lines))]
-        # mean and std orientation, and maximal change of orientation
-        mean_orient_lines = [stats.circmean(sarcomere_orientation_vectors_t[l]) for l in lines]
-        std_orient_lines = [stats.circstd(sarcomere_orientation_vectors_t[l]) for l in lines]
-        max_orient_change_lines = [Utils.max_orientation_change(sarcomere_orientation_vectors_t[l]) for l in lines]
+        bending_energy_lines = [
+            np.mean(np.arctan2(np.sin(np.diff(angles)), np.cos(np.diff(angles))) ** 2) if len(angles) > 1 else 0.0
+            for angles in tangential_angle_line_segments
+        ]
+
         # create dictionary
         line_features = {'n_vectors_lines': n_vectors_lines, 'length_lines': length_lines,
                          'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
                          'sarcomere_std_length_lines': sarcomere_std_length_lines,
-                         'msc_lines': msc_lines, 'mean_orient_lines': mean_orient_lines,
-                         'std_orient_lines': std_orient_lines, 'midline_mean_length_lines': midline_mean_length_lines,
-                         'max_orient_change_lines': max_orient_change_lines,
+                         'bending_energy_lines': bending_energy_lines,
+                         'straightness_lines': straightness_lines,
+                         'frechet_straightness_lines': frechet_straightness_lines,
+                         'midline_mean_length_lines': midline_mean_length_lines,
                          'midline_std_length_lines': midline_std_length_lines,
                          'midline_min_length_lines': midline_min_length_lines}
         line_features = Utils.convert_lists_to_arrays_in_dict(line_features)
