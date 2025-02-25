@@ -1229,8 +1229,8 @@ class Plots:
 
     @staticmethod
     def plot_myofibril_lines(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
-                             linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', scalebar=True, title=None,
-                             zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
+                             linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', alpha_z_bands=1,
+                             scalebar=True, title=None, zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots result of myofibril line growth algorithm of the sarcomere object.
 
@@ -1252,6 +1252,8 @@ class Plots:
             The transparency of the lines. Defaults to 0.2.
         cmap_z_bands : str, optional
             Colormap of Z-bands. Defaults to 'Greys'.
+        alpha_z_bands : float, optional
+            Transparency of Z-bands. Defaults to 1.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Defaults to True.
         title : str, optional
@@ -1266,9 +1268,9 @@ class Plots:
         assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=0.5)
+            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=alpha_z_bands)
         else:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=0.5)
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
         lines = sarc_obj.structure.data['myof_lines'][frame]
         pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
@@ -1279,7 +1281,7 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         for i, line_i in enumerate(lines):
-            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth, zorder=-1)
+            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
