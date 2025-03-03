@@ -137,24 +137,45 @@ structure_feature_dict = {
         'function': 'Structure.analyze_myofibrils',
         'name': 'Myofibril lines'
     },
-    'myof_msc': {
-        'description': 'Mean squared curvature (MSC) of myofibril lines. List with np.array for each frame.',
+    'myof_bending_energy': {
+        'description': 'Bending energy (mean squared curvature) of myofibril lines. List with np.array for each frame.',
         'data type': List[np.ndarray],
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Myofibril MSC'
+        'name': 'Myofibril bending energy'
     },
-    'myof_msc_mean': {
-        'description': 'Mean of mean squared curvature (MSC) of myofibril lines in each frame. np.array with value for each frame.',
+    'myof_bending_energy_mean': {
+        'description': 'Mean of mean squared curvature of myofibril lines in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Mean myofibril MSC'
+        'name': 'Mean myofibril bending energy'
     },
-    'myof_msc_std': {
-        'description': 'Standard deviation of mean squared curvature (MSC) of myofibril lines in each frame. '
+    'myof_bending_energy_std': {
+        'description': 'Standard deviation of bending energy (mean squared curvature) of myofibril lines in each frame. '
                        'np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'STD myofibril MSC'
+        'name': 'STD myofibril bending energy'
+    },
+    'myof_straightness': {
+        'description': 'Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
+                       'List with np.ndarray for each frame.',
+        'data type': List[List[np.ndarray]],
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Myofibril straightness'
+    },
+    'myof_straightness_mean': {
+        'description': 'Mean of Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'Mean myofibril straightness'
+    },
+    'myof_straightness_std': {
+        'description': 'Standard deviation of Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_myofibrils',
+        'name': 'STD myofibril straightness'
     },
     'n_domains': {
         'description': 'Number of sarcomere domains in each frame. np.array with value for each frame.',
