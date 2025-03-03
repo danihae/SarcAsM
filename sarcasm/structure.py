@@ -188,10 +188,12 @@ class Structure:
         model_path : str, optional
             Path of trained network weights for U-Net. Default is None.
         size : tuple of int, optional
-            Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16. Default is (1024, 1024).
+            Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16.
+            Default is (1024, 1024).
         normalization_mode : str, optional
             Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.
+            'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
+            Default is 'all'.
         clip_thres : tuple of float, optional
             Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
         progress_notifier : ProgressNotifier, optional
@@ -243,11 +245,13 @@ class Structure:
         model_path : str, optional
             Path of trained network weights for 3D U-Net. Default is None.
         size : tuple of int, optional
-            Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16. Default is (1024, 1024).
+            Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16.
+            Default is (1024, 1024).
             When time_consistent==True, specify tuple with (n_frames, n_x, n_y), e.g., (64, 128, 256).
         normalization_mode : str, optional
             Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.
+            'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
+            Default is 'all'.
         clip_thres : tuple of float, optional
             Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
         progress_notifier : ProgressNotifier, optional
@@ -618,7 +622,7 @@ class Structure:
                                           save_all: bool = False,
                                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
-        AND-gated double wavelet analysis of sarcomere structure.
+        AND-gated double wavelet analysis of sarcomere length and orientation.
 
         Parameters
         ----------
@@ -989,7 +993,6 @@ class Structure:
                     # line lengths and mean squared curvature (msc)
                     lengths_i = line_data_i['line_features']['length_lines']
                     straightness_i = line_data_i['line_features']['straightness_lines']
-                    frechet_straightness_i = line_data_i['line_features']['frechet_straightness_lines']
                     bending_energy_i = line_data_i['line_features']['bending_energy_lines']
 
                     if len(lengths_i) > 0:
@@ -1013,14 +1016,11 @@ class Structure:
                                                                                           np.nanmax(myof_map_flat_i))
                         straightness_mean[frame_i], straightness_std[frame_i] = (np.mean(straightness_i),
                                                                                  np.std(straightness_i))
-                        frechet_straightness_mean[frame_i], frechet_straightness_std[frame_i] = (np.mean(frechet_straightness_i),
-                                                                                                 np.std(frechet_straightness_i))
                         bending_energy_mean[frame_i], bending_energy_std[frame_i] = (np.mean(bending_energy_i),
                                                                                      np.std(bending_energy_i))
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
                     straightness[frame_i] = straightness_i
-                    frechet_straightness[frame_i] = frechet_straightness_i
                     bending_energy[frame_i] = bending_energy_i
 
         # update structure dictionary
@@ -1029,9 +1029,6 @@ class Structure:
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_straightness': straightness, 'myof_straightness_mean': straightness_mean,
                           'myof_straightness_std': straightness_std,
-                          'myof_frechet_straightness': frechet_straightness,
-                          'myof_frechet_straightness_mean': frechet_straightness_mean,
-                          'myof_frechet_straightness_std': frechet_straightness_std,
                           'myof_bending_energy': bending_energy,
                           'myof_bending_energy_mean': bending_energy_mean,
                           'myof_bending_energy_std': bending_energy_std,
@@ -1819,7 +1816,7 @@ class Structure:
             A = np.zeros_like(D) * np.nan
             for (i, j) in _idxs.T:
                 A_ij = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
-                A[i, j] = A_ij if A_ij > a_min else np.nan
+                A[i, j] = A_ij if A_ij >= a_min else np.nan
             D[np.isnan(A)] = np.nan
 
             # make matrices symmetric for undirected graph
@@ -1828,8 +1825,7 @@ class Structure:
 
             def compute_cost_matrix(D, A, penalty=1e6):
                 """
-                Compute the cost matrix for linking Z-band ends based on a multiplicative relationship
-                between distance and alignment.
+                Compute the cost matrix for linking Z-band ends based on a cost 1 - A favoring optimal alignment.
 
                 Parameters:
                 ----------
@@ -2957,18 +2953,7 @@ class Structure:
         midline_std_length_lines = [np.nanstd(midline_length_vectors_t[l]) for l in lines]
         midline_min_length_lines = [np.nanmin(midline_length_vectors_t[l]) for l in lines]
 
-        # Straightness: end-to-end distance / total path length
-        def compute_straightness(line):
-            pts = points_t[line]
-            # Calculate the path length from consecutive point differences
-            seg_dists = np.linalg.norm(np.diff(pts, axis=0), axis=1)
-            path_length = np.sum(seg_dists)
-            if path_length > 0:
-                return np.linalg.norm(pts[-1] - pts[0]) / path_length
-            else:
-                return 0.0
-        straightness_lines = [compute_straightness(line) for line in lines]
-
+        # Straightness
         def frechet_straightness(points):
             """
             Compute a Fréchet-inspired straightness measure:
@@ -3015,7 +3000,7 @@ class Structure:
 
             return 1.0 - (max_deviation / chord_length)
 
-        frechet_straightness_lines = [
+        straightness_lines = [
             frechet_straightness(points_t[line])
             for line in lines
         ]
@@ -3035,7 +3020,6 @@ class Structure:
                          'sarcomere_std_length_lines': sarcomere_std_length_lines,
                          'bending_energy_lines': bending_energy_lines,
                          'straightness_lines': straightness_lines,
-                         'frechet_straightness_lines': frechet_straightness_lines,
                          'midline_mean_length_lines': midline_mean_length_lines,
                          'midline_std_length_lines': midline_std_length_lines,
                          'midline_min_length_lines': midline_min_length_lines}
@@ -3111,7 +3095,8 @@ class Structure:
         Returns
         -------
         coords : ndarray
-            The coordinates of the curved line profile. Shape is (2, N, linewidth), where N is the total number of points in the line.
+            The coordinates of the curved line profile. Shape is (2, N, linewidth),
+            where N is the total number of points in the line.
         """
         all_perp_rows = []
         all_perp_cols = []
