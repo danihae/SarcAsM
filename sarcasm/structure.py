@@ -511,12 +511,10 @@ class Structure:
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
             midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
             orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)
-            distance = tifffile.imread(self.sarc_obj.file_distance)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
             midlines = tifffile.imread(self.sarc_obj.file_midlines, key=frames)
             orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)[frames]
-            distance = tifffile.imread(self.sarc_obj.file_distance, key=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
@@ -527,8 +525,6 @@ class Structure:
             z_bands = np.expand_dims(z_bands, axis=0)
         if len(midlines.shape) == 2:
             midlines = np.expand_dims(midlines, axis=0)
-        if len(distance.shape) == 2:
-            distance = np.expand_dims(distance, axis=0)
         if len(orientation_vectors.shape) == 3:
             orientation_vectors = np.expand_dims(orientation_vectors, axis=0)
 
