@@ -132,7 +132,6 @@ class SarcAsM:
             self.file_z_bands,
             self.file_z_bands_fast_movie,
             self.file_midlines,
-            self.file_distance,
             self.file_orientation,
             self.file_cell_mask,
             self.file_sarcomere_mask
