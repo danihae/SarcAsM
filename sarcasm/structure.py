@@ -174,7 +174,7 @@ class Structure:
         return Utils.get_lois_of_file(self.sarc_obj.filepath)
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
-                          model_path: str = None, size: Tuple[int, int] = (1024, 1024),
+                          model_path: str = None, max_patch_size: Tuple[int, int] = (1024, 1024),
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
@@ -187,8 +187,8 @@ class Structure:
             selected frames). Defaults to 'all'.
         model_path : str, optional
             Path of trained network weights for U-Net. Default is None.
-        size : tuple of int, optional
-            Patch dimensions for convolutional neural network (n_x, n_y). Dimensions need to be divisible by 16.
+        max_patch_size : tuple of int, optional
+            Maximal patch dimensions for convolutional neural network (n_x, n_y).
             Default is (1024, 1024).
         normalization_mode : str, optional
             Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
@@ -219,7 +219,8 @@ class Structure:
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.sarc_obj.model_dir, 'model_sarcomeres_generalist.pt')
         _ = Predict_UNet(images, model_params=model_path, result_path=self.sarc_obj.base_dir,
-                         resize_dim=size, normalization_mode=normalization_mode, network=MultiOutputNestedUNet_3Levels,
+                         max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                         network=MultiOutputNestedUNet_3Levels,
                          clip_threshold=clip_thres, device=self.sarc_obj.device,
                          progress_notifier=progress_notifier)
         del _
