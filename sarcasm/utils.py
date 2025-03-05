@@ -382,8 +382,8 @@ class Utils:
         return v
 
     @staticmethod
-    def process_profile(profile: np.ndarray, pixelsize, slen_lims=(1, 3), thres=0.3,
-                        min_dist=10, width=6, interp_factor=4) -> float:
+    def process_profile(profile: np.ndarray, pixelsize, slen_lims=(1, 3), thres=0.25,
+                        min_dist=1, width=0.5, interp_factor=4) -> float:
         """Find peak separation distance in 1D intensity profile using interpolation and COM.
 
         Parameters
@@ -397,9 +397,9 @@ class Utils:
         thres : float, optional
             Peak detection height threshold [0-1], by default 0.3
         min_dist : int, optional
-            Minimum peak separation in pixels, by default 10
+            Minimum peak separation in µm, by default 1 µm.
         width : int, optional
-            Half-width of COM window in pixels, by default 6
+            Half-width of COM window in µm, by default 0.5 µm.
         interp_factor : int, optional
             Interpolation upsampling factor, by default 4
 
@@ -408,6 +408,10 @@ class Utils:
         float
             Peak separation distance or np.nan if invalid
         """
+        # convert parameter to pixels
+        min_dist_pixel = int(np.round(min_dist / pixelsize, 0))
+        width_pixels = int(np.round(width / pixelsize, 0))
+
         # Normalize profile to [0,1] range
         profile = (profile - profile.min()) / (profile.max() - profile.min())
 
@@ -415,7 +419,7 @@ class Utils:
         pos_array = np.arange(len(profile)) * pixelsize
 
         # Interpolate data with padding to avoid edge effects
-        pad_width = width
+        pad_width = width_pixels
         profile_padded = np.pad(profile, pad_width, mode='reflect')
         pos_padded = np.linspace(pos_array[0] - pad_width * pixelsize,
                                  pos_array[-1] + pad_width * pixelsize,
@@ -431,7 +435,7 @@ class Utils:
         # Find peaks with prominence to avoid noise
         peaks_idx, properties = find_peaks(y_interp,
                                            height=thres,
-                                           distance=min_dist * interp_factor,
+                                           distance=min_dist_pixel * interp_factor,
                                            prominence=0.2,
                                            width=3)
 
@@ -441,29 +445,14 @@ class Utils:
         # Calculate refined peak positions using center of mass
         peaks = []
         for idx in peaks_idx:
-            start = max(0, idx - width * interp_factor)
-            end = min(len(x_interp), idx + width * interp_factor + 1)
+            start = max(0, idx - width_pixels * interp_factor)
+            end = min(len(x_interp), idx + width_pixels * interp_factor + 1)
             x_window = x_interp[start:end]
             y_window = y_interp[start:end]
             # Subtract baseline to improve COM calculation
             y_window = y_window - y_window.min()
             peak_pos = np.sum(x_window * y_window) / np.sum(y_window)
             peaks.append(peak_pos)
-
-        # if True:
-        #     dir_temp = '/Users/daniel/Code/SarcAsM/temp/profile_peaks/'
-        #     os.makedirs(dir_temp, exist_ok=True)
-        #     plt.figure(figsize=(0.9, 0.7), dpi=400, tight_layout=True)
-        #     plt.plot(x_interp, y_interp, c='k', lw=1.5)
-        #     # plt.plot(pos_array, profile, c='c', lw=1.5)
-        #     # for peak in peaks_idx:
-        #     #     plt.axvline(x_interp[peak], c='y', linestyle='--', lw=1)
-        #     plt.xticks([])
-        #     plt.yticks([])
-        #     for peak in peaks:
-        #         plt.axvline(peak, c='r', linestyle='--', lw=1)
-        #     plt.savefig(dir_temp + f'profile_peaks_{np.random.randint(0, 5000)}.pdf')
-        #     plt.close()
 
         peaks = np.array(peaks)
         center = (pos_array[-1] + pos_array[0]) / 2
