@@ -98,7 +98,6 @@ class SarcAsM:
 
         self.file_z_bands_fast_movie = os.path.join(self.base_dir, "zbands_fast_movie.tif")
         self.file_midlines = os.path.join(self.base_dir, "midlines.tif")
-        self.file_distance = os.path.join(self.base_dir, "distance.tif")
         self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
         self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
         self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
