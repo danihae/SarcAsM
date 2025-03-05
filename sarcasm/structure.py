@@ -476,7 +476,7 @@ class Structure:
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', radius: float = 0.25,
                                   linewidth: float = 0.2, interp_factor: int = 4,
-                                  slen_lims: Tuple[float, float] = (1, 3),
+                                  slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -494,6 +494,8 @@ class Structure:
             Interpolation factor for profiles to calculate sarcomere length. Default to 4.
         slen_lims : tuple of float, optional
             Sarcomere size limits in µm (default is (1, 3) µm).
+        threshold_sarcomere_mask : float
+            Threshold to binarize sarcomere masks. Defaults to 0.1.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -511,10 +513,12 @@ class Structure:
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
             midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
             orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)
+            sarcomere_mask = tifffile.imread(self.sarc_obj.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
             midlines = tifffile.imread(self.sarc_obj.file_midlines, key=frames)
             orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)[frames]
+            sarcomere_mask = tifffile.imread(self.sarc_obj.file_sarcomere_mask, key=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
@@ -525,6 +529,8 @@ class Structure:
             z_bands = np.expand_dims(z_bands, axis=0)
         if len(midlines.shape) == 2:
             midlines = np.expand_dims(midlines, axis=0)
+        if len(sarcomere_mask.shape) == 2:
+            sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
         if len(orientation_vectors.shape) == 3:
             orientation_vectors = np.expand_dims(orientation_vectors, axis=0)
 
@@ -544,21 +550,20 @@ class Structure:
 
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, distance_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_vectors, distance),
+        for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, sarcomere_mask_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_vectors, sarcomere_mask),
                                            total=n_frames)):
 
             (
                 pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
                 sarcomere_length_vectors_i,
-                sarcomere_orientation_vectors_i, sarcomere_mask_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
-                                                                                                orientation_vectors_i,
-                                                                                                distance_i,
-                                                                                                pixelsize=pixelsize,
-                                                                                                radius=radius,
-                                                                                                slen_lims=slen_lims,
-                                                                                                interp_factor=interp_factor,
-                                                                                                linewidth=linewidth)
+                sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
+                                                                              orientation_vectors_i,
+                                                                              pixelsize=pixelsize,
+                                                                              radius=radius,
+                                                                              slen_lims=slen_lims,
+                                                                              interp_factor=interp_factor,
+                                                                              linewidth=linewidth)
 
             # write in list
             pos_vectors_px[frame_i] = pos_vectors_px_i
@@ -582,7 +587,7 @@ class Structure:
                     sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
 
             # calculate sarcomere mask area
-            sarcomere_masks[frame_i] = sarcomere_mask_i
+            sarcomere_masks[frame_i] = sarcomere_mask_i > threshold_sarcomere_mask
             sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
             if 'cell_mask_area' in self.data:
                 sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
@@ -2418,14 +2423,13 @@ class Structure:
             zbands: np.ndarray,
             midlines: np.ndarray,
             orientation_field: np.ndarray,
-            distance: np.ndarray,
             pixelsize: float,
             radius: float = 0.25,
             slen_lims: Tuple[float, float] = (1, 3),
             interp_factor: int = 4,
             linewidth: float = 0.3,
     ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
-    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], np.ndarray]:
+    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
         """
         Extract sarcomere orientation and length vectors.
 
@@ -2437,8 +2441,6 @@ class Structure:
             2D array representing the semantic segmentation map of midlines.
         orientation_field : np.ndarray
             2D array representing the orientation field.
-        distance : np.ndarray
-            2D array representing the distance transform map.
         pixelsize : float
             Size of a pixel in micrometers.
         radius : float, optional
@@ -2461,13 +2463,8 @@ class Structure:
         sarcomere_mask : np.ndarray
             Mask indicating the presence of sarcomeres.
         """
-        radius_pixels = int(round(radius / pixelsize, 0))
+        radius_pixels = max(int(round(radius / pixelsize, 0)), 1)
         linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
-
-        # create sarcomere mask
-        gradient_x, gradient_y = np.gradient(distance)
-        max_slope = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
-        sarcomere_mask = max_slope > 0
 
         # skeletonize midlines
         midlines_skel = skeletonize(midlines > 0.5, method='lee')
@@ -2529,7 +2526,7 @@ class Structure:
             sarcomere_length_vectors, z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
 
         return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
-                sarcomere_orientation_vectors, sarcomere_mask)
+                sarcomere_orientation_vectors)
 
     @staticmethod
     def get_sarcomere_vectors_wavelet(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
