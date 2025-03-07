@@ -7,14 +7,14 @@ from scipy import sparse
 
 # structural features
 structure_feature_dict = {
-    'cell_area': {
+    'cell_mask_area': {
         'description': 'Area occupied by cells in image. NOT the area of individual cells. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_cell_mask',
         'name': 'Cell area [µm²]'
     },
-    'cell_area_ratio': {
+    'cell_mask_area_ratio': {
         'description': 'Area ratio of total image occupied by cells. np.ndarray with value for each frame.',
         'data type': List[np.ndarray],
         'function': 'Structure.analyze_cell_mask',
