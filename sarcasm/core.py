@@ -90,12 +90,8 @@ class SarcAsM:
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.analysis_dir, exist_ok=True)
 
-        # File paths: determine the z-bands file based on legacy naming
-        if os.path.exists(os.path.join(self.base_dir, "sarcomeres.tif")) and not os.path.exists(os.path.join(self.base_dir, "zbands.tif")):
-            self.file_z_bands = os.path.join(self.base_dir, "sarcomeres.tif")
-        else:
-            self.file_z_bands = os.path.join(self.base_dir, "zbands.tif")
-
+        # File paths
+        self.file_z_bands = os.path.join(self.base_dir, "zbands.tif")
         self.file_z_bands_fast_movie = os.path.join(self.base_dir, "zbands_fast_movie.tif")
         self.file_midlines = os.path.join(self.base_dir, "midlines.tif")
         self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
@@ -130,11 +126,11 @@ class SarcAsM:
         """
         targets = [
             self.file_z_bands,
-            self.file_z_bands_fast_movie,
             self.file_midlines,
             self.file_orientation,
             self.file_cell_mask,
-            self.file_sarcomere_mask
+            self.file_sarcomere_mask,
+            self.file_z_bands_fast_movie,
         ]
 
         for path in targets:
