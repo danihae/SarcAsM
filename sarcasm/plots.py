@@ -237,7 +237,7 @@ class Plots:
                 ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -257,7 +257,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w',
-                                             sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
@@ -303,7 +303,7 @@ class Plots:
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
-                         sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                         sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -365,7 +365,7 @@ class Plots:
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
-                         sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
+                         sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -382,6 +382,12 @@ class Plots:
 
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
+
+            if scalebar:
+                ax_inset.add_artist(
+                    ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
+                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                             font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
     def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
@@ -415,7 +421,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -460,7 +466,7 @@ class Plots:
         ax.imshow(masked_labels, cmap=cmap)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -476,7 +482,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                       height_fraction=0.07, location='lower right', scale_loc='top',
+                                       height_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
@@ -553,7 +559,7 @@ class Plots:
         ax.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3, edgecolors='none')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -579,7 +585,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                       height_fraction=0.07, location='lower right', scale_loc='top',
+                                       height_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
@@ -676,7 +682,7 @@ class Plots:
         plot = ax.imshow(max_score, vmin=lim[0], vmax=lim[1], cmap='gray')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -758,7 +764,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -816,10 +822,10 @@ class Plots:
 
         if scalebar:
             ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                    height_fraction=0.07, location='lower right', scale_loc='top',
+                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
             ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                    height_fraction=0.07, location='lower right', scale_loc='top',
+                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
 
         ax1.set_xticks([])
@@ -832,10 +838,10 @@ class Plots:
 
         if scalebar:
             ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
             ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
 
         # Add inset axis if zoom_region is specified
@@ -860,10 +866,10 @@ class Plots:
 
             if scalebar:
                 ax_inset1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                        height_fraction=0.07, location='lower right', scale_loc='top',
+                                        height_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
                 ax_inset2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                        height_fraction=0.07, location='lower right', scale_loc='top',
+                                        height_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
@@ -908,7 +914,7 @@ class Plots:
         plot = ax.imshow(length, vmin=lim[0], vmax=lim[1], cmap='viridis')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -962,7 +968,7 @@ class Plots:
         plot = ax.imshow(orientation, vmin=lim[0], vmax=lim[1], cmap='hsv')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1119,7 +1125,7 @@ class Plots:
             ax.legend(loc=3, fontsize=PlotUtils.fontsize - 2)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1160,8 +1166,8 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k',
-                                             sep=1, height_fraction=0.07, location='lower right', scale_loc='top',
-                                             font_properties={'size': PlotUtils.fontsize - 1}))
+                                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                                             font_properties={'size': PlotUtils.fontsize - 1, }))
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
@@ -1223,7 +1229,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
@@ -1276,7 +1282,7 @@ class Plots:
         pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1297,7 +1303,7 @@ class Plots:
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                             height_fraction=0.07, location='lower right', scale_loc='top',
+                             height_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
                 ax_inset.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha,
@@ -1384,7 +1390,7 @@ class Plots:
         plot = ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax, alpha=alpha)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.07, location='lower right', scale_loc='top',
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         if colorbar:
             cbar = plt.colorbar(mappable=plot, ax=ax, shrink=shrink_colorbar, orientation=orient_colorbar,
@@ -1413,7 +1419,7 @@ class Plots:
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
-                             height_fraction=0.07, location='lower right', scale_loc='top',
+                             height_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
