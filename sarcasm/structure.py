@@ -1164,8 +1164,8 @@ class Structure:
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
-    def _grow_lois(self, frame: int = 0, n_seeds: int = 500, persistence: int = 2, threshold_distance: float = 0.3,
-                   random_seed: Optional[int] = None) -> None:
+    def _grow_lois(self, frame: int = 0, ratio_seeds: float = 0.1, persistence: int = 2,
+                   threshold_distance: float = 0.3) -> None:
         """
         Find LOIs (lines of interest) using a line growth algorithm. The parameters **lims can be used to filter LOIs.
 
@@ -1173,8 +1173,8 @@ class Structure:
         ----------
         frame : int, optional
             Frame to select frame. Selects i-th frame of frames specified in wavelet analysis. Defaults to 0.
-        n_seeds : int, optional
-            Number of random seeds for line growth. Default 500.
+        ratio_seeds : float, optional
+            Ratio of sarcomere vectors to take as seeds for line growth. Default 0.1.
         persistence : int, optional
             Persistence of line (average vector length and orientation for prior estimation). Defaults to 2.
         threshold_distance : float, optional
@@ -1184,17 +1184,18 @@ class Structure:
         """
         # select midline point data at frame
         (pos_vectors, sarcomere_length_vectors,
-         sarcomere_orientation_vectors, max_score_vectors, midline_length_vectors) = self.data['pos_vectors'][frame], \
+         sarcomere_orientation_vectors, midline_length_vectors) = self.data['pos_vectors_px'][frame], \
             self.data['sarcomere_length_vectors'][frame], \
             self.data['sarcomere_orientation_vectors'][frame], \
-            self.data['max_score_vectors'][frame], \
             self.data['midline_length_vectors'][frame]
-        loi_data = self.line_growth(pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
-                                    midline_length_vectors, self.sarc_obj.metadata['pixelsize'], n_seeds=n_seeds,
-                                    random_seed=random_seed, persistence=persistence,
+        loi_data = self.line_growth(points_t=pos_vectors, sarcomere_length_vectors_t=sarcomere_length_vectors,
+                                    sarcomere_orientation_vectors_t=sarcomere_orientation_vectors,
+                                    midline_length_vectors_t=midline_length_vectors,
+                                    pixelsize=self.sarc_obj.metadata['pixelsize'],
+                                    ratio_seeds=ratio_seeds, persistence=persistence,
                                     threshold_distance=threshold_distance)
         self.data['loi_data'] = loi_data
-        lois_vectors = [self.data['pos_vectors'][frame].T[loi_i] for loi_i in self.data['loi_data']['lines']]
+        lois_vectors = [self.data['pos_vectors_px'][frame][loi_i] for loi_i in self.data['loi_data']['lines']]
         self.data['loi_data']['lines_vectors'] = lois_vectors
         if self.sarc_obj.auto_save:
             self.store_structure_data()
@@ -1202,10 +1203,10 @@ class Structure:
     def _filter_lois(self, number_lims: Tuple[int, int] = (10, 100), length_lims: Tuple[float, float] = (0, 200),
                      sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
                      sarcomere_std_length_lims: Tuple[float, float] = (0, 0.4),
-                     msc_lims: Tuple[float, float] = (0, 1), midline_mean_length_lims: Tuple[float, float] = (0, 20),
+                     midline_mean_length_lims: Tuple[float, float] = (0, 20),
                      midline_std_length_lims: Tuple[float, float] = (0, 5),
                      midline_min_length_lims: Tuple[float, float] = (0, 20),
-                     max_orient_change: float = 30.0) -> None:
+                     ) -> None:
         """
         Filters Lines of Interest (LOIs) based on various geometric and morphological criteria.
 
@@ -1219,16 +1220,12 @@ class Structure:
             Limits for mean length of sarcomeres in LOI (min, max). Defaults to (1, 3).
         sarcomere_std_length_lims : tuple of float, optional
             Limits for standard deviation of sarcomere lengths in LOI (min, max). Defaults to (0, 0.4).
-        msc_lims : tuple of float, optional
-            Limits for LOI mean squared curvature (MSC) (min, max). Defaults to (0, 1).
         midline_mean_length_lims : tuple of float, optional
             Limits for mean length of the midline in LOI (min, max). Defaults to (2, 20).
         midline_std_length_lims : tuple of float, optional
             Limits for standard deviation of the midline length in LOI (min, max). Defaults to (0, 5).
         midline_min_length_lims : tuple of float, optional
             Limits for minimum length of the midline in LOI (min, max). Defaults to (2, 20).
-        max_orient_change : float, optional
-            Maximum orientation change allowed. Defaults to 30.0.
         """
         # Retrieve LOIs and their features from the structure dict
         lois, loi_features = self.data['loi_data']['lines'], self.data['loi_data']['line_features']
@@ -1243,14 +1240,12 @@ class Structure:
                 (loi_features['sarcomere_mean_length_lines'] < sarcomere_mean_length_lims[1]) &
                 (loi_features['sarcomere_std_length_lines'] >= sarcomere_std_length_lims[0]) &
                 (loi_features['sarcomere_std_length_lines'] < sarcomere_std_length_lims[1]) &
-                (loi_features['msc_lines'] >= msc_lims[0]) & (loi_features['msc_lines'] < msc_lims[1]) &
                 (loi_features['midline_mean_length_lines'] >= midline_mean_length_lims[0]) &
                 (loi_features['midline_mean_length_lines'] < midline_mean_length_lims[1]) &
                 (loi_features['midline_std_length_lines'] >= midline_std_length_lims[0]) &
                 (loi_features['midline_std_length_lines'] < midline_std_length_lims[1]) &
                 (loi_features['midline_min_length_lines'] >= midline_min_length_lims[0]) &
-                (loi_features['midline_min_length_lines'] < midline_min_length_lims[1]) &
-                (loi_features['max_orient_change_lines'] < np.radians(max_orient_change))
+                (loi_features['midline_min_length_lines'] < midline_min_length_lims[1])
         )
 
         # remove bad lines
@@ -1465,13 +1460,12 @@ class Structure:
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, frame: int = 0, n_lois: int = 4, n_seeds: int = 500, persistence: int = 2,
-                    threshold_distance: float = 0.3,
+    def detect_lois(self, frame: int = 0, n_lois: int = 4, ratio_seeds: float = 0.1, persistence: int = 4,
+                    threshold_distance: float = 0.5,
                     mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
                     number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
                     sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
                     sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
-                    msc_lims: Tuple[float, float] = (0, 100), max_orient_change: float = 45,
                     midline_mean_length_lims: Tuple[float, float] = (0, 50),
                     midline_std_length_lims: Tuple[float, float] = (0, 50),
                     midline_min_length_lims: Tuple[float, float] = (0, 50), distance_threshold_lois: float = 40,
@@ -1489,8 +1483,8 @@ class Structure:
             The index of the frame to select for analysis.
         n_lois : int
             Number of LOIs.
-        n_seeds : int
-            Number of seed vectors for initiating LOI growth.
+        ratio_seeds : float
+            Ratio of sarcomere vectors to take as seed vectors for initiating LOI growth.
         persistence : int
             Persistence parameter influencing line growth direction and termination.
         threshold_distance : float
@@ -1512,10 +1506,6 @@ class Structure:
             Limits for the mean length of sarcomeres within an LOI (min, max).
         sarcomere_std_length_lims : tuple of float
             Limits for the standard deviation of sarcomere lengths within an LOI (min, max).
-        msc_lims : tuple of float
-            Limits for the mean squared curvature (MSC) of LOIs (min, max).
-        max_orient_change : float
-            Maximal change of orientation between adjacent line segments, in degrees.
         midline_mean_length_lims : tuple of float
             Limits for the mean length of the midline of vectors in LOI (min, max).
         midline_std_length_lims : tuple of float
@@ -1541,16 +1531,15 @@ class Structure:
                                                    'Run analyze_sarcomere_vectors first.')
 
         # Grow LOIs based on seed vectors and specified parameters
-        self._grow_lois(frame=frame, n_seeds=n_seeds, persistence=persistence,
-                        threshold_distance=threshold_distance, random_seed=random_seed)
+        self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, persistence=persistence,
+                        threshold_distance=threshold_distance)
         # Filter LOIs based on geometric and morphological criteria
         self._filter_lois(number_lims=number_lims, length_lims=length_lims,
                           sarcomere_mean_length_lims=sarcomere_mean_length_lims,
-                          sarcomere_std_length_lims=sarcomere_std_length_lims, msc_lims=msc_lims,
+                          sarcomere_std_length_lims=sarcomere_std_length_lims,
                           midline_mean_length_lims=midline_mean_length_lims,
                           midline_std_length_lims=midline_std_length_lims,
-                          midline_min_length_lims=midline_min_length_lims,
-                          max_orient_change=max_orient_change)
+                          midline_min_length_lims=midline_min_length_lims)
         if mode == 'fit_straight_line' or mode == 'longest_in_cluster' or mode == 'random_from_cluster':
             # Calculate Hausdorff distance between LOIs and perform clustering
             self._hausdorff_distance_lois()
@@ -2471,7 +2460,7 @@ class Structure:
         midlines_skel = skeletonize(midlines > 0.5, method='lee')
 
         # calculate and preprocess orientation map
-        orientation = Utils.get_orientation_angles(orientation_field, use_median_filter=True, radius=radius_pixels)
+        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
 
         # label midlines
         midline_labels, n_midlines = ndimage.label(midlines_skel,
