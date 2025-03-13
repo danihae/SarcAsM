@@ -707,9 +707,9 @@ class Utils:
         return max_change
 
     @staticmethod
-    def get_orientation_angles(orientation_field: np.ndarray,
-                               use_median_filter: bool = True,
-                               radius: int = 2) -> np.ndarray:
+    def get_orientation_angle_map(orientation_field: np.ndarray,
+                                  use_median_filter: bool = True,
+                                  radius: int = 3) -> np.ndarray:
         """
         Convert a polar vector field into a map of angles for sarcomere orientations.
 
@@ -723,9 +723,9 @@ class Utils:
             Polar vector field(s). For a single image, a 3D array of shape (2, H, W).
             For multiple images, a 4D array of shape (N, 2, H, W).
         use_median_filter : bool, optional
-            Whether to apply a median filter to the resulting angle map. Default is False.
+            Whether to apply a median filter to the resulting angle map. Default is True.
         radius : int, optional
-            Radius of the disk-shaped footprint for the median filter. Default is 2.
+            Radius of the disk-shaped footprint for the median filter. Default is 3.
 
         Returns
         -------
@@ -734,14 +734,7 @@ class Utils:
             If the input is a single image of shape (2, H, W), the output shape is (H, W).
             If the input contains multiple images of shape (N, 2, H, W), the output
             shape is (N, H, W).
-
-        Notes
-        -----
-        The angles are first wrapped within [0, 2π) and then mapped to [0, π] to enforce
-        orientation symmetry.
-
         """
-
         # Reshape input to (N, 2, H, W) if necessary
         if orientation_field.ndim == 3 and orientation_field.shape[0] == 2:
             orientation_field = orientation_field[np.newaxis, ...]
@@ -755,16 +748,31 @@ class Utils:
         angles = (angles + 2 * np.pi) % (2 * np.pi)
         angles = np.where(angles > np.pi, angles - np.pi, angles)
 
-        # Optionally apply median filter to each image
+        # Apply orientation-aware median filter if requested
         if use_median_filter:
             footprint = disk(radius, strict_radius=False)
             filtered = np.empty_like(angles)
             for i in range(angles.shape[0]):
-                filtered[i] = median_filter(
-                    angles[i],
-                    footprint=footprint,
-                    mode='constant'
-                )
+                # Double the angles to map [0, π] to [0, 2π]
+                doubled_angles = 2 * angles[i]
+
+                # Convert doubled angles to unit vectors
+                x = np.cos(doubled_angles)
+                y = np.sin(doubled_angles)
+
+                # Apply median filter to vector components
+                x_filtered = median_filter(x, footprint=footprint, mode='constant')
+                y_filtered = median_filter(y, footprint=footprint, mode='constant')
+
+                # Convert back to angles
+                filtered_doubled_angles = np.arctan2(y_filtered, x_filtered)
+
+                # Ensure angles are in [0, 2π)
+                filtered_doubled_angles = (filtered_doubled_angles + 2 * np.pi) % (2 * np.pi)
+
+                # Convert back to [0, π] range by halving
+                filtered[i] = filtered_doubled_angles / 2
+
             angles = filtered
 
         return angles.squeeze()
