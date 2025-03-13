@@ -6,7 +6,6 @@ import orjson
 from scipy import sparse
 
 
-# Note: IOUtils methods that use orjson should also include proper error handling.
 class IOUtils:
     """Utility functions for storing and loading IO data."""
 
