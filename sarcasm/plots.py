@@ -1593,7 +1593,10 @@ class Plots:
             ax.set_xlim(t_lim)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Z-band position Z(t) [µm]')
-        ax.set_ylim(y_lim)
+        if y_lim is (None, None):
+            ax.set_ylim(0, None)
+        else:
+            ax.set_ylim(y_lim)
         PlotUtils.polish_yticks(ax, 5, 2.5)
         PlotUtils.polish_xticks(ax, 2, 1)
 
