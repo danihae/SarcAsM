@@ -93,7 +93,8 @@ class Plots:
         dddfff
         """
 
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols))
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols),
+                                      constrained_layout=True)
         title = f'File: {motion_obj.filepath}, \nLOI: {motion_obj.loi_name}'
         fig.suptitle(title, fontsize=PlotUtils.fontsize)
 
@@ -117,7 +118,6 @@ class Plots:
 
         PlotUtils.label_all_panels(axs)
 
-        plt.tight_layout()
         if filename is None:
             filename = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
         fig.savefig(filename, dpi=PlotUtils.dpi)
@@ -545,7 +545,7 @@ class Plots:
         if shuffle:
             labels_plot = Utils.shuffle_labels(labels_plot)
 
-        z_ends = sarc_obj.structure.data['z_ends'][frame] / sarc_obj.metadata['pixelsize']
+        z_ends = sarc_obj.structure.data['z_ends'][frame].astype('float32') / sarc_obj.metadata['pixelsize']
         z_links = sarc_obj.structure.data['z_lat_links'][frame]
         masked_labels = np.ma.masked_where(labels_plot == 0, labels_plot)
         cmap = plt.cm.prism
