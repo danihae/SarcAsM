@@ -761,8 +761,8 @@ class Utils:
                 y = np.sin(doubled_angles)
 
                 # Apply median filter to vector components
-                x_filtered = median_filter(x, footprint=footprint, mode='constant')
-                y_filtered = median_filter(y, footprint=footprint, mode='constant')
+                x_filtered = Utils.median_filter_numba(x, footprint=footprint)
+                y_filtered = Utils.median_filter_numba(y, footprint=footprint)
 
                 # Convert back to angles
                 filtered_doubled_angles = np.arctan2(y_filtered, x_filtered)
@@ -968,6 +968,38 @@ class Utils:
             start_idx += lengths[i] * linewidth if linewidth > 1 else lengths[i]
 
         return result
+
+    @staticmethod
+    @njit(parallel=True)
+    def median_filter_numba(data, footprint):
+        H, W = data.shape
+        fH, fW = footprint.shape
+        pad_h, pad_w = fH // 2, fW // 2
+
+        padded = np.zeros((H + 2 * pad_h, W + 2 * pad_w), dtype=data.dtype)
+        padded[pad_h:pad_h + H, pad_w:pad_w + W] = data
+
+        out = np.empty_like(data)
+
+        for i in prange(H):
+            for j in range(W):
+                count = 0
+                window_vals = []
+                for m in range(fH):
+                    for n in range(fW):
+                        if footprint[m, n]:
+                            val = padded[i + m, j + n]
+                            window_vals.append(val)
+                            count += 1
+                sorted_vals = np.sort(np.array(window_vals))
+                mid = count // 2
+                if count % 2 == 1:
+                    out[i, j] = sorted_vals[mid]
+                else:
+                    out[i, j] = (sorted_vals[mid - 1] + sorted_vals[mid]) / 2.0
+
+        return out
+
 
     @staticmethod
     @njit(parallel=True)
