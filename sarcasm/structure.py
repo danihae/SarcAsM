@@ -1165,7 +1165,7 @@ class Structure:
             self.store_structure_data()
 
     def _grow_lois(self, frame: int = 0, ratio_seeds: float = 0.1, persistence: int = 2,
-                   threshold_distance: float = 0.3) -> None:
+                   threshold_distance: float = 0.3, random_seed: Union[None, int] = None) -> None:
         """
         Find LOIs (lines of interest) using a line growth algorithm. The parameters **lims can be used to filter LOIs.
 
@@ -1193,7 +1193,7 @@ class Structure:
                                     midline_length_vectors_t=midline_length_vectors,
                                     pixelsize=self.sarc_obj.metadata['pixelsize'],
                                     ratio_seeds=ratio_seeds, persistence=persistence,
-                                    threshold_distance=threshold_distance)
+                                    threshold_distance=threshold_distance, random_seed=random_seed)
         self.data['loi_data'] = loi_data
         lois_vectors = [self.data['pos_vectors_px'][frame][loi_i] for loi_i in self.data['loi_data']['lines']]
         self.data['loi_data']['lines_vectors'] = lois_vectors
@@ -1202,10 +1202,10 @@ class Structure:
 
     def _filter_lois(self, number_lims: Tuple[int, int] = (10, 100), length_lims: Tuple[float, float] = (0, 200),
                      sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
-                     sarcomere_std_length_lims: Tuple[float, float] = (0, 0.4),
-                     midline_mean_length_lims: Tuple[float, float] = (0, 20),
-                     midline_std_length_lims: Tuple[float, float] = (0, 5),
-                     midline_min_length_lims: Tuple[float, float] = (0, 20),
+                     sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
+                     midline_mean_length_lims: Tuple[float, float] = (0, 50),
+                     midline_std_length_lims: Tuple[float, float] = (0, 50),
+                     midline_min_length_lims: Tuple[float, float] = (0, 50),
                      ) -> None:
         """
         Filters Lines of Interest (LOIs) based on various geometric and morphological criteria.
@@ -1219,39 +1219,45 @@ class Structure:
         sarcomere_mean_length_lims : tuple of float, optional
             Limits for mean length of sarcomeres in LOI (min, max). Defaults to (1, 3).
         sarcomere_std_length_lims : tuple of float, optional
-            Limits for standard deviation of sarcomere lengths in LOI (min, max). Defaults to (0, 0.4).
+            Limits for standard deviation of sarcomere lengths in LOI (min, max). Defaults to (0, 1).
         midline_mean_length_lims : tuple of float, optional
-            Limits for mean length of the midline in LOI (min, max). Defaults to (2, 20).
+            Limits for mean length of the midline in LOI (min, max). Defaults to (0, 50).
         midline_std_length_lims : tuple of float, optional
-            Limits for standard deviation of the midline length in LOI (min, max). Defaults to (0, 5).
+            Limits for standard deviation of the midline length in LOI (min, max). Defaults to (0, 50).
         midline_min_length_lims : tuple of float, optional
-            Limits for minimum length of the midline in LOI (min, max). Defaults to (2, 20).
+            Limits for minimum length of the midline in LOI (min, max). Defaults to (0, 50).
         """
         # Retrieve LOIs and their features from the structure dict
-        lois, loi_features = self.data['loi_data']['lines'], self.data['loi_data']['line_features']
+        lois = self.data['loi_data']['lines']
+        loi_features = self.data['loi_data']['line_features']
         lois_vectors = self.data['loi_data']['lines_vectors']
+
+        # Convert feature lists to numpy arrays for boolean operations
+        n_vectors = np.array(loi_features['n_vectors_lines'])
+        length = np.array(loi_features['length_lines'])
+        sarc_mean = np.array(loi_features['sarcomere_mean_length_lines'])
+        sarc_std = np.array(loi_features['sarcomere_std_length_lines'])
+        mid_mean = np.array(loi_features['midline_mean_length_lines'])
+        mid_std = np.array(loi_features['midline_std_length_lines'])
+        mid_min = np.array(loi_features['midline_min_length_lines'])
 
         # Apply filters based on the provided limits
         is_good = (
-                (loi_features['n_vectors_lines'] >= number_lims[0]) & (
-                loi_features['n_vectors_lines'] < number_lims[1]) &
-                (loi_features['length_lines'] >= length_lims[0]) & (loi_features['length_lines'] < length_lims[1]) &
-                (loi_features['sarcomere_mean_length_lines'] >= sarcomere_mean_length_lims[0]) &
-                (loi_features['sarcomere_mean_length_lines'] < sarcomere_mean_length_lims[1]) &
-                (loi_features['sarcomere_std_length_lines'] >= sarcomere_std_length_lims[0]) &
-                (loi_features['sarcomere_std_length_lines'] < sarcomere_std_length_lims[1]) &
-                (loi_features['midline_mean_length_lines'] >= midline_mean_length_lims[0]) &
-                (loi_features['midline_mean_length_lines'] < midline_mean_length_lims[1]) &
-                (loi_features['midline_std_length_lines'] >= midline_std_length_lims[0]) &
-                (loi_features['midline_std_length_lines'] < midline_std_length_lims[1]) &
-                (loi_features['midline_min_length_lines'] >= midline_min_length_lims[0]) &
-                (loi_features['midline_min_length_lines'] < midline_min_length_lims[1])
+                (n_vectors >= number_lims[0]) & (n_vectors < number_lims[1]) &
+                (length >= length_lims[0]) & (length < length_lims[1]) &
+                (sarc_mean >= sarcomere_mean_length_lims[0]) & (sarc_mean < sarcomere_mean_length_lims[1]) &
+                (sarc_std >= sarcomere_std_length_lims[0]) & (sarc_std < sarcomere_std_length_lims[1]) &
+                (mid_mean >= midline_mean_length_lims[0]) & (mid_mean < midline_mean_length_lims[1]) &
+                (mid_std >= midline_std_length_lims[0]) & (mid_std < midline_std_length_lims[1]) &
+                (mid_min >= midline_min_length_lims[0]) & (mid_min < midline_min_length_lims[1])
         )
 
-        # remove bad lines
+        # Filter the lines and vectors
         self.data['loi_data']['lines'] = [loi for i, loi in enumerate(lois) if is_good[i]]
         self.data['loi_data']['lines_vectors'] = [pos_vectors for i, pos_vectors in enumerate(lois_vectors) if
                                                   is_good[i]]
+
+        # Filter the features dataframe and convert back to dict
         df_features = pd.DataFrame(loi_features)
         filtered_df_features = df_features[is_good].reset_index(drop=True)
         self.data['loi_data']['line_features'] = filtered_df_features.to_dict(orient='list')
@@ -1531,7 +1537,7 @@ class Structure:
                                                    'Run analyze_sarcomere_vectors first.')
 
         # Grow LOIs based on seed vectors and specified parameters
-        self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, persistence=persistence,
+        self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, random_seed=random_seed, persistence=persistence,
                         threshold_distance=threshold_distance)
         # Filter LOIs based on geometric and morphological criteria
         self._filter_lois(number_lims=number_lims, length_lims=length_lims,
@@ -2468,7 +2474,8 @@ class Structure:
 
         # iterate midlines and create an additional list with labels and midline length (approx. by max. Feret diameter)
         props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
-        list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
+        list_labels, coords_midlines, length_midlines = (props['label'], props['coords'],
+                                                         props['feret_diameter_max'] * pixelsize)
 
         pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
         if n_midlines > 0:
@@ -2869,7 +2876,8 @@ class Structure:
     def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
                     sarcomere_orientation_vectors_t: np.ndarray,
                     midline_length_vectors_t: np.ndarray, pixelsize: float, ratio_seeds: float = 0.1,
-                    persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5):
+                    persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5,
+                    random_seed: Union[None, int] = None):
         """
         Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
 
@@ -2889,6 +2897,8 @@ class Structure:
             Ratio of sarcomere vectors to be takes as seeds for line growth
         persistence : int
             Number of points to consider for averaging length and orientation.
+        random_seed : int, optional
+            Random seed for reproducibility. Defaults to None.
 
         Returns
         -------
@@ -2904,7 +2914,8 @@ class Structure:
             print('No sarcomeres in image (len(points) = 0), could not grow lines.')
             return {'lines': [], 'line_features': {}}
 
-        random.seed(42)
+        if random_seed:
+            random.seed(random_seed)
         n_vectors = len(points_t)
         seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))
 
