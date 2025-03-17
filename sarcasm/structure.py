@@ -347,7 +347,7 @@ class Structure:
             Wraps progress notification, default is progress notification done with tqdm
         """
         assert self.sarc_obj.file_z_bands is not None, ("Z-band mask not found. Please run predict_z_bands first.")
-        if isinstance(frames, str) and frames == 'all':
+        if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
             zbands = tifffile.imread(self.sarc_obj.file_z_bands)
             images = self.read_imgs()
             list_frames = list(range(len(images)))
@@ -509,16 +509,16 @@ class Structure:
         """
         assert self.sarc_obj.file_z_bands is not None, "Sarcomere data not found. Please run 'detect_sarcomeres' first."
 
-        if isinstance(frames, str) and frames == 'all':
+        if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
             midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
-            orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)
+            orientation_field = tifffile.imread(self.sarc_obj.file_orientation)
             sarcomere_mask = tifffile.imread(self.sarc_obj.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
             midlines = tifffile.imread(self.sarc_obj.file_midlines, key=frames)
-            orientation_vectors = tifffile.imread(self.sarc_obj.file_orientation)[frames]
+            orientation_field = tifffile.imread(self.sarc_obj.file_orientation)[frames]
             sarcomere_mask = tifffile.imread(self.sarc_obj.file_sarcomere_mask, key=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
@@ -532,8 +532,8 @@ class Structure:
             midlines = np.expand_dims(midlines, axis=0)
         if len(sarcomere_mask.shape) == 2:
             sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
-        if len(orientation_vectors.shape) == 3:
-            orientation_vectors = np.expand_dims(orientation_vectors, axis=0)
+        if len(orientation_field.shape) == 3:
+            orientation_field = np.expand_dims(orientation_field, axis=0)
 
         n_frames = len(z_bands)
         pixelsize = self.sarc_obj.metadata['pixelsize']
@@ -551,15 +551,15 @@ class Structure:
 
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, zbands_i, midlines_i, orientation_vectors_i, sarcomere_mask_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_vectors, sarcomere_mask),
+        for i, (frame_i, zbands_i, midlines_i, orientation_field_i, sarcomere_mask_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_field, sarcomere_mask),
                                            total=n_frames)):
 
             (
                 pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
                 sarcomere_length_vectors_i,
                 sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
-                                                                              orientation_vectors_i,
+                                                                              orientation_field_i,
                                                                               pixelsize=pixelsize,
                                                                               radius=radius,
                                                                               slen_lims=slen_lims,
@@ -685,7 +685,7 @@ class Structure:
         assert self.sarc_obj.file_z_bands is not None, "Z-band mask not found. Please run predict_z_bands first."
         assert self.sarc_obj.file_midlines is not None, "Midlines mask not found. Please run predict_z_bands first."
 
-        if isinstance(frames, str) and frames == 'all':
+        if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             if len(list_frames) == 1:
                 z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
@@ -935,7 +935,7 @@ class Structure:
         assert 'pos_vectors_px' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                       'Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if isinstance(frames, str) and frames == 'all':
+            if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
                 frames = list(range(self.sarc_obj.metadata['frames']))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
@@ -1078,7 +1078,7 @@ class Structure:
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if isinstance(frames, str) and frames == 'all':
+            if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
                 frames = list(range(self.sarc_obj.metadata['frames']))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
