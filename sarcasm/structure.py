@@ -17,7 +17,7 @@ import skimage.measure
 import tifffile
 import torch
 import torch.nn.functional as F
-from bio_image_unet import unet3d as unet3d
+from bio_image_unet import multi_output_unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet_3Levels
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
@@ -234,7 +234,7 @@ class Structure:
             self.store_structure_data()
 
     def detect_z_bands_fast_movie(self, model_path: Optional[str] = None,
-                                  patch_size: Tuple[int, int, int] = (32, 256, 256),
+                                  max_patch_size: Tuple[int, int, int] = (32, 256, 256),
                                   normalization_mode: str = 'all',
                                   clip_thres: Tuple[float, float] = (0., 99.8),
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -246,7 +246,7 @@ class Structure:
         model_path : str, optional
             Path of trained network weights for 3D U-Net. Default is None.
         patch_size : tuple of int, optional
-            Patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
             Dimensions need to be divisible by 16. Default is (32, 256, 256).
         normalization_mode : str, optional
             Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
@@ -264,16 +264,16 @@ class Structure:
         print('\nPredicting sarcomere z-bands ...')
 
         if model_path is None:
-            model_path = os.path.join(self.sarc_obj.model_dir, 'unet3d_z_bands.pt')
-        assert len(patch_size) == 3, 'patch size for prediction has to be be (frames, x, y)'
-        _ = unet3d.Predict(self.read_imgs(), self.sarc_obj.file_z_bands_fast_movie, model_params=model_path,
-                           resize_dim=patch_size, normalization_mode=normalization_mode, device=self.sarc_obj.device,
-                           clip_threshold=clip_thres, normalize_result=True, progress_notifier=progress_notifier)
+            model_path = os.path.join(self.sarc_obj.model_dir, 'model_z_bands_unet3d.pt')
+        assert len(max_patch_size) == 3, 'patch size for prediction has to be be (frames, x, y)'
+        _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.sarc_obj.file_z_bands_fast_movie,
+                           max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                           device=self.sarc_obj.device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
         del _
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         _dict = {'params.detect_z_bands_fast_movie.model': model_path,
-                 'params.detect_z_bands_fast_movie.patch_size': patch_size,
+                 'params.detect_z_bands_fast_movie.max_patch_size': max_patch_size,
                  'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,
                  'params.predict_z_bands_fast_movie.clip_threshold': clip_thres}
         self.data.update(_dict)
