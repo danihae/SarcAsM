@@ -266,15 +266,16 @@ class Export:
         Default motion keys.
     """
 
-    meta_keys_default = ['file_id', 'file_name', 'file_path', 'date', 'frames', 'size', 'pixelsize', 'timestamps',
-                         'measurement_id', 'time', 'frametime']
+    meta_keys_default = ['file_name', 'file_path', 'frames', 'size', 'pixelsize', 'timestamps',
+                         'time', 'frametime']
 
-    structure_keys_default = ['cell_area', 'cell_area_ratio', 'domain_area_mean',
+    structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'domain_area_mean',
                               'domain_area_std', 'domain_oop_mean',
                               'domain_oop_std', 'domain_slen_mean',
-                              'myof_length_max',
-                              'myof_length_mean', 'myof_length_std',
-                              'myof_msc_mean', 'myof_msc_std', 'n_domains',
+                              'myof_length_max', 'myof_length_mean', 'myof_length_std',
+                              'myof_bending_energy_mean', 'myof_bending_energy_std',
+                              'myof_straightness_mean', 'myof_straightness_std',
+                              'n_domains',
                               'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
                               'sarcomere_length_std', 'sarcomere_oop',
                               'z_intensity_mean', 'z_intensity_std', 'z_lat_alignment_mean',
@@ -323,13 +324,11 @@ class Export:
         missing_meta_keys = [key for key in meta_keys if key not in sarc_obj.metadata]
         if missing_meta_keys:
             print('Missing metadata keys: ', missing_meta_keys)
-        dict_metadata_select = {key: sarc_obj.metadata[key] if key in sarc_obj.metadata else np.nan for key in
-                                meta_keys}
+        dict_metadata_select = {key: sarc_obj.metadata.get(key, np.nan) for key in meta_keys}
         missing_structure_keys = [key for key in structure_keys if key not in sarc_obj.structure.data]
         if missing_structure_keys:
             print('Missing structure keys: ', missing_structure_keys)
-        dict_structure_select = {key: sarc_obj.structure.data[key] if key in sarc_obj.structure.data else np.nan for key
-                                 in structure_keys}
+        dict_structure_select = {key: sarc_obj.structure.data.get(key, np.nan) for key in structure_keys}
         dict_ = {**dict_metadata_select, **dict_structure_select}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
@@ -422,8 +421,7 @@ class Export:
         missing_meta_keys = [key for key in meta_keys if key not in motion_obj.metadata]
         if missing_meta_keys:
             print('Missing metadata keys: ', missing_meta_keys)
-        dict_metadata_select = {key: motion_obj.metadata[key] if key in motion_obj.metadata else np.nan for key in
-                                meta_keys}
+        dict_metadata_select = {key: motion_obj.metadata.get(key, np.nan) for key in meta_keys}
         missing_loi_keys = [key for key in loi_keys if key not in motion_obj.loi_data]
         if missing_loi_keys:
             print('Missing loi keys: ', missing_loi_keys)
