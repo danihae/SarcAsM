@@ -509,7 +509,8 @@ class Structure:
         """
         assert self.sarc_obj.file_z_bands is not None, "Sarcomere data not found. Please run 'detect_sarcomeres' first."
 
-        if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
+        if ((isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0)
+                or (len(self.data['params.detect_sarcomeres.frames']) == 1 and frames == 0)):
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
             midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
@@ -2509,16 +2510,23 @@ class Structure:
             )
 
             # Convert results to array
-            sarcomere_length_vectors = np.array(results)
+            sarcomere_length_vectors, center_offsets = np.array(results).T
+
+            # get vector positions in µm and correct center of vectors
+            pos_vectors = pos_vectors_px * pixelsize
+            offset_vectors = np.stack((np.sin(sarcomere_orientation_vectors) * center_offsets,
+                                      np.cos(sarcomere_orientation_vectors) * center_offsets), axis=-1)
+            pos_vectors -= offset_vectors
 
             # remove NaNs
             nan_mask = np.isnan(sarcomere_length_vectors)
             pos_vectors_px = pos_vectors_px[~nan_mask]
+            pos_vectors = pos_vectors[~nan_mask]
             midline_id_vectors = midline_id_vectors[~nan_mask]
             sarcomere_orientation_vectors = sarcomere_orientation_vectors[~nan_mask]
             sarcomere_length_vectors = sarcomere_length_vectors[~nan_mask]
-            # get vector positions in µm
-            pos_vectors = pos_vectors_px * pixelsize
+
+
         else:
             sarcomere_length_vectors, z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
 

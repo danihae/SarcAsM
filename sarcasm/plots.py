@@ -1047,8 +1047,8 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='k',
-                               color_points='darkgreen', s_points=0.5, linewidths=0.0005,
-                               s_points_inset=0.5, linewidths_inset=0.0001, scalebar=True,
+                               color_points='darkgreen', s_points=0.5, linewidths=0.5,
+                               s_points_inset=0.5, linewidths_inset=0.5, scalebar=True,
                                legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -1097,7 +1097,7 @@ class Plots:
                                                                  'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
 
-        pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
+        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame] / sarc_obj.metadata['pixelsize']
         sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
         sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
@@ -1111,11 +1111,16 @@ class Plots:
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
 
-        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                  orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths,
+        # adjust sarcomere lengths to appear correct in quiver plot
+        half_length = sarcomere_length_vectors * 0.5
+        headaxislength = 4
+
+
+        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], -orientation_vectors[0] * half_length,
+                  orientation_vectors[1] * half_length, width=linewidths, headaxislength=headaxislength, units='xy',
                   angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, label='Sarcomere vectors')
-        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                  -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
+        ax.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * half_length,
+                  -orientation_vectors[1] * half_length, headaxislength=headaxislength, units='xy',
                   angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5, width=linewidths)
 
         ax.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none', s=s_points * 0.5,
@@ -1147,13 +1152,13 @@ class Plots:
             ax_inset.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none',
                              s=s_points_inset, label='Midline points')
             ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0],
-                            -orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                            orientation_vectors[1] * sarcomere_length_vectors * 0.5, width=linewidths_inset,
-                            angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+                            -orientation_vectors[0] * half_length,
+                            orientation_vectors[1] * half_length, width=linewidths_inset, headaxislength=headaxislength,
+                            units='xy', angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
                             label='Sarcomere vectors')
-            ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * sarcomere_length_vectors * 0.5,
-                            -orientation_vectors[1] * sarcomere_length_vectors * 0.5,
-                            angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
+            ax_inset.quiver(pos_vectors[:, 1], pos_vectors[:, 0], orientation_vectors[0] * half_length,
+                            -orientation_vectors[1] * half_length, headaxislength=headaxislength,
+                            units='xy', angles='xy', scale_units='xy', scale=1, color=color_arrows, alpha=0.5,
                             width=linewidths_inset)
 
             ax_inset.set_xlim(x1, x2)

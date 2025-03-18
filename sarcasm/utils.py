@@ -383,8 +383,9 @@ class Utils:
 
     @staticmethod
     def process_profile(profile: np.ndarray, pixelsize, slen_lims=(1, 3), thres=0.25,
-                        min_dist=1, width=0.5, interp_factor=4) -> float:
-        """Find peak separation distance in 1D intensity profile using interpolation and COM.
+                        min_dist=1, width=0.5, interp_factor=4) -> (float, float):
+        """
+        Find peak distance in 1D intensity profile using interpolation and COM.
 
         Parameters
         ----------
@@ -440,7 +441,7 @@ class Utils:
                                            width=3)
 
         if len(peaks_idx) < 2:
-            return np.nan
+            return np.nan, np.nan
 
         # Calculate refined peak positions using center of mass
         peaks = []
@@ -462,16 +463,18 @@ class Utils:
         right_peaks = peaks[peaks > center]
 
         if len(left_peaks) == 0 or len(right_peaks) == 0:
-            return np.nan
+            return np.nan, np.nan
 
         # Take rightmost peak from left side and leftmost peak from right side
         left_peak = left_peaks[-1]  # rightmost peak from left side
         right_peak = right_peaks[0]  # leftmost peak from right side
         slen_profile = np.abs(right_peak - left_peak)
+        center_offsets = (left_peak + right_peak) / 2 - center  # position of center for correction of pos_vectors
 
         if slen_lims[0] <= slen_profile <= slen_lims[1]:
-            return slen_profile
-        return np.nan
+            return slen_profile, center_offsets
+
+        return np.nan, np.nan
 
     @staticmethod
     def peakdetekt(x_pos, y, thres=0.2, thres_abs=False, min_dist=10, width=6, interp_factor=6):
