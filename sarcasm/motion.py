@@ -266,7 +266,7 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.6,
+    def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
                                     buffer_frames: int = 3, contr_time_min: float = 0.2, merge_time_max: float = 0.05):
         """
@@ -302,6 +302,7 @@ class Motion(SarcAsM):
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
                                           threshold=threshold)
+
         # edit contractions
         # filter sarcomeres by sarcomere lengths and set to 0 if less sarcomeres than n_sarcomere_min
         slen = np.diff(self.loi_data['z_pos'], axis=0)
