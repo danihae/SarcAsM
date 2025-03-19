@@ -509,8 +509,9 @@ class Structure:
         """
         assert self.sarc_obj.file_z_bands is not None, "Sarcomere data not found. Please run 'detect_sarcomeres' first."
 
+        _detected_frames = self.data['params.detect_sarcomeres.frames']
         if ((isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0)
-                or (len(self.data['params.detect_sarcomeres.frames']) == 1 and frames == 0)):
+                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
             midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
@@ -686,7 +687,9 @@ class Structure:
         assert self.sarc_obj.file_z_bands is not None, "Z-band mask not found. Please run predict_z_bands first."
         assert self.sarc_obj.file_midlines is not None, "Midlines mask not found. Please run predict_z_bands first."
 
-        if (isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0):
+        _detected_frames = self.data['params.detect_sarcomeres.frames']
+        if ((isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0)
+                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.sarc_obj.metadata['frames']))
             if len(list_frames) == 1:
                 z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
@@ -1351,7 +1354,7 @@ class Structure:
             y_i = linear(x_range_i, p_i[0], p_i[1])
             len_i = np.sqrt(np.diff(x_range_i) ** 2 + np.diff(y_i) ** 2)
             x_range_i, y_i = np.round(x_range_i, 1), np.round(y_i, 1)
-            loi_lines.append(np.asarray((x_range_i, y_i)).T)
+            loi_lines.append(np.asarray((y_i, x_range_i)).T)
             len_loi_lines.append(len_i)
 
         len_loi_lines = np.asarray(len_loi_lines).flatten()
@@ -1369,53 +1372,50 @@ class Structure:
 
     def _longest_in_cluster(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][frame][::-1]
+        pos_vectors = self.data['pos_vectors_px'][frame]
         lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
         longest_lines = []
         for label_i in range(self.data['loi_data']['n_lines_clusters']):
             lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
-            points_lines_cluster_i = [pos_vectors[:, line_j] for j, line_j in enumerate(lines) if
+            points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
                                       lines_cluster[j] == label_i]
             length_lines_cluster_i = [len(line_j) for line_j in lines_cluster_i]
             longest_line = points_lines_cluster_i[np.argmax(length_lines_cluster_i)]
             longest_lines.append(longest_line)
         # get n longest lines
-        sorted_by_length = sorted(longest_lines, key=lambda x: len(x[1].T), reverse=True)
+        sorted_by_length = sorted(longest_lines, key=lambda x: len(x[1]), reverse=True)
         if len(longest_lines) < n_lois:
             print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
         loi_lines = sorted_by_length[:n_lois]
-        loi_lines = [line_i.T for line_i in loi_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
     def _random_from_cluster(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][frame][::-1]
+        pos_vectors = self.data['pos_vectors_px'][frame]
         lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
         random_lines = []
         for label_i in range(self.data['loi_data']['n_lines_clusters']):
-            lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
-            points_lines_cluster_i = [pos_vectors[:, line_j] for j, line_j in enumerate(lines) if
+            points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
                                       lines_cluster[j] == label_i]
             random_line = random.choice(points_lines_cluster_i)
             random_lines.append(random_line)
         # select clusters randomly
-        random_lines = random.sample(random_lines, n_lois)
-        loi_lines = [line_i.T for line_i in random_lines]
+        loi_lines = random.sample(random_lines, n_lois)
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
     def _random_lois(self, n_lois, frame):
         lines = self.data['loi_data']['lines']
-        pos_vectors = self.data['pos_vectors'][frame][::-1]
+        pos_vectors = self.data['pos_vectors_px'][frame]
         loi_lines = random.sample(lines, n_lois)
-        loi_lines = [pos_vectors[:, line_i].T for line_i in loi_lines]
+        loi_lines = [pos_vectors[line_i] for line_i in loi_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = [len(line_i.T) for line_i in loi_lines]
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.sarc_obj.auto_save:
             self.store_structure_data()
 
@@ -1459,6 +1459,7 @@ class Structure:
             return np.sum(lengths)
 
         length = __calculate_segmented_line_length(line) * self.sarc_obj.metadata['pixelsize']
+
         loi_data = {'profiles': profiles, 'profiles_raw': profiles_raw,
                     'line': line, 'linewidth': linewidth, 'length': length}
         for key, value in loi_data.items():
@@ -3057,7 +3058,6 @@ class Structure:
         Adapted from scikit-image
         (https://scikit-image.org/docs/0.22.x/api/skimage.measure.html#skimage.measure.profile_line).
         """
-        line = line[:, ::-1]
         # prepare coordinates of segmented line
         perp_lines = Structure.__curved_line_profile_coordinates(points=line, linewidth=linewidth)
 
