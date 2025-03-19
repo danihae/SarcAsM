@@ -175,7 +175,7 @@ class Plots:
                           c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
 
         for i, line_i in enumerate(sarc_obj.structure.data['loi_data']['loi_lines']):
-            axs['d'].plot(line_i.T[0], line_i.T[1], lw=2, label=i)
+            axs['d'].plot(line_i.T[1], line_i.T[0], lw=2, label=i)
         axs['d'].legend(loc='lower left', fontsize='xx-small')
 
         PlotUtils.label_all_panels(axs, offset=(0.05, 0.9))
@@ -234,7 +234,7 @@ class Plots:
         elif 'loi_data' in sarc_obj.structure.data and show_loi:
             loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
             for line in loi_lines:
-                ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+                ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
@@ -299,7 +299,7 @@ class Plots:
         ax.imshow(img, cmap=cmap, alpha=alpha)
         if hasattr(sarc_obj, 'loi_data') and show_loi:
             line = sarc_obj.loi_data['line']
-            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+            ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
