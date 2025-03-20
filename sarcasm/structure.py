@@ -1,6 +1,5 @@
 # Usage of this software for commercial purposes without a license is strictly prohibited.
 
-
 import glob
 import os
 import random
@@ -8,6 +7,9 @@ import shutil
 from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
+import warnings
+warnings.filterwarnings("ignore", message=".*omp_set_nested.*")
+
 
 import igraph as ig
 import networkx as nx
@@ -266,7 +268,7 @@ class Structure:
         if model_path is None:
             model_path = os.path.join(self.sarc_obj.model_dir, 'model_z_bands_unet3d.pt')
         assert len(max_patch_size) == 3, 'patch size for prediction has to be be (frames, x, y)'
-        _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.sarc_obj.file_z_bands_fast_movie,
+        _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.sarc_obj.base_dir,
                            max_patch_size=max_patch_size, normalization_mode=normalization_mode,
                            device=self.sarc_obj.device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
         del _
