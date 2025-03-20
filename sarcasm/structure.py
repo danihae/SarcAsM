@@ -817,16 +817,18 @@ class Structure:
         wavelet_dict = {'wavelet_sarcomere_length': wavelet_sarcomere_length,
                         'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
                         'wavelet_max_score': wavelet_max_score,
-                        'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
-                        'midline_length_vectors': midline_length_vectors, 'midline_id_vectors': midline_id_vectors,
-                        'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
-                        'max_score_vectors': max_score_vectors,
-                        'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
-                        'sarcomere_length_mean': sarcomere_length_mean,
-                        'sarcomere_length_std': sarcomere_length_std,
-                        'sarcomere_orientation_mean': sarcomere_orientation_mean,
-                        'sarcomere_orientation_std': sarcomere_orientation_std,
-                        'sarcomere_oop': oop,
+                        'wavelet_pos_vectors': pos_vectors,
+                        'wavelet_sarcomere_length_vectors': sarcomere_length_vectors,
+                        'wavelet_midline_length_vectors': midline_length_vectors,
+                        'wavelet_midline_id_vectors': midline_id_vectors,
+                        'wavelet_sarcomere_orientation_vectors': sarcomere_orientation_vectors,
+                        'wavelet_max_score_vectors': max_score_vectors,
+                        'wavelet_sarcomere_area': sarcomere_area, 'wavelet_sarcomere_area_ratio': sarcomere_area_ratio,
+                        'wavelet_sarcomere_length_mean': sarcomere_length_mean,
+                        'wavelet_sarcomere_length_std': sarcomere_length_std,
+                        'wavelet_sarcomere_orientation_mean': sarcomere_orientation_mean,
+                        'wavelet_sarcomere_orientation_std': sarcomere_orientation_std,
+                        'wavelet_sarcomere_oop': oop,
                         'params.analyze_sarcomere_vectors_wavelet.size': size,
                         'params.analyze_sarcomere_vectors_wavelet.minor': minor,
                         'params.analyze_sarcomere_vectors_wavelet.major': major,
@@ -864,20 +866,20 @@ class Structure:
         float
             The median sigma value from the Gaussian fits to a sample of sarcomere vectors.
         """
-        assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                   'Run analyze_sarcomere_vectors first.')
-        assert frame in self.data['params.analyze_sarcomere_vectors.frames'], \
+        assert 'wavelet_pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
+                                                   'Run analyze_sarcomere_vectors_wavelet first.')
+        assert frame in self.data['params.analyze_sarcomere_vectors_wavelet.frames'], \
             f'Sarcomere vectors of frame {frame} not yet analyzed.'
 
         z_bands_t = tifffile.imread(self.sarc_obj.file_z_bands, key=frame)
-        points_t = self.data['pos_vectors'][frame]
-        sarcomere_orientation_vectors_t = self.data['sarcomere_orientation_vectors'][frame]
-        sarcomere_length_vectors_t = self.data['sarcomere_length_vectors'][frame] / self.sarc_obj.metadata[
+        points_t = self.data['wavelet_pos_vectors'][frame]
+        sarcomere_orientation_vectors_t = self.data['wavelet_sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors_t = self.data['wavelet_sarcomere_length_vectors'][frame] / self.sarc_obj.metadata[
             'pixelsize']
 
         # Calculate orientation vectors using trigonometry
         orientation_vectors_t = np.asarray([-np.sin(sarcomere_orientation_vectors_t),
-                                            np.cos(sarcomere_orientation_vectors_t)])
+                                            np.cos(sarcomere_orientation_vectors_t)]).T
 
         # Calculate the ends of the vectors based on their orientation and length
         starts, ends = points_t, points_t + orientation_vectors_t * sarcomere_length_vectors_t
