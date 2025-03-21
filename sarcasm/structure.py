@@ -4,10 +4,11 @@ import glob
 import os
 import random
 import shutil
+import warnings
 from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List
-import warnings
+
 warnings.filterwarnings("ignore", message=".*omp_set_nested.*")
 
 
@@ -18,7 +19,6 @@ import pandas as pd
 import skimage.measure
 import tifffile
 import torch
-import torch.nn.functional as F
 from bio_image_unet import multi_output_unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet_3Levels
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
@@ -30,7 +30,7 @@ from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology
 from skimage.draw import disk as draw_disk, line
-from skimage.measure import label, regionprops_table, regionprops, profile_line
+from skimage.measure import label, regionprops_table, regionprops
 from skimage.morphology import skeletonize, disk, binary_dilation
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
@@ -247,7 +247,7 @@ class Structure:
         ----------
         model_path : str, optional
             Path of trained network weights for 3D U-Net. Default is None.
-        patch_size : tuple of int, optional
+        max_patch_size : tuple of int, optional
             Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
             Dimensions need to be divisible by 16. Default is (32, 256, 256).
         normalization_mode : str, optional
@@ -487,7 +487,7 @@ class Structure:
         Parameters
         ----------
         frames : {'all', int, list, np.ndarray}, optional
-            frames for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
+            frames for sarcomere vector analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
         radius : float, optional
             Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).
@@ -599,7 +599,7 @@ class Structure:
 
         tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
 
-        wavelet_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
+        vectors_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
                         'params.analyze_sarcomere_vectors.radius': radius,
                         'params.analyze_sarcomere_vectors.slen_lims': slen_lims,
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
@@ -613,306 +613,9 @@ class Structure:
                         'sarcomere_orientation_mean': sarcomere_orientation_mean,
                         'sarcomere_orientation_std': sarcomere_orientation_std,
                         'sarcomere_oop': oop}
-        self.data.update(wavelet_dict)
+        self.data.update(vectors_dict)
         if self.sarc_obj.auto_save:
             self.store_structure_data()
-
-    def analyze_sarcomere_vectors_wavelet(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
-                                          kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
-                                          major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
-                                          len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
-                                          orient_step: float = 10, add_negative_center_kernel: bool = False,
-                                          patch_size: int = 1024, score_threshold: float = 0.25,
-                                          abs_threshold: bool = True, gating: bool = True, dilation_radius: int = 3,
-                                          dtype: Union[torch.dtype, str] = 'auto', save_memory: bool = False,
-                                          save_all: bool = False,
-                                          progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
-        """
-        AND-gated double wavelet analysis of sarcomere length and orientation.
-
-        Parameters
-        ----------
-        frames : {'all', int, list, np.ndarray}, optional
-            frames for wavelet analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). Defaults to 'all'.
-        kernel : str, optional
-            Filter kernel
-            - 'gaussian' for bivariate Gaussian kernel
-            - 'half_gaussian' for univariate Gaussian in minor axis direction and step function in major axis direction
-            - 'binary' for binary step function in both directions
-            Defaults to 'half_gaussian'.
-        size : float, optional
-            Size of wavelet filters (in µm), needs to be larger than the upper limit of len_lims. Defaults to 3.0.
-        minor : float, optional
-            Minor axis width in µm, quantified by full width at half-maximum (FWHM, 2.33 * sigma in our paper),
-            should match the thickness of Z-bands, for kernel='gaussian' and kernel='half_gaussian'. Defaults to 0.33.
-        major : float, optional
-            Major axis width (parameter 'w' in our paper) in µm, should match the width of Z-bands.
-            Full width at half-maximum (FWHM) for kernel='gaussian' and full width for kernel='half_gaussian'.
-            Defaults to 1.0.
-        len_lims : tuple(float, float), optional
-            Limits of lengths / wavelet distances in µm, range of sarcomere lengths. Defaults to (1.3, 2.6).
-        len_step : float, optional
-            Step size of sarcomere lengths in µm. Defaults to 0.05.
-        orient_lims : tuple(float, float), optional
-            Limits of sarcomere orientation angles in degrees. Defaults to (-90, 90).
-        orient_step : float, optional
-            Step size of orientation angles in degrees. Defaults to 10.
-        add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere, only for kernel='gaussian'. Defaults to False.
-        patch_size : int, optional
-            Patch size for wavelet analysis, default is 1024 pixels. Adapt to GPU storage. Defaults to 1024.
-        score_threshold : float, optional
-            Threshold score for clipping of length and orientation map (if abs_threshold=False, score_threshold is
-            percentile (e.g., 90) for adaptive thresholding). Defaults to 0.25.
-        abs_threshold : bool, optional
-            If True, absolute threshold value is applied; if False, adaptive threshold based on percentile. Defaults to True.
-        gating : bool, optional
-            If True, AND-gated wavelet filtering is used. If False, both wavelet filters are applied jointly. Defaults to True.
-        dilation_radius : int, optional
-            Radius of dilation for sarcomere area calculation, in pixels. Defaults to 3.
-        dtype : torch.dtype or str, optional
-            Specify torch data type (torch.float32 or torch.float16),
-            'auto' chooses float16 for cuda and mps, and float32 for cpu. Defaults to 'auto'.
-        save_memory : bool, optional
-            Whether to save GPU memory by performing only conv2d on GPU memory, which is slower but allows processing
-            larger images or larger wavelet banks. Defaults to False.
-        save_all : bool, optional
-            If True, the wavelet filter results (wavelet_length_i, wavelet_orientation_i, wavelet_max_score) are stored.
-            If False, only the points on the midlines are stored (recommended). Defaults to False.
-        progress_notifier: ProgressNotifier
-            Wraps progress notification, default is progress notification done with tqdm
-        """
-        assert size > 1.1 * len_lims[1], (f"The size of wavelet filter {size} is too small for the maximum sarcomere "
-                                          f"length {len_lims[1]}")
-        assert self.sarc_obj.file_z_bands is not None, "Z-band mask not found. Please run predict_z_bands first."
-        assert self.sarc_obj.file_midlines is not None, "Midlines mask not found. Please run predict_z_bands first."
-
-        _detected_frames = self.data['params.detect_sarcomeres.frames']
-        if ((isinstance(frames, str) and frames == 'all') or (self.sarc_obj.metadata['frames'] == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.sarc_obj.metadata['frames']))
-            if len(list_frames) == 1:
-                z_bands = tifffile.imread(self.sarc_obj.file_z_bands)
-                midlines = tifffile.imread(self.sarc_obj.file_midlines) > 0.5
-            elif len(list_frames) > 1:
-                z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=list_frames)
-                midlines = tifffile.imread(self.sarc_obj.file_midlines, key=list_frames) > 0.5
-            else:
-                raise ValueError(f"Invalid 'frames' argument.")
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
-            z_bands = tifffile.imread(self.sarc_obj.file_z_bands, key=frames)
-            midlines = tifffile.imread(self.sarc_obj.file_midlines, key=frames)
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [frames]
-            else:
-                list_frames = [int(f) for f in frames]
-        else:
-            raise ValueError("'frames' argument not valid")
-        if len(z_bands.shape) == 2:
-            z_bands = np.expand_dims(z_bands, axis=0)
-        if len(midlines.shape) == 2:
-            midlines = np.expand_dims(midlines, axis=0)
-        n_imgs = len(z_bands)
-
-        # choose dtype depending on device
-        if dtype == 'auto':
-            if self.sarc_obj.device == torch.device('cpu'):
-                dtype = torch.float32
-            else:
-                dtype = torch.float16
-
-        # create empty arrays
-        none_lists = lambda: [None] * self.sarc_obj.metadata['frames']
-        nan_arrays = lambda: np.full(self.sarc_obj.metadata['frames'], np.nan)
-        (pos_vectors, midline_length_vectors, midline_id_vectors, sarcomere_length_vectors,
-         sarcomere_orientation_vectors, max_score_vectors) = (none_lists() for _ in range(6))
-        sarcomere_masks = np.zeros((self.sarc_obj.metadata['frames'], *self.sarc_obj.metadata['size']), dtype=bool)
-        (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
-        sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
-        oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(4))
-        wavelet_sarcomere_length, wavelet_sarcomere_orientation, wavelet_max_score = (none_lists() for _ in range(3))
-
-        # create filter bank
-        bank, len_range, orient_range = self.create_wavelet_bank(pixelsize=self.sarc_obj.metadata['pixelsize'],
-                                                                 kernel=kernel,
-                                                                 size=size, minor=minor, major=major, len_lims=len_lims,
-                                                                 len_step=len_step, orient_lims=orient_lims,
-                                                                 orient_step=orient_step,
-                                                                 add_negative_center_kernel=add_negative_center_kernel)
-        len_range_tensor = torch.from_numpy(len_range).to(self.sarc_obj.device).to(dtype=dtype)
-        orient_range_tensor = torch.from_numpy(np.radians(orient_range)).to(self.sarc_obj.device).to(dtype=dtype)
-        # iterate images
-        print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, z_bands_i, midlines_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, z_bands, midlines), total=n_imgs)):
-            result_i = self.convolve_image_with_bank(z_bands_i, bank, device=self.sarc_obj.device, gating=gating,
-                                                     dtype=dtype, save_memory=save_memory, patch_size=patch_size)
-            (wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i,
-             wavelet_max_score_i) = self.argmax_wavelets(result_i,
-                                                         len_range_tensor,
-                                                         orient_range_tensor)
-
-            # evaluate wavelet results at sarcomere midlines
-            (pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i, sarcomere_length_vectors_i,
-             sarcomere_orientation_vectors_i, max_score_vectors_i, midline_i,
-             score_threshold_i) = self.get_sarcomere_vectors_wavelet(
-                wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i,
-                len_range=len_range, midlines=midlines_i,
-                score_threshold=score_threshold,
-                abs_threshold=abs_threshold)
-
-            # empty memory
-            del result_i, z_bands_i, midlines_i
-            if save_all:
-                wavelet_sarcomere_length.append(wavelet_sarcomere_length_i)
-                wavelet_sarcomere_orientation.append(wavelet_sarcomere_orientation_i)
-                wavelet_max_score.append(wavelet_max_score_i)
-            del wavelet_sarcomere_length_i, wavelet_sarcomere_orientation_i, wavelet_max_score_i
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            # write in list
-            pos_vectors[frame_i] = pos_vectors_i
-            midline_length_vectors[frame_i] = midline_length_vectors_i * self.sarc_obj.metadata['pixelsize'] if any(
-                midline_id_vectors_i) else []
-            midline_id_vectors[frame_i] = midline_id_vectors_i
-            sarcomere_length_vectors[frame_i] = sarcomere_length_vectors_i
-            sarcomere_orientation_vectors[frame_i] = sarcomere_orientation_vectors_i
-            max_score_vectors[frame_i] = max_score_vectors_i
-            score_thresholds[frame_i] = score_threshold_i
-
-            # calculate mean and std of sarcomere length and orientation
-            sarcomere_length_mean[frame_i], sarcomere_length_std[frame_i], = np.mean(
-                sarcomere_length_vectors_i), np.std(sarcomere_length_vectors_i)
-            sarcomere_orientation_mean[frame_i], sarcomere_orientation_std[frame_i] = np.mean(
-                sarcomere_orientation_vectors_i), np.std(sarcomere_orientation_vectors_i)
-
-            # orientation order parameter
-            if len(sarcomere_orientation_vectors_i) > 0:
-                oop[frame_i], _ = Utils.analyze_orientations(sarcomere_orientation_vectors_i)
-
-            # calculate sarcomere area
-            if len(pos_vectors_i) > 0:
-                mask_i = self.sarcomere_mask(pos_vectors_i * self.sarc_obj.metadata['pixelsize'],
-                                             sarcomere_orientation_vectors_i,
-                                             sarcomere_length_vectors_i,
-                                             size=self.sarc_obj.metadata['size'],
-                                             pixelsize=self.sarc_obj.metadata['pixelsize'],
-                                             dilation_radius=dilation_radius)
-            else:
-                mask_i = np.zeros(self.sarc_obj.metadata['size'], dtype='bool')
-            sarcomere_masks[frame_i] = mask_i
-            sarcomere_area[frame_i] = np.sum(mask_i) * self.sarc_obj.metadata['pixelsize'] ** 2
-            if 'cell_mask_area' in self.data.keys():
-                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
-            else:
-                area = self.sarc_obj.metadata['size'][0] * self.sarc_obj.metadata['size'][1] * self.sarc_obj.metadata[
-                    'pixelsize'] ** 2
-                sarcomere_area_ratio[frame_i] = sarcomere_area[i] / area
-
-        tifffile.imwrite(self.sarc_obj.file_sarcomere_mask, np.asarray(sarcomere_masks).astype('bool'))
-
-        wavelet_dict = {'wavelet_sarcomere_length': wavelet_sarcomere_length,
-                        'wavelet_sarcomere_orientation': wavelet_sarcomere_orientation,
-                        'wavelet_max_score': wavelet_max_score,
-                        'wavelet_pos_vectors': pos_vectors,
-                        'wavelet_sarcomere_length_vectors': sarcomere_length_vectors,
-                        'wavelet_midline_length_vectors': midline_length_vectors,
-                        'wavelet_midline_id_vectors': midline_id_vectors,
-                        'wavelet_sarcomere_orientation_vectors': sarcomere_orientation_vectors,
-                        'wavelet_max_score_vectors': max_score_vectors,
-                        'wavelet_sarcomere_area': sarcomere_area, 'wavelet_sarcomere_area_ratio': sarcomere_area_ratio,
-                        'wavelet_sarcomere_length_mean': sarcomere_length_mean,
-                        'wavelet_sarcomere_length_std': sarcomere_length_std,
-                        'wavelet_sarcomere_orientation_mean': sarcomere_orientation_mean,
-                        'wavelet_sarcomere_orientation_std': sarcomere_orientation_std,
-                        'wavelet_sarcomere_oop': oop,
-                        'params.analyze_sarcomere_vectors_wavelet.size': size,
-                        'params.analyze_sarcomere_vectors_wavelet.minor': minor,
-                        'params.analyze_sarcomere_vectors_wavelet.major': major,
-                        'params.analyze_sarcomere_vectors_wavelet.len_lims': len_lims,
-                        'params.analyze_sarcomere_vectors_wavelet.len_step': len_step,
-                        'params.analyze_sarcomere_vectors_wavelet.orient_lims': orient_lims,
-                        'params.analyze_sarcomere_vectors_wavelet.orient_step': orient_step,
-                        'params.analyze_sarcomere_vectors_wavelet.kernel': kernel,
-                        'params.analyze_sarcomere_vectors_wavelet.frames': list_frames,
-                        'params.analyze_sarcomere_vectors_wavelet.len_range': len_range,
-                        'params.analyze_sarcomere_vectors_wavelet.orient_range': orient_range,
-                        'params.analyze_sarcomere_vectors_wavelet.score_threshold': score_thresholds,
-                        'params.analyze_sarcomere_vectors_wavelet.abs_threshold': abs_threshold,
-                        'params.analyze_sarcomere_vectors_wavelet.dilation_radius': dilation_radius}
-        self.data.update(wavelet_dict)
-        if self.sarc_obj.auto_save:
-            self.store_structure_data()
-
-    def optimize_wavelet_minor_axis(self, frame: int = 0, n_sample: int = 50):
-        """
-        Find the optimal wavelet minor axis, in full width at half maximum (FWHM) units, that maximizes the number of
-        sarcomeres identified for a given sample by determining width of Z-bands by fitting Gaussian to sample
-        of sarcomere vectors. Before running this function, it is necessary to run analyze_sarcomere_vectors with
-        a prior set of parameters.
-
-        Parameters
-        ----------
-        frame : int, optional
-            The specific frame to analyze. Default is 0.
-        n_sample : int, optional
-            Number of random samples to use for optimization. Default is 50.
-
-        Returns
-        -------
-        float
-            The median sigma value from the Gaussian fits to a sample of sarcomere vectors.
-        """
-        assert 'wavelet_pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                   'Run analyze_sarcomere_vectors_wavelet first.')
-        assert frame in self.data['params.analyze_sarcomere_vectors_wavelet.frames'], \
-            f'Sarcomere vectors of frame {frame} not yet analyzed.'
-
-        z_bands_t = tifffile.imread(self.sarc_obj.file_z_bands, key=frame)
-        points_t = self.data['wavelet_pos_vectors'][frame]
-        sarcomere_orientation_vectors_t = self.data['wavelet_sarcomere_orientation_vectors'][frame]
-        sarcomere_length_vectors_t = self.data['wavelet_sarcomere_length_vectors'][frame] / self.sarc_obj.metadata[
-            'pixelsize']
-
-        # Calculate orientation vectors using trigonometry
-        orientation_vectors_t = np.asarray([-np.sin(sarcomere_orientation_vectors_t),
-                                            np.cos(sarcomere_orientation_vectors_t)]).T
-
-        # Calculate the ends of the vectors based on their orientation and length
-        starts, ends = points_t, points_t + orientation_vectors_t * sarcomere_length_vectors_t
-
-        # randomly select N lines
-        idxs_random = np.random.randint(0, starts.shape[1], size=n_sample)
-        starts, ends = starts[:, idxs_random], ends[:, idxs_random]
-
-        def gaussian(x, A, mu, sigma):
-            return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
-
-        def fit_gaussian(x_data, y_data):
-            # Initial guesses for fitting parameters
-            A_guess = np.max(y_data)
-            mu_guess = x_data[np.argmax(y_data)]
-            sigma_guess = np.std(x_data) / 2
-
-            # Perform the Gaussian fit
-            params, _ = curve_fit(gaussian, x_data, y_data, p0=[A_guess, mu_guess, sigma_guess])
-
-            return params
-
-        # extract profiles perpendicular to Z-bands to determine Z-band width
-        sigmas = []
-        for start_i, end_i in zip(starts.T, ends.T):
-            profile_i = profile_line(z_bands_t, start_i, end_i, linewidth=5)
-            x_i = np.arange(len(profile_i)) * self.sarc_obj.metadata['pixelsize']
-            try:
-                params = fit_gaussian(x_i, profile_i)
-                sigmas.append(params[2])
-            except:
-                pass
-        return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
@@ -925,7 +628,7 @@ class Structure:
         ----------
         frames : {'all', int, list, np.ndarray}, optional
             frames for myofibril analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, frames from wavelet analysis are used. Defaults to None.
+            selected frames). If None, frames from sarcomere vector analysis are used. Defaults to None.
         ratio_seeds : float, optional
             Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.
         persistence : int, optional
@@ -954,7 +657,7 @@ class Structure:
             if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
                 frames = self.data['params.analyze_sarcomere_vectors.frames']
             else:
-                raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+                raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere vectors' first!")
 
         if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
@@ -1066,7 +769,7 @@ class Structure:
         ----------
         frames : {'all', int, list, np.ndarray}, optional
             frames for domain analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, frames from wavelet analysis are used. Defaults to None.
+            selected frames). If None, frames from sarcomere vector analysis are used. Defaults to None.
         d_max : float
             Max. distance threshold for creating a network edge between vector ends
         cosine_min : float
@@ -1097,7 +800,7 @@ class Structure:
             if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
                 frames = self.data['params.analyze_sarcomere_vectors.frames']
             else:
-                raise ValueError('To use frames from wavelet analysis, run wavelet analysis first!')
+                raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere_vectors' first!")
 
         if frames == 'all':
             n_imgs = self.sarc_obj.metadata['frames']
@@ -1180,7 +883,7 @@ class Structure:
         Parameters
         ----------
         frame : int, optional
-            Frame to select frame. Selects i-th frame of frames specified in wavelet analysis. Defaults to 0.
+            Frame to select frame. Selects i-th frame of frames specified in sarcomere vector analysis. Defaults to 0.
         ratio_seeds : float, optional
             Ratio of sarcomere vectors to take as seeds for line growth. Default 0.1.
         persistence : int, optional
@@ -1992,433 +1695,6 @@ class Structure:
 
         return ratio_intensity, avg_sarcomere_intensity
 
-    @staticmethod
-    def binary_kernel(d: float, sigma: float, width: float, orient: float, size: Tuple[float, float],
-                      pixelsize: float, mode: str = 'both') -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        """
-        Returns binary kernel pair for AND-gated double wavelet analysis.
-
-        Parameters
-        ----------
-        d : float
-            Distance between two wavelets.
-        sigma : float
-            Minor axis width of single wavelets.
-        width : float
-            Major axis width of single wavelets.
-        orient : float
-            Rotation orientation in degrees.
-        size : Tuple[float, float]
-            Size of kernel in µm.
-        pixelsize : float
-            Pixelsize in µm.
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns a single kernel. Defaults to 'both'.
-
-        Returns
-        -------
-        Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]
-            The generated binary kernel(s).
-        """
-        # meshgrid
-        size_pixel = Structure.round_up_to_odd(size / pixelsize)
-        _range = np.linspace(-size / 2, size / 2, size_pixel, dtype='float32')
-        x_mesh, y_mesh = np.meshgrid(_range, _range)
-        # build kernel
-        kernel0 = np.zeros_like(x_mesh)
-        kernel0[np.abs((-x_mesh - d / 2)) < sigma / 2] = 1
-        kernel0[np.abs(y_mesh) > width / 2] = 0
-        kernel1 = np.zeros_like(x_mesh)
-        kernel1[np.abs((x_mesh - d / 2)) < sigma / 2] = 1
-        kernel1[np.abs(y_mesh) > width / 2] = 0
-
-        # Normalize the kernels
-        kernel0 /= np.sum(kernel0)
-        kernel1 /= np.sum(kernel1)
-
-        kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=3)
-        kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=3)
-        if mode == 'separate':
-            return kernel0, kernel1
-        elif mode == 'both':
-            return kernel0 + kernel1
-
-    @staticmethod
-    def gaussian_kernel(dist: float, minor: float, major: float, orient: float, size: float,
-                        pixelsize: float, mode: str = 'both',
-                        add_negative_center_kernel: bool = False) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Returns gaussian kernel pair for AND-gated double wavelet analysis
-
-        Parameters
-        ----------
-        dist : float
-            Distance between two wavelets
-        minor : float
-            Minor axis width of single wavelets in µm
-        major : float
-            Major axis width of single wavelets in µm
-        orient : float
-            Rotation orientation in degree
-        size : float
-            Size of kernel in µm
-        pixelsize : float
-            Pixelsize in µm
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns single kernel
-        add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere
-
-        Returns
-        -------
-        tuple[np.ndarray, np.ndarray]
-            Gaussian kernel pair
-        """
-        # Transform FWHM to sigma
-        minor_sigma = minor / 2.355
-        major_sigma = major / 2.355
-
-        # Calculate the size of the kernel in pixels and create meshgrid
-        size_pixel = Structure.round_up_to_odd(size / pixelsize)
-        _range = np.linspace(-size / 2, size / 2, size_pixel, dtype='float32')
-        x_mesh, y_mesh = np.meshgrid(_range, _range)
-
-        # Create the first Gaussian kernel
-        kernel0 = (1 / (2 * np.pi * minor_sigma * major_sigma) * np.exp(
-            -((x_mesh - dist / 2) ** 2 / (2 * minor_sigma ** 2) + y_mesh ** 2 / (2 * major_sigma ** 2))))
-
-        # Create the second Gaussian kernel
-        kernel1 = (1 / (2 * np.pi * minor_sigma * major) * np.exp(
-            -((x_mesh + dist / 2) ** 2 / (2 * minor_sigma ** 2) + y_mesh ** 2 / (2 * major_sigma ** 2))))
-
-        # Create the middle Gaussian kernel
-        kernelmid = (1 / (2 * np.pi * minor_sigma * major_sigma) * np.exp(
-            -(x_mesh ** 2 / (2 * minor_sigma ** 2) + y_mesh ** 2 / (2 * major_sigma ** 2))))
-
-        # Normalize the kernels
-        kernel0 /= np.sum(kernel0)
-        kernel1 /= np.sum(kernel1)
-        kernelmid /= np.sum(kernelmid)
-        kernelmid *= -1
-
-        if add_negative_center_kernel:
-            kernel0 += kernelmid
-            kernel1 += kernelmid
-
-        # Rotate the kernels
-        kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=2)
-        kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=2)
-
-        # Return the kernels based on the mode
-        if mode == 'separate':
-            return kernel0, kernel1
-        elif mode == 'both':
-            return kernel0 + kernel1
-
-    @staticmethod
-    def half_gaussian_kernel(dist: float, minor: float, major: float, orient: float, size: float,
-                             pixelsize: float, mode: str = 'both',
-                             add_negative_center_kernel: bool = False) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Returns kernel pair for AND-gated double wavelet analysis with univariate Gaussian profile in longitudinal minor
-        axis direction and step function in lateral major axis direction
-
-        Parameters
-        ----------
-        dist : float
-            Distance between two wavelets
-        minor : float
-            Minor axis width, in full width at half maximum (FWHM), of single wavelets in µm
-        major : float
-            Major axis width of single wavelets in µm.
-        orient : float
-            Rotation orientation in degree
-        size : float
-            Size of kernel in µm
-        pixelsize : float
-            Pixelsize in µm
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns single kernel
-        add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere
-
-        Returns
-        -------
-        tuple[np.ndarray, np.ndarray]
-            Gaussian kernel pair
-        """
-        # Transform FWHM to sigma
-        minor_sigma = minor / 2.355
-        major_sigma = major / 2.355
-
-        # Calculate the size of the kernel in pixels and create meshgrid
-        size_pixel = Structure.round_up_to_odd(size / pixelsize)
-        _range = np.linspace(-size / 2, size / 2, size_pixel, dtype='float32')
-        x_mesh, y_mesh = np.meshgrid(_range, _range)
-
-        # Create the first Gaussian kernel
-        kernel0 = 1 / (np.sqrt(2 * np.pi) * minor_sigma) * np.exp(-((x_mesh - dist / 2) ** 2 / (2 * minor_sigma ** 2)))
-
-        # Create the second Gaussian kernel
-        kernel1 = 1 / (np.sqrt(2 * np.pi) * minor_sigma) * np.exp(-((x_mesh + dist / 2) ** 2 / (2 * minor_sigma ** 2)))
-
-        # Create the middle Gaussian kernel
-        kernelmid = 1 / (np.sqrt(2 * np.pi) * minor_sigma) * np.exp(-(x_mesh ** 2 / (2 * minor_sigma ** 2)))
-
-        # set to 0 where wider than major axis
-        kernel0[np.abs(y_mesh) > major / 2] = 0
-        kernel1[np.abs(y_mesh) > major / 2] = 0
-        kernelmid[np.abs(y_mesh) > major / 2] = 0
-
-        # Normalize the kernels
-        kernel0 /= np.sum(kernel0)
-        kernel1 /= np.sum(kernel1)
-        kernelmid /= np.sum(kernelmid)
-        kernelmid *= -1
-
-        if add_negative_center_kernel:
-            kernel0 += kernelmid
-            kernel1 += kernelmid
-
-        # Rotate the kernels
-        kernel0 = ndimage.rotate(kernel0, orient, reshape=False, order=2)
-        kernel1 = ndimage.rotate(kernel1, orient, reshape=False, order=2)
-
-        # Return the kernels based on the mode
-        if mode == 'separate':
-            return kernel0, kernel1
-        elif mode == 'both':
-            return kernel0 + kernel1
-
-    @staticmethod
-    def round_up_to_odd(f: float) -> int:
-        """
-        Rounds float up to the next odd integer.
-
-        Parameters
-        ----------
-        f : float
-            The input float number.
-
-        Returns
-        -------
-        int
-            The next odd integer.
-        """
-        return int(np.ceil(f) // 2 * 2 + 1)
-
-    @staticmethod
-    def create_wavelet_bank(pixelsize: float, kernel: str = 'half_gaussian', size: float = 3, minor: float = 0.15,
-                            major: float = 0.5, len_lims: Tuple[float, float] = (1.3, 2.5), len_step: float = 0.025,
-                            orient_lims: Tuple[float, float] = (-90, 90), orient_step: float = 5,
-                            add_negative_center_kernel: bool = False) -> List[np.ndarray]:
-        """
-        Returns bank of double wavelets.
-
-        Parameters
-        ----------
-        pixelsize : float
-            Pixel size in µm.
-        kernel : str, optional
-            Filter kernel ('gaussian' for double Gaussian kernel, 'binary' for binary double-line,
-            'half_gaussian' for half Gaussian kernel). Defaults to 'half_gaussian'.
-        size : float, optional
-            Size of kernel in µm. Defaults to 3.
-        minor : float, optional
-            Minor axis width of single wavelets. Defaults to 0.15.
-        major : float, optional
-            Major axis width of single wavelets. Defaults to 0.5.
-        len_lims : Tuple[float, float], optional
-            Limits of lengths / wavelet distances in µm. Defaults to (1.3, 2.5).
-        len_step : float, optional
-            Step size in µm. Defaults to 0.025.
-        orient_lims : Tuple[float, float], optional
-            Limits of orientation angle in degrees. Defaults to (-90, 90).
-        orient_step : float, optional
-            Step size in degrees. Defaults to 5.
-        add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere,
-            only for kernel=='gaussian' or 'half_gaussian.
-            Defaults to False.
-
-        Returns
-        -------
-        List[np.ndarray]
-            Bank of double wavelets.
-        """
-
-        len_range = np.arange(len_lims[0] - len_step, len_lims[1] + len_step, len_step, dtype='float32')
-        orient_range = np.arange(orient_lims[0], orient_lims[1], orient_step, dtype='float32')
-        size_pixel = Structure.round_up_to_odd(size / pixelsize)
-
-        bank = np.zeros((len_range.shape[0], orient_range.shape[0], 2, size_pixel, size_pixel))
-        for i, d in enumerate(len_range):
-            for j, orient in enumerate(orient_range):
-                if kernel == 'gaussian':
-                    bank[i, j] = Structure.gaussian_kernel(d, minor, major, orient=orient, size=size,
-                                                           pixelsize=pixelsize, mode='separate',
-                                                           add_negative_center_kernel=add_negative_center_kernel)
-                elif kernel == 'half_gaussian':
-                    bank[i, j] = Structure.half_gaussian_kernel(d, minor, major, orient=orient, size=size,
-                                                                pixelsize=pixelsize, mode='separate',
-                                                                add_negative_center_kernel=add_negative_center_kernel)
-                elif kernel == 'binary':
-                    bank[i, j] = Structure.binary_kernel(d, minor, major, orient, size, pixelsize, mode='separate')
-                else:
-                    raise ValueError("Unsupported kernel type. Choose from 'gaussian', 'binary', or 'half_gaussian'.")
-        return bank, len_range, orient_range
-
-    @staticmethod
-    def convolve_image_with_bank(image: np.ndarray, bank: np.ndarray, device: torch.device, gating: bool = True,
-                                 dtype: torch.dtype = torch.float16, save_memory: bool = False,
-                                 patch_size: int = 512) -> torch.Tensor:
-        """
-        AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality.
-        Processes the image in smaller overlapping patches to manage GPU memory usage and avoid edge effects.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            Input image to be convolved.
-        bank : np.ndarray
-            Filter bank containing the wavelet kernels.
-        device : torch.device
-            Device on which to perform the computation (e.g., 'cuda', 'mps' or 'cpu').
-        gating : bool, optional
-            Whether to use AND-gated double-wavelet convolution. Default is True.
-        dtype : torch.dtype, optional
-            Data type for the tensors. Default is torch.float16.
-        save_memory : bool, optional
-            Whether to save memory by moving intermediate results to CPU. Default is False.
-        patch_size : int, optional
-            Size of the patches to process the image in. Default is 512.
-
-        Returns
-        -------
-        torch.Tensor
-            The result of the convolution, reshaped to match the input image dimensions.
-        """
-        # Convert image to dtype and normalize
-        image_torch = torch.from_numpy((image)).to(dtype=dtype).to(device).view(1, 1, image.shape[0], image.shape[1])
-        kernel_size = bank.shape[3]
-        margin = kernel_size // 2
-
-        def process_patch(patch: torch.Tensor) -> torch.Tensor:
-            with torch.no_grad():
-                if gating:
-                    # Convert filters to float32
-                    bank_0, bank_1 = bank[:, :, 0], bank[:, :, 1]
-                    filters_torch_0 = torch.from_numpy(bank_0).to(dtype=dtype).to(device).view(
-                        bank_0.shape[0] * bank_0.shape[1], 1, bank_0.shape[2], bank_0.shape[3])
-                    filters_torch_1 = torch.from_numpy(bank_1).to(dtype=dtype).to(device).view(
-                        bank_1.shape[0] * bank_1.shape[1], 1, bank_1.shape[2], bank_1.shape[3])
-
-                    # Perform convolutions
-                    if save_memory:
-                        res0 = F.conv2d(patch, filters_torch_0, padding='same').to('cpu')
-                        del filters_torch_0
-                        res1 = F.conv2d(patch, filters_torch_1, padding='same').to('cpu')
-                        del filters_torch_1
-                    else:
-                        res0 = F.conv2d(patch, filters_torch_0, padding='same')
-                        del filters_torch_0
-                        res1 = F.conv2d(patch, filters_torch_1, padding='same')
-                        del filters_torch_1
-                    del patch
-
-                    # Multiply results as torch tensors
-                    result = res0 * res1
-                    del res0, res1
-                else:
-                    # Combine filters
-                    combined_filters = bank[:, :, 0] + bank[:, :, 1]
-                    filters_torch = torch.from_numpy(combined_filters).to(dtype=dtype).to(device).view(
-                        combined_filters.shape[0] * combined_filters.shape[1], 1, combined_filters.shape[2],
-                        combined_filters.shape[3])
-
-                    # Perform convolution
-                    if save_memory:
-                        result = F.conv2d(patch, filters_torch, padding='same').to('cpu')
-                    else:
-                        result = F.conv2d(patch, filters_torch, padding='same')
-
-            return result
-
-        # Process image in patches with overlap
-        if image.shape[0] <= patch_size and image.shape[1] <= patch_size:
-            return process_patch(image_torch).view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
-
-        output = torch.zeros(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1], dtype=dtype, device=device)
-        for i in range(0, image.shape[0], patch_size - 2 * margin):
-            for j in range(0, image.shape[1], patch_size - 2 * margin):
-                patch = image_torch[:, :, max(i - margin, 0):min(i + patch_size + margin, image.shape[0]),
-                        max(j - margin, 0):min(j + patch_size + margin, image.shape[1])]
-                patch_result = process_patch(patch).view(bank.shape[0], bank.shape[1], patch.shape[2], patch.shape[3])
-
-                # Determine the region to place the patch result
-                start_i = i
-                end_i = min(i + patch_size, image.shape[0])
-                start_j = j
-                end_j = min(j + patch_size, image.shape[1])
-
-                # Calculate the corresponding region in the patch result
-                patch_start_i = 0 if i == 0 else margin
-                patch_end_i = (end_i - start_i) + patch_start_i
-                patch_start_j = 0 if j == 0 else margin
-                patch_end_j = (end_j - start_j) + patch_start_j
-
-                output[:, :, start_i:end_i, start_j:end_j] = patch_result[:, :, patch_start_i:patch_end_i,
-                                                             patch_start_j:patch_end_j]
-
-        return output.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
-
-    @staticmethod
-    def argmax_wavelets(result: torch.Tensor, len_range: torch.Tensor, orient_range: torch.Tensor) -> Tuple[
-        np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Compute the argmax of wavelet convolution results to extract length, orientation, and maximum score map.
-
-        This function processes the result of a wavelet convolution operation to determine the optimal
-        length and orientation for each position in the input image. It leverages GPU acceleration for
-        efficient computation and returns the results as NumPy arrays.
-
-        Parameters
-        ----------
-        result : torch.Tensor
-            The result tensor from a wavelet convolution operation, expected to be on a GPU device.
-            Shape is expected to be (num_orientations, num_lengths, height, width).
-        len_range : torch.Tensor
-            A tensor containing the different lengths used in the wavelet bank. Shape: (num_lengths,).
-        orient_range : torch.Tensor
-            A tensor containing the different orientation angles used in the wavelet bank, in degrees.
-            Shape: (num_orientations,).
-
-        Returns
-        -------
-        length_np : np.ndarray
-            A 2D array of the optimal length for each position in the input image. Shape: (height, width).
-        orient_np : np.ndarray
-            A 2D array of the optimal orientation (in radians) for each position in the input image.
-            Shape: (height, width).
-        max_score_np : np.ndarray
-            A 2D array of the maximum convolution score for each position in the input image.
-            Shape: (height, width).
-        """
-        # Keep the reshaping and max operation on the GPU
-        result_reshaped = result.permute(2, 3, 0, 1).view(result.shape[2] * result.shape[3], -1)
-        max_score, argmax = torch.max(result_reshaped, 1)
-        max_score = max_score.view(result.shape[2], result.shape[3])
-
-        # Calculate indices for lengths and orientations using PyTorch
-        len_indices = argmax // result.shape[1]
-        orient_indices = argmax % result.shape[1]
-        length = len_range[len_indices].view(result.shape[2], result.shape[3])
-        orient = orient_range[orient_indices].view(result.shape[2], result.shape[3])
-
-        return length.cpu().numpy(), orient.cpu().numpy(), max_score.cpu().numpy()
 
     @staticmethod
     def get_sarcomere_vectors(
@@ -2537,104 +1813,6 @@ class Structure:
 
         return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors)
-
-    @staticmethod
-    def get_sarcomere_vectors_wavelet(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
-                                      len_range: torch.Tensor, midlines: np.ndarray = None,
-                                      score_threshold: float = 90., abs_threshold: bool = False) -> Tuple:
-        """
-        Extracts vector positions on sarcomere midlines and calculates sarcomere length and orientation.
-
-        This function performs the following steps:
-        1. **Thresholding:** Applies a threshold to the length, orientation, and max_score arrays to refine sarcomere detection.
-        2. **Binarization:** Creates a binary mask to isolate midline regions.
-        3. **Skeletonization:** Thins the midline regions for easier analysis.
-        4. **Labeling:** Assigns unique labels to each connected midline component.
-        5. **Midline Point Extraction:** Identifies the coordinates of vectors along each midline.
-        6. **Value Calculation:** Calculates sarcomere length, orientation, and maximal score at each midline point.
-
-        Parameters
-        ----------
-        length : np.ndarray
-            Sarcomere length map obtained from wavelet analysis.
-        orientation : np.ndarray
-            Sarcomere orientation angle map obtained from wavelet analysis.
-        max_score : np.ndarray
-            Map of maximal wavelet scores.
-        len_range : torch.Tensor
-            An array containing the different lengths used in the wavelet bank.
-        score_threshold : float, optional
-            Threshold for filtering detected sarcomeres. Can be either an absolute value (if abs_threshold=True) or
-            a percentile value for adaptive thresholding (if abs_threshold=False). Default is 90.
-        abs_threshold : bool, optional
-            Flag to determine the thresholding method. If True, 'score_threshold' is used as an absolute value.
-            If False, 'score_threshold' is interpreted as a percentile for adaptive thresholding. Default is False.
-
-        Returns
-        -------
-        tuple
-            * **pos_vectors_px** (list): List of (x, y) coordinates for each midline point. In pixels.
-            * **midline_id_vectors** (list): List of corresponding midline labels for each point.
-            * **midline_length_vectors** (list): List of approximate midline lengths associated with each point. In pixels.
-            * **sarcomere_length_vectors** (list): List of sarcomere lengths at each midline point. In µm.
-            * **sarcomere_orientation_vectors** (list): List of sarcomere orientation angles at each midline point.
-            * **max_score_vectors** (list): List of maximal wavelet scores at each midline point.
-            * **midline** (np.ndarray): The binarized midline mask.
-            * **score_threshold** (float): The final threshold value used.
-        """
-        # rough thresholding of sarcomere structures to better identify adaptive threshold
-        # determine adaptive threshold from value distribution
-        if not abs_threshold:
-            score_threshold_val = max_score.max() * score_threshold
-        else:
-            score_threshold_val = score_threshold
-
-        # binarize midline
-        if midlines is not None:
-            midline = midlines
-        else:
-            midline = max_score >= score_threshold_val
-
-        # skeletonize
-        midline_skel = skeletonize(midline, method='lee') > 0
-
-        # label midlines
-        midline_labels, n_midlines = ndimage.label(midline_skel, ndimage.generate_binary_structure(2, 2))
-
-        # iterate midlines and create additional list with labels and midline length (approximated by max. Feret diameter)
-        props = skimage.measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
-        list_labels, coords_midlines, length_midlines = props['label'], props['coords'], props['feret_diameter_max']
-
-        pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
-        if n_midlines > 0:
-            for i, (label_i, coords_i, length_midline_i) in enumerate(
-                    zip(list_labels, coords_midlines, length_midlines)):
-                pos_vectors_px.append(coords_i)
-                midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
-                midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
-
-            pos_vectors_px = np.concatenate(pos_vectors_px, axis=0)
-            midline_id_vectors = np.concatenate(midline_id_vectors)
-            midline_length_vectors = np.concatenate(midline_length_vectors)
-
-            # get sarcomere orientation and distance at vectors, additionally filter score
-            sarcomere_length_vectors = length[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
-            sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
-            max_score_vectors = max_score[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
-
-            # remove vectors outside range of sarcomere lengths in wavelet bank
-            ids_in = (sarcomere_length_vectors >= len_range[1]) & (sarcomere_length_vectors <= len_range[-2])
-            pos_vectors_px = pos_vectors_px[ids_in]
-            midline_length_vectors = midline_length_vectors[ids_in]
-            midline_id_vectors = midline_id_vectors[ids_in]
-            sarcomere_length_vectors = sarcomere_length_vectors[ids_in]
-            sarcomere_orientation_vectors = sarcomere_orientation_vectors[ids_in]
-            max_score_vectors = max_score_vectors[ids_in]
-        else:
-            sarcomere_length_vectors, sarcomere_orientation_vectors, max_score_vectors = [], [], []
-
-        return (pos_vectors_px, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
-                sarcomere_orientation_vectors, max_score_vectors, midline, score_threshold)
 
     @staticmethod
     def cluster_sarcomeres(pos_vectors: np.ndarray,
