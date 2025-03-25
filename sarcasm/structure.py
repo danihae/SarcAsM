@@ -2309,7 +2309,7 @@ class Structure:
     def sarcomere_mask(points: np.ndarray,
                        sarcomere_orientation_vectors: np.ndarray,
                        sarcomere_length_vectors: np.ndarray,
-                       size: Tuple[int, int],
+                       shape: Tuple[int, int],
                        pixelsize: float,
                        dilation_radius: float = 0.3) -> np.ndarray:
         """
@@ -2323,8 +2323,8 @@ class Structure:
             Orientations of sarcomere vectors.
         sarcomere_length_vectors : ndarray
             Lengths of sarcomere vectors in µm.
-        size : tuple
-            Size of the image, in pixels.
+        shape : tuple
+            Shape of the image, in pixels.
         pixelsize : float
             Pixel size in µm.
         dilation_radius : float, optional
@@ -2344,7 +2344,7 @@ class Structure:
         ends_0 = points.T + orientation_vectors * sarcomere_length_vectors / 2  # End point 1 of each vector
         ends_1 = points.T - orientation_vectors * sarcomere_length_vectors / 2  # End point 2 of each vector
         ends_0, ends_1 = ends_0 / pixelsize, ends_1 / pixelsize
-        mask = np.zeros(size, dtype='bool')
+        mask = np.zeros(shape, dtype='bool')
         for e0, e1 in zip(ends_0.T.astype('int'), ends_1.T.astype('int')):
             rr, cc = line(*e0, *e1)
             try:
