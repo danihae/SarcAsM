@@ -1,6 +1,5 @@
 # Usage of this software for commercial purposes without a license is strictly prohibited.
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -105,7 +104,7 @@ class MetaDataHandler:
 
             if pixelsize is None and not use_gui:
                 raise MetaDataError(f"Pixel size could not be extracted from {tif_file}. "
-                                    f"Please enter manually (e.g., SarcAsM(filename, pixelsize=0.1)).")
+                                    f"Please enter manually (e.g., Structure(filename, pixelsize=0.1)).")
 
         # Allow manual override of frametime.
         if 'frametime' in info:
