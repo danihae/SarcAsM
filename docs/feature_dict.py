@@ -84,7 +84,7 @@ with open('./motion_features.rst', 'w') as file:
 Motion features
 ===============
 
-The following table describes the functional features analyzed by SarcAsM, stored in dictionary sarc_obj.structure.data:
+The following table describes the functional features analyzed by SarcAsM, stored in dictionary sarc.data:
 
 """)
     file.write(table_motion)

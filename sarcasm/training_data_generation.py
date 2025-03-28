@@ -396,69 +396,6 @@ class TrainingDataGenerator:
 
         plt.show()
 
-    # def optimize_wavelet_minor_axis(self, frame: int = 0, n_sample: int = 50):
-    #     """
-    #     Find the optimal wavelet minor axis, in full width at half maximum (FWHM) units, that maximizes the number of
-    #     sarcomeres identified for a given sample by determining width of Z-bands by fitting Gaussian to sample
-    #     of sarcomere vectors. Before running this function, it is necessary to run analyze_sarcomere_vectors with
-    #     a prior set of parameters.
-    #
-    #     Parameters
-    #     ----------
-    #     frame : int, optional
-    #         The specific frame to analyze. Default is 0.
-    #     n_sample : int, optional
-    #         Number of random samples to use for optimization. Default is 50.
-    #
-    #     Returns
-    #     -------
-    #     float
-    #         The median sigma value from the Gaussian fits to a sample of sarcomere vectors.
-    #     """
-    #
-    #     zbands = tifffile.imread(self.output_dirs['zbands'], key=frame)
-    #     pos_vectors_px = self.wavelet_dict['wavelet_pos_vectors'][frame]
-    #     sarcomere_orientation_vectors_t = self.data['wavelet_sarcomere_orientation_vectors'][frame]
-    #     sarcomere_length_vectors_t = self.data['wavelet_sarcomere_length_vectors'][frame] / self.sarc_obj.metadata[
-    #         'pixelsize']
-    #
-    #     # Calculate orientation vectors using trigonometry
-    #     orientation_vectors_t = np.asarray([-np.sin(sarcomere_orientation_vectors_t),
-    #                                         np.cos(sarcomere_orientation_vectors_t)]).T
-    #
-    #     # Calculate the ends of the vectors based on their orientation and length
-    #     starts, ends = points_t.T, points_t.T + orientation_vectors_t * sarcomere_length_vectors_t
-    #
-    #     # randomly select N lines
-    #     idxs_random = np.random.randint(0, starts.shape[1], size=n_sample)
-    #     starts, ends = starts[:, idxs_random], ends[:, idxs_random]
-    #
-    #     def gaussian(x, A, mu, sigma):
-    #         return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
-    #
-    #     def fit_gaussian(x_data, y_data):
-    #         # Initial guesses for fitting parameters
-    #         A_guess = np.max(y_data)
-    #         mu_guess = x_data[np.argmax(y_data)]
-    #         sigma_guess = np.std(x_data) / 2
-    #
-    #         # Perform the Gaussian fit
-    #         params, _ = curve_fit(gaussian, x_data, y_data, p0=[A_guess, mu_guess, sigma_guess])
-    #
-    #         return params
-    #
-    #     # extract profiles perpendicular to Z-bands to determine Z-band width
-    #     sigmas = []
-    #     for start_i, end_i in zip(starts.T, ends.T):
-    #         profile_i = profile_line(z_bands_t, start_i, end_i, linewidth=5)
-    #         x_i = np.arange(len(profile_i)) * self.sarc_obj.metadata['pixelsize']
-    #         try:
-    #             params = fit_gaussian(x_i, profile_i)
-    #             sigmas.append(params[2])
-    #         except:
-    #             pass
-    #     return np.median(sigmas) * 2.355  # convert sigma to FWHM (full width at half maximum)
-
     @staticmethod
     def binary_kernel(d: float, sigma: float, width: float, orient: float, size: float,
                       pixelsize: float, mode: str = 'both') -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
@@ -990,59 +927,6 @@ class TrainingDataGenerator:
 
         return (pos_vectors_px, mband_id_vectors, mband_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, max_score_vectors, mbands, mbands_labels, score_threshold)
-
-    @staticmethod
-    def plot_wavelet_bank(ax: Axes, sarc_obj: Union[SarcAsM, Motion], gap=0.005):
-        """
-        Plots a wavelet filter bank with two channels (red and blue) on a given axes.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            The axes on which to plot the wavelet bank.
-        sarc_obj : SarcAsM or Method
-            An SarcAsM object containing the wavelet bank in its 'structure' dict.
-        gap : float, optional
-            The gap size between individual plots as a fraction of figure size. Default is 0.005.
-
-        Returns
-        -------
-        None
-        """
-        assert 'wavelet_bank' in sarc_obj.structure.data.keys(), ('No wavelet bank stored. '
-                                                                  'Run sarc_obj.analyze_sarcomere_vectors '
-                                                                  'with save_all=True.')
-
-        bank = sarc_obj.structure.data['wavelet_bank']
-        if bank is None:
-            raise ValueError(
-                'Wavelet bank is not saved. Run sarc_obj.analyze_sarcomere_vectors with save_all=True.')
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.axis('off')
-
-        custom_cmap = LinearSegmentedColormap.from_list('custom_cmap', ['#0000FF', 'black', '#FF0000'])
-
-        rows, cols = bank.shape[:2]
-        for i in range(rows):
-            for j in range(cols):
-                # Calculate bounds for the inset axes, including gaps
-                x = j / cols + gap / 2
-                y = 1 - (i + 1) / rows + gap / 2  # Inverting y to start from top left
-                width = 1 / cols - gap
-                height = 1 / rows - gap
-
-                # Create an inset axis for each filter
-                inset = ax.inset_axes((x, y, width, height))
-
-                # Plot the filter
-                kernel_0, kernel_1 = bank[i, j, 0], bank[i, j, 1]
-
-                inset.imshow(kernel_0 - kernel_1, cmap=custom_cmap, aspect='equal')
-                inset.set_xticks([])
-                inset.set_yticks([])
-                PlotUtils.change_color_spines(inset, c='grey', linewidth=0.2)
 
     @staticmethod
     def interpolate_distance_map(image, N=50, method='linear'):

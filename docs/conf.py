@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'SarcAsM'
-copyright = '2024, University Medical Center Göttingen'
+copyright = '2025, University Medical Center Göttingen'
 author = 'Daniel Haertter'
 
 # The short X.Y version

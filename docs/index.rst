@@ -6,7 +6,6 @@
 SarcAsM is a Python package for analysis of sarcomere structure and motion in microscopy images and movies of cardiomyocytes.
 
 .. image:: images/graphical_abstract.png
-**Summary of SarcAsM:** (a) Detailed structural analysis of sarcomeres Z-bands, sarcomeres, myofibrils, and sarcomere domains. (b) Tracking and analysis of individual and average sarcomere motion. (c) Information about SarcAsM.
 
 Using SarcAsM
 -------------
@@ -34,6 +33,7 @@ There are two ways to use SarcAsM:
    ./notebooks/tutorial_batch_analysis
    ./notebooks/tutorial_data_export
    ./notebooks/tutorial_data_visualization
+   ./notebooks/tutorial_training_data_generation
    ./notebooks/tutorial_training_unet
    ./notebooks/tutorial_training_3dunet
    ./notebooks/tutorial_training_contraction_net
