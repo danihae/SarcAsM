@@ -2,7 +2,7 @@ import napari
 
 from .parameters import Parameters
 from .parameter import Parameter
-from sarcasm import SarcAsM, Motion, TypeUtils
+from sarcasm import SarcAsM, Motion, TypeUtils, Structure
 from typing import Optional
 
 
@@ -50,7 +50,7 @@ class ApplicationModel:
         return self.__sarcomere
 
     @property
-    def cell(self) -> Optional[SarcAsM]:
+    def cell(self) -> Optional[Structure]:
         return self._cell
 
     @property
@@ -59,7 +59,8 @@ class ApplicationModel:
 
     def init_cell(self, cell_file):
         self.__cell_file_name = cell_file
-        self._cell = SarcAsM(cell_file, use_gui=True)
+        # this is no longer of type SarcAsM but of Type Structure
+        self._cell = Structure(cell_file, use_gui=True)
 
     def init_sarcomere(self, loi_name):
         cell_file_name = TypeUtils.unbox(self.__cell_file_name)

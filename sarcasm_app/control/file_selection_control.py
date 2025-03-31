@@ -5,7 +5,7 @@ import numpy as np
 from PyQt5.QtWidgets import QFileDialog
 from tifffile import tifffile
 
-from sarcasm import SarcAsM
+from sarcasm import SarcAsM, Structure
 from .popup_export import ExportPopup
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
@@ -127,7 +127,7 @@ class FileSelectionControl:
                 self.__main_control.debug('the value in frame rate is not a number')
 
     def _init_file(self, file):
-        # todo: on file changed, clean up old files, napari viewer, models, etc.
+        # on file changed, clean up old files, napari viewer, models, etc.
         # todo: maybe switch to threaded execution (run_async_new)
 
         if self.__main_control.model.currentlyProcessing.get_value():
@@ -154,7 +154,7 @@ class FileSelectionControl:
 
         self.init_line_layer()  # initializes the layer for drawing loi's
 
-        # todo: init or update dictionary
+        # init or update dictionary
         cell:SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
 
         if cell.filepath not in self.__main_control.model.line_dictionary:
@@ -171,20 +171,8 @@ class FileSelectionControl:
         if self.__main_control.viewer.layers.__contains__('LOIs'):
             layer = self.__main_control.viewer.layers.__getitem__('LOIs')
             self.__main_control.viewer.layers.remove(layer)
-        # set the pre selected color to red
+        # set the pre-selected color to red
         self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000'))
-
-        # todo: this is how adding lines and reading the data works
-        # note that first coordinate in the point tuples is Y and second is X
-        # pos_vectors = np.array([[[100, 100], [200, 200]],[[300,300],[400,300]]])
-        # self.__main_control.layer_loi.add_lines(pos_vectors,edge_width=[10,5],edge_color='red')
-        # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
-        # data=self.__main_control.layer_loi.data
-        # widths=self.__main_control.layer_loi.edge_width
-        # print(data)
-        # print(widths)
-        # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
-        # [10, 5, 15]
 
         pass
 
@@ -229,7 +217,7 @@ class FileSelectionControl:
         # set metadata with cut off comma's
         cell = TypeUtils.unbox(self.__main_control.model.cell)
 
-        if ('pixelsize' in cell.metadata and cell.metadata['pixelsize'] is not None):
+        if 'pixelsize' in cell.metadata and cell.metadata['pixelsize'] is not None:
             pixel_size = cell.metadata['pixelsize']
             pixel_size *= 10000
             pixel_size = int(pixel_size)
@@ -239,7 +227,7 @@ class FileSelectionControl:
             self.__file_selection_widget.le_pixel_size.setPlaceholderText('- enter metadata manually -')
             self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
 
-        if ('frametime' in cell.metadata and cell.metadata['frametime'] is not None):
+        if 'frametime' in cell.metadata and cell.metadata['frametime'] is not None:
             frame_rate = cell.metadata['frametime']
             frame_rate *= 10000
             frame_rate = int(frame_rate)
@@ -253,26 +241,14 @@ class FileSelectionControl:
 
     def _init_loi_from_file(self):
         # read loi files, store the line data in dictionary and in ui loi list
-        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        if 'loi_data' in cell.structure.data and 'loi_lines' in cell.structure.data['loi_data']:
-            for line in cell.structure.data['loi_data']['loi_lines']:
+        if 'loi_data' in cell.data and 'loi_lines' in cell.data['loi_data']:
+            for line in cell.data['loi_data']['loi_lines']:
                 start = [line[0][0], line[0][1]]
                 end = [line[-1][0], line[-1][1]]
                 self.__main_control.on_update_loi_list(line_start=start, line_end=end, line_thickness=line_width)
             pass
-        # add lois to ui
 
-        #loi_files = glob.glob(cell.folder + '/*_loi' + self.__main_control.model.file_extension)
-        #if len(loi_files) > 0:
-        #    for loi_file in loi_files:
-        #        tmp_profile = IOUtils.json_deserialize(loi_file)  # IOUtils.deserialize_profile_data(loi_file)
-        #        line_start = tmp_profile['line'][0]
-        #        line_end = tmp_profile['line'][1]
-        #        # line_start = (float(tmp_profile["line_start_x"]), float(tmp_profile["line_start_y"]))
-        #        # line_end = (float(tmp_profile["line_end_x"]), float(tmp_profile["line_end_y"]))
-        #        self.__main_control.on_update_loi_list(line_start, line_end,
-        #                                               int(tmp_profile["linewidth"]),
-        #                                               False)  # add line to loi list and dictionary
         else:
             self.__main_control.debug("no LOI's found for current image")

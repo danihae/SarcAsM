@@ -185,12 +185,12 @@ class ApplicationControl:
         return file_name, scan_line
 
     def init_z_band_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_z_bands):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):  # was changed from z_bands to zbands
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             # load sarcomere Z-band file into unet stack
-            tmp = tifffile.imread(self.model.cell.file_z_bands).astype('uint8')
+            tmp = tifffile.imread(self.model.cell.file_zbands).astype('uint8')
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
 
     def init_cell_mask_stack(self):
@@ -203,7 +203,7 @@ class ApplicationControl:
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
 
     def init_z_lateral_connections(self):
-        if self.model.cell is not None and 'z_labels' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('ZbandLatGroups'):
                 layer = self.viewer.layers.__getitem__('ZbandLatGroups')
                 self.viewer.layers.remove(layer)
@@ -221,10 +221,10 @@ class ApplicationControl:
             ends = []
             connections = []
             for frame in range(self.model.cell.metadata['frames']):
-                if 'params.z_frames' in self.model.cell.structure.data and frame in \
-                        self.model.cell.structure.data['params.z_frames']:
-                    labels_frame = self.model.cell.structure.data['z_labels'][frame].toarray()
-                    groups_frame = self.model.cell.structure.data['z_lat_groups'][frame]
+                if 'params.z_frames' in self.model.cell.data and frame in \
+                        self.model.cell.data['params.z_frames']:
+                    labels_frame = self.model.cell.data['z_labels'][frame].toarray()
+                    groups_frame = self.model.cell.data['z_lat_groups'][frame]
                     labels_groups_frame = np.zeros_like(labels_frame)
                     for i, group in enumerate(groups_frame[1:]):
                         mask = np.zeros_like(labels_frame, dtype=bool)
@@ -234,8 +234,8 @@ class ApplicationControl:
                     labels_groups_frame = Utils.shuffle_labels(labels_groups_frame)
                     labels_groups[frame] = labels_groups_frame
 
-                    z_ends_frame = self.model.cell.structure.data['z_ends'][frame] / self.model.cell.metadata['pixelsize']
-                    z_links_frame = self.model.cell.structure.data['z_lat_links'][frame]
+                    z_ends_frame = self.model.cell.data['z_ends'][frame] / self.model.cell.metadata['pixelsize']
+                    z_links_frame = self.model.cell.data['z_lat_links'][frame]
 
                     # ends
                     for z_ends_i in z_ends_frame:
@@ -254,13 +254,13 @@ class ApplicationControl:
             self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3)
 
     def init_myofibril_lines_stack(self):
-        if self.model.cell is not None and 'myof_lines' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('MyofibrilLines'):
                 layer = self.viewer.layers.__getitem__('MyofibrilLines')
                 self.viewer.layers.remove(layer)
             # load myofibril lines and as multi-segment paths
-            myof_lines = self.model.cell.structure.data['myof_lines']
-            pos_vectors = self.model.cell.structure.data['pos_vectors_px']
+            myof_lines = self.model.cell.data['myof_lines']
+            pos_vectors = self.model.cell.data['pos_vectors_px']
             myof_lines_pos_vectors = [
                 [np.column_stack((np.full((len(line_j), 1), i), pos_vectors_i[line_j])) for line_j in lines_i]
                 if pos_vectors_i is not None and lines_i is not None else None
@@ -270,7 +270,7 @@ class ApplicationControl:
                                    edge_color='red', edge_width=2, opacity=0.5)
 
     def init_sarcomere_vector_stack(self):
-        if self.model.cell is not None and 'pos_vectors' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('SarcomereVectors'):
                 layer = self.viewer.layers.__getitem__('SarcomereVectors')
                 self.viewer.layers.remove(layer)
@@ -283,13 +283,13 @@ class ApplicationControl:
             vectors = []
             pos_vectors = []
             for frame in range(self.model.cell.metadata['frames']):
-                if 'params.wavelet_frames' in self.model.cell.structure.data and frame in \
-                        self.model.cell.structure.data['params.wavelet_frames']:
-                    pos_vectors_frame = self.model.cell.structure.data['pos_vectors_px'][frame]
+                if 'params.wavelet_frames' in self.model.cell.data and frame in \
+                        self.model.cell.data['params.wavelet_frames']:
+                    pos_vectors_frame = self.model.cell.data['pos_vectors_px'][frame]
                     if len(pos_vectors_frame) > 0:
-                        sarc_orientation_vectors = self.model.cell.structure.data['sarcomere_orientation_vectors'][
+                        sarc_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][
                             frame]
-                        sarc_length_vectors = self.model.cell.structure.data['sarcomere_length_vectors'][frame] / \
+                        sarc_length_vectors = self.model.cell.data['sarcomere_length_vectors'][frame] / \
                                               self.model.cell.metadata[
                                                   'pixelsize']
                         orientation_vectors = np.asarray(
@@ -331,17 +331,17 @@ class ApplicationControl:
             self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.7)
 
     def init_sarcomere_domain_stack(self):
-        if self.model.cell is not None and 'domain_mask' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'domain_mask' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('SarcomereDomains'):
                 layer = self.viewer.layers.__getitem__('SarcomereDomains')
                 self.viewer.layers.remove(layer)
 
-            domain_masks = self.model.cell.structure.data['domain_mask']
+            domain_masks = self.model.cell.data['domain_mask']
 
             _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']),
                                      dtype='uint16')
             for frame in range(self.model.cell.metadata['frames']):
-                if frame in self.model.cell.structure.data['params.domain_frames']:
+                if frame in self.model.cell.data['params.domain_frames']:
                     _domain_masks[frame] = domain_masks[frame].toarray()
 
             self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
