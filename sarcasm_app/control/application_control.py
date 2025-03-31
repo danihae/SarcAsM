@@ -185,7 +185,7 @@ class ApplicationControl:
         return file_name, scan_line
 
     def init_z_band_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):  # was changed from z_bands to zbands
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
