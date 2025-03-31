@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>735</width>
-    <height>1182</height>
+    <height>1331</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -164,7 +164,7 @@
          <string>execute sarcomere prediction based on the given network</string>
         </property>
         <property name="text">
-         <string>Predict sarcomere Z-bands</string>
+         <string>Detect sarcomeres</string>
         </property>
        </widget>
       </item>
@@ -194,7 +194,7 @@
         <item>
          <widget class="QLabel" name="label_11">
           <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
           </property>
           <property name="text">
            <string>Width [px]:</string>
@@ -204,7 +204,7 @@
         <item>
          <widget class="QSpinBox" name="sb_predict_size_width">
           <property name="toolTip">
-           <string>Patch size (width) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -220,7 +220,7 @@
         <item>
          <widget class="QLabel" name="label_10">
           <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
           </property>
           <property name="text">
            <string>Height [px]:</string>
@@ -230,7 +230,7 @@
         <item>
          <widget class="QSpinBox" name="sb_predict_size_height">
           <property name="toolTip">
-           <string>Patch size (height) for convolutional neural network. Dims need to be dividable by 16.</string>
+           <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
           </property>
           <property name="maximum">
            <number>1000000</number>
@@ -248,10 +248,10 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_9">
         <property name="toolTip">
-         <string>Patch size  for convolutional neural network. Dims need to be dividable by 16.</string>
+         <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
         </property>
         <property name="text">
-         <string>Resize dimensions [pixel]</string>
+         <string>Max patch size [pixel]</string>
         </property>
        </widget>
       </item>
@@ -292,7 +292,7 @@
      </layout>
     </widget>
    </item>
-   <item row="3" column="0" colspan="2">
+   <item row="4" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="font">
       <font>
@@ -492,7 +492,7 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="0" colspan="2">
+   <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
      <property name="enabled">
       <bool>true</bool>
@@ -651,7 +651,7 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
+   <item row="6" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_5">
      <property name="font">
       <font>
@@ -665,23 +665,10 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_35">
         <property name="toolTip">
-         <string>Number of random seeds for line growth</string>
+         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
         </property>
         <property name="text">
-         <string># Random seeds</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QSpinBox" name="sb_myofibril_n_seeds">
-        <property name="toolTip">
-         <string>Number of random seeds for line growth</string>
-        </property>
-        <property name="maximum">
-         <number>100000000</number>
-        </property>
-        <property name="value">
-         <number>500</number>
+         <string>Ratio Seeds</string>
         </property>
        </widget>
       </item>
@@ -754,7 +741,7 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0" colspan="2">
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_myofibril">
         <property name="toolTip">
          <string>execute myofibril length calculation</string>
@@ -764,10 +751,46 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_myofibril_ratio_seeds">
+        <property name="toolTip">
+         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_41">
+        <property name="toolTip">
+         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
+        </property>
+        <property name="text">
+         <string>Median Filter Radius</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_myofibril_median_filter_radius">
+        <property name="toolTip">
+         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="7" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
      <property name="font">
       <font>
@@ -921,6 +944,173 @@
          <number>99999999</number>
         </property>
        </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="3" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_6">
+     <property name="title">
+      <string>Detection of Z-bands in high-speed movies</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_7">
+      <item row="3" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_fast_movie">
+        <property name="toolTip">
+         <string>Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.</string>
+        </property>
+        <property name="text">
+         <string>Detect Z-Bands Fast Movie</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_29">
+        <property name="text">
+         <string>Network model</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QLineEdit" name="le_fast_movie_network_model"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_fast_movie_search">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_30">
+        <property name="toolTip">
+         <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+        </property>
+        <property name="text">
+         <string>Max patch size [pixel]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <widget class="QLabel" name="label_34">
+          <property name="toolTip">
+           <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+          </property>
+          <property name="text">
+           <string>Width [px]</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_fast_movie_width">
+          <property name="toolTip">
+           <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+          </property>
+          <property name="maximum">
+           <number>9999999</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_33">
+          <property name="toolTip">
+           <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+          </property>
+          <property name="text">
+           <string>Height [px]</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_fast_movie_height">
+          <property name="toolTip">
+           <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+            Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+          </property>
+          <property name="maximum">
+           <number>9999999</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_31">
+          <property name="text">
+           <string>N Frames</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="sb_fast_movie_n_frames">
+          <property name="maximum">
+           <number>9999999</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_36">
+        <property name="toolTip">
+         <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+        </property>
+        <property name="text">
+         <string>Clip threshold intensity [%]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_7">
+        <item>
+         <widget class="QLabel" name="label_40">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_fast_movie_clip_thresh_min">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+          </property>
+          <property name="maximum">
+           <double>999999999.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_39">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_fast_movie_clip_thresh_max">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+          </property>
+          <property name="maximum">
+           <double>99999999.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>

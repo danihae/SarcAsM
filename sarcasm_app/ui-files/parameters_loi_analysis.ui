@@ -52,7 +52,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="label_36">
         <property name="toolTip">
-         <string>Selects i-th frame of frames specified in wavelet analysis.</string>
+         <string>The index of the frame to select for analysis.</string>
         </property>
         <property name="text">
          <string>Frame [#]</string>
@@ -62,7 +62,7 @@
       <item row="1" column="1">
        <widget class="QSpinBox" name="sb_detect_loi_frame">
         <property name="toolTip">
-         <string>Selects i-th frame of framess specified in wavelet analysis.</string>
+         <string>The index of the frame to select for analysis.</string>
         </property>
         <property name="maximum">
          <number>1000000000</number>
@@ -95,20 +95,23 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label">
         <property name="toolTip">
-         <string>Number of seed vectors for initiating LOI growth</string>
+         <string>Ratio of sarcomere vectors to take as seed vectors for initiating LOI growth.</string>
         </property>
         <property name="text">
-         <string>Seed Vectors</string>
+         <string>Ratio Seed Vectors</string>
         </property>
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QSpinBox" name="sb_n_seeds">
+       <widget class="QDoubleSpinBox" name="dsb_ratio_seeds">
         <property name="toolTip">
-         <string>Number of seed vectors for initiating LOI growth</string>
+         <string>Ratio of sarcomere vectors to take as seed vectors for initiating LOI growth.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
         </property>
         <property name="maximum">
-         <number>9999999</number>
+         <double>10000000.000000000000000</double>
         </property>
        </widget>
       </item>
@@ -162,46 +165,6 @@
        </widget>
       </item>
       <item row="6" column="0">
-       <widget class="QLabel" name="label_39">
-        <property name="toolTip">
-         <string>Minimum score threshold for seed vectors. Uses automated threshold if auto is checked.</string>
-        </property>
-        <property name="text">
-         <string>Score threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_5">
-        <item>
-         <widget class="QCheckBox" name="chk_loi_automatic_score_threshold">
-          <property name="toolTip">
-           <string>Minimum score threshold for seed vectors. Uses automated threshold if auto is checked.</string>
-          </property>
-          <property name="text">
-           <string>auto</string>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_detect_loi_score_threshold">
-          <property name="toolTip">
-           <string>Minimum score threshold for seed vectors. Uses automated threshold if auto is checked.</string>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>0.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="7" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
          <string>Mode for selecting LOIs from identified clusters.</string>
@@ -211,51 +174,14 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="1">
+      <item row="6" column="1">
        <widget class="QComboBox" name="cb_mode">
         <property name="toolTip">
          <string>Mode for selecting LOIs from identified clusters.</string>
         </property>
        </widget>
       </item>
-      <item row="9" column="0">
-       <widget class="QLabel" name="label_6">
-        <property name="toolTip">
-         <string>Random seed for selection of random starting vectors for line growth algorithm, for reproducible outcomes.
-            If None, no random seed is set, and outcomes in every run will differ.</string>
-        </property>
-        <property name="text">
-         <string>Random Seed</string>
-        </property>
-       </widget>
-      </item>
-      <item row="9" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_2">
-        <item>
-         <widget class="QCheckBox" name="chk_random_seed_empty">
-          <property name="toolTip">
-           <string> Random seed for selection of random starting vectors for line growth algorithm, for reproducible outcomes.
-            If None, no random seed is set, and outcomes in every run will differ.</string>
-          </property>
-          <property name="text">
-           <string>Leave Empty</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="sb_random_seed">
-          <property name="toolTip">
-           <string>Random seed for selection of random starting vectors for line growth algorithm, for reproducible outcomes.
-            If None, no random seed is set, and outcomes in every run will differ.</string>
-          </property>
-          <property name="maximum">
-           <number>99999999</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="10" column="0">
+      <item row="8" column="0">
        <widget class="QLabel" name="label_3">
         <property name="toolTip">
          <string>Limits of sarcomere numbers in LOI (n_min, n_max)</string>
@@ -265,7 +191,7 @@
         </property>
        </widget>
       </item>
-      <item row="10" column="1">
+      <item row="8" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
          <widget class="QLabel" name="label_4">
@@ -315,7 +241,7 @@
         </item>
        </layout>
       </item>
-      <item row="11" column="0">
+      <item row="9" column="0">
        <widget class="QLabel" name="label_27">
         <property name="toolTip">
          <string>Length limits for LOIs (in µm) (min, max).</string>
@@ -325,7 +251,7 @@
         </property>
        </widget>
       </item>
-      <item row="11" column="1">
+      <item row="9" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_8">
         <item>
          <widget class="QLabel" name="label_33">
@@ -375,7 +301,7 @@
         </item>
        </layout>
       </item>
-      <item row="12" column="0">
+      <item row="10" column="0">
        <widget class="QLabel" name="label_7">
         <property name="toolTip">
          <string>Limits for the mean length of sarcomeres within an LOI (min, max).</string>
@@ -385,7 +311,7 @@
         </property>
        </widget>
       </item>
-      <item row="12" column="1">
+      <item row="10" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_3">
         <item>
          <widget class="QLabel" name="label_8">
@@ -435,7 +361,7 @@
         </item>
        </layout>
       </item>
-      <item row="13" column="0">
+      <item row="11" column="0">
        <widget class="QLabel" name="label_10">
         <property name="toolTip">
          <string>Limits for the standard deviation of sarcomere lengths within an LOI (min, max).</string>
@@ -445,7 +371,7 @@
         </property>
        </widget>
       </item>
-      <item row="13" column="1">
+      <item row="11" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_4">
         <item>
          <widget class="QLabel" name="label_11">
@@ -495,87 +421,7 @@
         </item>
        </layout>
       </item>
-      <item row="14" column="0">
-       <widget class="QLabel" name="label_13">
-        <property name="toolTip">
-         <string>Limits for the mean squared curvature (MSC) of LOIs (min, max).</string>
-        </property>
-        <property name="text">
-         <string>Limit Mean Squared Curvature</string>
-        </property>
-       </widget>
-      </item>
-      <item row="14" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_6">
-        <item>
-         <widget class="QLabel" name="label_14">
-          <property name="toolTip">
-           <string>Limits for the mean squared curvature (MSC) of LOIs (min, max).</string>
-          </property>
-          <property name="text">
-           <string>Min:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_msc_lims_min">
-          <property name="toolTip">
-           <string>Limits for the mean squared curvature (MSC) of LOIs (min, max).</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>999999.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_15">
-          <property name="toolTip">
-           <string>Limits for the mean squared curvature (MSC) of LOIs (min, max).</string>
-          </property>
-          <property name="text">
-           <string>Max:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_msc_lims_max">
-          <property name="toolTip">
-           <string>Limits for the mean squared curvature (MSC) of LOIs (min, max).</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>999999.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="15" column="0">
-       <widget class="QLabel" name="label_16">
-        <property name="toolTip">
-         <string>Maximal change of orientation between adjacent line segments, in degrees.</string>
-        </property>
-        <property name="text">
-         <string>Max. delta Orientation(degrees)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="15" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_max_orient_change">
-        <property name="toolTip">
-         <string>Maximal change of orientation between adjacent line segments, in degrees.</string>
-        </property>
-        <property name="maximum">
-         <double>9999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="16" column="0">
+      <item row="12" column="0">
        <widget class="QLabel" name="label_18">
         <property name="toolTip">
          <string>Limits for the mean length of the midline of vectors in LOI (min, max).</string>
@@ -585,7 +431,7 @@
         </property>
        </widget>
       </item>
-      <item row="16" column="1">
+      <item row="12" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_7">
         <item>
          <widget class="QLabel" name="label_21">
@@ -623,7 +469,7 @@
         </item>
        </layout>
       </item>
-      <item row="17" column="0">
+      <item row="13" column="0">
        <widget class="QLabel" name="label_24">
         <property name="toolTip">
          <string>Limits for the standard deviation of the midline length of vectors in LOI (min, max).</string>
@@ -633,7 +479,7 @@
         </property>
        </widget>
       </item>
-      <item row="17" column="1">
+      <item row="13" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_9">
         <item>
          <widget class="QLabel" name="label_25">
@@ -677,7 +523,7 @@
         </item>
        </layout>
       </item>
-      <item row="18" column="0">
+      <item row="14" column="0">
        <widget class="QLabel" name="label_28">
         <property name="toolTip">
          <string>Limits for the minimum length of the midline of vectors in LOI (min, max).</string>
@@ -687,7 +533,7 @@
         </property>
        </widget>
       </item>
-      <item row="18" column="1">
+      <item row="14" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_10">
         <item>
          <widget class="QLabel" name="label_29">
@@ -731,7 +577,7 @@
         </item>
        </layout>
       </item>
-      <item row="19" column="0">
+      <item row="15" column="0">
        <widget class="QLabel" name="label_17">
         <property name="toolTip">
          <string>The linkage distance threshold above which, clusters will not be merged.</string>
@@ -741,7 +587,7 @@
         </property>
        </widget>
       </item>
-      <item row="19" column="1">
+      <item row="15" column="1">
        <widget class="QDoubleSpinBox" name="dsb_detect_loi_clustering_threshold">
         <property name="toolTip">
          <string>The linkage distance threshold above which, clusters will not be merged.</string>
@@ -754,7 +600,7 @@
         </property>
        </widget>
       </item>
-      <item row="20" column="0">
+      <item row="16" column="0">
        <widget class="QLabel" name="label_31">
         <property name="toolTip">
          <string>Linkage criterion for clustering ('complete', 'average', 'single').</string>
@@ -764,14 +610,14 @@
         </property>
        </widget>
       </item>
-      <item row="20" column="1">
+      <item row="16" column="1">
        <widget class="QLineEdit" name="le_linkage">
         <property name="toolTip">
          <string>Linkage criterion for clustering ('complete', 'average', 'single').</string>
         </property>
        </widget>
       </item>
-      <item row="21" column="0">
+      <item row="17" column="0">
        <widget class="QLabel" name="label_20">
         <property name="toolTip">
          <string> Width of the scan line (in µm), perpendicular to the LOIs.</string>
@@ -781,7 +627,7 @@
         </property>
        </widget>
       </item>
-      <item row="21" column="1">
+      <item row="17" column="1">
        <widget class="QDoubleSpinBox" name="dsb_detect_loi_line_width">
         <property name="toolTip">
          <string> Width of the scan line (in µm), perpendicular to the LOIs.</string>
@@ -794,7 +640,7 @@
         </property>
        </widget>
       </item>
-      <item row="22" column="0">
+      <item row="18" column="0">
        <widget class="QLabel" name="label_34">
         <property name="toolTip">
          <string>Order of spline interpolation for transforming LOIs (range 0-5).</string>
@@ -804,7 +650,7 @@
         </property>
        </widget>
       </item>
-      <item row="22" column="1">
+      <item row="18" column="1">
        <widget class="QSpinBox" name="sb_order">
         <property name="toolTip">
          <string>Order of spline interpolation for transforming LOIs (range 0-5).</string>
@@ -814,27 +660,7 @@
         </property>
        </widget>
       </item>
-      <item row="23" column="0">
-       <widget class="QLabel" name="label_35">
-        <property name="toolTip">
-         <string> If True, exports raw intensity kymographs along LOIs.</string>
-        </property>
-        <property name="text">
-         <string>Export Raw</string>
-        </property>
-       </widget>
-      </item>
-      <item row="23" column="1">
-       <widget class="QCheckBox" name="chk_export_raw">
-        <property name="toolTip">
-         <string> If True, exports raw intensity kymographs along LOIs.</string>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item row="24" column="0" colspan="2">
+      <item row="19" column="0" colspan="2">
        <widget class="QPushButton" name="btn_detect_lois">
         <property name="toolTip">
          <string>Detect LOIs automatically and store them</string>

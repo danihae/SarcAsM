@@ -56,6 +56,12 @@ class Parameter:
             return self.__get_value_parser(self.__value)
         return self.__value
 
+    def get_value_as_int(self) -> int:
+        return self.get_value()
+
+    def get_value_as_float(self) -> float:
+        return self.get_value()
+
     def get_raw_value(self):
         return self.__value
 

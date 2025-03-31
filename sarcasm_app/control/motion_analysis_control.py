@@ -66,8 +66,8 @@ class MotionAnalysisControl:
         loi_layer.edge_color = []
 
         for index, line_data in enumerate(lines):
-            if line_data[0][0] == line[0][1] and line_data[0][1] == line[0][0] and line_data[1][0] == line[1][1] and \
-                    line_data[1][1] == line[1][0] and line[2] == loi_layer.edge_width[index]:
+            if line_data[0][0] == line[0][0] and line_data[0][1] == line[0][1] and line_data[1][0] == line[1][0] and \
+                    line_data[1][1] == line[1][1] and line[2] == loi_layer.edge_width[index]:
                 loi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='yellow')
                 pass
             else:

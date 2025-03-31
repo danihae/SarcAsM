@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from sarcasm import TypeUtils, SarcAsM
+from sarcasm import TypeUtils, SarcAsM, Structure
 from .application_control import ApplicationControl
 from ..view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
 from ..model import ApplicationModel, Parameters
@@ -27,57 +27,46 @@ class LOIAnalysisControl:
     @staticmethod
     def __call_detect_lois(w, m: ApplicationModel):
         print('start detect lois')
-        cell: SarcAsM = TypeUtils.unbox(m.cell)
-        cell.structure.detect_lois(frame=m.parameters.get_parameter(name='loi.detect.frame').get_value(),
-                                   n_lois=m.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
-                                   n_seeds=m.parameters.get_parameter(name='loi.detect.n_seeds').get_value(),
-                                   persistence=m.parameters.get_parameter(name='loi.detect.persistence').get_value(),
-                                   threshold_distance=m.parameters.get_parameter(
-                                       name='loi.detect.threshold_distance').get_value(),
-                                   score_threshold=None if m.parameters.get_parameter(
-                                       'loi.detect.score_threshold_automatic').get_value() else m.parameters.get_parameter(
-                                       'loi.detect.score_threshold').get_value(),
-                                   mode=m.parameters.get_parameter(name='loi.detect.mode').get_value(),
-                                   random_seed=None if m.parameters.get_parameter(
-                                       name='loi.detect.random_seed.leave_empty').get_value() else m.parameters.get_parameter(
-                                       name='loi.detect.random_seed').get_value(),
-                                   number_lims=[
-                                       m.parameters.get_parameter(name='loi.detect.number_limits_lower').get_value(),
-                                       m.parameters.get_parameter(name='loi.detect.number_limits_upper').get_value()],
-                                   length_lims=[
-                                       m.parameters.get_parameter(name='loi.detect.length_limits_lower').get_value(),
-                                       m.parameters.get_parameter(name='loi.detect.length_limits_upper').get_value()],
-                                   sarcomere_mean_length_lims=[m.parameters.get_parameter(
-                                       name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
-                                                               m.parameters.get_parameter(
-                                                                   name='loi.detect.sarcomere_mean_length_limits_upper').get_value()],
-                                   sarcomere_std_length_lims=[m.parameters.get_parameter(
-                                       name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
-                                                              m.parameters.get_parameter(
-                                                                  name='loi.detect.sarcomere_std_length_limits_upper').get_value()],
-                                   msc_lims=[m.parameters.get_parameter(name='loi.detect.msc_limits_lower').get_value(),
-                                             m.parameters.get_parameter(
-                                                 name='loi.detect.msc_limits_upper').get_value()],
-                                   max_orient_change=m.parameters.get_parameter(
-                                       name='loi.detect.max_orient_change').get_value(),
-                                   midline_mean_length_lims=[m.parameters.get_parameter(
-                                       name='loi.detect.midline_mean_length_limits_lower').get_value(),
-                                                             m.parameters.get_parameter(
-                                                                 name='loi.detect.midline_mean_length_limits_upper').get_value()],
-                                   midline_std_length_lims=[m.parameters.get_parameter(
-                                       name='loi.detect.midline_std_length_limits_lower').get_value(),
-                                                            m.parameters.get_parameter(
-                                                                name='loi.detect.midline_std_length_limits_upper').get_value()],
-                                   midline_min_length_lims=[m.parameters.get_parameter(
-                                       name='loi.detect.midline_min_length_limits_lower').get_value(),
-                                                            m.parameters.get_parameter(
-                                                                name='loi.detect.midline_min_length_limits_upper').get_value()],
-                                   distance_threshold_lois=m.parameters.get_parameter(
-                                       name='loi.detect.cluster_threshold_lois').get_value(),
-                                   linkage=m.parameters.get_parameter(name='loi.detect.linkage').get_value(),
-                                   linewidth=m.parameters.get_parameter(name='loi.detect.line_width').get_value(),
-                                   order=m.parameters.get_parameter(name='loi.detect.order').get_value(),
-                                   export_raw=m.parameters.get_parameter(name='loi.detect.export_raw').get_value())
+        cell: Structure = TypeUtils.unbox(m.cell)
+
+        cell.detect_lois(frame=m.parameters.get_parameter(name='loi.detect.frame').get_value(),
+                         n_lois=m.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
+                         ratio_seeds=m.parameters.get_parameter(name='loi.detect.ratio_seeds').get_value(),
+                         persistence=m.parameters.get_parameter(name='loi.detect.persistence').get_value(),
+                         threshold_distance=m.parameters.get_parameter(
+                             name='loi.detect.threshold_distance').get_value(),
+                         mode=m.parameters.get_parameter(name='loi.detect.mode').get_value(),
+                         number_lims=(
+                             m.parameters.get_parameter(name='loi.detect.number_limits_lower').get_value(),
+                             m.parameters.get_parameter(name='loi.detect.number_limits_upper').get_value()),
+                         length_lims=(
+                             m.parameters.get_parameter(name='loi.detect.length_limits_lower').get_value(),
+                             m.parameters.get_parameter(name='loi.detect.length_limits_upper').get_value()),
+                         sarcomere_mean_length_lims=(m.parameters.get_parameter(
+                             name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
+                                                     m.parameters.get_parameter(
+                                                         name='loi.detect.sarcomere_mean_length_limits_upper').get_value()),
+                         sarcomere_std_length_lims=(m.parameters.get_parameter(
+                             name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
+                                                    m.parameters.get_parameter(
+                                                        name='loi.detect.sarcomere_std_length_limits_upper').get_value()),
+                         midline_mean_length_lims=(m.parameters.get_parameter(
+                             name='loi.detect.midline_mean_length_limits_lower').get_value(),
+                                                   m.parameters.get_parameter(
+                                                       name='loi.detect.midline_mean_length_limits_upper').get_value()),
+                         midline_std_length_lims=(m.parameters.get_parameter(
+                             name='loi.detect.midline_std_length_limits_lower').get_value(),
+                                                  m.parameters.get_parameter(
+                                                      name='loi.detect.midline_std_length_limits_upper').get_value()),
+                         midline_min_length_lims=(m.parameters.get_parameter(
+                             name='loi.detect.midline_min_length_limits_lower').get_value(),
+                                                  m.parameters.get_parameter(
+                                                      name='loi.detect.midline_min_length_limits_upper').get_value()),
+                         distance_threshold_lois=m.parameters.get_parameter(
+                             name='loi.detect.cluster_threshold_lois').get_value(),
+                         linkage=m.parameters.get_parameter(name='loi.detect.linkage').get_value(),
+                         linewidth=m.parameters.get_parameter(name='loi.detect.line_width').get_value(),
+                         order=m.parameters.get_parameter(name='loi.detect.order').get_value())
 
     def _finished_detect_lois(self):
         # get loi's from cell and add them to napari
@@ -87,9 +76,9 @@ class LOIAnalysisControl:
             return
 
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        for line in self.__main_control.model.cell.structure.data['loi_data']['loi_lines']:
-            start=[line[0][0],line[0][1]]
-            end=[line[-1][0],line[-1][1]]
+        for line in self.__main_control.model.cell.data['loi_data']['loi_lines']:
+            start = [line[0][0], line[0][1]]
+            end = [line[-1][0], line[-1][1]]
 
             self.__main_control.on_update_loi_list(line_start=start,
                                                    line_end=end,
@@ -108,7 +97,7 @@ class LOIAnalysisControl:
                                                           finished_message='Finished loi detection',
                                                           finished_action=self._finished_detect_lois,
                                                           finished_successful_action=self.__main_control.
-                                                          model.cell.structure.commit)
+                                                          model.cell.commit)
 
     @staticmethod
     def __store_lois(w, p):
@@ -126,13 +115,13 @@ class LOIAnalysisControl:
         step = 90 / max_count
         for index, line in enumerate(p['loi_layer'].data):
             width = float(p['loi_layer'].edge_width[index])
-            start=(int(line[0][0]), int(line[0][1]))
-            end=(int(line[-1][0]), int(line[-1][1]))
+            start = (int(line[0][0]), int(line[0][1]))
+            end = (int(line[-1][0]), int(line[-1][1]))
             loi_file = p['cell'].base_dir + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'
             if not os.path.exists(loi_file):
-                p['main_control'].on_update_loi_list(line_start=start,line_end=end, line_thickness=width)
+                p['main_control'].on_update_loi_list(line_start=start, line_end=end, line_thickness=width)
                 # extract intensity profiles and save LOI files
-                p['cell'].structure.create_loi_data(np.asarray((start,end)), linewidth=width)
+                p['cell'].create_loi_data(np.asarray((start, end)), linewidth=width)
                 pass
             w.progress.emit(10 + index * step)
             pass
@@ -171,15 +160,10 @@ class LOIAnalysisControl:
 
         parameters.get_parameter(name='loi.detect.frame').connect(widget.sb_detect_loi_frame)
         parameters.get_parameter(name='loi.detect.n_lois').connect(widget.sb_detect_loi_n_lois)
-        parameters.get_parameter(name='loi.detect.n_seeds').connect(widget.sb_n_seeds)
+        parameters.get_parameter(name='loi.detect.ratio_seeds').connect(widget.dsb_ratio_seeds)
         parameters.get_parameter(name='loi.detect.persistence').connect(widget.sb_detect_loi_persistence)
         parameters.get_parameter(name='loi.detect.threshold_distance').connect(widget.dsb_detect_loi_threshold_distance)
-        parameters.get_parameter(name='loi.detect.score_threshold').connect(widget.dsb_detect_loi_score_threshold)
-        parameters.get_parameter(name='loi.detect.score_threshold_automatic').connect(
-            widget.chk_loi_automatic_score_threshold)
         parameters.get_parameter(name='loi.detect.mode').connect(widget.cb_mode)
-        parameters.get_parameter(name='loi.detect.random_seed.leave_empty').connect(widget.chk_random_seed_empty)
-        parameters.get_parameter(name='loi.detect.random_seed').connect(widget.sb_random_seed)
         parameters.get_parameter(name='loi.detect.number_limits_lower').connect(widget.sb_detect_loi_num_lims_min)
         parameters.get_parameter(name='loi.detect.number_limits_upper').connect(widget.sb_detect_loi_num_lims_max)
         parameters.get_parameter(name='loi.detect.length_limits_lower').connect(widget.dsb_limit_length_min)
@@ -192,9 +176,6 @@ class LOIAnalysisControl:
             widget.dsb_std_length_lims_min)
         parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_upper').connect(
             widget.dsb_std_length_lims_max)
-        parameters.get_parameter(name='loi.detect.msc_limits_lower').connect(widget.dsb_msc_lims_min)
-        parameters.get_parameter(name='loi.detect.msc_limits_upper').connect(widget.dsb_msc_lims_max)
-        parameters.get_parameter(name='loi.detect.max_orient_change').connect(widget.dsb_max_orient_change)
         parameters.get_parameter(name='loi.detect.midline_mean_length_limits_lower').connect(
             widget.dsb_midline_mean_length_lims_min)
         parameters.get_parameter(name='loi.detect.midline_mean_length_limits_upper').connect(
@@ -212,6 +193,5 @@ class LOIAnalysisControl:
         parameters.get_parameter(name='loi.detect.linkage').connect(widget.le_linkage)
         parameters.get_parameter(name='loi.detect.line_width').connect(widget.dsb_detect_loi_line_width)
         parameters.get_parameter(name='loi.detect.order').connect(widget.sb_order)
-        parameters.get_parameter(name='loi.detect.export_raw').connect(widget.chk_export_raw)
 
         pass

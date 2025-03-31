@@ -96,6 +96,13 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.8)
 
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(1024)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(1024)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.8)
+
 
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
@@ -117,10 +124,12 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
 
 
-        self.__parameters.get_parameter(name='structure.myofibril.n_seeds').set_value(1000)
+        self.__parameters.get_parameter(name='structure.myofibril.ratio_seeds').set_value(0.1)
         self.__parameters.get_parameter(name='structure.myofibril.persistence').set_value(3)
-        self.__parameters.get_parameter(name='structure.myofibril.threshold_distance').set_value(0.3)
-        self.__parameters.get_parameter(name='structure.myofibril.n_min').set_value(5)
+        self.__parameters.get_parameter(name='structure.myofibril.threshold_distance').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.myofibril.n_min').set_value(4)
+        self.__parameters.get_parameter(name='structure.myofibril.median_filter_radius').set_value(0.5)
+
 
 
         self.__parameters.get_parameter(name='structure.domain.analysis.d_max').set_value(3.0)
@@ -147,14 +156,10 @@ class ApplicationModel:
                 """
         self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
-        self.__parameters.get_parameter(name='loi.detect.n_seeds').set_value(200)
-        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(2)
-        self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
-        self.__parameters.get_parameter(name='loi.detect.score_threshold').set_value(10000.0)
-        self.__parameters.get_parameter(name='loi.detect.score_threshold_automatic').set_value(True)
+        self.__parameters.get_parameter(name='loi.detect.ratio_seeds').set_value(0.1)
+        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(4)
+        self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.5)
         self.__parameters.get_parameter(name='loi.detect.mode').set_value('longest_in_cluster')
-        self.__parameters.get_parameter(name='loi.detect.random_seed.leave_empty').set_value(True)
-        self.__parameters.get_parameter(name='loi.detect.random_seed').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.number_limits_lower').set_value(10)
         self.__parameters.get_parameter(name='loi.detect.number_limits_upper').set_value(50)
         self.__parameters.get_parameter(name='loi.detect.length_limits_lower').set_value(0.0)
@@ -163,21 +168,17 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='loi.detect.sarcomere_mean_length_limits_upper').set_value(3.0)
         self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_lower').set_value(0.0)
         self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_upper').set_value(1.0)
-        self.__parameters.get_parameter(name='loi.detect.msc_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.msc_limits_upper').set_value(1.0)
-        self.__parameters.get_parameter(name='loi.detect.max_orient_change').set_value(30.0)
         self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_upper').set_value(20.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_upper').set_value(50.0)
         self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_upper').set_value(5.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_upper').set_value(50.0)
         self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_upper').set_value(20.0)
+        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_upper').set_value(50.0)
         self.__parameters.get_parameter(name='loi.detect.cluster_threshold_lois').set_value(40.0)
         self.__parameters.get_parameter(name='loi.detect.linkage').set_value('single')
         self.__parameters.get_parameter(name='loi.detect.line_width').set_value(0.65)
         self.__parameters.get_parameter(name='loi.detect.order').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.plot').set_value(False)
-        self.__parameters.get_parameter(name='loi.detect.export_raw').set_value(False)
         # endregion
 
         # region motion parameters
@@ -242,6 +243,13 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_max')
 
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.network_path')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.n_frames')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.size_width')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.size_height')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_min')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_max')
+
 
         self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
@@ -262,10 +270,11 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.vectors.length_limit_upper')
 
 
-        self.__parameters.set_parameter(name='structure.myofibril.n_seeds')
+        self.__parameters.set_parameter(name='structure.myofibril.ratio_seeds')
         self.__parameters.set_parameter(name='structure.myofibril.persistence')
         self.__parameters.set_parameter(name='structure.myofibril.threshold_distance')
         self.__parameters.set_parameter(name='structure.myofibril.n_min')
+        self.__parameters.set_parameter(name='structure.myofibril.median_filter_radius')
 
 
         self.__parameters.set_parameter(name='structure.domain.analysis.d_max')
@@ -279,14 +288,10 @@ class ApplicationModel:
         # region loi parameters
         self.__parameters.set_parameter(name='loi.detect.frame')
         self.__parameters.set_parameter(name='loi.detect.n_lois')
-        self.__parameters.set_parameter(name='loi.detect.n_seeds')
+        self.__parameters.set_parameter(name='loi.detect.ratio_seeds')
         self.__parameters.set_parameter(name='loi.detect.persistence')
         self.__parameters.set_parameter(name='loi.detect.threshold_distance')
-        self.__parameters.set_parameter(name='loi.detect.score_threshold')
-        self.__parameters.set_parameter(name='loi.detect.score_threshold_automatic')
         self.__parameters.set_parameter(name='loi.detect.mode')
-        self.__parameters.set_parameter(name='loi.detect.random_seed.leave_empty')
-        self.__parameters.set_parameter(name='loi.detect.random_seed')
         self.__parameters.set_parameter(name='loi.detect.number_limits_lower')
         self.__parameters.set_parameter(name='loi.detect.number_limits_upper')
         self.__parameters.set_parameter(name='loi.detect.length_limits_lower')
@@ -295,9 +300,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='loi.detect.sarcomere_mean_length_limits_upper')
         self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_lower')
         self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.msc_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.msc_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.max_orient_change')
         self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_lower')
         self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_upper')
         self.__parameters.set_parameter(name='loi.detect.midline_std_length_limits_lower')
@@ -309,7 +311,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='loi.detect.line_width')
         self.__parameters.set_parameter(name='loi.detect.order')
         self.__parameters.set_parameter(name='loi.detect.plot')
-        self.__parameters.set_parameter(name='loi.detect.export_raw')
         # endregion
 
         # region motion parameters

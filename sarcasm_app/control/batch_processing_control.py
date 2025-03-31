@@ -1,5 +1,5 @@
 import glob
-from typing import Any, List
+from typing import Any, List, Union, Tuple
 
 import qtutils
 import traceback
@@ -8,7 +8,7 @@ from multiprocessing import Pool
 
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from .application_control import ApplicationControl
-from sarcasm import SarcAsM, Utils, Motion
+from sarcasm import SarcAsM, Utils, Motion, Structure
 from sarcasm.meta_data_handler import MetaDataHandler
 from bio_image_unet.progress import ProgressNotifier
 
@@ -91,6 +91,7 @@ class BatchProcessingControl:
 
                 pass
             pass
+
     pass
 
     def on_btn_batch_processing_motion(self):
@@ -125,9 +126,9 @@ class BatchProcessingControl:
         pass
 
     @staticmethod
-    def __get_sarc_object(file: str, frame_time: float, pixel_size: float, force_override: bool) -> SarcAsM:
+    def __get_sarc_object(file: str, frame_time: float, pixel_size: float, force_override: bool) -> Structure:
 
-        sarc_obj = SarcAsM(file, use_gui=True)
+        sarc_obj = Structure(file, use_gui=True)
         has_metadata = MetaDataHandler.check_meta_data_exists(tif_file=file, channel=sarc_obj.channel)
         if not has_metadata or force_override:
             sarc_obj.metadata['pixelsize'] = pixel_size
@@ -138,43 +139,37 @@ class BatchProcessingControl:
         return sarc_obj
         pass
 
-    def __calculate_requirements_of_motion(self, sarc_obj: SarcAsM, model):
+    def __calculate_requirements_of_motion(self, sarc_obj: Structure, model):
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        sarc_obj.structure.predict_z_bands(model_path=network_model,
-                                           time_consistent=model.parameters.get_parameter(
-                                               'structure.predict.time_consistent').get_value(),
-                                           size=(
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.size_width').get_value(),
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.size_height').get_value()
-                                           ),
-                                           clip_thres=(
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.clip_thresh_min').get_value(),
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.clip_thresh_max').get_value()
-                                           ))
-        sarc_obj.structure.analyze_sarcomere_vectors(
-            frames=model.parameters.get_parameter('loi.detect.frame').get_value(),
-            size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
-            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
-            len_lims=(
-                model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
+            pass
+
+        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
+        if network_model == 'generalist':
+            network_model = None
+
+        size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
+                                        model.parameters.get_parameter('structure.predict.size_height').get_value())
+
+        sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
+                                   model_path=network_model,
+                                   max_patch_size=size,
+                                   normalization_mode=model.parameters.get_parameter(
+                                       'structure.predict.normalization_mode').get_value(),
+                                   clip_thres=(
+                                       model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
+                                       model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value())
+                                   )
+        sarc_obj.analyze_sarcomere_vectors(
+            frames=model.parameters.get_parameter('structure.frames').get_value(),
+            slen_lims=(
+                model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
+                model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
             ),
-            len_step=model.parameters.get_parameter('structure.wavelet.length_step').get_value(),
-            orient_lims=(
-                model.parameters.get_parameter('structure.wavelet.orientation_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.wavelet.orientation_limit_upper').get_value()
-            ),
-            orient_step=model.parameters.get_parameter('structure.wavelet.orientation_step').get_value(),
-            score_threshold=model.parameters.get_parameter('structure.wavelet.score_threshold').get_value(),
-            abs_threshold=model.parameters.get_parameter('structure.wavelet.absolute_threshold').get_value(),
-            save_all=model.parameters.get_parameter('structure.wavelet.save_all').get_value()
+            radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
+            linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
+            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
         )
         pass
 
@@ -187,64 +182,44 @@ class BatchProcessingControl:
             self.__calculate_requirements_of_motion(sarc_obj, model)
             pass
 
-        sarc_obj.structure.detect_lois(frame=model.parameters.get_parameter(name='loi.detect.frame').get_value(),
-                                       n_lois=model.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
-                                       n_seeds=model.parameters.get_parameter(name='loi.detect.n_seeds').get_value(),
-                                       persistence=model.parameters.get_parameter(
-                                           name='loi.detect.persistence').get_value(),
-                                       threshold_distance=model.parameters.get_parameter(
-                                           name='loi.detect.threshold_distance').get_value(),
-                                       score_threshold=None if model.parameters.get_parameter(
-                                           'loi.detect.score_threshold_automatic').get_value() else model.parameters.get_parameter(
-                                           'loi.detect.score_threshold').get_value(),
-                                       mode=model.parameters.get_parameter(name='loi.detect.mode').get_value(),
-                                       random_seed=None if model.parameters.get_parameter(
-                                           name='loi.detect.random_seed.leave_empty').get_value() else model.parameters.get_parameter(
-                                           name='loi.detect.random_seed').get_value(),
-                                       number_lims=[
-                                           model.parameters.get_parameter(
-                                               name='loi.detect.number_limits_lower').get_value(),
-                                           model.parameters.get_parameter(
-                                               name='loi.detect.number_limits_upper').get_value()],
-                                       length_lims=[
-                                           model.parameters.get_parameter(
-                                               name='loi.detect.length_limits_lower').get_value(),
-                                           model.parameters.get_parameter(
-                                               name='loi.detect.length_limits_upper').get_value()],
-                                       sarcomere_mean_length_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
-                                                                   model.parameters.get_parameter(
-                                                                       name='loi.detect.sarcomere_mean_length_limits_upper').get_value()],
-                                       sarcomere_std_length_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
-                                                                  model.parameters.get_parameter(
-                                                                      name='loi.detect.sarcomere_std_length_limits_upper').get_value()],
-                                       msc_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.msc_limits_lower').get_value(),
-                                                 model.parameters.get_parameter(
-                                                     name='loi.detect.msc_limits_upper').get_value()],
-                                       max_orient_change=model.parameters.get_parameter(
-                                           name='loi.detect.max_orient_change').get_value(),
-                                       midline_mean_length_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.midline_mean_length_limits_lower').get_value(),
-                                                                 model.parameters.get_parameter(
-                                                                     name='loi.detect.midline_mean_length_limits_upper').get_value()],
-                                       midline_std_length_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.midline_std_length_limits_lower').get_value(),
-                                                                model.parameters.get_parameter(
-                                                                    name='loi.detect.midline_std_length_limits_upper').get_value()],
-                                       midline_min_length_lims=[model.parameters.get_parameter(
-                                           name='loi.detect.midline_min_length_limits_lower').get_value(),
-                                                                model.parameters.get_parameter(
-                                                                    name='loi.detect.midline_min_length_limits_upper').get_value()],
-                                       distance_threshold_lois=model.parameters.get_parameter(
-                                           name='loi.detect.cluster_threshold_lois').get_value(),
-                                       linkage=model.parameters.get_parameter(name='loi.detect.linkage').get_value(),
-                                       linewidth=model.parameters.get_parameter(
-                                           name='loi.detect.line_width').get_value(),
-                                       order=model.parameters.get_parameter(name='loi.detect.order').get_value(),
-                                       export_raw=model.parameters.get_parameter(
-                                           name='loi.detect.export_raw').get_value())
+        sarc_obj.detect_lois(frame=model.parameters.get_parameter(name='loi.detect.frame').get_value(),
+                             n_lois=model.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
+                             ratio_seeds=model.parameters.get_parameter(name='loi.detect.ratio_seeds').get_value(),
+                             persistence=model.parameters.get_parameter(name='loi.detect.persistence').get_value(),
+                             threshold_distance=model.parameters.get_parameter(
+                                 name='loi.detect.threshold_distance').get_value(),
+                             mode=model.parameters.get_parameter(name='loi.detect.mode').get_value(),
+                             number_lims=(
+                                 model.parameters.get_parameter(name='loi.detect.number_limits_lower').get_value(),
+                                 model.parameters.get_parameter(name='loi.detect.number_limits_upper').get_value()),
+                             length_lims=(
+                                 model.parameters.get_parameter(name='loi.detect.length_limits_lower').get_value(),
+                                 model.parameters.get_parameter(name='loi.detect.length_limits_upper').get_value()),
+                             sarcomere_mean_length_lims=(model.parameters.get_parameter(
+                                 name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
+                                                         model.parameters.get_parameter(
+                                                             name='loi.detect.sarcomere_mean_length_limits_upper').get_value()),
+                             sarcomere_std_length_lims=(model.parameters.get_parameter(
+                                 name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
+                                                        model.parameters.get_parameter(
+                                                            name='loi.detect.sarcomere_std_length_limits_upper').get_value()),
+                             midline_mean_length_lims=(model.parameters.get_parameter(
+                                 name='loi.detect.midline_mean_length_limits_lower').get_value(),
+                                                       model.parameters.get_parameter(
+                                                           name='loi.detect.midline_mean_length_limits_upper').get_value()),
+                             midline_std_length_lims=(model.parameters.get_parameter(
+                                 name='loi.detect.midline_std_length_limits_lower').get_value(),
+                                                      model.parameters.get_parameter(
+                                                          name='loi.detect.midline_std_length_limits_upper').get_value()),
+                             midline_min_length_lims=(model.parameters.get_parameter(
+                                 name='loi.detect.midline_min_length_limits_lower').get_value(),
+                                                      model.parameters.get_parameter(
+                                                          name='loi.detect.midline_min_length_limits_upper').get_value()),
+                             distance_threshold_lois=model.parameters.get_parameter(
+                                 name='loi.detect.cluster_threshold_lois').get_value(),
+                             linkage=model.parameters.get_parameter(name='loi.detect.linkage').get_value(),
+                             linewidth=model.parameters.get_parameter(name='loi.detect.line_width').get_value(),
+                             order=model.parameters.get_parameter(name='loi.detect.order').get_value())
 
         lois = Utils.get_lois_of_file(file)
         for file, loi in lois:
@@ -312,89 +287,67 @@ class BatchProcessingControl:
         # check for metadata
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             force_override=force_override)
-
         frames = model.parameters.get_parameter('structure.frames').get_value()
-
         # predict sarcomere z-bands and cell mask
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        sarc_obj.structure.predict_z_bands(model_path=network_model,
-                                           time_consistent=model.parameters.get_parameter(
-                                               'structure.predict.time_consistent').get_value(),
-                                           size=(
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.size_width').get_value(),
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.size_height').get_value()
-                                           ),
-                                           clip_thres=(
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.clip_thresh_min').get_value(),
-                                               model.parameters.get_parameter(
-                                                   'structure.predict.clip_thresh_max').get_value()
-                                           ))
-        sarc_obj.structure.predict_cell_mask(model_path=network_model,
-                                             size=(
-                                                 model.parameters.get_parameter(
-                                                     'structure.predict.cell_mask.size_width').get_value(),
-                                                 model.parameters.get_parameter(
-                                                     'structure.predict.cell_mask.size_height').get_value()
-                                             ),
-                                             clip_thres=(
-                                                 model.parameters.get_parameter(
-                                                     'structure.predict.cell_mask.clip_thresh_min').get_value(),
-                                                 model.parameters.get_parameter(
-                                                     'structure.predict.cell_mask.clip_thresh_max').get_value()
-                                             ))
+            pass
+
+        size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
+                                        model.parameters.get_parameter('structure.predict.size_height').get_value())
+
+        sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
+                               model_path=network_model,
+                               max_patch_size=size,
+                               normalization_mode=model.parameters.get_parameter(
+                                   'structure.predict.normalization_mode').get_value(),
+                               clip_thres=(
+                                   model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
+                                   model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
+                               )
+
         # analyze cell mask and sarcomere area
-        sarc_obj.structure.analyze_cell_mask()
+        sarc_obj.analyze_cell_mask()
         # analyze sarcomere structures
-        sarc_obj.structure.analyze_z_bands(
-            frames=frames,
-            threshold=model.parameters.get_parameter('structure.z_band_analysis.threshold').get_value(),
-            min_length=model.parameters.get_parameter('structure.z_band_analysis.min_length').get_value())
+        sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
+                             threshold=model.parameters.get_parameter(
+                                 'structure.z_band_analysis.threshold').get_value(),
+                             min_length=model.parameters.get_parameter(
+                                 'structure.z_band_analysis.min_length').get_value()
+                             )
 
         # careful this method highly depends on pixel size setting
-        sarc_obj.structure.analyze_sarcomere_vectors(
-            frames=frames,
-            size=model.parameters.get_parameter('structure.wavelet.filter_size').get_value(),
-            minor=model.parameters.get_parameter('structure.wavelet.minor').get_value(),
-            major=model.parameters.get_parameter('structure.wavelet.major').get_value(),
-            len_lims=(
-                model.parameters.get_parameter('structure.wavelet.length_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.wavelet.length_limit_upper').get_value()
+
+        sarc_obj.analyze_sarcomere_vectors(
+            frames=model.parameters.get_parameter('structure.frames').get_value(),
+            slen_lims=(
+                model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
+                model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
             ),
-            len_step=model.parameters.get_parameter('structure.wavelet.length_step').get_value(),
-            orient_lims=(
-                model.parameters.get_parameter('structure.wavelet.orientation_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.wavelet.orientation_limit_upper').get_value()
-            ),
-            orient_step=model.parameters.get_parameter('structure.wavelet.orientation_step').get_value(),
-            score_threshold=model.parameters.get_parameter('structure.wavelet.score_threshold').get_value(),
-            abs_threshold=model.parameters.get_parameter('structure.wavelet.absolute_threshold').get_value(),
-            save_all=model.parameters.get_parameter('structure.wavelet.save_all').get_value()
+            radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
+            linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
+            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
         )
 
-        sarc_obj.structure.analyze_myofibrils(
+        sarc_obj.analyze_myofibrils(
             frames=model.parameters.get_parameter('structure.frames').get_value(),
-            n_seeds=model.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
+            ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
             persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
-            threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value()
+            threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
+            n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value()
         )
 
-        sarc_obj.structure.analyze_sarcomere_domains(
+        sarc_obj.analyze_sarcomere_domains(
             frames=model.parameters.get_parameter('structure.frames').get_value(),
-            dist_threshold_ends=model.parameters.get_parameter(
-                'structure.domain.analysis.dist_thresh_ends').get_value(),
-            dist_threshold_pos_vectors=model.parameters.get_parameter(
-                'structure.domain.analysis.dist_thresh_pos_vectors').get_value(),
-            louvain_resolution=model.parameters.get_parameter(
-                'structure.domain.analysis.louvain_resolution').get_value(),
-            louvain_seed=model.parameters.get_parameter('structure.domain.analysis.louvain_seed').get_value(),
+            d_max=model.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
+            cosine_min=model.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),
+            leiden_resolution=model.parameters.get_parameter('structure.domain.analysis.leiden_resolution').get_value(),
+            random_seed=model.parameters.get_parameter('structure.domain.analysis.random_seed').get_value(),
             area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
             dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
         )
+
         sarc_obj.structure.store_structure_data()
         pass
 

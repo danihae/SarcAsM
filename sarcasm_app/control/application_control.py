@@ -118,7 +118,8 @@ class ApplicationControl:
         # note that first coordinate in the point tuples is Y and second is X
         # np.array([[[100, 100], [200, 200]], [[300, 300], [400, 300]]])
 
-        pos_vectors = np.array([[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]])
+        #2025-03-31: previously [[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]]
+        pos_vectors = np.array([[line_to_draw[0][0], line_to_draw[0][1]], [line_to_draw[1][0], line_to_draw[1][1]]])
         self.layer_loi.add_lines(pos_vectors, edge_width=line_to_draw[2], edge_color='red')
         # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
         # data=self.__main_control.layer_loi.data
@@ -135,6 +136,7 @@ class ApplicationControl:
                 line_end) != 2 or line_thickness is None:
             print('info: line updated but wrong data-type')
             return
+
         line = (line_start, line_end, line_thickness)
         list_entry = self.get_entry_key_for_line(line)
         if list_entry in self.model.line_dictionary[self.model.cell.filepath]:  # if element already contained, ignore

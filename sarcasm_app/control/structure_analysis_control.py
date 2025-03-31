@@ -4,7 +4,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import SarcAsM
+from sarcasm import SarcAsM, Structure
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
@@ -44,22 +44,50 @@ class StructureAnalysisControl:
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        cell: SarcAsM = TypeUtils.unbox(model.cell)
+        cell: Structure = TypeUtils.unbox(model.cell)
         size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
                                         model.parameters.get_parameter('structure.predict.size_height').get_value())
 
-        cell.structure.predict_z_bands(progress_notifier=progress_notifier,
-                                       model_path=network_model,
-                                       normalization_mode=model.parameters.get_parameter(
-                                           'structure.predict.normalization_mode').get_value(),
-                                       size=size,
+        cell.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
+                               model_path=network_model,
+                               max_patch_size=size,
+                               normalization_mode=model.parameters.get_parameter(
+                                   'structure.predict.normalization_mode').get_value(),
+                               clip_thres=(
+                                   model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
+                                   model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
+                               progress_notifier=progress_notifier)
+
+        pass
+
+    def __predict_call_fast_movie(self, worker, model: ApplicationModel):
+        progress_notifier = self.__get_progress_notifier(worker)
+
+        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
+        if network_model == 'generalist':
+            network_model = None
+        cell: Structure = TypeUtils.unbox(model.cell)
+        size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter('structure.predict_fast_movie.n_frames'),
+                                             model.parameters.get_parameter(
+                                                 'structure.predict_fast_movie.size_width').get_value(),
+                                             model.parameters.get_parameter(
+                                                 'structure.predict_fast_movie.size_height').get_value())
+        cell.detect_z_bands_fast_movie(model_path=network_model,
+                                       max_patch_size=size,
                                        clip_thres=(
                                            model.parameters.get_parameter(
-                                               'structure.predict.clip_thresh_min').get_value(),
+                                               'structure.predict_fast_movie.clip_thresh_min').get_value(),
                                            model.parameters.get_parameter(
-                                               'structure.predict.clip_thresh_max').get_value()
-                                       ))
+                                               'structure.predict_fast_movie.clip_thresh_max').get_value()),
+                                       progress_notifier=progress_notifier)
         pass
+
+    def __chk_prediction_network_fast_movie(self):
+        if self.__main_control.model.parameters.get_parameter(
+                'structure.predict_fast_movie.network_path').get_value() == '':
+            self.__main_control.debug('no network file was chosen for fast movie prediction')
+            return False
+        return True
 
     def __chk_prediction_network(self):  # todo rename to zband_prediction or similar
         if self.__main_control.model.parameters.get_parameter('structure.predict.network_path').get_value() == '':
@@ -67,12 +95,16 @@ class StructureAnalysisControl:
             return False
         return True
 
-    def __chk_cell_mask_prediction_network(self):
-        if self.__main_control.model.parameters.get_parameter(
-                'structure.predict.cell_mask.network_path').get_value() == '':
-            self.__main_control.debug('no network file was chosen for cell mask prediction')
-            return False
-        return True
+    # removed cell_mask_prediction_network
+    #def __chk_cell_mask_prediction_network(self):
+    #    cell_mask_network=self.__main_control.model.parameters.get_parameter('structure.cell_mask_prediction_network')
+    #    if cell_mask_network is None:
+    #        self.__main_control.debug('no cell mask network was chosen for prediction')
+    #        return False
+    #    if cell_mask_network.get_value() == '':
+    #        self.__main_control.debug('no network file was chosen for cell mask prediction')
+    #        return False
+    #    return True
 
     def __chk_frames(self):
         frames = self.__main_control.model.parameters.get_parameter('structure.frames').get_value()
@@ -94,14 +126,30 @@ class StructureAnalysisControl:
             return
         if not self.__chk_prediction_network():
             return
-        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
         message_finished = f'Z-bands detected and saved in {cell.base_dir}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=message_finished,
                                                    finished_action=self.__predict_z_bands_finished,
-                                                   finished_successful_action=cell.structure.commit)
+                                                   finished_successful_action=cell.commit)
+        self.__worker = worker
+        return worker
+
+    def on_btn_z_bands_predict_fast_movies(self):
+        if not self.__chk_initialized():
+            return
+        if not self.__chk_prediction_network_fast_movie():
+            return
+        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
+        message_finished = f'Z-bands fast movies detected and saved in {cell.base_dir}'
+        worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
+                                                   call_lambda=self.__predict_call_fast_movie,
+                                                   start_message='Start prediction of sarcomere z-bands fast movies',
+                                                   finished_message=message_finished,
+                                                   finished_action=self.__predict_z_bands_finished,
+                                                   finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
 
@@ -129,8 +177,8 @@ class StructureAnalysisControl:
 
         def __internal_call(w, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.structure.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
+            cell: Structure = TypeUtils.unbox(m.cell)
+            cell.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
                                            threshold=m.parameters.get_parameter(
                                                'structure.z_band_analysis.threshold').get_value(),
                                            min_length=m.parameters.get_parameter(
@@ -153,7 +201,7 @@ class StructureAnalysisControl:
                                                    finished_message='Finished Z-band Analysis',
                                                    finished_action=self.__z_band_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
-                                                       self.__main_control.model.cell, lambda c: c.structure.commit()))
+                                                       self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
 
@@ -165,8 +213,8 @@ class StructureAnalysisControl:
 
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.structure.analyze_sarcomere_vectors(
+            cell: Structure = TypeUtils.unbox(m.cell)
+            cell.analyze_sarcomere_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 slen_lims=(
                     m.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
@@ -184,7 +232,7 @@ class StructureAnalysisControl:
                                                    start_message='Start sarcomere vectors analysis',
                                                    finished_action=self.__sarcomere_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
-                                                       self.__main_control.model.cell, lambda c: c.structure.commit()))
+                                                       self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
         # AND-gated double wavelet analysis of sarcomere structure to locally obtain length and angle
@@ -205,10 +253,10 @@ class StructureAnalysisControl:
         # estimate myofibril lengths using line-growth algorithm
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.structure.analyze_myofibrils(
+            cell: Structure = TypeUtils.unbox(m.cell)
+            cell.analyze_myofibrils(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
-                n_seeds=m.parameters.get_parameter('structure.myofibril.n_seeds').get_value(),
+                ratio_seeds=m.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
                 persistence=m.parameters.get_parameter('structure.myofibril.persistence').get_value(),
                 threshold_distance=m.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
                 n_min=m.parameters.get_parameter('structure.myofibril.n_min').get_value(),
@@ -221,7 +269,7 @@ class StructureAnalysisControl:
                                                    finished_message='Finished myofibril analysis',
                                                    finished_action=self.__myofibril_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
-                                                       self.__main_control.model.cell, lambda c: c.structure.commit()))
+                                                       self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
         pass
@@ -237,8 +285,8 @@ class StructureAnalysisControl:
 
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.structure.analyze_sarcomere_domains(
+            cell: Structure = TypeUtils.unbox(m.cell)
+            cell.analyze_sarcomere_domains(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 d_max=m.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
                 cosine_min=m.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),
@@ -255,7 +303,7 @@ class StructureAnalysisControl:
                                                    finished_message='Finished sarcomere domains analysis',
                                                    finished_action=self.__domain_analysis_finished,
                                                    finished_successful_action=TypeUtils.if_present(
-                                                       self.__main_control.model.cell, lambda c: c.structure.commit()))
+                                                       self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
         pass
@@ -266,6 +314,11 @@ class StructureAnalysisControl:
         if f_name is not None:
             self.__structure_parameters_widget.le_network.setText(f_name[0])
 
+    def on_btn_fast_movie_search_network(self):
+        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
+        if f_name is not None:
+            self.__structure_parameters_widget.le_fast_movie_network_model.setText(f_name[0])
+        pass
 
     def __filter_input_prediction_size(self, element):
         if not (hasattr(element, 'value') and hasattr(element, 'setValue')):
@@ -297,8 +350,8 @@ class StructureAnalysisControl:
             return
         if not self.__chk_frames():
             return
-        if not self.__chk_cell_mask_prediction_network():
-            return
+        #if not self.__chk_cell_mask_prediction_network():
+        #    return
         # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_z_bands_predict)
@@ -331,18 +384,30 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.btn_structure_myofibril.clicked.connect(self.on_btn_myofibril)
         self.__structure_parameters_widget.btn_search_network.clicked.connect(self.on_btn_search_network)
         self.__structure_parameters_widget.btn_structure_domain_analysis.clicked.connect(self.on_btn_domain_analysis)
+        self.__structure_parameters_widget.btn_fast_movie_search.clicked.connect(self.on_btn_fast_movie_search_network)
+        self.__structure_parameters_widget.btn_fast_movie.clicked.connect(self.on_btn_z_bands_predict_fast_movies)
 
         # todo: bind parameters to ui elements
         parameters = self.__main_control.model.parameters
         widget = self.__structure_parameters_widget
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
-        parameters.get_parameter(name='structure.predict.normalization_mode').connect(widget.cb_predict_normalization_mode)
-        parameters.get_parameter(name='structure.predict.size_width') .connect(widget.sb_predict_size_width)
-        parameters.get_parameter(name='structure.predict.size_height')  .connect(widget.sb_predict_size_height)
+        parameters.get_parameter(name='structure.predict.normalization_mode').connect(
+            widget.cb_predict_normalization_mode)
+        parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_width)
+        parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_height)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_predict_clip_thresh_min)
         parameters.get_parameter(name='structure.predict.clip_thresh_max').connect(widget.dsb_predict_clip_thresh_max)
 
+        parameters.get_parameter(name='structure.predict_fast_movie.network_path').connect(
+            widget.le_fast_movie_network_model)
+        parameters.get_parameter(name='structure.predict_fast_movie.n_frames').connect(widget.sb_fast_movie_n_frames)
+        parameters.get_parameter(name='structure.predict_fast_movie.size_width').connect(widget.sb_fast_movie_width)
+        parameters.get_parameter(name='structure.predict_fast_movie.size_height').connect(widget.sb_fast_movie_height)
+        parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').connect(
+            widget.dsb_fast_movie_clip_thresh_min)
+        parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').connect(
+            widget.dsb_fast_movie_clip_thresh_max)
 
         parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
         parameters.get_parameter(name='structure.frames').connect(widget.le_general_frames)
@@ -350,31 +415,35 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
         parameters.get_parameter(name='structure.z_band_analysis.end_radius').connect(widget.dsb_z_band_end_radius)
-        parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').connect(widget.dsb_z_band_theta_phi_min)
+        parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').connect(
+            widget.dsb_z_band_theta_phi_min)
         parameters.get_parameter(name='structure.z_band_analysis.a_min').connect(widget.dsb_z_band_a_min)
         parameters.get_parameter(name='structure.z_band_analysis.d_max').connect(widget.dsb_z_band_d_max)
         parameters.get_parameter(name='structure.z_band_analysis.d_min').connect(widget.dsb_z_band_d_min)
 
-
         parameters.get_parameter(name='structure.vectors.radius').connect(widget.dsb_vectors_radius)
         parameters.get_parameter(name='structure.vectors.line_width').connect(widget.dsb_vectors_line_width)
-        parameters.get_parameter(name='structure.vectors.interpolation_factor').connect(widget.sb_vectors_interpolation_factor)
+        parameters.get_parameter(name='structure.vectors.interpolation_factor').connect(
+            widget.sb_vectors_interpolation_factor)
         parameters.get_parameter(name='structure.vectors.length_limit_lower').connect(widget.dsb_vectors_len_lims_min)
         parameters.get_parameter(name='structure.vectors.length_limit_upper').connect(widget.dsb_vectors_len_lims_max)
 
-
-        parameters.get_parameter(name='structure.myofibril.n_seeds').connect(widget.sb_myofibril_n_seeds)
+        parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)
-        parameters.get_parameter(name='structure.myofibril.threshold_distance').connect(widget.dsb_myofibril_thresh_dist)
+        parameters.get_parameter(name='structure.myofibril.threshold_distance').connect(
+            widget.dsb_myofibril_thresh_dist)
         parameters.get_parameter(name='structure.myofibril.n_min').connect(widget.sb_myofibril_n_min)
+        parameters.get_parameter(name='structure.myofibril.median_filter_radius').connect(widget.dsb_myofibril_median_filter_radius)
 
 
         parameters.get_parameter(name='structure.domain.analysis.d_max').connect(widget.dsb_domains_d_max)
         parameters.get_parameter(name='structure.domain.analysis.cosine_min').connect(widget.dsb_domains_cosine_min)
-        parameters.get_parameter(name='structure.domain.analysis.leiden_resolution').connect(widget.dsb_domains_leiden_resolution)
+        parameters.get_parameter(name='structure.domain.analysis.leiden_resolution').connect(
+            widget.dsb_domains_leiden_resolution)
         parameters.get_parameter(name='structure.domain.analysis.random_seed').connect(widget.sb_domains_random_seed)
         parameters.get_parameter(name='structure.domain.analysis.area_min').connect(widget.dsb_domains_area_min)
-        parameters.get_parameter(name='structure.domain.analysis.dilation_radius').connect(widget.sb_domains_dilation_radius)
+        parameters.get_parameter(name='structure.domain.analysis.dilation_radius').connect(
+            widget.sb_domains_dilation_radius)
 
         pass
 
