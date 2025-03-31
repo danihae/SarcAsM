@@ -445,15 +445,13 @@ class StructureAnalysisControl:
 
     def __predict_z_bands_finished(self):
         self.__main_control.init_z_band_stack()
-
-    def __predict_cell_mask_finished(self):
         self.__main_control.init_cell_mask_stack()
+        self.__main_control.init_sarcomere_mask_stack()
 
     def __z_band_analysis_finished(self):
         self.__main_control.init_z_lateral_connections()
 
     def __sarcomere_analysis_finished(self):
-        self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
 
     def __myofibril_analysis_finished(self):
