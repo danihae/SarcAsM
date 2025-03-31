@@ -191,18 +191,18 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
-            # load sarcomere Z-band file into unet stack
-            tmp = tifffile.imread(self.model.cell.file_zbands).astype('uint8')
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
+            tmp = tifffile.imread(self.model.cell.file_zbands)
+            tmp[tmp < 0.05] = np.nan
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis', blending='translucent')
 
     def init_cell_mask_stack(self):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
-            # load cell mask file into unet stack
-            tmp = tifffile.imread(self.model.cell.file_cell_mask).astype('uint8')
-            self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
+            tmp = tifffile.imread(self.model.cell.file_cell_mask)
+            tmp[tmp < 0.5] = np.nan
+            self.viewer.add_image(tmp, name='CellMask', opacity=0.1)
 
     def init_z_lateral_connections(self):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
@@ -285,9 +285,10 @@ class ApplicationControl:
             vectors = []
             pos_vectors = []
             for frame in range(self.model.cell.metadata['frames']):
-                if 'params.wavelet_frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.wavelet_frames']:
-                    pos_vectors_frame = self.model.cell.data['pos_vectors_px'][frame]
+                if 'params.analyze_sarcomere_vectors.frames' in self.model.cell.data and frame in \
+                        self.model.cell.data['params.analyze_sarcomere_vectors.frames']:
+                    pos_vectors_frame = self.model.cell.data['pos_vectors'][frame] / self.model.cell.metadata[
+                                                  'pixelsize']
                     if len(pos_vectors_frame) > 0:
                         sarc_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][
                             frame]
@@ -295,8 +296,8 @@ class ApplicationControl:
                                               self.model.cell.metadata[
                                                   'pixelsize']
                         orientation_vectors = np.asarray(
-                            [-np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
-                        for i in range(len(pos_vectors_frame[0])):
+                            [np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
+                        for i in range(len(pos_vectors_frame)):
                             start_point = [frame, pos_vectors_frame[i][0], pos_vectors_frame[i][1]]
                             vector_1 = [frame, orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
                                         orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
@@ -305,7 +306,7 @@ class ApplicationControl:
                             pos_vectors.append(start_point)
                             vectors.append([start_point, vector_1])
                             vectors.append([start_point, vector_2])
-            self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='purple', name='SarcomereVectors', opacity=0.8,
+            self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
                                     vector_style='arrow')
             self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2)
 
@@ -315,20 +316,20 @@ class ApplicationControl:
                 layer = self.viewer.layers['SarcomereMask']
                 self.viewer.layers.remove(layer)
 
-            tmp = tifffile.imread(self.model.cell.file_sarcomere_mask).astype('uint8')
+            tmp = tifffile.imread(self.model.cell.file_sarcomere_mask)
 
             if tmp.ndim == 2:  # Single image
                 rgba_image = np.zeros((tmp.shape[0], tmp.shape[1], 4), dtype='uint8')
                 rgba_image[..., 0] = 255  # Red channel
                 rgba_image[..., 1] = 255  # Green channel
                 rgba_image[..., 2] = 0  # Blue channel
-                rgba_image[..., 3] = np.where(tmp > 0, 102, 0)  # Alpha channel (40% opacity)
+                rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
             elif tmp.ndim == 3:  # Stack of images
                 rgba_image = np.zeros((tmp.shape[0], tmp.shape[1], tmp.shape[2], 4), dtype='uint8')
                 rgba_image[..., 0] = 255  # Red channel
                 rgba_image[..., 1] = 255  # Green channel
                 rgba_image[..., 2] = 0  # Blue channel
-                rgba_image[..., 3] = np.where(tmp > 0, 102, 0)  # Alpha channel (40% opacity)
+                rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
 
             self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.7)
 
