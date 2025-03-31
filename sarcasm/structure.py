@@ -264,7 +264,8 @@ class Structure(SarcAsM):
 
         if model_path is None:
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
-        assert len(max_patch_size) == 3, 'patch size for prediction has to be be (frames, x, y)'
+        if len(max_patch_size) != 3:
+            raise ValueError('patch size for prediction has to be be (frames, x, y)')
         _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.base_dir,
                            max_patch_size=max_patch_size, normalization_mode=normalization_mode,
                            device=self.device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
@@ -289,8 +290,6 @@ class Structure(SarcAsM):
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold are considered cell. Defaults to 0.1.
         """
-        assert self.file_cell_mask is not None, "Cell mask not found. Please run detect_sarcomeres first."
-
         imgs = self.cell_mask
 
         if len(imgs.shape) == 2:
@@ -345,7 +344,8 @@ class Structure(SarcAsM):
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
-        assert self.file_zbands is not None, ("Z-band mask not found. Please run predict_z_bands first.")
+        if not os.path.exists(self.file_zbands):
+            raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
             zbands = tifffile.imread(self.file_zbands)
             images = self.read_imgs()
@@ -506,7 +506,8 @@ class Structure(SarcAsM):
         sarcomere_length_points : np.ndarray
             Sarcomere length values at midline points.
         """
-        assert self.file_zbands is not None, "Sarcomere data not found. Please run 'detect_sarcomeres' first."
+        if not os.path.exists(self.file_zbands):
+            raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
         _detected_frames = self.data['params.detect_sarcomeres.frames']
         if ((isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0)
@@ -639,16 +640,15 @@ class Structure(SarcAsM):
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
-        assert 'pos_vectors_px' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                      'Run analyze_sarcomere_vectors first.')
+        if 'pos_vectors_px' not in self.data:
+            raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
             if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
                 frames = list(range(self.metadata['frames']))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
-            assert set(frames).issubset(
-                self.data[
-                    'params.analyze_sarcomere_vectors.frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
+            if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
+                raise ValueError(f'Run analyze_sarcomere_vectors first for frames {frames}.')
         elif frames is None:
             if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
                 frames = self.data['params.analyze_sarcomere_vectors.frames']
@@ -782,16 +782,15 @@ class Structure(SarcAsM):
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
-        assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                   'Run analyze_sarcomere_vectors first.')
+        if 'pos_vectors' not in self.data:
+            raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
             if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
                 frames = list(range(self.metadata['frames']))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
-            assert set(frames).issubset(
-                self.data[
-                    'params.analyze_sarcomere_vectors.frames']), f'Run analyze_sarcomere_vectors first for frames {frames}.'
+            if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
+                raise ValueError(f'Run analyze_sarcomere_vectors first for frames {frames}.')
         elif frames is None:
             if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
                 frames = self.data['params.analyze_sarcomere_vectors.frames']
@@ -1238,8 +1237,12 @@ class Structure(SarcAsM):
         -------
         None
         """
-        assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
-                                                   'Run analyze_sarcomere_vectors first.')
+        if 'pos_vectors' not in self.data:
+            raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
+
+        if self.metadata['frames'] == 1:
+            raise ValueError('LOI detection not possible in single images. '
+                             'Sarcomere motion tracking is only possible in high-speed movies; (t, x, y) stacks.')
 
         # Grow LOIs based on seed vectors and specified parameters
         self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, random_seed=random_seed, persistence=persistence,
