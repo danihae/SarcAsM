@@ -357,6 +357,7 @@ class Ui_Form(object):
         self.formLayout.setWidget(7, QtWidgets.QFormLayout.SpanningRole, self.groupBox_4)
         self.groupBox_6 = QtWidgets.QGroupBox(Form)
         self.groupBox_6.setObjectName("groupBox_6")
+        self.groupBox_6.setFont(font)
         self.formLayout_7 = QtWidgets.QFormLayout(self.groupBox_6)
         self.formLayout_7.setObjectName("formLayout_7")
         self.btn_fast_movie = QtWidgets.QPushButton(self.groupBox_6)
