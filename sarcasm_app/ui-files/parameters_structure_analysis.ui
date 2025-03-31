@@ -950,6 +950,11 @@
    </item>
    <item row="3" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_6">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
      <property name="title">
       <string>Detection of Z-bands in high-speed movies</string>
      </property>

@@ -155,8 +155,6 @@ class BatchProcessingControl:
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                    model_path=network_model,
                                    max_patch_size=size,
-                                   normalization_mode=model.parameters.get_parameter(
-                                       'structure.predict.normalization_mode').get_value(),
                                    clip_thres=(
                                        model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
                                        model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value())
@@ -300,8 +298,6 @@ class BatchProcessingControl:
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                model_path=network_model,
                                max_patch_size=size,
-                               normalization_mode=model.parameters.get_parameter(
-                                   'structure.predict.normalization_mode').get_value(),
                                clip_thres=(
                                    model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
                                    model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),

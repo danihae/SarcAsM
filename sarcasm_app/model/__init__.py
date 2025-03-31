@@ -88,7 +88,6 @@ class ApplicationModel:
         #self.__parameters.get_parameter(name='structure.predict.time_consistent').set_value(False)
         #self.__parameters.get_parameter(name='structure.predict.time_consistent.frame').set_value(32)
 
-        self.__parameters.get_parameter(name='structure.predict.normalization_mode').set_value('all')
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
             1024)  # is the predict_size_min from ui
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
@@ -237,7 +236,6 @@ class ApplicationModel:
         # was removed
         #self.__parameters.set_parameter(name='structure.predict.time_consistent')
         #self.__parameters.set_parameter(name='structure.predict.time_consistent.frame')
-        self.__parameters.set_parameter(name='structure.predict.normalization_mode')
         self.__parameters.set_parameter(name='structure.predict.size_width')  # is the predict_size_min from ui
         self.__parameters.set_parameter(name='structure.predict.size_height')  # is the predict_size_max from ui
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')

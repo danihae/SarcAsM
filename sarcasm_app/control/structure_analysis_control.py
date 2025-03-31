@@ -51,8 +51,6 @@ class StructureAnalysisControl:
         cell.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                model_path=network_model,
                                max_patch_size=size,
-                               normalization_mode=model.parameters.get_parameter(
-                                   'structure.predict.normalization_mode').get_value(),
                                clip_thres=(
                                    model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
                                    model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
@@ -392,8 +390,6 @@ class StructureAnalysisControl:
         widget = self.__structure_parameters_widget
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
-        parameters.get_parameter(name='structure.predict.normalization_mode').connect(
-            widget.cb_predict_normalization_mode)
         parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_width)
         parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_height)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_predict_clip_thresh_min)
