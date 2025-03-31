@@ -185,12 +185,12 @@ class ApplicationControl:
         return file_name, scan_line
 
     def init_z_band_stack(self):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_z_bands):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             # load sarcomere Z-band file into unet stack
-            tmp = tifffile.imread(self.model.cell.file_z_bands).astype('uint8')
+            tmp = tifffile.imread(self.model.cell.file_zbands).astype('uint8')
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis')
 
     def init_cell_mask_stack(self):
@@ -203,7 +203,7 @@ class ApplicationControl:
             self.viewer.add_image(tmp, name='CellMask', opacity=0.1, )
 
     def init_z_lateral_connections(self):
-        if self.model.cell is not None and 'z_labels' in self.model.cell.structure.data.keys():
+        if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('ZbandLatGroups'):
                 layer = self.viewer.layers.__getitem__('ZbandLatGroups')
                 self.viewer.layers.remove(layer)
