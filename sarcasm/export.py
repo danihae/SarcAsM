@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm as tqdm
 
-from .core import SarcAsM
+from .structure import Structure
 from .motion import Motion
 
 
@@ -72,7 +72,7 @@ class MultiStructureAnalysis:
         self.data = []
         for i, tif_file in enumerate(tqdm(self.files)):
             try:
-                sarc_obj = SarcAsM(tif_file)
+                sarc_obj = Structure(filepath=tif_file)
                 dict_i = Export.get_structure_dict(sarc_obj, meta_keys, structure_keys,
                                                    experiment=self.experiment,
                                                    **self.conditions)
@@ -338,7 +338,7 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_structure_data(filepath, sarc_obj: Union[SarcAsM, Motion], meta_keys=None, structure_keys=None, remove_arrays=True,
+    def export_structure_data(filepath, sarc_obj: Union[Structure, Motion], meta_keys=None, structure_keys=None, remove_arrays=True,
                               fileformat='.xlsx'):
         """
         Export structure data to a file.

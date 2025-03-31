@@ -5,6 +5,9 @@ import platform
 import subprocess
 import warnings
 from typing import Tuple, Any, List, Union
+os.environ["KMP_WARNINGS"] = "False"
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=".*omp_set_nested.*")
 
 import numpy as np
 import tifffile
@@ -12,13 +15,11 @@ import torch
 from numba import njit, prange
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata, Akima1DInterpolator
-from scipy.ndimage import label, map_coordinates, median_filter
+from scipy.ndimage import label, map_coordinates
 from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
 from skimage.draw import line
 from skimage.morphology import disk
-
-warnings.filterwarnings("ignore")
 
 
 class Utils:
@@ -783,12 +784,12 @@ class Utils:
     @staticmethod
     def create_distance_map(sarc_obj):
         """
-        Creates distance map for sarcomeres from a SarcAsM object. The distance map is 0 at Z-bands and 1 at M-bands.
+        Creates distance map for sarcomeres from a Structure object. The distance map is 0 at Z-bands and 1 at M-bands.
 
         Parameters
         ----------
-        sarc_obj : SarcAsM
-            An object of the SarcAsM class.
+        sarc_obj : Structure
+            An object of the Structure class.
 
         Returns
         -------
@@ -797,12 +798,12 @@ class Utils:
         """
 
         # Validate sarc_obj data
-        structure = sarc_obj.structure.data
+        structure = sarc_obj.data
         pixelsize = sarc_obj.metadata.get('pixelsize', None)
 
         if not all(key in structure for key in
                    ['pos_vectors', 'sarcomere_orientation_vectors', 'sarcomere_length_vectors']):
-            raise Warning("Missing required data in sarc_obj.structure.")
+            raise Warning("Missing required data in sarc_obj.data.")
 
         if pixelsize is None:
             raise Warning("Missing 'pixelsize' in sarc_obj.metadata.")

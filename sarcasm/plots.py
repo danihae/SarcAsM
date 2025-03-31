@@ -2,34 +2,32 @@
 
 import numbers
 import os.path
+import warnings
 from typing import Union, Tuple, Optional, Literal
 
 import matplotlib
 import numpy as np
 from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
-from scipy.ndimage import median_filter
 from tifffile import tifffile
 
-from .structure import Structure
-from .core import SarcAsM
 from .feature_dict import structure_feature_dict
 from .motion import Motion
 from .plot_utils import PlotUtils
+from .structure import Structure
 from .utils import Utils
 
 
 class Plots:
     """
-    Class with plotting functions for SarcAsM and Motion objects
+    Class with plotting functions for Structure and Motion objects
     """
 
     @staticmethod
-    def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
+    def plot_stack_overlay(ax: Axes, sarc_obj: Union[Structure, Motion], frames, plot_func, offset=0.025,
                            spine_color='w', xlim=None, ylim=None):
         """
         Plot a stack of overlayed subplots on a given Axes object.
@@ -38,8 +36,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The Axes object on which the stack should be plotted.
-        sarc_obj : SarcAsM
-            Data to be plotted in each subplot, which can be an instance of SarcAsM or Motion.
+        sarc_obj : Structure
+            Data to be plotted in each subplot, which can be an instance of Structure or Motion.
         frames : list
             The frames at which the subplots should be created.
         plot_func : function
@@ -99,10 +97,10 @@ class Plots:
         fig.suptitle(title, fontsize=PlotUtils.fontsize)
 
         # A- image cell w/ LOI
-        Plots.plot_image(axs['a'], motion_obj)
+        Plots.plot_image(axs['a'], motion_obj, show_loi=True)
 
         # B- U-Net cell w/ LOI
-        Plots.plot_z_bands(axs['b'], motion_obj)
+        Plots.plot_z_bands(axs['b'], motion_obj, show_loi=True)
 
         # C- kymograph and tracked z-lines
         Plots.plot_z_pos(axs['c'], motion_obj, t_lim=t_lim)
@@ -124,15 +122,15 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: Union[SarcAsM, Motion], frame: int = 0, filepath: str = None,
+    def plot_loi_detection(sarc_obj: Structure, frame: int = 0, filepath: str = None,
                            cmap_z_bands='Greys'):
         """
         Plots all steps of automated LOI finding algorithm
 
         Parameters
         ----------
-        sarc_obj : SarcAsM or Motion
-            Instance of SarcAsM or Motion class
+        sarc_obj : Structure
+            Instance of Structure class
         frame: int
             The time point to plot.
         filepath: str
@@ -148,33 +146,33 @@ class Plots:
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols),
                                       constrained_layout=True)
 
-        if isinstance(sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'], int):
-            frame = sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames']
-        elif sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'] == 'all':
+        if isinstance(sarc_obj.data['params.analyze_sarcomere_vectors.frames'], int):
+            frame = sarc_obj.data['params.analyze_sarcomere_vectors.frames']
+        elif sarc_obj.data['params.analyze_sarcomere_vectors.frames'] == 'all':
             frame = frame
         else:
-            frame = sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'][frame]
+            frame = sarc_obj.data['params.analyze_sarcomere_vectors.frames'][frame]
 
         Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, cmap=cmap_z_bands)
         Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, cmap=cmap_z_bands)
         Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, cmap=cmap_z_bands)
 
-        for i, pos_vectors_i in enumerate(sarc_obj.structure.data['loi_data']['lines_vectors']):
+        for i, pos_vectors_i in enumerate(sarc_obj.data['loi_data']['lines_vectors']):
             axs['a'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0], c='r', lw=0.2, alpha=0.6)
 
-        axs['b'].hist(sarc_obj.structure.data['loi_data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
+        axs['b'].hist(sarc_obj.data['loi_data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
                       alpha=0.75,
                       rwidth=0.75)
         axs['b'].set_xlim(0, 400)
         axs['b'].set_xlabel('Hausdorff distance')
         axs['b'].set_ylabel('# LOI pairs')
 
-        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.structure.data['loi_data']['lines_vectors'],
-                                                         sarc_obj.structure.data['loi_data']['line_cluster'])):
+        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.data['loi_data']['lines_vectors'],
+                                                         sarc_obj.data['loi_data']['line_cluster'])):
             axs['c'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0],
-                          c=plt.cm.jet(label_i / sarc_obj.structure.data['loi_data']['n_lines_clusters']), lw=0.2)
+                          c=plt.cm.jet(label_i / sarc_obj.data['loi_data']['n_lines_clusters']), lw=0.2)
 
-        for i, line_i in enumerate(sarc_obj.structure.data['loi_data']['loi_lines']):
+        for i, line_i in enumerate(sarc_obj.data['loi_data']['loi_lines']):
             axs['d'].plot(line_i.T[1], line_i.T[0], lw=2, label=i)
         axs['d'].legend(loc='lower left', fontsize='xx-small')
 
@@ -192,9 +190,11 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap='grey', alpha=1, clip_thrs=(1, 99),
-                   scalebar=True, title=None, show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
-                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
+    def plot_image(ax: Axes, sarc_obj: Union[Structure, Motion], frame: int = 0, cmap: str = 'grey',
+                   alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
+                   title: Union[None, str] = None, show_loi: bool = False,
+                   zoom_region: Tuple[int, int, int, int] = None,
+                   inset_bounds: Tuple[float, float, float, float] = (0.6, 0.6, 0.4, 0.4)):
         """
         Plots microscopy raw image of the sarcomere object.
 
@@ -202,7 +202,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : Structure or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -224,17 +224,12 @@ class Plots:
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
 
-        img = sarc_obj.structure.read_imgs(frames=frame)
+        img = sarc_obj.read_imgs(frames=frame)
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
 
         plot = ax.imshow(img, cmap=cmap, alpha=alpha)
-        if hasattr(sarc_obj, 'loi_data') and show_loi:
-            line = sarc_obj.loi_data['line']
-            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
-        elif 'loi_data' in sarc_obj.structure.data and show_loi:
-            loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
-            for line in loi_lines:
-                ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
+        if show_loi:
+            Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
@@ -261,9 +256,9 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_z_bands(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='Greys_r', zero_transparent=False,
-                     alpha=1, scalebar=True, title=None, color_scalebar='k',
-                     show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
+    def plot_z_bands(ax: plt.Axes, sarc_obj: Union[Structure, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
+                     alpha=1, scalebar=True, title=None, color_scalebar='w',
+                     show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
                      inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots the Z-bands of the sarcomere object.
@@ -272,7 +267,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : Structure or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -291,15 +286,14 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
+        assert os.path.exists(sarc_obj.file_zbands), ('Z-band mask not found. Run predict_z_bands first.')
 
-        img = tifffile.imread(sarc_obj.file_z_bands, key=frame)
+        img = tifffile.imread(sarc_obj.file_zbands, key=frame)
         if zero_transparent:
             img = np.ma.masked_where(img < 0.05, img)
         ax.imshow(img, cmap=cmap, alpha=alpha)
-        if hasattr(sarc_obj, 'loi_data') and show_loi:
-            line = sarc_obj.loi_data['line']
-            ax.plot(line.T[1], line.T[0], color='r', linewidth=2, alpha=0.5)
+        if show_loi:
+            Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
@@ -321,7 +315,7 @@ class Plots:
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
-    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union['SarcAsM', 'Motion'], frame=0, cmap='berlin',
+    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union[Structure, Motion], frame=0, cmap='berlin',
                               alpha=1, scalebar=True, title=None, color_scalebar='w',
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                               inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -332,7 +326,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : Structure or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -351,17 +345,16 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert os.path.exists(sarc_obj.file_z_bands), ('Z-band mask not found. Run predict_z_bands first.')
+        assert os.path.exists(sarc_obj.file_zbands), ('Z-band mask not found. Run predict_z_bands first.')
 
-        zbands = tifffile.imread(sarc_obj.file_z_bands, key=frame)
-        midlines = tifffile.imread(sarc_obj.file_midlines, key=frame)
+        zbands = tifffile.imread(sarc_obj.file_zbands, key=frame)
+        midlines = tifffile.imread(sarc_obj.file_mbands, key=frame)
         joined = midlines - zbands
 
         ax.imshow(joined, cmap=cmap, alpha=alpha)
 
-        if hasattr(sarc_obj, 'loi_data') and show_loi:
-            line = sarc_obj.loi_data['line']
-            ax.plot(line.T[0], line.T[1], color='r', linewidth=2, alpha=0.5)
+        if show_loi:
+            Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
@@ -390,7 +383,7 @@ class Plots:
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
+    def plot_cell_mask(ax: Axes, sarc_obj: Union[Structure, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
                        scalebar=True, title=None):
         """
         Plots the cell mask of the sarcomere object.
@@ -399,7 +392,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : Structure or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -428,7 +421,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_z_segmentation(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, shuffle=True,
+    def plot_z_segmentation(ax: Axes, sarc_obj: Structure, frame=0, scalebar=True, shuffle=True,
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -438,8 +431,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         scalebar : bool, optional
@@ -453,11 +446,10 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
-                                                              'Run analyze_z_bands first.')
-        assert frame in sarc_obj.structure.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
+        assert 'z_labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
+        assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
-        labels = sarc_obj.structure.data['z_labels'][frame].toarray()
+        labels = sarc_obj.data['z_labels'][frame].toarray()
         if shuffle:
             labels = Utils.shuffle_labels(labels)
         masked_labels = np.ma.masked_array(labels, mask=(labels == 0))
@@ -489,19 +481,19 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_z_lateral_connections(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, scalebar=True, markersize=1.5,
+    def plot_z_lateral_connections(ax: Axes, sarc_obj: Structure, frame=0, scalebar=True, markersize=1.5,
                                    markersize_inset=3, linewidth=0.25, linewidth_inset=0.5, plot_groups=True,
                                    shuffle=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                    inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots lateral Z-band connections of a SarcAsM object.
+        Plots lateral Z-band connections of a Structure object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Method
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         scalebar : bool, optional
@@ -525,14 +517,13 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'z_labels' in sarc_obj.structure.data.keys(), ('Z-bands not yet analyzed. '
-                                                              'Run analyze_z_bands first.')
-        assert frame in sarc_obj.structure.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
+        assert 'z_labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
+        assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
-        labels = sarc_obj.structure.data['z_labels'][frame].toarray()
+        labels = sarc_obj.data['z_labels'][frame].toarray()
 
         if plot_groups:
-            groups = sarc_obj.structure.data['z_lat_groups'][frame]
+            groups = sarc_obj.data['z_lat_groups'][frame]
             labels_plot = np.zeros_like(labels)
             for i, group in enumerate(groups[1:]):
                 mask = np.zeros_like(labels, dtype=bool)
@@ -545,8 +536,8 @@ class Plots:
         if shuffle:
             labels_plot = Utils.shuffle_labels(labels_plot)
 
-        z_ends = sarc_obj.structure.data['z_ends'][frame].astype('float32') / sarc_obj.metadata['pixelsize']
-        z_links = sarc_obj.structure.data['z_lat_links'][frame]
+        z_ends = sarc_obj.data['z_ends'][frame].astype('float32') / sarc_obj.metadata['pixelsize']
+        z_links = sarc_obj.data['z_lat_links'][frame]
         masked_labels = np.ma.masked_where(labels_plot == 0, labels_plot)
         cmap = plt.cm.prism
         cmap.set_bad(color=(0, 0, 0, 0))
@@ -592,7 +583,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='vanimo',
+    def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: Structure, frame=0, cmap='vanimo',
                                          scalebar=True, colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                          zoom_region: Tuple[int, int, int, int] = None,
                                          inset_bounds=(0.6, 0.6, 0.4, 0.4),):
@@ -604,7 +595,7 @@ class Plots:
             ax1 : matplotlib.axes.Axes
                 The axes to draw the plot on.
             sarc_obj : object
-                The sarcomere object to plot.
+                The instance of Structure class to plot.
             frame : int, optional
                 The frame to plot. Defaults to 0.
             scalebar : bool, optional
@@ -681,9 +672,9 @@ class Plots:
                                         font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_sarcomere_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='viridis', show_z_bands=False,
-                            alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9), title=None,
-                            zoom_region: Tuple[int, int, int, int] = None,
+    def plot_sarcomere_mask(ax: Axes, sarc_obj: Structure, frame=0, cmap='viridis', threshold=0.1,
+                            show_z_bands=False, alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9),
+                            title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plots binary mask of sarcomeres, derived from sarcomere vectors.
@@ -692,8 +683,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         cmap : str, optional
@@ -725,6 +716,12 @@ class Plots:
 
         sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=frame)
 
+        # binarize sarcomere mask
+        if threshold is None:
+            threshold = sarc_obj.data.get('params.analyze_sarcomere_vectors.threshold_sarcomere_mask')
+        sarcomere_mask = sarcomere_mask > threshold
+
+        # plot sarcomere mask
         sarcomere_mask = np.ma.masked_where(sarcomere_mask == 0, sarcomere_mask)
 
         cmap = plt.get_cmap(cmap)
@@ -750,7 +747,7 @@ class Plots:
             PlotUtils.change_color_spines(ax_inset, 'w')
 
     @staticmethod
-    def plot_sarcomere_vectors(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, color_arrows='k',
+    def plot_sarcomere_vectors(ax: Axes, sarc_obj: Structure, frame=0, color_arrows='k',
                                color_points='darkgreen', s_points=0.5, linewidths=0.5,
                                s_points_inset=0.5, linewidths_inset=0.5, scalebar=True,
                                legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
@@ -764,8 +761,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         color_arrows : str, optional
@@ -797,13 +794,13 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'pos_vectors' in sarc_obj.structure.data.keys(), ('Sarcomere vectors not yet calculated, '
+        assert 'pos_vectors' in sarc_obj.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                                  'run analyze_sarcomere_vectors first.')
-        assert frame in sarc_obj.structure.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
 
-        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame] / sarc_obj.metadata['pixelsize']
-        sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
-        sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
+        pos_vectors = sarc_obj.data['pos_vectors'][frame] / sarc_obj.metadata['pixelsize']
+        sarcomere_orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
             'pixelsize']
         orientation_vectors = np.asarray(
             [np.cos(sarcomere_orientation_vectors), -np.sin(sarcomere_orientation_vectors)])
@@ -879,7 +876,7 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1, }))
 
     @staticmethod
-    def plot_sarcomere_domains(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, alpha=0.5, cmap='gist_rainbow',
+    def plot_sarcomere_domains(ax: Axes, sarc_obj: Structure, frame=0, alpha=0.5, cmap='gist_rainbow',
                                scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', alpha_z_bands=1, title=None):
         """
         Plots the sarcomere domains of the sarcomere object.
@@ -888,8 +885,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         alpha : float, optional
@@ -908,17 +905,17 @@ class Plots:
             The title for the plot. Defaults to None.
 
         """
-        assert 'n_domains' in sarc_obj.structure.data.keys(), ('Sarcomere domains not analyzed. '
+        assert 'n_domains' in sarc_obj.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
-        assert frame in sarc_obj.structure.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
+        assert frame in sarc_obj.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
                                                                           f'analyzed.')
-        domains = sarc_obj.structure.data['domains'][frame]
-        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
-        sarcomere_orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
-        sarcomere_length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
-        area_min = sarc_obj.structure.data['params.analyze_sarcomere_domains.area_min']
-        dilation_radius = sarc_obj.structure.data['params.analyze_sarcomere_domains.dilation_radius']
-        domain_mask = Structure._analyze_domains(domains, pos_vectors=pos_vectors,
+        domains = sarc_obj.data['domains'][frame]
+        pos_vectors = sarc_obj.data['pos_vectors'][frame]
+        sarcomere_orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
+        sarcomere_length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame]
+        area_min = sarc_obj.data['params.analyze_sarcomere_domains.area_min']
+        dilation_radius = sarc_obj.data['params.analyze_sarcomere_domains.dilation_radius']
+        domain_mask = sarc_obj._analyze_domains(domains, pos_vectors=pos_vectors,
                                                  sarcomere_length_vectors=sarcomere_length_vectors,
                                                  sarcomere_orientation_vectors=sarcomere_orientation_vectors,
                                                  size=sarc_obj.metadata['size'],
@@ -943,7 +940,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_myofibril_lines(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, show_z_bands=True, linewidth=1,
+    def plot_myofibril_lines(ax: Axes, sarc_obj: Structure , frame=0, show_z_bands=True, linewidth=1, color_lines='r',
                              linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', alpha_z_bands=1,
                              scalebar=True, title=None, zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -953,7 +950,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : Structure or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -961,6 +958,8 @@ class Plots:
             Whether or not to show Z-bands. Defaults to True
         linewidth : float, optional
             The width of the lines. Defaults to 1.
+        color_lines : str
+            Color of lines. Defaults to 'r'
         linewidth_inset : float, optional
             Thickness of the lines in inset. Defaults to 1.
         alpha : float, optional
@@ -978,17 +977,17 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not analyzed. '
+        assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=alpha_z_bands)
         else:
             Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
-        lines = sarc_obj.structure.data['myof_lines'][frame]
-        pos_vectors = sarc_obj.structure.data['pos_vectors_px'][frame]
+        lines = sarc_obj.data['myof_lines'][frame]
+        pos_vectors = sarc_obj.data['pos_vectors_px'][frame]
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
@@ -996,7 +995,7 @@ class Plots:
         ax.set_xticks([])
         ax.set_yticks([])
         for i, line_i in enumerate(lines):
-            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha, lw=linewidth)
+            ax.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c=color_lines, alpha=alpha, lw=linewidth)
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
@@ -1027,7 +1026,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_myofibril_length_map(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, vmax=None, alpha=1,
+    def plot_myofibril_length_map(ax: Axes, sarc_obj: Structure, frame=0, vmax=None, alpha=1,
                                   show_z_bands=False, cmap_z_bands='Greys', alpha_z_bands=1,
                                   colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                   scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
@@ -1039,8 +1038,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         vmax : float, optional
@@ -1069,17 +1068,17 @@ class Plots:
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
         # create myofibril length map
-        assert 'myof_lines' in sarc_obj.structure.data.keys(), ('Myofibrils not yet analyzed. '
+        assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
                                                                 'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.structure.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+        assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
-        myof_lines = sarc_obj.structure.data['myof_lines'][frame]
-        myof_lengths = sarc_obj.structure.data['myof_length'][frame]
-        pos_vectors = sarc_obj.structure.data['pos_vectors'][frame]
-        orientation_vectors = sarc_obj.structure.data['sarcomere_orientation_vectors'][frame]
-        length_vectors = sarc_obj.structure.data['sarcomere_length_vectors'][frame]
-        median_filter_radius = sarc_obj.structure.data['params.analyze_myofibrils.median_filter_radius']
-        myof_length_map = sarc_obj.structure.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
+        myof_lines = sarc_obj.data['myof_lines'][frame]
+        myof_lengths = sarc_obj.data['myof_length'][frame]
+        pos_vectors = sarc_obj.data['pos_vectors'][frame]
+        orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
+        length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame]
+        median_filter_radius = sarc_obj.data['params.analyze_myofibrils.median_filter_radius']
+        myof_length_map = sarc_obj.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
                                                       pos_vectors=pos_vectors,
                                                       sarcomere_orientation_vectors=orientation_vectors,
                                                       sarcomere_length_vectors=length_vectors,
@@ -1135,16 +1134,16 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='g', linewidth=2, alpha=0.5):
+    def plot_lois(ax: Axes, sarc_obj: Union[Structure, Motion], color='darkorange', linewidth=2, alpha=0.5):
         """
-        Plot all LOI lines for SarcAsM object and LOI line Motion object.
+        Plot all LOI lines for Structure object and LOI line Motion object.
 
         Parameters
         ----------
         ax : matplotlib axis
             Axis on which to plot the LOI lines
-        sarc_obj : SarcAsM or Motion
-            Object of SarcAsM or Motion class
+        sarc_obj : Structure or Motion
+            Object of Structure or Motion class
         color : str
             Color of lines
         linewidth : float
@@ -1152,18 +1151,27 @@ class Plots:
         alpha : float
             Transparency of lines
         """
-        if hasattr(sarc_obj, 'loi_data'):
-            line = sarc_obj.loi_data['line']
-            ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth, alpha=alpha)
+        loi_lines = None
 
-        else:
-            loi_lines = sarc_obj.structure.data['loi_data']['loi_lines']
+        if hasattr(sarc_obj, 'loi_data'):
+            # Extract line data directly from sarc_obj.loi_data
+            loi_lines = [sarc_obj.loi_data['line']]
+        elif hasattr(sarc_obj, 'data') and 'loi_data' in sarc_obj.data:
+            # Extract lines from sarc_obj.data['loi_data']
+            loi_lines = sarc_obj.data['loi_data'].get('loi_lines', [])
+
+        if loi_lines is not None:
+            # Plot each line
             for line in loi_lines:
-                ax.plot(line.T[0], line.T[1], color=color, linewidth=linewidth, alpha=alpha)
+                ax.plot(line.T[1], line.T[0], color=color, linewidth=linewidth, alpha=alpha)
+        else:
+            # Raise a warning if no LOI lines are found
+            warnings.warn("No LOI lines found in the provided object.", UserWarning)
+
 
     @staticmethod
     def plot_histogram_structure(ax: Axes,
-                                 sarc_obj: Union[SarcAsM, Motion],
+                                 sarc_obj: Structure,
                                  feature: str,
                                  frame: int = 0,
                                  bins: int = 20,
@@ -1183,8 +1191,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes on which to draw the histogram.
-        sarc_obj : Union[SarcAsM, Motion]
-            The sarcomere object containing structural data.
+        sarc_obj : Structure
+            The instance of Structure class to plot.
         feature : str
             The name of the structural feature to plot.
         frame : int, optional
@@ -1212,7 +1220,7 @@ class Plots:
             If True, rotates the y-axis tick labels by 90 degrees for improved readability.
             Defaults to False.
         """
-        data = sarc_obj.structure.data[feature][frame]
+        data = sarc_obj.data[feature][frame]
         # Flatten data if it has more than one dimension
         if data.ndim > 1:
             data = data.flatten()
