@@ -1241,6 +1241,10 @@ class Structure(SarcAsM):
         assert 'pos_vectors' in self.data.keys(), ('Sarcomere length and orientation not yet analyzed. '
                                                    'Run analyze_sarcomere_vectors first.')
 
+        if self.metadata['frames'] == 1:
+            raise ValueError(f"LOI detection not possible in single images. "
+                             f"Sarcomere motion tracking is only possible in high-speed movies; (t, x, y) stacks.")
+
         # Grow LOIs based on seed vectors and specified parameters
         self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, random_seed=random_seed, persistence=persistence,
                         threshold_distance=threshold_distance)
