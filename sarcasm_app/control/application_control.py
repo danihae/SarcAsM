@@ -1,6 +1,8 @@
 import os
 import traceback
 from typing import Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 from sarcasm import Utils
 from sarcasm.type_utils import TypeUtils
@@ -337,18 +339,87 @@ class ApplicationControl:
             self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.7)
 
     def init_sarcomere_domain_stack(self):
-        if self.model.cell is not None and 'domain_mask' in self.model.cell.data.keys():
+        if self.model.cell is None or 'domains' not in self.model.cell.data:
+            return
+        if 'SarcomereDomains' in self.viewer.layers:
+            self.viewer.layers.remove('SarcomereDomains')
+
+        cell = self.model.cell
+        total_frames = cell.metadata['frames']
+        size = cell.metadata['size']
+
+        _domain_masks = np.zeros((total_frames, *size), dtype='uint16')
+
+        if 'params.analyze_sarcomere_domains.frames' in cell.data:
+            frames_to_analyze = [f for f in range(total_frames)
+                                 if f in cell.data['params.analyze_sarcomere_domains.frames']]
+        else:
+            frames_to_analyze = range(total_frames)
+
+        area_min = cell.data.get('params.analyze_sarcomere_domains.area_min')
+        dilation_radius = cell.data.get('params.analyze_sarcomere_domains.dilation_radius')
+        pixelsize = cell.metadata['pixelsize']
+
+        def process_frame(frame, cell, area_min, dilation_radius, pixelsize, size):
+            domains = cell.data['domains'][frame]
+            pos_vectors = cell.data['pos_vectors'][frame]
+            sarcomere_orientation_vectors = cell.data['sarcomere_orientation_vectors'][frame]
+            sarcomere_length_vectors = cell.data['sarcomere_length_vectors'][frame]
+
+            domain_mask = cell._analyze_domains(
+                domains,
+                pos_vectors=pos_vectors,
+                sarcomere_length_vectors=sarcomere_length_vectors,
+                sarcomere_orientation_vectors=sarcomere_orientation_vectors,
+                size=size,
+                pixelsize=pixelsize,
+                dilation_radius=dilation_radius,
+                area_min=area_min
+            )[0]
+
+            return frame, domain_mask
+
+        process_frame_partial = partial(
+            process_frame,
+            cell=cell,
+            area_min=area_min,
+            dilation_radius=dilation_radius,
+            pixelsize=pixelsize,
+            size=size
+        )
+
+        with ThreadPoolExecutor(max_workers=min(8, len(frames_to_analyze))) as executor:
+            for frame, mask in executor.map(process_frame_partial, frames_to_analyze):
+                _domain_masks[frame] = mask
+        self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
+
+    def __init_sarcomere_domain_stack(self):
+        if self.model.cell is not None and 'domains' in self.model.cell.data:
             if self.viewer.layers.__contains__('SarcomereDomains'):
                 layer = self.viewer.layers.__getitem__('SarcomereDomains')
                 self.viewer.layers.remove(layer)
 
-            domain_masks = self.model.cell.data['domain_mask']
-
             _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']),
                                      dtype='uint16')
+
             for frame in range(self.model.cell.metadata['frames']):
-                if frame in self.model.cell.data['params.domain_frames']:
-                    _domain_masks[frame] = domain_masks[frame].toarray()
+                if 'params.analyze_sarcomere_domains.frames' in self.model.cell.data and frame in \
+                        self.model.cell.data['params.analyze_sarcomere_domains.frames']:
+
+                    domains = self.model.cell.data['domains'][frame]
+                    pos_vectors = self.model.cell.data['pos_vectors'][frame]
+                    sarcomere_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][frame]
+                    sarcomere_length_vectors = self.model.cell.data['sarcomere_length_vectors'][frame]
+                    area_min = self.model.cell.data['params.analyze_sarcomere_domains.area_min']
+                    dilation_radius = self.model.cell.data['params.analyze_sarcomere_domains.dilation_radius']
+                    domain_mask = self.model.cell._analyze_domains(domains, pos_vectors=pos_vectors,
+                                                            sarcomere_length_vectors=sarcomere_length_vectors,
+                                                            sarcomere_orientation_vectors=sarcomere_orientation_vectors,
+                                                            size=self.model.cell.metadata['size'],
+                                                            pixelsize=self.model.cell.metadata['pixelsize'],
+                                                            dilation_radius=dilation_radius, area_min=area_min)[0]
+
+                    _domain_masks[frame] = domain_mask
 
             self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
 
