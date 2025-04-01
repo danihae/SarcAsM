@@ -344,7 +344,7 @@ class BatchProcessingControl:
             dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
         )
 
-        sarc_obj.structure.store_structure_data()
+        sarc_obj.store_structure_data()
         pass
 
     def on_search(self):
