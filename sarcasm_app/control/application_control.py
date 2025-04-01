@@ -193,7 +193,7 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands)
             tmp[tmp < 0.05] = np.nan
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.4, colormap='viridis', blending='translucent')
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent')
 
     def init_cell_mask_stack(self):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
@@ -202,7 +202,7 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
-            self.viewer.add_image(tmp, name='CellMask', opacity=0.1)
+            self.viewer.add_image(tmp, name='CellMask', opacity=0.2)
 
     def init_z_lateral_connections(self):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
@@ -223,8 +223,8 @@ class ApplicationControl:
             ends = []
             connections = []
             for frame in range(self.model.cell.metadata['frames']):
-                if 'params.z_frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.z_frames']:
+                if 'params.analyze_z_bands.frames' in self.model.cell.data and frame in \
+                        self.model.cell.data['params.analyze_z_bands.frames']:
                     labels_frame = self.model.cell.data['z_labels'][frame].toarray()
                     groups_frame = self.model.cell.data['z_lat_groups'][frame]
                     labels_groups_frame = np.zeros_like(labels_frame)
@@ -236,7 +236,10 @@ class ApplicationControl:
                     labels_groups_frame = Utils.shuffle_labels(labels_groups_frame)
                     labels_groups[frame] = labels_groups_frame
 
-                    z_ends_frame = self.model.cell.data['z_ends'][frame] / self.model.cell.metadata['pixelsize']
+                    z_ends_frame = np.array(self.model.cell.data['z_ends'][frame], dtype=float)
+                    z_ends_frame[z_ends_frame == None] = np.nan
+                    z_ends_frame = z_ends_frame / self.model.cell.metadata['pixelsize']
+
                     z_links_frame = self.model.cell.data['z_lat_links'][frame]
 
                     # ends

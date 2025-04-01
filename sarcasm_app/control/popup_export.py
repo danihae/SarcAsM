@@ -1,12 +1,11 @@
 import traceback
 
+import numpy as np
 from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
     QLineEdit, QWidget, QFileDialog, QMessageBox
 
-from sarcasm import export
-from sarcasm.export import MultiStructureAnalysis, MultiLOIAnalysis
+from sarcasm.export import Export
 from sarcasm.type_utils import TypeUtils
-import numpy as np
 
 
 class ExportPopup(QDialog):
@@ -76,9 +75,9 @@ class ExportPopup(QDialog):
 
         self.__btn_export_as_csv.clicked.connect(self.__on_clicked_btn_export_as_csv)
 
-        self.__create_checkbox_from_list(MultiStructureAnalysis.meta_keys_default, self.__group_metadata)
-        self.__create_checkbox_from_list(MultiStructureAnalysis.structure_keys_default, self.__group_structure)
-        self.__create_checkbox_from_list(MultiLOIAnalysis.loi_keys_default, self.__group_motion)
+        self.__create_checkbox_from_list(Export.meta_keys_default, self.__group_metadata)
+        self.__create_checkbox_from_list(Export.structure_keys_default, self.__group_structure)
+        self.__create_checkbox_from_list(Export.motion_keys_default, self.__group_motion)
         pass
 
     def __on_clicked_btn_search(self):
@@ -101,7 +100,7 @@ class ExportPopup(QDialog):
 
             if len(self.__from_checkboxes_to_str_list(self.__group_structure, self.__group_structure_old)) != 0 or len(
                     self.__from_checkboxes_to_str_list(self.__group_metadata, self.__group_metadata_old)) != 0:
-                to_export_structure = export.get_structure_dict(sarc_obj=self.__model.cell,
+                to_export_structure = Export.get_structure_dict(sarc_obj=self.__model.cell,
                                                                 structure_keys=self.__from_checkboxes_to_str_list(
                                                                     self.__group_structure, self.__group_structure_old),
                                                                 meta_keys=self.__from_checkboxes_to_str_list(
@@ -113,7 +112,7 @@ class ExportPopup(QDialog):
 
             if len(self.__from_checkboxes_to_str_list(self.__group_metadata, self.__group_metadata_old)) != 0 or len(
                     self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
-                to_export_motion = export.MultiLOIAnalysis.get_motion_dict(motion_obj=self.__model.sarcomere,
+                to_export_motion = Export.get_motion_dict(motion_obj=self.__model.sarcomere,
                                                                            meta_keys=self.__from_checkboxes_to_str_list(
                                                                                self.__group_metadata),
                                                                            loi_keys=self.__from_checkboxes_to_str_list(
