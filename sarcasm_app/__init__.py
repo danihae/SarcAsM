@@ -1,7 +1,8 @@
 # Usage of this software for commercial purposes without a license is strictly prohibited.
 
 import sys
-from PyQt5.QtCore import Qt
+#import locale
+from PyQt5.QtCore import Qt, QLocale
 from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox
 from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
@@ -24,7 +25,9 @@ class Application:
 
     def __init__(self):
         self.__app = QApplication([])
-
+        QLocale.setDefault(QLocale(QLocale.English,QLocale.UnitedStates))
+        #self.setLocale(QLocale(QLocale.C))
+        #locale.setlocale(locale.LC_ALL, "en_US")
         # todo: dark theme: https://stackoverflow.com/questions/48256772/dark-theme-for-qt-widgets
         self.__app.setStyle(QStyleFactory.create("Fusion"))  # try to fix the layout issue on macOs
 

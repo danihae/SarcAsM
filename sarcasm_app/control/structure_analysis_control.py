@@ -439,7 +439,7 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.domain.analysis.random_seed').connect(widget.sb_domains_random_seed)
         parameters.get_parameter(name='structure.domain.analysis.area_min').connect(widget.dsb_domains_area_min)
         parameters.get_parameter(name='structure.domain.analysis.dilation_radius').connect(
-            widget.sb_domains_dilation_radius)
+            widget.dsb_domains_dilation_radius)
 
         pass
 

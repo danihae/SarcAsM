@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>735</width>
-    <height>1331</height>
+    <height>1380</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -92,82 +92,6 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_12">
-        <property name="toolTip">
-         <string>Clip threshold (lower / upper) for intensity normalization.</string>
-        </property>
-        <property name="text">
-         <string>Clip threshold intensity [%]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
-        <item>
-         <widget class="QLabel" name="label_13">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="text">
-           <string>Min:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_min">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="decimals">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>0.100000000000000</double>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_14">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="text">
-           <string>Max:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_max">
-          <property name="toolTip">
-           <string>Clip threshold (lower / upper) for intensity normalization.</string>
-          </property>
-          <property name="decimals">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>99.900000000000006</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_predict">
-        <property name="toolTip">
-         <string>execute sarcomere prediction based on the given network</string>
-        </property>
-        <property name="text">
-         <string>Detect sarcomeres</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
@@ -189,7 +113,17 @@
         </item>
        </layout>
       </item>
-      <item row="3" column="1">
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_9">
+        <property name="toolTip">
+         <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
+        </property>
+        <property name="text">
+         <string>Max patch size [pixel]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
          <widget class="QLabel" name="label_11">
@@ -246,47 +180,79 @@
        </layout>
       </item>
       <item row="3" column="0">
-       <widget class="QLabel" name="label_9">
+       <widget class="QLabel" name="label_12">
         <property name="toolTip">
-         <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
+         <string>Clip threshold (lower / upper) for intensity normalization.</string>
         </property>
         <property name="text">
-         <string>Max patch size [pixel]</string>
+         <string>Clip threshold intensity [%]</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_7">
+      <item row="3" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QLabel" name="label_13">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization.</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_min">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization.</string>
+          </property>
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="maximum">
+           <double>100.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.100000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_14">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization.</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_predict_clip_thresh_max">
+          <property name="toolTip">
+           <string>Clip threshold (lower / upper) for intensity normalization.</string>
+          </property>
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="maximum">
+           <double>100.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>99.900000000000006</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_predict">
         <property name="toolTip">
-         <string>Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.</string>
+         <string>execute sarcomere prediction based on the given network</string>
         </property>
         <property name="text">
-         <string>Normalization Mode</string>
+         <string>Detect sarcomeres</string>
         </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="cb_predict_normalization_mode">
-        <property name="toolTip">
-         <string>Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack). Default is 'all'.</string>
-        </property>
-        <item>
-         <property name="text">
-          <string>all</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>single</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>first</string>
-         </property>
-        </item>
        </widget>
       </item>
      </layout>
@@ -936,12 +902,15 @@
        </widget>
       </item>
       <item row="5" column="1">
-       <widget class="QSpinBox" name="sb_domains_dilation_radius">
+       <widget class="QDoubleSpinBox" name="dsb_domains_dilation_radius">
         <property name="toolTip">
          <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
         </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
         <property name="maximum">
-         <number>99999999</number>
+         <double>999999999.000000000000000</double>
         </property>
        </widget>
       </item>

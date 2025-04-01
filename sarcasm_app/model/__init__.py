@@ -136,7 +136,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.domain.analysis.leiden_resolution').set_value(0.06)
         self.__parameters.get_parameter(name='structure.domain.analysis.random_seed').set_value(42)
         self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(20.0)
-        self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(3)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(3.0)
         # endregion
 
         # region loi parameters
