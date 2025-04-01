@@ -325,10 +325,10 @@ class Export:
         if missing_meta_keys:
             print('Missing metadata keys: ', missing_meta_keys)
         dict_metadata_select = {key: sarc_obj.metadata.get(key, np.nan) for key in meta_keys}
-        missing_structure_keys = [key for key in structure_keys if key not in sarc_obj.structure.data]
+        missing_structure_keys = [key for key in structure_keys if key not in sarc_obj.data]
         if missing_structure_keys:
             print('Missing structure keys: ', missing_structure_keys)
-        dict_structure_select = {key: sarc_obj.structure.data.get(key, np.nan) for key in structure_keys}
+        dict_structure_select = {key: sarc_obj.data.get(key, np.nan) for key in structure_keys}
         dict_ = {**dict_metadata_select, **dict_structure_select}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
