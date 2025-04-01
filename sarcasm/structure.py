@@ -313,8 +313,8 @@ class Structure(SarcAsM):
             self.store_structure_data()
 
     def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
-                        min_length: float = 0.5, end_radius: float = 2, theta_phi_min: float = 0.4, a_min: float = 0.3,
-                        d_max: float = 4.0, d_min: float = 0.0,
+                        min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
+                        a_min: float = 0.3, d_max: float = 4.0, d_min: float = 0.0,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
@@ -328,8 +328,8 @@ class Structure(SarcAsM):
             Threshold for binarizing z-bands prior to labeling (0 - 1). Defaults to 0.1.
         min_length : float, optional
             Minimal length of z-bands; smaller z-bands are removed (in µm). Defaults to 0.5.
-        end_radius : float, optional
-            Radius around z-band ends to quantify orientation of ends (in µm). Defaults to 0.75.
+        median_filter_radius : float, optional
+            Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.
         theta_phi_min : float, optional
             Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
             Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.
@@ -348,10 +348,12 @@ class Structure(SarcAsM):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
             zbands = tifffile.imread(self.file_zbands)
+            orientation_field = tifffile.imread(self.file_orientation)
             images = self.read_imgs()
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
             zbands = tifffile.imread(self.file_zbands, key=frames)
+            orientation_field = tifffile.imread(self.file_orientation)[frames]
             images = self.read_imgs(frames=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
@@ -363,6 +365,8 @@ class Structure(SarcAsM):
         if len(zbands.shape) == 2:
             zbands = np.expand_dims(zbands, 0)
             images = np.expand_dims(images, 0)
+        if len(orientation_field.shape) == 3:
+            orientation_field = np.expand_dims(orientation_field, 0)
         n_imgs = len(zbands)
 
         # create empty lists
@@ -387,16 +391,16 @@ class Structure(SarcAsM):
 
         # iterate images
         print('\nStarting Z-band analysis...')
-        for i, (frame_i, zbands_i, image_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, zbands, images), total=n_imgs)):
+        for i, (frame_i, zbands_i, image_i, orientation_field_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, zbands, images, orientation_field), total=n_imgs)):
 
             # segment z-bands
             labels_i, labels_skel_i = self.segment_z_bands(zbands_i)
 
             # analyze z-band features
-            z_band_features = self._analyze_z_bands(zbands_i, labels_i, labels_skel_i, image_i,
+            z_band_features = self._analyze_z_bands(zbands_i, labels_i, labels_skel_i, image_i, orientation_field_i,
                                                     pixelsize=self.metadata['pixelsize'], threshold=threshold,
-                                                    min_length=min_length, end_radius=end_radius,
+                                                    min_length=min_length, median_filter_radius=median_filter_radius,
                                                     a_min=a_min, theta_phi_min=theta_phi_min,
                                                     d_max=d_max, d_min=d_min)
 
@@ -467,14 +471,14 @@ class Structure(SarcAsM):
                        'z_lat_alignment_groups_mean': z_lat_alignment_groups_mean,
                        'z_lat_alignment_groups_std': z_lat_alignment_groups_std,
                        'params.analyze_z_bands.frames': list_frames, 'params.analyze_z_bands.threshold': threshold,
-                       'params.analyze_z_bands.min_length': min_length, 'params.analyze_z_bands.end_radius': end_radius,
+                       'params.analyze_z_bands.min_length': min_length, 'params.analyze_z_bands.median_filter_radius': median_filter_radius,
                        'params.analyze_z_bands.theta_phi_min': theta_phi_min, 'params.analyze_z_bands.d_max': d_max,
                        'params.analyze_z_bands.d_min': d_min}
         self.data.update(z_band_data)
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', radius: float = 0.25,
+    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', median_filter_radius: float = 0.25,
                                   linewidth: float = 0.2, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -486,8 +490,8 @@ class Structure(SarcAsM):
         frames : {'all', int, list, np.ndarray}, optional
             frames for sarcomere vector analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
-        radius : float, optional
-            Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).
+        median_filter_radius : float, optional
+            Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
         linewidth : float, optional
             Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).
         interp_factor: int, optional
@@ -563,7 +567,7 @@ class Structure(SarcAsM):
                 sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
                                                                               orientation_field_i,
                                                                               pixelsize=pixelsize,
-                                                                              radius=radius,
+                                                                              median_filter_radius=median_filter_radius,
                                                                               slen_lims=slen_lims,
                                                                               interp_factor=interp_factor,
                                                                               linewidth=linewidth)
@@ -597,7 +601,7 @@ class Structure(SarcAsM):
 
         vectors_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
                         'params.analyze_sarcomere_vectors.threshold_sarcomere_mask': threshold_sarcomere_mask,
-                        'params.analyze_sarcomere_vectors.radius': radius,
+                        'params.analyze_sarcomere_vectors.median_filter_radius': median_filter_radius,
                         'params.analyze_sarcomere_vectors.slen_lims': slen_lims,
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
                         'params.analyze_sarcomere_vectors.linewidth': linewidth, 'pos_vectors_px': pos_vectors_px,
@@ -676,7 +680,6 @@ class Structure(SarcAsM):
         nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
-        frechet_straightness_mean, frechet_straightness_std = (nan_arrays() for _ in range(2))
         bending_energy_mean, bending_energy_std = (nan_arrays() for _ in range(2))
         myof_lines, lengths, straightness, frechet_straightness, bending_energy = (none_lists() for _ in range(5))
 
@@ -1027,7 +1030,7 @@ class Structure(SarcAsM):
         if self.auto_save:
             self.store_structure_data()
 
-    def _fit_straight_line(self, add_length=2, n_lois=None):
+    def _fit_straight_line(self, add_length=1, n_lois=None):
         """Fit linear lines to cluster points
 
         Parameters
@@ -1346,8 +1349,10 @@ class Structure(SarcAsM):
         return labels, labels_skel
 
     @staticmethod
-    def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray, image_raw: np.ndarray,
-                         pixelsize: float, min_length: float = 1.0, threshold: float = 0.1, end_radius: float = 0.75,
+    def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray,
+                         image_raw: np.ndarray, orientation_field: np.ndarray,
+                         pixelsize: float, min_length: float = 1.0, threshold: float = 0.1,
+                         median_filter_radius: float = 0.25,
                          a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
                          d_min: float = 0.25) -> Tuple:
         """
@@ -1365,14 +1370,16 @@ class Structure(SarcAsM):
             The skeletonized labels of z-bands.
         image_raw : np.ndarray
             The raw image.
+        orientation_field : np.ndarray
+            Sarcomere orientation field.
         pixelsize : float
             The size of pixels in the image.
         min_length : float, optional
             The minimum length threshold for z-bands. Default is 1.0.
         threshold : float, optional
             The threshold value for intensity. Default is 0.1.
-        end_radius : float, optional
-            The radius of z-band ends. Default is 0.75.
+        median_filter_radius : float, optional
+            Radius of kernel to smooth orientation field. Default is 0.2 µm.
         a_min : float, optional
             The minimum value for alignment. Default is 0.25. Links with smaller alignment are set to np.nan.
         theta_phi_min : float, optional
@@ -1405,10 +1412,15 @@ class Structure(SarcAsM):
         labels, forward_map, inverse_map = segmentation.relabel_sequential(labels)
         labels_list = labels_list[labels_list != 0]
 
+        # sarcomere orientation map
+        smooth_radius_px = int(median_filter_radius / pixelsize)
+        sarcomere_orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True,
+                                                                radius=smooth_radius_px)
+
         # analyze z-band labels
         props = regionprops_table(labels, intensity_image=image_raw, properties=['label', 'area', 'convex_area',
                                                                                  'mean_intensity', 'orientation',
-                                                                                 'image', 'bbox'])
+                                                                                 'image', 'bbox', 'centroid'])
         # z-band length
         length = length[length >= min_length]
 
@@ -1436,10 +1448,10 @@ class Structure(SarcAsM):
             # get two ends of each z-band
             z_ends = np.zeros((n_z, 2, 2)) * np.nan  # (z-band idx, upper/lower end, x/y)
             z_orientation = np.zeros((n_z, 2)) * np.nan  # (z-band idx, upper/lower)
-            end_radius_px = int(round(end_radius / pixelsize, 0))
+            pad_width = int(round(1 / pixelsize, 0))
 
             for i, zbands_i in enumerate(props['image']):
-                zbands_i = np.pad(zbands_i, (end_radius_px, end_radius_px))
+                zbands_i = np.pad(zbands_i, (pad_width, pad_width))
 
                 # skeletonize
                 skel_i = skeletonize(zbands_i, method='lee')
@@ -1450,38 +1462,39 @@ class Structure(SarcAsM):
 
                 z_ends_i = ndimage.generic_filter(skel_i, line_end_filter, (3, 3))
                 z_ends_i = np.asarray(np.where(z_ends_i == 1))
+                z_ends_i[0] += props['bbox-0'][i] - pad_width
+                z_ends_i[1] += props['bbox-1'][i] - pad_width
+                centroid_i = (props['centroid-0'][i], props['centroid-1'][i])
+
                 if len(z_ends_i.T) == 2:
                     if z_ends_i[1, 0] > z_ends_i[1, 1]:
                         z_ends_i = z_ends_i[:, ::-1]
-                    _z_ends_i = z_ends_i.copy()
-                    z_ends_i[0] += props['bbox-0'][i] - end_radius_px
-                    z_ends_i[1] += props['bbox-1'][i] - end_radius_px
+                    # Get orientations from map and add π/2
+                    orientation_ends_i = np.asarray([sarcomere_orientation[z_ends_i[0][0], z_ends_i[1][0]] + np.pi / 2,
+                                                     sarcomere_orientation[z_ends_i[0][1], z_ends_i[1][1]] + np.pi / 2])
+
+                    # Calculate local directions from endpoints to their own positions in skeleton
+                    _orient_1 = np.arctan2(z_ends_i[0, 0] - centroid_i[0], z_ends_i[1, 0] - centroid_i[1])
+                    _orient_2 = np.arctan2(z_ends_i[0, 1] - centroid_i[0], z_ends_i[1, 1] - centroid_i[1])
+
+                    # Better angle difference calculation (minimum angle in range [0, π])
+                    def angle_diff(a1, a2):
+                        return np.abs((a1 - a2 + np.pi) % (2 * np.pi) - np.pi)
+
+                    # Apply π shift if angles differ by more than π/2
+                    if angle_diff(orientation_ends_i[0], _orient_1) > np.pi / 2:
+                        orientation_ends_i[0] = orientation_ends_i[0] + np.pi
+                    if angle_diff(orientation_ends_i[1], _orient_2) > np.pi / 2:
+                        orientation_ends_i[1] = orientation_ends_i[1] + np.pi
+
+                    orientation_ends_i = -orientation_ends_i + np.pi / 2
+
+                    # # Ensure angles stay in range [-π, π]
+                    orientation_ends_i[0] = (orientation_ends_i[0] + np.pi) % (2 * np.pi) - np.pi
+                    orientation_ends_i[1] = (orientation_ends_i[1] + np.pi) % (2 * np.pi) - np.pi
+
+                    z_orientation[i] = orientation_ends_i
                     z_ends[i] = z_ends_i.T * pixelsize
-
-                    # orientation (pointing direction of line ends)
-                    # binary radial mask around ends to determine orientations of ends
-                    mask_i_1 = np.zeros_like(skel_i, dtype='uint8')
-                    mask_i_2 = np.zeros_like(skel_i, dtype='uint8')
-                    # end 1
-                    rr, cc = draw_disk((_z_ends_i[0, 0], _z_ends_i[1, 0]), end_radius_px)
-                    mask_i_1[rr, cc] = 1
-                    # end 2
-                    rr, cc = draw_disk((_z_ends_i[0, 1], _z_ends_i[1, 1]), end_radius_px)
-                    mask_i_2[rr, cc] = 2
-
-                    # get orientation of ends
-                    props_ends_i_1 = regionprops(mask_i_1 * skel_i)[0]
-                    props_ends_i_2 = regionprops(mask_i_2 * skel_i)[0]
-                    z_orientation_i = [props_ends_i_1.orientation, props_ends_i_2.orientation]
-                    y_1, x_1 = props_ends_i_1.centroid
-                    y_2, x_2 = props_ends_i_2.centroid
-                    _orient_1 = np.arctan2(_z_ends_i[1, 0] - x_1, _z_ends_i[0, 0] - y_1)
-                    _orient_2 = np.arctan2(_z_ends_i[1, 1] - x_2, _z_ends_i[0, 1] - y_2)
-                    if np.abs(z_orientation_i[0] - _orient_1) > np.pi / 2:
-                        z_orientation_i[0] += np.pi
-                    if np.abs(z_orientation_i[1] - _orient_2) > np.pi / 2:
-                        z_orientation_i[1] += np.pi
-                    z_orientation[i] = z_orientation_i
 
             # lateral alignment index and distance of z-bands
             def lateral_alignment(pos_i, pos_j, theta_i, theta_j):
@@ -1700,7 +1713,7 @@ class Structure(SarcAsM):
             midlines: np.ndarray,
             orientation_field: np.ndarray,
             pixelsize: float,
-            radius: float = 0.25,
+            median_filter_radius: float = 0.25,
             slen_lims: Tuple[float, float] = (1, 3),
             interp_factor: int = 4,
             linewidth: float = 0.3,
@@ -1719,8 +1732,8 @@ class Structure(SarcAsM):
             2D array representing the orientation field.
         pixelsize : float
             Size of a pixel in micrometers.
-        radius : float, optional
-            Readout radius of orientation field around midline points in micrometers (default is 0.25).
+        median_filter_radius : float, optional
+            Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
         slen_lims : tuple of float, optional
             Sarcomere size limits in micrometers (default is (1, 3)).
         interp_factor : int, optional
@@ -1739,14 +1752,14 @@ class Structure(SarcAsM):
         sarcomere_mask : np.ndarray
             Mask indicating the presence of sarcomeres.
         """
-        radius_pixels = max(int(round(radius / pixelsize, 0)), 1)
+        radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
         linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
         # skeletonize midlines
         midlines_skel = skeletonize(midlines > 0.5, method='lee')
 
         # calculate and preprocess orientation map
-        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
+        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, median_filter_radius=radius_pixels)
 
         # label midlines
         midline_labels, n_midlines = ndimage.label(midlines_skel,
