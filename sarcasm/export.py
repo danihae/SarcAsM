@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm as tqdm
 
-from .structure import Structure
-from .motion import Motion
+from sarcasm.structure import Structure
+from sarcasm.motion import Motion
 
 
 class MultiStructureAnalysis:

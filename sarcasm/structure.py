@@ -28,15 +28,15 @@ from scipy.optimize import curve_fit, linear_sum_assignment
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import directed_hausdorff, squareform, pdist
 from skimage import segmentation, morphology, measure
-from skimage.draw import disk as draw_disk, line
-from skimage.measure import label, regionprops_table, regionprops
+from skimage.draw import line
+from skimage.measure import label, regionprops_table
 from skimage.morphology import skeletonize, disk, binary_dilation
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
 
-from .core import SarcAsM
-from .ioutils import IOUtils
-from .utils import Utils
+from sarcasm.core import SarcAsM
+from sarcasm.ioutils import IOUtils
+from sarcasm.utils import Utils
 
 
 class Structure(SarcAsM):
@@ -177,7 +177,7 @@ class Structure(SarcAsM):
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
-        Predict sarcomeres (Z-bands, midlines, distance, orientation) with U-Net.
+        Predict sarcomeres (Z-bands, mbands, distance, orientation) with U-Net.
 
         Parameters
         ----------
@@ -518,12 +518,12 @@ class Structure(SarcAsM):
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata['frames']))
             z_bands = tifffile.imread(self.file_zbands)
-            midlines = tifffile.imread(self.file_mbands) > 0.5
+            mbands = tifffile.imread(self.file_mbands) > 0.5
             orientation_field = tifffile.imread(self.file_orientation)
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
             z_bands = tifffile.imread(self.file_zbands, key=frames)
-            midlines = tifffile.imread(self.file_mbands, key=frames)
+            mbands = tifffile.imread(self.file_mbands, key=frames)
             orientation_field = tifffile.imread(self.file_orientation)[frames]
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask, key=frames)
             if np.issubdtype(type(frames), np.integer):
@@ -534,8 +534,8 @@ class Structure(SarcAsM):
             raise ValueError('frames argument not valid')
         if len(z_bands.shape) == 2:
             z_bands = np.expand_dims(z_bands, axis=0)
-        if len(midlines.shape) == 2:
-            midlines = np.expand_dims(midlines, axis=0)
+        if len(mbands.shape) == 2:
+            mbands = np.expand_dims(mbands, axis=0)
         if len(sarcomere_mask.shape) == 2:
             sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
         if len(orientation_field.shape) == 3:
@@ -557,14 +557,14 @@ class Structure(SarcAsM):
 
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
-        for i, (frame_i, zbands_i, midlines_i, orientation_field_i, sarcomere_mask_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, z_bands, midlines, orientation_field, sarcomere_mask),
+        for i, (frame_i, zbands_i, mbands_i, orientation_field_i, sarcomere_mask_i) in enumerate(
+                progress_notifier.iterator(zip(list_frames, z_bands, mbands, orientation_field, sarcomere_mask),
                                            total=n_frames)):
 
             (
                 pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
                 sarcomere_length_vectors_i,
-                sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, midlines_i,
+                sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, mbands_i,
                                                                               orientation_field_i,
                                                                               pixelsize=pixelsize,
                                                                               median_filter_radius=median_filter_radius,
@@ -1710,7 +1710,7 @@ class Structure(SarcAsM):
     @staticmethod
     def get_sarcomere_vectors(
             zbands: np.ndarray,
-            midlines: np.ndarray,
+            mbands: np.ndarray,
             orientation_field: np.ndarray,
             pixelsize: float,
             median_filter_radius: float = 0.25,
@@ -1726,8 +1726,8 @@ class Structure(SarcAsM):
         ----------
         zbands : np.ndarray
             2D array representing the semantic segmentation map of Z-bands.
-        midlines : np.ndarray
-            2D array representing the semantic segmentation map of midlines.
+        mbands : np.ndarray
+            2D array representing the semantic segmentation map of mbands.
         orientation_field : np.ndarray
             2D array representing the orientation field.
         pixelsize : float
@@ -1755,25 +1755,25 @@ class Structure(SarcAsM):
         radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
         linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
-        # skeletonize midlines
-        midlines_skel = skeletonize(midlines > 0.5, method='lee')
+        # skeletonize mbands
+        mbands_skel = skeletonize(mbands > 0.5, method='lee')
 
         # calculate and preprocess orientation map
-        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, median_filter_radius=radius_pixels)
+        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
 
-        # label midlines
-        midline_labels, n_midlines = ndimage.label(midlines_skel,
+        # label mbands
+        midline_labels, n_mbands = ndimage.label(mbands_skel,
                                                    ndimage.generate_binary_structure(2, 2))
 
-        # iterate midlines and create an additional list with labels and midline length (approx. by max. Feret diameter)
+        # iterate mbands and create an additional list with labels and midline length (approx. by max. Feret diameter)
         props = measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
-        list_labels, coords_midlines, length_midlines = (props['label'], props['coords'],
+        list_labels, coords_mbands, length_mbands = (props['label'], props['coords'],
                                                          props['feret_diameter_max'] * pixelsize)
 
         pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
-        if n_midlines > 0:
+        if n_mbands > 0:
             for i, (label_i, coords_i, length_midline_i) in enumerate(
-                    zip(list_labels, coords_midlines, length_midlines)):
+                    zip(list_labels, coords_mbands, length_mbands)):
                 pos_vectors_px.append(coords_i)
                 midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
                 midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
@@ -1840,7 +1840,7 @@ class Structure(SarcAsM):
         """
         This function clusters sarcomeres into domains based on their spatial and orientational properties
         using the Leiden method for community detection in igraph. It considers sarcomere lengths, orientations,
-        and positions along midlines to form networks of connected sarcomeres. Domains are then identified
+        and positions along mbands to form networks of connected sarcomeres. Domains are then identified
         as communities within these networks, with additional criteria for minimum domain area
         and connectivity thresholds. Finally, this function quantifies the mean and std of sarcomere lengths,
         and the orientational order parameter and mean orientation of each domain.
@@ -2092,7 +2092,7 @@ class Structure(SarcAsM):
         sarcomere_orientation_vectors_t : list
             Sarcomere orientation angle at midline points, in radians
         midline_length_vectors_t : list
-            Length of sarcomere midlines of midline points
+            Length of sarcomere mbands of midline points
         pixelsize : float
             Pixel size in µm
         ratio_seeds : float
@@ -2526,3 +2526,27 @@ class Structure(SarcAsM):
             myof_map = Utils.nanmedian_filter_numba(myof_map, window_size)
 
         return myof_map
+
+
+
+if __name__ == "__main__":
+    print('Testing Structure class')
+
+    test_file = '../test_data/antibody_staining_2D_hiPSC_CM/stained hiPSC d60 a-actinin 488 63x 5.tif'
+
+    sarc = Structure(test_file, pixelsize=0.114)
+
+    # detect sarcomeres
+    sarc.detect_sarcomeres()
+
+    # analyze Z-bands
+    sarc.analyze_z_bands()
+
+    # analyze sarcomere vectors
+    sarc.analyze_sarcomere_vectors()
+
+    # analyze myofibrils
+    sarc.analyze_myofibrils()
+
+    # analyze sarcomere domains
+    sarc.analyze_sarcomere_domains()

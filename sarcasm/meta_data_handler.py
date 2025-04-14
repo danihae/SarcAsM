@@ -9,8 +9,8 @@ import PIL.Image
 import numpy as np
 from tifffile import TiffFile, imread
 
-from .exceptions import MetaDataError
-from .ioutils import IOUtils
+from sarcasm.exceptions import MetaDataError
+from sarcasm.ioutils import IOUtils
 
 
 class MetaDataHandler:

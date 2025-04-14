@@ -14,11 +14,11 @@ from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
 from tifffile import tifffile
 
-from .feature_dict import structure_feature_dict
-from .motion import Motion
-from .plot_utils import PlotUtils
-from .structure import Structure
-from .utils import Utils
+from sarcasm.feature_dict import structure_feature_dict
+from sarcasm.motion import Motion
+from sarcasm.plot_utils import PlotUtils
+from sarcasm.structure import Structure
+from sarcasm.utils import Utils
 
 
 class Plots:

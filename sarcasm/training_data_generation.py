@@ -1,5 +1,5 @@
 import os.path
-from typing import Tuple, List, Union
+from typing import Union
 
 import numpy as np
 import skimage
@@ -8,15 +8,13 @@ import torch
 import torch.nn.functional as F
 from bio_image_unet.unet import Predict
 from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.colors import LinearSegmentedColormap
 from scipy import ndimage
 from scipy.interpolate import griddata
 from scipy.ndimage import label
 from skimage.draw import line
-from skimage.morphology import skeletonize, disk
+from skimage.morphology import skeletonize
 
-from sarcasm import PlotUtils, SarcAsM, Motion, Structure, Utils
+from sarcasm import PlotUtils, Structure, Utils
 
 
 class TrainingDataGenerator:
@@ -66,7 +64,7 @@ class TrainingDataGenerator:
         """Include dynamic attributes in autocompletion"""
         return super().__dir__() + list(self.output_dirs.keys())
 
-    def predict_zbands(self, model_path: str, network: str = 'Unet_v0', patch_size: Tuple[int, int] = (1024, 1024)):
+    def predict_zbands(self, model_path: str, network: str = 'Unet_v0', patch_size: tuple[int, int] = (1024, 1024)):
         """
         Predict sarcomere Z-bands using pre-trained U-Net model. This is optional, alternatively manually annotated
         Z-band masks in 'zbands' directory can be used.
@@ -84,8 +82,8 @@ class TrainingDataGenerator:
                 network=network, resize_dim=patch_size)
 
     def wavelet_analysis(self, kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
-                         major: float = 1.0, len_lims: Tuple[float, float] = (1.45, 2.7),
-                         len_step: float = 0.05, orient_lims: Tuple[float, float] = (-90, 90),
+                         major: float = 1.0, len_lims: tuple[float, float] = (1.45, 2.7),
+                         len_step: float = 0.05, orient_lims: tuple[float, float] = (-90, 90),
                          orient_step: float = 10, add_negative_center_kernel: bool = False,
                          patch_size: int = 1024, score_threshold: float = 0.25,
                          abs_threshold: bool = True, gating: bool = True, load_mbands: bool = False,
@@ -398,7 +396,7 @@ class TrainingDataGenerator:
 
     @staticmethod
     def binary_kernel(d: float, sigma: float, width: float, orient: float, size: float,
-                      pixelsize: float, mode: str = 'both') -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+                      pixelsize: float, mode: str = 'both') -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
         """
         Returns binary kernel pair for AND-gated double wavelet analysis.
 
@@ -622,9 +620,9 @@ class TrainingDataGenerator:
 
     @staticmethod
     def create_wavelet_bank(pixelsize: float, kernel: str = 'half_gaussian', size: float = 3, minor: float = 0.15,
-                            major: float = 0.5, len_lims: Tuple[float, float] = (1.3, 2.5), len_step: float = 0.025,
-                            orient_lims: Tuple[float, float] = (-90, 90), orient_step: float = 5,
-                            add_negative_center_kernel: bool = False) -> List[np.ndarray]:
+                            major: float = 0.5, len_lims: tuple[float, float] = (1.3, 2.5), len_step: float = 0.025,
+                            orient_lims: tuple[float, float] = (-90, 90), orient_step: float = 5,
+                            add_negative_center_kernel: bool = False) -> list[np.ndarray]:
         """
         Returns bank of double wavelets.
     
@@ -788,7 +786,7 @@ class TrainingDataGenerator:
         return output.view(bank.shape[0], bank.shape[1], image.shape[0], image.shape[1])
 
     @staticmethod
-    def argmax_wavelets(result: torch.Tensor, len_range: torch.Tensor, orient_range: torch.Tensor) -> Tuple[
+    def argmax_wavelets(result: torch.Tensor, len_range: torch.Tensor, orient_range: torch.Tensor) -> tuple[
         np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute the argmax of wavelet convolution results to extract length, orientation, and maximum score map.
@@ -835,7 +833,7 @@ class TrainingDataGenerator:
     @staticmethod
     def get_sarcomere_vectors_wavelet(length: np.ndarray, orientation: np.ndarray, max_score: np.ndarray,
                                       len_range: np.ndarray, mbands: Union[np.ndarray, None] = None,
-                                      score_threshold: float = 0.2, abs_threshold: bool = True) -> Tuple:
+                                      score_threshold: float = 0.2, abs_threshold: bool = True) -> tuple:
         """
         Extracts vector positions on sarcomere mbands and calculates sarcomere length and orientation.
 

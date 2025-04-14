@@ -7,7 +7,7 @@ from matplotlib.axes import Axes
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator, FuncFormatter
 from scipy.stats import gaussian_kde
 
-from . import SarcAsM, Motion
+from sarcasm import SarcAsM, Motion
 
 
 class PlotUtils:

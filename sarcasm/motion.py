@@ -15,9 +15,9 @@ from skimage.segmentation import clear_border
 from trackpy import link_iter
 
 from contraction_net.prediction import predict_contractions
-from .core import SarcAsM
-from .ioutils import IOUtils
-from .utils import Utils
+from sarcasm.core import SarcAsM
+from sarcasm.ioutils import IOUtils
+from sarcasm.utils import Utils
 
 
 class Motion(SarcAsM):

@@ -7,9 +7,9 @@ import numpy as np
 import tifffile
 import torch
 
-from ._version import __version__
-from .meta_data_handler import MetaDataHandler
-from .utils import Utils
+from sarcasm._version import __version__
+from sarcasm.meta_data_handler import MetaDataHandler
+from sarcasm.utils import Utils
 
 
 class SarcAsM:
@@ -107,7 +107,7 @@ class SarcAsM:
         # File paths
         self.file_zbands = os.path.join(self.base_dir, "zbands.tif")
         self.file_zbands_fast_movie = os.path.join(self.base_dir, "zbands_fast_movie.tif")
-        self.file_mbands = os.path.join(self.base_dir, "midlines.tif")
+        self.file_mbands = os.path.join(self.base_dir, "mbands.tif")
         self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
         self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
         self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
