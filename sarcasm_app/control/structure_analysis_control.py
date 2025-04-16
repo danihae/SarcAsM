@@ -65,7 +65,8 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
         cell: Structure = TypeUtils.unbox(model.cell)
-        size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter('structure.predict_fast_movie.n_frames'),
+        size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter(
+                                                 'structure.predict_fast_movie.n_frames').get_value(),
                                              model.parameters.get_parameter(
                                                  'structure.predict_fast_movie.size_width').get_value(),
                                              model.parameters.get_parameter(
@@ -130,7 +131,7 @@ class StructureAnalysisControl:
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=message_finished,
-                                                   finished_action=self.__predict_z_bands_finished,
+                                                   finished_action=self.__detect_sarcomeres_finished,
                                                    finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
@@ -146,7 +147,7 @@ class StructureAnalysisControl:
                                                    call_lambda=self.__predict_call_fast_movie,
                                                    start_message='Start prediction of sarcomere z-bands fast movies',
                                                    finished_message=message_finished,
-                                                   finished_action=self.__predict_z_bands_finished,
+                                                   finished_action=self.__detect_z_bands_fast_movie_finished,
                                                    finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
@@ -443,11 +444,14 @@ class StructureAnalysisControl:
 
         pass
 
-    def __predict_z_bands_finished(self):
+    def __detect_sarcomeres_finished(self):
         self.__main_control.init_z_band_stack()
         self.__main_control.init_m_band_stack()
         self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
+
+    def __detect_z_bands_fast_movie_finished(self):
+        self.__main_control.init_z_band_stack(fastmovie=True)
 
     def __z_band_analysis_finished(self):
         self.__main_control.init_z_lateral_connections()

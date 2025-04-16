@@ -188,12 +188,15 @@ class ApplicationControl:
         file_name += "_loi" + self.model.file_extension
         return file_name, scan_line
 
-    def init_z_band_stack(self, visible=True):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):
+    def init_z_band_stack(self, visible=True, fastmovie=False):
+        if fastmovie and not os.path.exists(self.model.cell.file_zbands_fast_movie):
+            fastmovie = False
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands if not fastmovie
+                                                          else self.model.cell.file_zbands_fast_movie):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
-            tmp = tifffile.imread(self.model.cell.file_zbands)
+            tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.1] = np.nan
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
                                   visible=visible)
@@ -302,7 +305,7 @@ class ApplicationControl:
             pos_vectors = []
             for frame in range(self.model.cell.metadata['frames']):
                 if 'params.analyze_sarcomere_vectors.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_sarcomere_vectors.frames']:
+                        self.model.cell.data['params.analyze_sarcomere_vectors.frames'] and self.model.cell.data['pos_vectors'][frame] is not None:
                     pos_vectors_frame = self.model.cell.data['pos_vectors'][frame] / self.model.cell.metadata[
                                                   'pixelsize']
                     if len(pos_vectors_frame) > 0:

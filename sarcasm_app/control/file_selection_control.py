@@ -143,14 +143,15 @@ class FileSelectionControl:
         self.__main_control.viewer.add_image(image, name='ImageData', contrast_limits=[lower_perc, upper_perc])
 
         self.__main_control.model.init_cell(file)
-        self.__main_control.init_z_band_stack()
-        self.__main_control.init_m_band_stack()
+        self.__main_control.init_z_band_stack(fastmovie=True)
+        self.__main_control.init_m_band_stack(visible=False)
         self.__main_control.init_z_lateral_connections(visible=False)
         self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
         self.__main_control.init_sarcomere_vector_stack()
         self.__main_control.init_myofibril_lines_stack(visible=False)
         self.__main_control.init_sarcomere_domain_stack(visible=False)
+        self.__main_control.viewer.dims.set_current_step(0, 0)
 
         self.init_line_layer()  # initializes the layer for drawing loi's
 
