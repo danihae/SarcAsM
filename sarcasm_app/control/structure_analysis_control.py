@@ -218,7 +218,7 @@ class StructureAnalysisControl:
                     m.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
                     m.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
                 ),
-                radius=m.parameters.get_parameter('structure.vectors.radius').get_value(),
+                median_filter_radius=m.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=m.parameters.get_parameter('structure.vectors.line_width').get_value(),
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
                 progress_notifier=progress_notifier
@@ -445,6 +445,7 @@ class StructureAnalysisControl:
 
     def __predict_z_bands_finished(self):
         self.__main_control.init_z_band_stack()
+        self.__main_control.init_m_band_stack()
         self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
 

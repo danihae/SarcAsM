@@ -188,25 +188,36 @@ class ApplicationControl:
         file_name += "_loi" + self.model.file_extension
         return file_name, scan_line
 
-    def init_z_band_stack(self):
+    def init_z_band_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands):
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands)
-            tmp[tmp < 0.05] = np.nan
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent')
+            tmp[tmp < 0.1] = np.nan
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
+                                  visible=visible)
 
-    def init_cell_mask_stack(self):
+    def init_m_band_stack(self, visible=True):
+        if self.model.cell is not None and os.path.exists(self.model.cell.file_mbands):
+            if self.viewer.layers.__contains__('MbandMask'):
+                layer = self.viewer.layers.__getitem__('MbandMask')
+                self.viewer.layers.remove(layer)
+            tmp = tifffile.imread(self.model.cell.file_mbands)
+            tmp[tmp < 0.1] = np.nan
+            self.viewer.add_image(tmp, name='MbandMask', opacity=0.8, colormap='cool', blending='translucent',
+                                  visible=visible)
+
+    def init_cell_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
-            self.viewer.add_image(tmp, name='CellMask', opacity=0.2)
+            self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible)
 
-    def init_z_lateral_connections(self):
+    def init_z_lateral_connections(self, visible=True):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('ZbandLatGroups'):
                 layer = self.viewer.layers.__getitem__('ZbandLatGroups')
@@ -255,12 +266,12 @@ class ApplicationControl:
                                             [frame, z_ends_frame[j, l, 0], z_ends_frame[j, l, 1]]])
 
             labels_groups = np.asarray(labels_groups)
-            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5)
+            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5, visible=visible)
             self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
-                              edge_width=1, opacity=0.15)
-            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3)
+                              edge_width=1, opacity=0.15, visible=visible)
+            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3, visible=visible)
 
-    def init_myofibril_lines_stack(self):
+    def init_myofibril_lines_stack(self, visible=True):
         if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('MyofibrilLines'):
                 layer = self.viewer.layers.__getitem__('MyofibrilLines')
@@ -274,9 +285,9 @@ class ApplicationControl:
                 for i, (lines_i, pos_vectors_i) in enumerate(zip(myof_lines, pos_vectors))]
             _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
             self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_vector_pos, shape_type='path',
-                                   edge_color='red', edge_width=2, opacity=0.5)
+                                   edge_color='red', edge_width=2, opacity=0.5, visible=visible)
 
-    def init_sarcomere_vector_stack(self):
+    def init_sarcomere_vector_stack(self, visible=True):
         if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('SarcomereVectors'):
                 layer = self.viewer.layers.__getitem__('SarcomereVectors')
@@ -312,10 +323,11 @@ class ApplicationControl:
                             vectors.append([start_point, vector_1])
                             vectors.append([start_point, vector_2])
             self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
-                                    vector_style='arrow')
-            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2)
+                                    vector_style='arrow', visible=visible)
+            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2,
+                                   visible=visible)
 
-    def init_sarcomere_mask_stack(self):
+    def init_sarcomere_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
             if 'SarcomereMask' in self.viewer.layers:
                 layer = self.viewer.layers['SarcomereMask']
@@ -336,9 +348,9 @@ class ApplicationControl:
                 rgba_image[..., 2] = 0  # Blue channel
                 rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
 
-            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.7)
+            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, visible=visible)
 
-    def init_sarcomere_domain_stack(self):
+    def init_sarcomere_domain_stack(self, visible=True):
         if self.model.cell is None or 'domains' not in self.model.cell.data:
             return
         if 'SarcomereDomains' in self.viewer.layers:
@@ -391,37 +403,7 @@ class ApplicationControl:
         with ThreadPoolExecutor(max_workers=min(8, len(frames_to_analyze))) as executor:
             for frame, mask in executor.map(process_frame_partial, frames_to_analyze):
                 _domain_masks[frame] = mask
-        self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
-
-    def __init_sarcomere_domain_stack(self):
-        if self.model.cell is not None and 'domains' in self.model.cell.data:
-            if self.viewer.layers.__contains__('SarcomereDomains'):
-                layer = self.viewer.layers.__getitem__('SarcomereDomains')
-                self.viewer.layers.remove(layer)
-
-            _domain_masks = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']),
-                                     dtype='uint16')
-
-            for frame in range(self.model.cell.metadata['frames']):
-                if 'params.analyze_sarcomere_domains.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_sarcomere_domains.frames']:
-
-                    domains = self.model.cell.data['domains'][frame]
-                    pos_vectors = self.model.cell.data['pos_vectors'][frame]
-                    sarcomere_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][frame]
-                    sarcomere_length_vectors = self.model.cell.data['sarcomere_length_vectors'][frame]
-                    area_min = self.model.cell.data['params.analyze_sarcomere_domains.area_min']
-                    dilation_radius = self.model.cell.data['params.analyze_sarcomere_domains.dilation_radius']
-                    domain_mask = self.model.cell._analyze_domains(domains, pos_vectors=pos_vectors,
-                                                            sarcomere_length_vectors=sarcomere_length_vectors,
-                                                            sarcomere_orientation_vectors=sarcomere_orientation_vectors,
-                                                            size=self.model.cell.metadata['size'],
-                                                            pixelsize=self.model.cell.metadata['pixelsize'],
-                                                            dilation_radius=dilation_radius, area_min=area_min)[0]
-
-                    _domain_masks[frame] = domain_mask
-
-            self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35)
+        self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35, visible=visible)
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):
