@@ -125,7 +125,7 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="0" colspan="2">
+      <item row="8" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_structure">
         <property name="toolTip">
          <string>Start batch processing structure</string>
@@ -135,7 +135,7 @@
         </property>
        </widget>
       </item>
-      <item row="8" column="0" colspan="2">
+      <item row="9" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_motion">
         <property name="toolTip">
          <string>Start batch processing motion</string>
@@ -190,6 +190,50 @@
         <property name="text">
          <string/>
         </property>
+       </widget>
+      </item>
+      <item row="7" column="0" colspan="2">
+       <widget class="QGroupBox" name="groupBox_2">
+        <property name="title">
+         <string>Structure</string>
+        </property>
+        <layout class="QFormLayout" name="formLayout_2">
+         <item row="0" column="0">
+          <widget class="QCheckBox" name="chk_skip_cellmask">
+           <property name="text">
+            <string>Skip Analyze Cellmask</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QCheckBox" name="chk_skip_zbands">
+           <property name="text">
+            <string>Skip Analyze Z-Bands</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QCheckBox" name="chk_skip_vectors">
+           <property name="text">
+            <string>Skip Analyze Vectors</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QCheckBox" name="chk_skip_myofibrils">
+           <property name="text">
+            <string>Skip Analyze Myofibrils</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QCheckBox" name="chk_skip_domains">
+           <property name="text">
+            <string>Skip Analyze Domains</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </item>
      </layout>

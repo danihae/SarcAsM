@@ -131,6 +131,7 @@ class ApplicationControl:
         # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
         # [10, 5, 15]
 
+
     def on_update_loi_list(self, line_start, line_end=None, line_thickness=None, drawn_by_user=True):
         # add handling for bad input
 

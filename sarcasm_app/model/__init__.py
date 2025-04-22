@@ -97,8 +97,8 @@ class ApplicationModel:
 
         self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(1024)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(1024)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(256)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(256)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.8)
 
@@ -107,17 +107,17 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
 
 
-        self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.1)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(1.0)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.end_radius').set_value(0.75)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').set_value(0.25)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.1)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(5.0)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.d_min').set_value(0.25)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.5)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(0.2)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.mean_filter_radius').set_value(0.2)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').set_value(0.4)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(4.0)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.d_min').set_value(0.00)
 
 
         self.__parameters.get_parameter(name='structure.vectors.radius').set_value(0.25)
-        self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.2)
         self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(4)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
@@ -136,7 +136,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.domain.analysis.leiden_resolution').set_value(0.06)
         self.__parameters.get_parameter(name='structure.domain.analysis.random_seed').set_value(42)
         self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(20.0)
-        self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(3.0)
+        self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(0.3)
         # endregion
 
         # region loi parameters
@@ -181,36 +181,33 @@ class ApplicationModel:
         # endregion
 
         # region motion parameters
-        self.__parameters.get_parameter(name='motion.detect_peaks.threshold').set_value(0.05)
-        self.__parameters.get_parameter(name='motion.detect_peaks.min_distance').set_value(1)
-        self.__parameters.get_parameter(name='motion.detect_peaks.width').set_value(7)
+        self.__parameters.get_parameter(name='motion.detect_peaks.threshold').set_value(0.2)
+        self.__parameters.get_parameter(name='motion.detect_peaks.min_distance').set_value(1.4)
+        self.__parameters.get_parameter(name='motion.detect_peaks.width').set_value(0.5)
 
-        self.__parameters.get_parameter(name='motion.track_z_bands.search_range').set_value(1.0)
+        self.__parameters.get_parameter(name='motion.track_z_bands.search_range').set_value(2.0)
         self.__parameters.get_parameter(name='motion.track_z_bands.memory').set_value(10)
-        self.__parameters.get_parameter(name='motion.track_z_bands.memory_interpolation').set_value(5)
+        self.__parameters.get_parameter(name='motion.track_z_bands.memory_interpolation').set_value(3)
 
-        self.__parameters.get_parameter(name='motion.systoles.weights').set_value('')  # weights is a network file
-        self.__parameters.get_parameter(name='motion.systoles.threshold').set_value(0.01)
+        self.__parameters.get_parameter(name='motion.systoles.weights').set_value('default')  # weights is a network file
+        self.__parameters.get_parameter(name='motion.systoles.threshold').set_value(0.03)
         self.__parameters.get_parameter(name='motion.systoles.slen_limits.lower').set_value(1.2)
         self.__parameters.get_parameter(name='motion.systoles.slen_limits.upper').set_value(3.0)
-        self.__parameters.get_parameter(name='motion.systoles.n_sarcomeres_min').set_value(8)
-        self.__parameters.get_parameter(name='motion.systoles.buffer_frames').set_value(10)
+        self.__parameters.get_parameter(name='motion.systoles.n_sarcomeres_min').set_value(4)
+        self.__parameters.get_parameter(name='motion.systoles.buffer_frames').set_value(3)
         self.__parameters.get_parameter(name='motion.systoles.contr_time_min').set_value(0.2)
-        self.__parameters.get_parameter(name='motion.systoles.merge_time_max').set_value(0.1)
+        self.__parameters.get_parameter(name='motion.systoles.merge_time_max').set_value(0.05)
 
-        self.__parameters.get_parameter(
-            name='motion.get_sarcomere_trajectories.filter_params_z_pos.window_length').set_value(13)
-        self.__parameters.get_parameter(
-            name='motion.get_sarcomere_trajectories.filter_params_z_pos.polyorder').set_value(7)
+
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_lower').set_value(1.2)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_upper').set_value(3.0)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.dilate_systoles').set_value(0.0)
         self.__parameters.get_parameter(
             name='motion.get_sarcomere_trajectories.filter_params_vel.window_length').set_value(13)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.filter_params_vel.polyorder').set_value(
-            1)
+            5)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower').set_value(1.5)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper').set_value(2.2)
+        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper').set_value(2.3)
         # endregion
 
         # region batch processing parameters
@@ -222,6 +219,11 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.root').set_value('D:\\Test\\SarcasmTestBatch')
         self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(True)
+        self.__parameters.get_parameter(name='batch.skip_cellmask').set_value(False)
+        self.__parameters.get_parameter(name='batch.skip_zbands').set_value(False)
+        self.__parameters.get_parameter(name='batch.skip_vectors').set_value(False)
+        self.__parameters.get_parameter(name='batch.skip_myofibrils').set_value(False)
+        self.__parameters.get_parameter(name='batch.skip_domains').set_value(False)
         # endregion
 
         pass
@@ -254,7 +256,7 @@ class ApplicationModel:
 
         self.__parameters.set_parameter(name='structure.z_band_analysis.threshold')
         self.__parameters.set_parameter(name='structure.z_band_analysis.min_length')
-        self.__parameters.set_parameter(name='structure.z_band_analysis.end_radius')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.mean_filter_radius')
         self.__parameters.set_parameter(name='structure.z_band_analysis.theta_phi_min')
         self.__parameters.set_parameter(name='structure.z_band_analysis.a_min')
         self.__parameters.set_parameter(name='structure.z_band_analysis.d_max')
@@ -329,8 +331,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='motion.systoles.contr_time_min')
         self.__parameters.set_parameter(name='motion.systoles.merge_time_max')
 
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.filter_params_z_pos.window_length')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.filter_params_z_pos.polyorder')
+
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_lower')
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_upper')
         self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.dilate_systoles')
@@ -347,4 +348,9 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.root')
         self.__parameters.set_parameter(name='batch.recalculate.for.motion')
+        self.__parameters.set_parameter(name='batch.skip_cellmask')
+        self.__parameters.set_parameter(name='batch.skip_zbands')
+        self.__parameters.set_parameter(name='batch.skip_vectors')
+        self.__parameters.set_parameter(name='batch.skip_myofibrils')
+        self.__parameters.set_parameter(name='batch.skip_domains')
         # endregion

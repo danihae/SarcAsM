@@ -37,6 +37,11 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
         parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
+        parameters.get_parameter(name='batch.skip_cellmask').connect(widget.chk_skip_cellmask)
+        parameters.get_parameter(name='batch.skip_zbands').connect(widget.chk_skip_zbands)
+        parameters.get_parameter(name='batch.skip_vectors').connect(widget.chk_skip_vectors)
+        parameters.get_parameter(name='batch.skip_myofibrils').connect(widget.chk_skip_myofibrils)
+        parameters.get_parameter(name='batch.skip_domains').connect(widget.chk_skip_domains)
 
         pass
 
@@ -296,53 +301,57 @@ class BatchProcessingControl:
                                         model.parameters.get_parameter('structure.predict.size_height').get_value())
 
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
-                               model_path=network_model,
-                               max_patch_size=size,
-                               clip_thres=(
-                                   model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
-                                   model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
-                               )
+                                   model_path=network_model,
+                                   max_patch_size=size,
+                                   clip_thres=(
+                                       model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
+                                       model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
+                                   )
 
         # analyze cell mask and sarcomere area
-        sarc_obj.analyze_cell_mask()
+        if not model.parameters.get_parameter('batch.skip_cellmask').get_value():
+            sarc_obj.analyze_cell_mask()
         # analyze sarcomere structures
-        sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
-                             threshold=model.parameters.get_parameter(
-                                 'structure.z_band_analysis.threshold').get_value(),
-                             min_length=model.parameters.get_parameter(
-                                 'structure.z_band_analysis.min_length').get_value()
-                             )
+        if not model.parameters.get_parameter('batch.skip_zbands').get_value():
+            sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
+                                     threshold=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.threshold').get_value(),
+                                     min_length=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.min_length').get_value())
 
         # careful this method highly depends on pixel size setting
+        if not model.parameters.get_parameter('batch.skip_vectors').get_value():
+            sarc_obj.analyze_sarcomere_vectors(
+                frames=model.parameters.get_parameter('structure.frames').get_value(),
+                slen_lims=(
+                    model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
+                    model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
+                ),
+                median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
+                linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
+                interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
+            )
 
-        sarc_obj.analyze_sarcomere_vectors(
-            frames=model.parameters.get_parameter('structure.frames').get_value(),
-            slen_lims=(
-                model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
-            ),
-            radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
-            linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
-            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
-        )
+        if not model.parameters.get_parameter('batch.skip_myofibrils').get_value():
+            sarc_obj.analyze_myofibrils(
+                frames=model.parameters.get_parameter('structure.frames').get_value(),
+                ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
+                persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
+                threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
+                n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value()
+            )
 
-        sarc_obj.analyze_myofibrils(
-            frames=model.parameters.get_parameter('structure.frames').get_value(),
-            ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
-            persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
-            threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
-            n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value()
-        )
-
-        sarc_obj.analyze_sarcomere_domains(
-            frames=model.parameters.get_parameter('structure.frames').get_value(),
-            d_max=model.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
-            cosine_min=model.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),
-            leiden_resolution=model.parameters.get_parameter('structure.domain.analysis.leiden_resolution').get_value(),
-            random_seed=model.parameters.get_parameter('structure.domain.analysis.random_seed').get_value(),
-            area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
-            dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
-        )
+        if not model.parameters.get_parameter('batch.skip_domains').get_value():
+            sarc_obj.analyze_sarcomere_domains(
+                frames=model.parameters.get_parameter('structure.frames').get_value(),
+                d_max=model.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
+                cosine_min=model.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),
+                leiden_resolution=model.parameters.get_parameter(
+                    'structure.domain.analysis.leiden_resolution').get_value(),
+                random_seed=model.parameters.get_parameter('structure.domain.analysis.random_seed').get_value(),
+                area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
+                dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
+            )
 
         sarc_obj.store_structure_data()
         pass

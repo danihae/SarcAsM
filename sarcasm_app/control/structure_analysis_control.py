@@ -411,7 +411,7 @@ class StructureAnalysisControl:
 
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
-        parameters.get_parameter(name='structure.z_band_analysis.end_radius').connect(widget.dsb_z_band_end_radius)
+        parameters.get_parameter(name='structure.z_band_analysis.mean_filter_radius').connect(widget.dsb_z_band_mean_filter_radius)
         parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').connect(
             widget.dsb_z_band_theta_phi_min)
         parameters.get_parameter(name='structure.z_band_analysis.a_min').connect(widget.dsb_z_band_a_min)

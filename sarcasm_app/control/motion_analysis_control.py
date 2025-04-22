@@ -1,6 +1,7 @@
 import numpy as np
 from PyQt5.QtWidgets import QFileDialog
 
+from sarcasm import Plots
 from sarcasm_app.control.chain_execution import ChainExecution
 from sarcasm_app import ApplicationControl
 from sarcasm_app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
@@ -215,7 +216,16 @@ class MotionAnalysisControl:
 
         pass
 
+    def __on_btn_plot_summary(self):
+        if not self.__chk_initialized():
+            return
+        Plots.plot_loi_summary_motion(self.__main_control.model.sarcomere)
+
+        pass
+
+
     def bind_events(self):
+        self.__motion_analysis_widget.btn_plot_summary.clicked.connect(self.__on_btn_plot_summary)
         self.__motion_analysis_widget.btn_analyze_motion.clicked.connect(self.on_analyze_motion)
         self.__motion_analysis_widget.btn_motion_detect_peaks.clicked.connect(self.on_btn_detect_peaks)
         self.__motion_analysis_widget.btn_motion_track_z_bands.clicked.connect(self.on_btn_track_z_bands)
@@ -230,9 +240,9 @@ class MotionAnalysisControl:
         self.__main_control.model.parameters.get_parameter(name='motion.detect_peaks.threshold').connect(
             self.__motion_analysis_widget.dsb_detect_peaks_threshold)
         self.__main_control.model.parameters.get_parameter(name='motion.detect_peaks.min_distance').connect(
-            self.__motion_analysis_widget.sb_detect_peaks_min_distance)
+            self.__motion_analysis_widget.dsb_detect_peaks_min_distance)
         self.__main_control.model.parameters.get_parameter(name='motion.detect_peaks.width').connect(
-            self.__motion_analysis_widget.sb_detect_peaks_width)
+            self.__motion_analysis_widget.dsb_detect_peaks_width)
 
         self.__main_control.model.parameters.get_parameter(name='motion.track_z_bands.search_range').connect(
             self.__motion_analysis_widget.dsb_track_z_bands_search_range)
@@ -258,12 +268,7 @@ class MotionAnalysisControl:
         self.__main_control.model.parameters.get_parameter(name='motion.systoles.merge_time_max').connect(
             self.__motion_analysis_widget.dsb_systoles_merge_time_max)
 
-        self.__main_control.model.parameters.get_parameter(
-            name='motion.get_sarcomere_trajectories.filter_params_z_pos.window_length').connect(
-            self.__motion_analysis_widget.sb_get_sarc_traj_filter_z_pos_wl)
-        self.__main_control.model.parameters.get_parameter(
-            name='motion.get_sarcomere_trajectories.filter_params_z_pos.polyorder').connect(
-            self.__motion_analysis_widget.sb_get_sarc_traj_filter_z_pos_po)
+
         self.__main_control.model.parameters.get_parameter(
             name='motion.get_sarcomere_trajectories.s_length_limits_lower').connect(
             self.__motion_analysis_widget.dsb_get_sarc_traj_slen_lower)
@@ -285,5 +290,6 @@ class MotionAnalysisControl:
         self.__main_control.model.parameters.get_parameter(
             name='motion.get_sarcomere_trajectories.equ_limits_upper').connect(
             self.__motion_analysis_widget.dsb_get_sarc_traj_equ_lims_upper)
+
 
         pass

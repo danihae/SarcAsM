@@ -75,16 +75,26 @@ class LOIAnalysisControl:
         if self.__main_control.model.cell is None:  # exit method
             return
 
+        loi_lines = None
         line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        for line in self.__main_control.model.cell.data['loi_data']['loi_lines']:
-            start = [line[0][0], line[0][1]]
-            end = [line[-1][0], line[-1][1]]
+        if hasattr(self.__main_control.model.cell, 'loi_data'):
+            # Extract line data directly from sarc_obj.loi_data
+            loi_lines = [self.__main_control.model.cell.loi_data['line']]
+        elif hasattr(self.__main_control.model.cell, 'data') and 'loi_data' in self.__main_control.model.cell.data:
+            # Extract lines from sarc_obj.data['loi_data']
+            loi_lines = self.__main_control.model.cell.data['loi_data'].get('loi_lines', [])
 
-            self.__main_control.on_update_loi_list(line_start=start,
-                                                   line_end=end,
-                                                   line_thickness=line_width)
-            print(start, end)
-            # todo: add loi's to napari
+        if loi_lines is not None:
+            # Plot each line
+            for line in loi_lines:
+                # todo: need to check how multi segment line could be added
+                # ax.plot(line.T[1], line.T[0], color=color, linewidth=linewidth, alpha=alpha)
+
+                start = [line[0][0], line[0][1]]
+                end = [line[-1][0], line[-1][1]]
+                self.__main_control.on_update_loi_list(line_start=start,line_end=end,line_thickness=line_width)
+                print(start, end)
+                pass
             pass
         pass
 
