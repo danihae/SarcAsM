@@ -18,8 +18,12 @@ class ExportPopup(QDialog):
     """
     __max_entries_per_row = 5
 
-    def __init__(self, model, control):
+    def __init__(self, model, control,popup_type:str='structure'):
         super().__init__()
+        valid={'structure','motion'}
+        if popup_type not in valid:
+            raise ValueError("results: popup_type must be one of %r." % valid)
+
         self.setWindowTitle('Export Popup')
         self.__group_structure = None
         self.__group_metadata = None
@@ -32,14 +36,14 @@ class ExportPopup(QDialog):
         self.__h_box = None
         self.__le_file_path: QLineEdit
         self.__le_file_name: QLineEdit
-        self.init_ui()
+        self.init_ui(popup_type=popup_type)
 
         pass
 
     # todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
     # todo: need to adapt "export" since those are wrapped with a class now
 
-    def init_ui(self):
+    def init_ui(self,popup_type:str):
         self.setLayout(QVBoxLayout())
         self.__group_structure = QGroupBox(title='Structure Columns')
         self.__group_metadata = QGroupBox(title='Metadata Columns')
@@ -49,9 +53,11 @@ class ExportPopup(QDialog):
         self.__group_metadata.setLayout(QGridLayout())
         self.__group_motion.setLayout(QGridLayout())
 
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_structure))
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_metadata))
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_motion))
+        if popup_type == 'structure':
+            TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_structure))
+        # TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_metadata))
+        elif popup_type=='motion':
+            TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_motion))
 
         self.__h_box = QWidget()
         self.__h_box.setLayout(QHBoxLayout())

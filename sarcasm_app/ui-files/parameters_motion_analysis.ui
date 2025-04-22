@@ -14,7 +14,7 @@
    <string>Form</string>
   </property>
   <layout class="QFormLayout" name="formLayout">
-   <item row="1" column="0">
+   <item row="2" column="0">
     <widget class="QLabel" name="label_10">
      <property name="font">
       <font>
@@ -41,14 +41,14 @@
      </property>
     </widget>
    </item>
-   <item row="1" column="1">
+   <item row="2" column="1">
     <widget class="QComboBox" name="cb_loi_file">
      <property name="toolTip">
       <string>currently selected LOI to use in analysis</string>
      </property>
     </widget>
    </item>
-   <item row="2" column="0" colspan="2">
+   <item row="3" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox">
      <property name="font">
       <font>
@@ -144,7 +144,7 @@
      </layout>
     </widget>
    </item>
-   <item row="3" column="0" colspan="2">
+   <item row="4" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="font">
       <font>
@@ -248,7 +248,7 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="0" colspan="2">
+   <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
      <property name="font">
       <font>
@@ -477,7 +477,7 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
+   <item row="6" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
      <property name="font">
       <font>
@@ -710,7 +710,7 @@
      </layout>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="7" column="0" colspan="2">
     <widget class="QPushButton" name="btn_plot_summary">
      <property name="font">
       <font>
@@ -719,6 +719,18 @@
      </property>
      <property name="text">
       <string>Plot Summary</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0" colspan="2">
+    <widget class="QPushButton" name="btn_export_motion_data">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Export Motion Data</string>
      </property>
     </widget>
    </item>

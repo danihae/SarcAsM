@@ -7,6 +7,7 @@ from bio_image_unet.progress import ProgressNotifier
 from sarcasm import SarcAsM, Structure
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
+from .popup_export import ExportPopup
 from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
 from sarcasm.type_utils import TypeUtils
@@ -22,6 +23,7 @@ class StructureAnalysisControl:
         self.__main_control = main_control
         self.__thread = None
         self.__worker = None
+        self.__popup = None
 
     def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
@@ -362,12 +364,19 @@ class StructureAnalysisControl:
         chain.execute()
         pass
 
+    def __open_export_popup(self):
+        if not self.__chk_initialized():
+            return
+        self.__popup = ExportPopup(self.__main_control.model, self.__main_control,popup_type='structure')
+        self.__popup.show_popup()
+
     def bind_events(self):
         """
         Binds ui events to backend methods/functions
         also binds ui fields to model parameters
         """
         self.__structure_parameters_widget.btn_analyze_structure.clicked.connect(self.on_analyze_structure)
+        self.__structure_parameters_widget.btn_export_structure_data.clicked.connect(self.__open_export_popup)
 
         # monitor the value of predict_size and keep it dividable by 16
         self.__structure_parameters_widget.sb_predict_size_width.editingFinished.connect(

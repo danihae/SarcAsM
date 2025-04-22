@@ -31,7 +31,6 @@ class FileSelectionControl:
         return self.__main_control.model.cell
 
     def bind_events(self):
-        self.__file_selection_widget.btn_export_data.clicked.connect(self.on_btn_export_data)
         self.__file_selection_widget.btn_search.clicked.connect(self.on_search)
         self.__file_selection_widget.btn_set_to_default.clicked.connect(self.on_set_to_default)
         self.__file_selection_widget.btn_open_folder.clicked.connect(self.on_open_cell_folder)
@@ -52,18 +51,6 @@ class FileSelectionControl:
     def on_set_to_default(self):
         # set all parameters back to default values
         self.__main_control.model.set_to_default()
-        pass
-
-    def on_btn_export_data(self):
-        """
-        - time-series of all structure features (if single number per frame, so ignore 2D arrays)
-          for motion analysis: z_pos, slen, slen_avg,  delta_slen, delta_slen_avg, vel, vel_avg, start_contr, state, cps_mean, cps_std
-        """
-        # model = self.__main_control.model
-        self.__popup = ExportPopup(self.__main_control.model, self.__main_control)
-        self.__popup.show_popup()
-
-        print('debug')
         pass
 
     def on_search_parameters_file(self):

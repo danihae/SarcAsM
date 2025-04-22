@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QFileDialog
 from sarcasm import Plots
 from sarcasm_app.control.chain_execution import ChainExecution
 from sarcasm_app import ApplicationControl
+from sarcasm_app.control.popup_export import ExportPopup
 from sarcasm_app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
 from sarcasm.motion import Motion
 from sarcasm.type_utils import TypeUtils
@@ -20,6 +21,7 @@ class MotionAnalysisControl:
         self.__thread = None
         self.__worker = None
         self.__popup = None
+        self.__export_popup = None
         pass
 
     def __chk_loi_file_selected(self):
@@ -224,7 +226,15 @@ class MotionAnalysisControl:
 
         pass
 
+    def __on_btn_export_motion_data(self):
+        if not self.__chk_initialized():
+            return
+        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion')
+        self.__export_popup.show_popup()
+
+
     def bind_events(self):
+        self.__motion_analysis_widget.btn_export_motion_data.clicked.connect(self.__on_btn_export_motion_data)
         self.__motion_analysis_widget.btn_plot_summary.clicked.connect(self.__on_btn_plot_summary)
         self.__motion_analysis_widget.btn_analyze_motion.clicked.connect(self.on_analyze_motion)
         self.__motion_analysis_widget.btn_motion_detect_peaks.clicked.connect(self.on_btn_detect_peaks)

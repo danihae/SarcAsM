@@ -22,8 +22,8 @@ Can you somehow automate that using the inspect package? Would that make sense?
 DONE In batch processing: create checkboxes for the structure categories, so users can seelct to, e.g., not analyze sarcomere domains.
      No checkboxes needed for motion.
 
-data export: separate buttons for structure and motion, each in the structure analysis and motion analysis sections at the top below the upper button,
-and remove the metadata part.(in data export not the one in main window)
+DONE data export: separate buttons for structure and motion, each in the structure analysis and motion analysis sections at the top below the upper button,
+     and remove the metadata part.(in data export not the one in main window)
 
 DONE the loi detection now also has multi-segment lines ( see plot_lois in Plots.py). The Gui should also show them as multi-segment lines
      HAS TO BE TESTED

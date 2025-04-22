@@ -89,17 +89,6 @@ class Ui_Form(object):
         self.btn_set_to_default.setObjectName("btn_set_to_default")
         self.horizontalLayout_5.addWidget(self.btn_set_to_default)
         self.verticalLayout.addWidget(self.groupBox_3)
-        self.groupBox_4 = QtWidgets.QGroupBox(Form)
-        font = QtGui.QFont()
-        font.setPointSize(11)
-        self.groupBox_4.setFont(font)
-        self.groupBox_4.setObjectName("groupBox_4")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.groupBox_4)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.btn_export_data = QtWidgets.QPushButton(self.groupBox_4)
-        self.btn_export_data.setObjectName("btn_export_data")
-        self.horizontalLayout.addWidget(self.btn_export_data)
-        self.verticalLayout.addWidget(self.groupBox_4)
 
         self.retranslateUi(Form)
         QtCore.QMetaObject.connectSlotsByName(Form)
@@ -120,8 +109,6 @@ class Ui_Form(object):
         self.btn_import_parameters.setText(_translate("Form", "Import"))
         self.btn_export_parameters.setText(_translate("Form", "Export"))
         self.btn_set_to_default.setText(_translate("Form", "Reset to default"))
-        self.groupBox_4.setTitle(_translate("Form", "Data export (*.xlsx, *.csv)"))
-        self.btn_export_data.setText(_translate("Form", "Export Data"))
 
 
 if __name__ == "__main__":
