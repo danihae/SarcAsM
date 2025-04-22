@@ -156,7 +156,7 @@ class FileSelectionControl:
         self.init_line_layer()  # initializes the layer for drawing loi's
 
         # init or update dictionary
-        cell:SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
 
         if cell.filepath not in self.__main_control.model.line_dictionary:
             self.__main_control.model.line_dictionary[cell.filepath] = {}
@@ -242,14 +242,5 @@ class FileSelectionControl:
 
     def _init_loi_from_file(self):
         # read loi files, store the line data in dictionary and in ui loi list
-        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        if 'loi_data' in cell.data and 'loi_lines' in cell.data['loi_data']:
-            for line in cell.data['loi_data']['loi_lines']:
-                start = [line[0][0], line[0][1]]
-                end = [line[-1][0], line[-1][1]]
-                self.__main_control.on_update_loi_list(line_start=start, line_end=end, line_thickness=line_width)
-            pass
-
-        else:
-            self.__main_control.debug("no LOI's found for current image")
+        self.__main_control.init_lois()
+        pass

@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from sarcasm import Utils
+from sarcasm import Utils, Structure
 from sarcasm.type_utils import TypeUtils
 
 import napari
@@ -116,13 +116,15 @@ class ApplicationControl:
         if progress_bar is not None:
             progress_bar.setValue(value)
 
-    def __add_line_to_napari(self, line_to_draw):
+    def __add_line_to_napari(self, line_to_draw,edge_width:float=0.65):
         # note that first coordinate in the point tuples is Y and second is X
         # np.array([[[100, 100], [200, 200]], [[300, 300], [400, 300]]])
 
         #2025-03-31: previously [[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]]
-        pos_vectors = np.array([[line_to_draw[0][0], line_to_draw[0][1]], [line_to_draw[1][0], line_to_draw[1][1]]])
-        self.layer_loi.add_lines(pos_vectors, edge_width=line_to_draw[2], edge_color='red')
+        #pos_vectors = np.array([[line_to_draw[0][0], line_to_draw[0][1]], [line_to_draw[1][0], line_to_draw[1][1]]])
+        self.layer_loi.add_paths(line_to_draw,edge_width=edge_width,edge_color='red')
+
+        #self.layer_loi.add_lines(line_to_draw, edge_width=edge_width, edge_color='red')
         # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
         # data=self.__main_control.layer_loi.data
         # widths=self.__main_control.layer_loi.edge_width
@@ -132,43 +134,64 @@ class ApplicationControl:
         # [10, 5, 15]
 
 
-    def on_update_loi_list(self, line_start, line_end=None, line_thickness=None, drawn_by_user=True):
-        # add handling for bad input
+    def init_lois(self):
+        cell: Structure = TypeUtils.unbox(self.model.cell)
+        line_width = self.model.parameters.get_parameter('loi.detect.line_width').get_value()
+        loi_lines = None
 
+        if hasattr(cell, 'loi_data'):
+            # Extract line data directly from sarc_obj.loi_data
+            loi_lines = [cell.loi_data['line']]
+        elif hasattr(cell, 'data') and 'loi_data' in self.model.cell.data:
+            # Extract lines from sarc_obj.data['loi_data']
+            loi_lines = cell.data['loi_data'].get('loi_lines', [])
+
+        if loi_lines is not None:
+            # Plot each line
+            for line in loi_lines:
+                # todo: need to check how multi segment line could be added
+                # ax.plot(line.T[1], line.T[0], color=color, linewidth=linewidth, alpha=alpha)
+                start = [line[0][0], line[0][1]]
+                end = [line[-1][0], line[-1][1]]
+                self.on_update_loi_list(line_start=start, line_end=end,line=line, line_thickness=line_width)
+                print(start, end)
+                pass
+            pass
+        else:
+            self.debug("no LOI's found for current image")
+            pass
+        pass
+
+    def on_update_loi_list(self,line_start,line_end,line,line_thickness):
         if self.model.cell is None or line_start is None or line_end is None or len(line_start) != 2 or len(
-                line_end) != 2 or line_thickness is None:
+                line_end) != 2 or line_thickness is None or line is None:
             print('info: line updated but wrong data-type')
             return
 
-        line = (line_start, line_end, line_thickness)
-        list_entry = self.get_entry_key_for_line(line)
+        line_key_points = (line_start, line_end, line_thickness,line) # add line data to key points entry
+        list_entry = self.get_entry_key_for_line(line_key_points)
         if list_entry in self.model.line_dictionary[self.model.cell.filepath]:  # if element already contained, ignore
             # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
-            if 'last' in self.model.line_dictionary[self.model.cell.filepath] and line == \
+            if 'last' in self.model.line_dictionary[self.model.cell.filepath] and line_key_points == \
                     self.model.line_dictionary[self.model.cell.filepath]['last']:
                 file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filepath, 'last')
                 self.model.init_sarcomere(file_name)
             return
 
         # add line and line_ux to dictionary for later usage
-        self.model.line_dictionary[self.model.cell.filepath][list_entry] = line
+        self.model.line_dictionary[self.model.cell.filepath][list_entry] = line_key_points
         # add line to napari
         self.__add_line_to_napari(line)
 
         # todo: update combo box on motion analysis parameters page
         # todo: should be done via callback method
-        if self.__callback_loi_list_updated is not None:
-            self.__callback_loi_list_updated(self.model.line_dictionary[self.model.cell.filepath])
 
-        # select the element if it was drawn by user
-        if drawn_by_user:
-            # set selection to last item
-            # entries = len(self.model.line_dictionary[self._cell.filename]) - 1  # remove the last entry from count
-            # self.gui.listBoxLoi.select_clear(0, "end")  # clear selection
-            # self.gui.listBoxLoi.selection_set(first=entries - 1, last=None)  # counting starts at 0
-            # trigger event manually
-            # self.on_selection_changed_loi_list(None)
-            pass
+        if self.__callback_loi_list_updated is not None:
+            dictionary_entry=self.model.line_dictionary[self.model.cell.filepath]
+            self.__callback_loi_list_updated(dictionary_entry)
+
+        pass
+
 
     @staticmethod
     def get_entry_key_for_line(line) -> str:

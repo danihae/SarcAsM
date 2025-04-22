@@ -75,28 +75,9 @@ class LOIAnalysisControl:
         if self.__main_control.model.cell is None:  # exit method
             return
 
-        loi_lines = None
-        line_width = self.__main_control.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        if hasattr(self.__main_control.model.cell, 'loi_data'):
-            # Extract line data directly from sarc_obj.loi_data
-            loi_lines = [self.__main_control.model.cell.loi_data['line']]
-        elif hasattr(self.__main_control.model.cell, 'data') and 'loi_data' in self.__main_control.model.cell.data:
-            # Extract lines from sarc_obj.data['loi_data']
-            loi_lines = self.__main_control.model.cell.data['loi_data'].get('loi_lines', [])
-
-        if loi_lines is not None:
-            # Plot each line
-            for line in loi_lines:
-                # todo: need to check how multi segment line could be added
-                # ax.plot(line.T[1], line.T[0], color=color, linewidth=linewidth, alpha=alpha)
-
-                start = [line[0][0], line[0][1]]
-                end = [line[-1][0], line[-1][1]]
-                self.__main_control.on_update_loi_list(line_start=start,line_end=end,line_thickness=line_width)
-                print(start, end)
-                pass
-            pass
+        self.__main_control.init_lois()
         pass
+
 
     def on_btn_detect_lois(self):
         if not self.__chk_initialized() or self.__main_control.model.cell is None:
@@ -129,9 +110,9 @@ class LOIAnalysisControl:
             end = (int(line[-1][0]), int(line[-1][1]))
             loi_file = p['cell'].base_dir + f'{start[0]}_{start[1]}_{end[0]}_{end[1]}_{width}_loi.json'
             if not os.path.exists(loi_file):
-                p['main_control'].on_update_loi_list(line_start=start, line_end=end, line_thickness=width)
+                p['main_control'].on_update_loi_list(line_start=start, line_end=end, line_thickness=width,line=line)
                 # extract intensity profiles and save LOI files
-                p['cell'].create_loi_data(np.asarray((start, end)), linewidth=width)
+                p['cell'].create_loi_data(line, linewidth=width) # todo: has to be tested
                 pass
             w.progress.emit(10 + index * step)
             pass

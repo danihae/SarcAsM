@@ -59,27 +59,28 @@ class MotionAnalysisControl:
         # get selection and change color of selected sarcomere-loi
 
         loi_layer = self.__main_control.layer_loi
-        lines = np.array(loi_layer.data)
-        widths = np.array(loi_layer.edge_width)
+        lines = loi_layer.data
+        widths = loi_layer.edge_width
 
         loi_layer.data.clear()
         loi_layer.edge_width.clear()
         loi_layer.edge_color = []
 
         for index, line_data in enumerate(lines):
-            if line_data[0][0] == line[0][0] and line_data[0][1] == line[0][1] and line_data[1][0] == line[1][0] and \
-                    line_data[1][1] == line[1][1] and line[2] == loi_layer.edge_width[index]:
-                loi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='yellow')
+            if line_data[0][0] == line[0][0] and line_data[0][-1] == line[0][1] and line_data[-1][0] == line[1][0] and \
+                    line_data[-1][-1] == line[1][1] and line[2] == loi_layer.edge_width[index]:
+                loi_layer.add_paths(data=line_data, edge_width=widths[index], edge_color='yellow')
                 pass
             else:
-                loi_layer.add_lines(data=line_data, edge_width=widths[index], edge_color='red')
+                loi_layer.add_paths(data=line_data, edge_width=widths[index], edge_color='red')
                 pass
             pass
         pass
 
     def __update_loi_combo_box(self, lines):
         self.__motion_analysis_widget.cb_loi_file.clear()
-        self.__motion_analysis_widget.cb_loi_file.addItems(lines.keys())
+        keys = lines.keys()
+        self.__motion_analysis_widget.cb_loi_file.addItems(list(keys))
         pass
 
     def on_btn_detect_peaks(self):
@@ -223,7 +224,6 @@ class MotionAnalysisControl:
 
         pass
 
-
     def bind_events(self):
         self.__motion_analysis_widget.btn_plot_summary.clicked.connect(self.__on_btn_plot_summary)
         self.__motion_analysis_widget.btn_analyze_motion.clicked.connect(self.on_analyze_motion)
@@ -268,7 +268,6 @@ class MotionAnalysisControl:
         self.__main_control.model.parameters.get_parameter(name='motion.systoles.merge_time_max').connect(
             self.__motion_analysis_widget.dsb_systoles_merge_time_max)
 
-
         self.__main_control.model.parameters.get_parameter(
             name='motion.get_sarcomere_trajectories.s_length_limits_lower').connect(
             self.__motion_analysis_widget.dsb_get_sarc_traj_slen_lower)
@@ -290,6 +289,5 @@ class MotionAnalysisControl:
         self.__main_control.model.parameters.get_parameter(
             name='motion.get_sarcomere_trajectories.equ_limits_upper').connect(
             self.__motion_analysis_widget.dsb_get_sarc_traj_equ_lims_upper)
-
 
         pass

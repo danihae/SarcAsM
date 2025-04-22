@@ -25,7 +25,8 @@ DONE In batch processing: create checkboxes for the structure categories, so use
 data export: separate buttons for structure and motion, each in the structure analysis and motion analysis sections at the top below the upper button,
 and remove the metadata part.(in data export not the one in main window)
 
-the loi detection now also has multi-segment lines ( see plot_lois in Plots.py). The Gui should also show them as multi-segment lines
+DONE the loi detection now also has multi-segment lines ( see plot_lois in Plots.py). The Gui should also show them as multi-segment lines
+     HAS TO BE TESTED
 
 DONE rename the button analyze structure at the top to full analysis structure
 
