@@ -18,6 +18,12 @@ structure_feature_dict = {
         'function': 'Structure.analyze_cell_mask',
         'name': 'Cell area ratio'
     },
+    'cell_mask_intensity': {
+        'description': 'Average intensity at cell mask. np.ndarray with value for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'Structure.analyze_cell_mask',
+        'name': 'Cell mask intensity'
+    },
     'domain_area': {
         'description': 'Areas of individual sarcomere domains in µm^2. List with np.array for each frame.',
         'data type': list[np.ndarray],
@@ -135,24 +141,24 @@ structure_feature_dict = {
         'function': 'Structure.analyze_myofibrils',
         'name': 'Myofibril lines'
     },
-    'myof_bending_energy': {
-        'description': 'Bending energy (mean squared curvature) of myofibril lines. List with np.array for each frame.',
+    'myof_wiggliness': {
+        'description': 'Wiggliness (bending energy/mean squared curvature) of myofibril lines. List with np.array for each frame.',
         'data type': list[np.ndarray],
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Myofibril bending energy'
+        'name': 'Myofibril wiggliness'
     },
-    'myof_bending_energy_mean': {
+    'myof_wiggliness_mean': {
         'description': 'Mean of mean squared curvature of myofibril lines in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Mean myofibril bending energy'
+        'name': 'Mean myofibril wiggliness'
     },
-    'myof_bending_energy_std': {
-        'description': 'Standard deviation of bending energy (mean squared curvature) of myofibril lines in each frame. '
+    'myof_wiggliness_std': {
+        'description': 'Standard deviation of wiggliness (bending energy/mean squared curvature) of myofibril lines in each frame. '
                        'np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'STD myofibril bending energy'
+        'name': 'STD myofibril wiggliness'
     },
     'myof_straightness': {
         'description': 'Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
@@ -489,12 +495,26 @@ structure_feature_dict = {
         'function': 'Structure.analyze_z_bands',
         'name': 'Z-band orientation [rad]'
     },
-    'z_ratio_intensity': {
-        'description': 'Ratio of Z-band intensity to total intensity in image. '
+    'z_mask_area': {
+        'description': 'Total area occupied by Z-bands in each frame. '
                        'np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
-        'name': 'Ratio Z-band intensity to total intensity'
+        'name': 'Z-band mask area'
+    },
+    'z_mask_area_ratio': {
+        'description': 'Ratio of area occupied by Z-bands to total cell area.'
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band mask area ratio'
+    },
+    'z_mask_intensity': {
+        'description': 'Average intensity of Z-band mask.'
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': 'Z-band mask intensity'
     },
     'z_straightness': {
         'description': 'Straightness of Z-band objects, measured by ratio of end-to-end length to contour length. '
