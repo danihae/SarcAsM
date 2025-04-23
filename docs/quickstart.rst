@@ -18,6 +18,9 @@ More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
     # detect sarcomere Z-bands, M-bands, orientation, sarcomere mask and cell mask by deep learning
     sarc_obj.detect_sarcomeres()
 
+    # analyze cell mask
+    sarc_obj.analyze_cell_mask()
+
     # analyze Z-band morphology
     sarc_obj.analyze_z_bands()
 
