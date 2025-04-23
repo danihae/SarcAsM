@@ -184,7 +184,7 @@ class StructureAnalysisControl:
                                                'structure.z_band_analysis.threshold').get_value(),
                                            min_length=m.parameters.get_parameter(
                                                'structure.z_band_analysis.min_length').get_value(),
-                                           end_radius=m.parameters.get_parameter(
+                                           median_filter_radius=m.parameters.get_parameter(
                                                name='structure.z_band_analysis.end_radius').get_value(),
                                            theta_phi_min=m.parameters.get_parameter(
                                                name='structure.z_band_analysis.theta_phi_min').get_value(),
