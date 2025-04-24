@@ -193,6 +193,8 @@ class StructureAnalysisControl:
         def __internal_call(w, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: Structure = TypeUtils.unbox(m.cell)
+            if 'cell_mask_area' not in cell.data:
+                cell.analyze_cell_mask()
             cell.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
                                            threshold=m.parameters.get_parameter(
                                                'structure.z_band_analysis.threshold').get_value(),
@@ -229,6 +231,8 @@ class StructureAnalysisControl:
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: Structure = TypeUtils.unbox(m.cell)
+            if 'cell_mask_area' not in cell.data:
+                cell.analyze_cell_mask()
             cell.analyze_sarcomere_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 slen_lims=(
