@@ -323,10 +323,10 @@ class BatchProcessingControl:
                                    )
 
         # analyze cell mask and sarcomere area
-        if not model.parameters.get_parameter('batch.skip_cellmask').get_value():
+        if model.parameters.get_parameter('batch.do_cellmask').get_value():
             sarc_obj.analyze_cell_mask()
         # analyze sarcomere structures
-        if not model.parameters.get_parameter('batch.skip_zbands').get_value():
+        if model.parameters.get_parameter('batch.do_zbands').get_value():
             sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                      threshold=model.parameters.get_parameter(
                                          'structure.z_band_analysis.threshold').get_value(),
@@ -334,7 +334,7 @@ class BatchProcessingControl:
                                          'structure.z_band_analysis.min_length').get_value())
 
         # careful this method highly depends on pixel size setting
-        if not model.parameters.get_parameter('batch.skip_vectors').get_value():
+        if model.parameters.get_parameter('batch.do_vectors').get_value():
             sarc_obj.analyze_sarcomere_vectors(
                 frames=model.parameters.get_parameter('structure.frames').get_value(),
                 slen_lims=(
@@ -346,7 +346,7 @@ class BatchProcessingControl:
                 interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
             )
 
-        if not model.parameters.get_parameter('batch.skip_myofibrils').get_value():
+        if model.parameters.get_parameter('batch.do_myofibrils').get_value():
             sarc_obj.analyze_myofibrils(
                 frames=model.parameters.get_parameter('structure.frames').get_value(),
                 ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
@@ -355,7 +355,7 @@ class BatchProcessingControl:
                 n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value()
             )
 
-        if not model.parameters.get_parameter('batch.skip_domains').get_value():
+        if model.parameters.get_parameter('batch.do_domains').get_value():
             sarc_obj.analyze_sarcomere_domains(
                 frames=model.parameters.get_parameter('structure.frames').get_value(),
                 d_max=model.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
