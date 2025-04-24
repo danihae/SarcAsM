@@ -56,7 +56,7 @@ There are two ways to use SarcAsM:
 
 
 Citing SarcAsM
----------------
+--------------
 Authors: Daniel Härtter, Lara Hauke, Til Driehorst, Yuxi Long, Guobin Bao, Andreas Primeßnig, Branimir Berecic, Lukas Cyganek, Malte Tiburcy, Christoph F. Schmidt, Wolfram-Hubertus Zimmermann
 
 Title: " SarcAsM (Sarcomere Analysis Multi-tool): a comprehensive software tool for structural and functional analysis of sarcomeres in cardiomyocytes"
@@ -65,8 +65,36 @@ Title: " SarcAsM (Sarcomere Analysis Multi-tool): a comprehensive software tool 
    Update this upon actual publication. Probably insert bibtex as well.
 
 Contact
---------------
-For questions, requests and issues, please contact us at daniel.haertter@med.uni-goettingen.de or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_.
+-------
+For questions, requests and issues, please contact us or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_. For bugs, please append a comprehensive error report.
+
+.. _license:
+
+License
+------
+
+This software is distributed under a custom license and is patent pending (DE 10 2024 112 939.5).
+
+**Usage Terms:**
+
+*   **Academic and Non-Commercial Use:** The software is free for use in academic research, educational settings, and other non-commercial activities.
+*   **Commercial Use:** Commercial use, redistribution, or inclusion in commercial products/services is strictly prohibited without obtaining a separate commercial license.
+
+**Commercial Licensing:**
+
+For inquiries regarding commercial licensing, please contact:
+
+| MBM ScienceBridge GmbH,
+| Hans-Adolf-Krebs-Weg 1,
+| 37077 Göttingen,
+| Germany
+| https://sciencebridge.de/en/
+
+**Full License Text:**
+
+The complete terms and conditions are available in the `LICENSE file <link-to-your-license-file>`_ included with this software distribution.
+
+.. _link-to-your-license-file: ../LICENSE
 
 
 Indices and tables

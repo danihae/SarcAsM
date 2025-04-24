@@ -1,3 +1,17 @@
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 University Medical Center Göttingen, Germany.
+# All rights reserved.
+#
+# Patent Pending: DE 10 2024 112 939.5
+# SPDX-License-Identifier: LicenseRef-Proprietary-See-LICENSE
+#
+# This software is licensed under a custom license. See the LICENSE file
+# in the root directory for full details.
+#
+# **Commercial use is prohibited without a separate license.**
+# Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
+
+
 from typing import Any, Union, Tuple
 
 import qtutils
@@ -184,8 +198,8 @@ class StructureAnalysisControl:
                                                'structure.z_band_analysis.threshold').get_value(),
                                            min_length=m.parameters.get_parameter(
                                                'structure.z_band_analysis.min_length').get_value(),
-                                           end_radius=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.end_radius').get_value(),
+                                           median_filter_radius=m.parameters.get_parameter(
+                                               name='structure.z_band_analysis.median_filter_radius').get_value(),
                                            theta_phi_min=m.parameters.get_parameter(
                                                name='structure.z_band_analysis.theta_phi_min').get_value(),
                                            a_min=m.parameters.get_parameter(
@@ -420,7 +434,7 @@ class StructureAnalysisControl:
 
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
-        parameters.get_parameter(name='structure.z_band_analysis.mean_filter_radius').connect(widget.dsb_z_band_mean_filter_radius)
+        parameters.get_parameter(name='structure.z_band_analysis.median_filter_radius').connect(widget.dsb_z_band_median_filter_radius)
         parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').connect(
             widget.dsb_z_band_theta_phi_min)
         parameters.get_parameter(name='structure.z_band_analysis.a_min').connect(widget.dsb_z_band_a_min)

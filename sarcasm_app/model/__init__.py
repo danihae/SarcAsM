@@ -1,3 +1,17 @@
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 University Medical Center Göttingen, Germany.
+# All rights reserved.
+#
+# Patent Pending: DE 10 2024 112 939.5
+# SPDX-License-Identifier: LicenseRef-Proprietary-See-LICENSE
+#
+# This software is licensed under a custom license. See the LICENSE file
+# in the root directory for full details.
+#
+# **Commercial use is prohibited without a separate license.**
+# Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
+
+
 import napari
 
 from .parameters import Parameters
@@ -109,7 +123,7 @@ class ApplicationModel:
 
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.5)
         self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(0.2)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.mean_filter_radius').set_value(0.2)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.median_filter_radius').set_value(0.2)
         self.__parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').set_value(0.4)
         self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.3)
         self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(4.0)
@@ -256,7 +270,7 @@ class ApplicationModel:
 
         self.__parameters.set_parameter(name='structure.z_band_analysis.threshold')
         self.__parameters.set_parameter(name='structure.z_band_analysis.min_length')
-        self.__parameters.set_parameter(name='structure.z_band_analysis.mean_filter_radius')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.median_filter_radius')
         self.__parameters.set_parameter(name='structure.z_band_analysis.theta_phi_min')
         self.__parameters.set_parameter(name='structure.z_band_analysis.a_min')
         self.__parameters.set_parameter(name='structure.z_band_analysis.d_max')

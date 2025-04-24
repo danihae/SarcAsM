@@ -15,15 +15,10 @@
 import os
 import subprocess
 import sys
-import pathlib
 
 # Add base of package to path
-# sarcasm_root_path = pathlib.Path(__file__).parent / '..' / 'sarcasm_old'
-# sarcasm_root_path = str(sarcasm_root_path.resolve())
-# sys.path.append(os.path.abspath('../sarcasm_old'))
 sys.path.insert(0, os.path.abspath('..'))
-# if sarcasm_root_path not in sys.path:
-#     sys.path.insert(0, str(sarcasm_root_path))
+from sarcasm import __version__ as package_version
 
 # Autosummary template credit to James Leedman on Stack Overflow
 # https://github.com/JamesALeedham/Sphinx-Autosummary-Recursion
@@ -34,10 +29,11 @@ project = 'SarcAsM'
 copyright = '2025, University Medical Center Göttingen'
 author = 'Daniel Haertter'
 
-# The short X.Y version
-version = '0.1.0'
 # The full version, including alpha/beta/rc tags
-release = '0.1.0-beta'
+release = package_version
+
+# The short X.Y version
+version = '.'.join(release.split('.')[:2])
 
 # -- General configuration ---------------------------------------------------
 
@@ -214,4 +210,4 @@ html_context = {
 # -- Options for todo extension ----------------------------------------------
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
+todo_include_todos = False

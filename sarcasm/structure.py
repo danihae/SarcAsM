@@ -1,4 +1,16 @@
-# Usage of this software for commercial purposes without a license is strictly prohibited.
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 University Medical Center Göttingen, Germany.
+# All rights reserved.
+#
+# Patent Pending: DE 10 2024 112 939.5
+# SPDX-License-Identifier: LicenseRef-Proprietary-See-LICENSE
+#
+# This software is licensed under a custom license. See the LICENSE file
+# in the root directory for full details.
+#
+# **Commercial use is prohibited without a separate license.**
+# Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
+
 
 import glob
 import os
@@ -290,23 +302,32 @@ class Structure(SarcAsM):
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold are considered cell. Defaults to 0.1.
         """
-        imgs = self.cell_mask
+        cell_mask = self.cell_mask
+        imgs = self.read_imgs()
 
-        if len(imgs.shape) == 2:
+        if len(cell_mask.shape) == 2:
+            cell_mask = np.expand_dims(cell_mask, 0)
             imgs = np.expand_dims(imgs, 0)
 
         n_imgs = len(imgs)
 
-        # create empty array
+        # create empty arrays
         cell_area, cell_area_ratio = np.full(n_imgs, fill_value=np.nan), np.full(n_imgs, fill_value=np.nan)
+        cell_mask_intensity = np.full(n_imgs, fill_value=np.nan)
 
-        for i, img in enumerate(imgs):
+        for i, (img_i, cell_mask_i) in enumerate(zip(imgs, cell_mask)):
             # binarize mask
-            mask = img > threshold
+            mask_i = cell_mask_i > threshold
 
-            cell_area[i] = np.sum(mask) * self.metadata['pixelsize'] ** 2
-            cell_area_ratio[i] = cell_area[i] / (img.shape[0] * img.shape[1] * self.metadata['pixelsize'] ** 2)
+            # average cell intensity
+            cell_mask_intensity[i] = np.mean(img_i[mask_i])
+
+            # total cell area and ratio to total image area
+            cell_area[i] = np.sum(mask_i) * self.metadata['pixelsize'] ** 2
+            cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * self.metadata['pixelsize'] ** 2)
+
         _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
+                 'cell_mask_intensity': cell_mask_intensity,
                  'params.analyze_cell_mask.threshold': threshold}
         self.data.update(_dict)
         if self.auto_save:
@@ -371,17 +392,17 @@ class Structure(SarcAsM):
 
         # create empty lists
         none_lists = lambda: [None] * self.metadata['frames']
-        z_length, z_intensity, z_straightness, z_ratio_intensity, z_orientation = (none_lists() for _ in range(5))
+        z_length, z_intensity, z_straightness, z_orientation = (none_lists() for _ in range(4))
         z_lat_neighbors, z_lat_alignment, z_lat_dist = (none_lists() for _ in range(3))
         z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = (none_lists() for _ in range(3))
         z_labels, z_ends, z_lat_links, z_lat_groups = (none_lists() for _ in range(4))
 
         # create empty arrays
         nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
-        z_length_mean, z_length_std, z_length_max, z_length_sum = (nan_arrays() for _ in range(4))
+        z_length_mean, z_length_std, z_length_max, z_length_sum, z_oop = (nan_arrays() for _ in range(5))
         z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(2))
+        z_mask_area, z_mask_intensity, z_mask_area_ratio = (nan_arrays() for _ in range(3))
         z_straightness_mean, z_straightness_std = (nan_arrays() for _ in range(2))
-        z_ratio_intensity, z_oop, z_avg_intensity = (nan_arrays() for _ in range(3))
         z_lat_neighbors_mean, z_lat_neighbors_std = (nan_arrays() for _ in range(2))
         z_lat_alignment_mean, z_lat_alignment_std = (nan_arrays() for _ in range(2))
         z_lat_dist_mean, z_lat_dist_std = (nan_arrays() for _ in range(2))
@@ -405,7 +426,7 @@ class Structure(SarcAsM):
                                                     d_max=d_max, d_min=d_min)
 
             (
-                z_length_i, z_intensity_i, z_straightness_i, z_ratio_intensity_i, z_avg_intensity_i, orientation_i,
+                z_length_i, z_intensity_i, z_straightness_i, z_mask_intensity_i, z_mask_area_i, orientation_i,
                 z_oop_i,
                 labels_list_i, labels_i, z_lat_neighbors_i, z_lat_dist_i, z_lat_alignment_i, z_lat_links_i, z_ends_i,
                 z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
@@ -422,8 +443,12 @@ class Structure(SarcAsM):
             z_lat_size_groups[frame_i] = z_lat_size_groups_i
             z_lat_length_groups[frame_i] = z_lat_length_groups_i
             z_lat_alignment_groups[frame_i] = z_lat_alignment_groups_i
-            z_ratio_intensity[frame_i], z_avg_intensity[frame_i], z_oop[
-                frame_i] = z_ratio_intensity_i, z_avg_intensity_i, z_oop_i
+            z_mask_area[frame_i], z_mask_intensity[frame_i], z_oop[
+                frame_i] = z_mask_area_i, z_mask_intensity_i, z_oop_i
+            if 'cell_mask_area' in self.data:
+                z_mask_area_ratio[frame_i] = z_mask_area_i / self.data['cell_mask_area'][frame_i]
+            else:
+                z_mask_area_ratio[frame_i] = z_mask_area_i / (self.metadata['size'][0] * self.metadata['size'][1])
 
             z_labels[frame_i] = sparse.coo_matrix(labels_i)
             z_lat_links[frame_i] = z_lat_links_i
@@ -456,9 +481,9 @@ class Structure(SarcAsM):
         z_band_data = {'z_length': z_length, 'z_length_mean': z_length_mean, 'z_length_std': z_length_std,
                        'z_length_max': z_length_max, 'z_intensity': z_intensity, 'z_intensity_mean': z_intensity_mean,
                        'z_intensity_std': z_intensity_std, 'z_orientation': z_orientation, 'z_oop': z_oop,
-                       'z_straightness': z_straightness, 'z_avg_intensity': z_avg_intensity, 'z_labels': z_labels,
+                       'z_straightness': z_straightness, 'z_mask_intensity': z_mask_intensity, 'z_labels': z_labels,
                        'z_straightness_mean': z_straightness_mean, 'z_straightness_std': z_straightness_std,
-                       'z_ratio_intensity': z_ratio_intensity, 'z_lat_neighbors': z_lat_neighbors,
+                       'z_mask_area': z_mask_area, 'z_mask_area_ratio': z_mask_area_ratio, 'z_lat_neighbors': z_lat_neighbors,
                        'z_lat_neighbors_mean': z_lat_neighbors_mean, 'z_lat_neighbors_std': z_lat_neighbors_std,
                        'z_lat_alignment': z_lat_alignment, 'z_lat_alignment_mean': z_lat_alignment_mean,
                        'z_lat_alignment_std': z_lat_neighbors_std, 'z_lat_dist': z_lat_dist, 'z_ends': z_ends,
@@ -680,8 +705,8 @@ class Structure(SarcAsM):
         nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
-        bending_energy_mean, bending_energy_std = (nan_arrays() for _ in range(2))
-        myof_lines, lengths, straightness, frechet_straightness, bending_energy = (none_lists() for _ in range(5))
+        bending_mean, bending_std = (nan_arrays() for _ in range(2))
+        myof_lines, lengths, straightness, frechet_straightness, bending = (none_lists() for _ in range(5))
 
         # iterate frames
         print('\nStarting myofibril line analysis...')
@@ -705,7 +730,7 @@ class Structure(SarcAsM):
                     # line lengths and mean squared curvature (msc)
                     lengths_i = line_data_i['line_features']['length_lines']
                     straightness_i = line_data_i['line_features']['straightness_lines']
-                    bending_energy_i = line_data_i['line_features']['bending_energy_lines']
+                    bending_i = line_data_i['line_features']['bending_lines']
 
                     if len(lengths_i) > 0:
                         # create myofibril length map
@@ -728,12 +753,12 @@ class Structure(SarcAsM):
                                                                                           np.nanmax(myof_map_flat_i))
                         straightness_mean[frame_i], straightness_std[frame_i] = (np.mean(straightness_i),
                                                                                  np.std(straightness_i))
-                        bending_energy_mean[frame_i], bending_energy_std[frame_i] = (np.mean(bending_energy_i),
-                                                                                     np.std(bending_energy_i))
+                        bending_mean[frame_i], bending_std[frame_i] = (np.mean(bending_i),
+                                                                                     np.std(bending_i))
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
                     straightness[frame_i] = straightness_i
-                    bending_energy[frame_i] = bending_energy_i
+                    bending[frame_i] = bending_i
 
         # update structure dictionary
         myofibril_data = {'myof_length_mean': length_mean,
@@ -741,9 +766,9 @@ class Structure(SarcAsM):
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_straightness': straightness, 'myof_straightness_mean': straightness_mean,
                           'myof_straightness_std': straightness_std,
-                          'myof_bending_energy': bending_energy,
-                          'myof_bending_energy_mean': bending_energy_mean,
-                          'myof_bending_energy_std': bending_energy_std,
+                          'myof_bending': bending,
+                          'myof_bending_mean': bending_mean,
+                          'myof_bending_std': bending_std,
                           'params.analyze_myofibrils.persistence': persistence,
                           'params.analyze_myofibrils.threshold_distance': threshold_distance,
                           'params.analyze_myofibrils.frames': list_frames,
@@ -1427,11 +1452,11 @@ class Structure(SarcAsM):
         # straightness of z-bands (area/convex_hull)
         straightness = props['area'] / props['convex_area']
 
-        # fluorescence intensity
+        # fluorescence intensity of each individual z-band, the total area, and the average intensity of z-band mask
         intensity = props['mean_intensity']
-
-        # ratio sum(sarcomere intensity) to sum(background intensity)
-        ratio_intensity, avg_intensity = Structure.intensity_sarcomeres(zbands, image_raw, threshold=threshold)
+        z_mask = zbands > threshold
+        z_mask_area = np.sum(z_mask.astype('uint8')) * pixelsize ** 2
+        z_mask_intensity = np.mean(image_raw[z_mask])
 
         # z band orientational order parameter
         orientation = props['orientation']
@@ -1660,52 +1685,9 @@ class Structure(SarcAsM):
             (lat_neighbors, lat_dist, lat_alignment, links, z_ends,
              linked_groups, size_groups, length_groups, alignment_groups) = [], [], [], [], [], [], [], [], []
 
-        return (length, intensity, straightness, ratio_intensity, avg_intensity, orientation, oop, labels_list, labels,
+        return (length, intensity, straightness, z_mask_intensity, z_mask_area, orientation, oop, labels_list, labels,
                 lat_neighbors, lat_dist, lat_alignment, links, z_ends, linked_groups, size_groups, length_groups,
                 alignment_groups)
-
-    @staticmethod
-    def intensity_sarcomeres(zbands: np.ndarray, image_raw: np.ndarray, threshold: float = 0.1) -> \
-            Tuple[float, float]:
-        """
-        Get ratio of sarcomere fluorescence to off-sarcomere fluorescence intensity.
-
-        Parameters
-        ----------
-        zbands : np.ndarray
-            U-Net result.
-        image_raw : np.ndarray
-            Raw microscopy image.
-        threshold : float, optional
-            Binary threshold for masks. Defaults to 0.1.
-
-        Returns
-        -------
-        ratio_intensity : float
-            Ratio of Z-band fluorescence to off-sarcomere fluorescence intensity.
-        avg_intensity : float
-            Average intensity of the Z-bands.
-        """
-        # Binarize the U-Net result
-        mask = zbands >= threshold
-
-        # Calculate sarcomere and off-sarcomere intensities
-        sarcomere_intensity = np.sum(image_raw[mask])
-        off_sarcomere_intensity = np.sum(image_raw[~mask])
-
-        # Calculate the number of pixels in each region
-        n_sarcomere_pixels = np.sum(mask)
-        n_off_sarcomere_pixels = np.sum(~mask)
-
-        # Calculate average intensities
-        avg_sarcomere_intensity = sarcomere_intensity / n_sarcomere_pixels if n_sarcomere_pixels > 0 else 0
-        avg_off_sarcomere_intensity = off_sarcomere_intensity / n_off_sarcomere_pixels if n_off_sarcomere_pixels > 0 else 0
-
-        # Calculate the ratio of sarcomere to off-sarcomere intensity
-        ratio_intensity = avg_sarcomere_intensity / avg_off_sarcomere_intensity if avg_off_sarcomere_intensity > 0 else 0
-
-        return ratio_intensity, avg_sarcomere_intensity
-
 
     @staticmethod
     def get_sarcomere_vectors(
@@ -2201,11 +2183,11 @@ class Structure(SarcAsM):
             for line in lines
         ]
 
-        # Bending energy: mean squared angular change
+        # Bending: mean squared angular change
         tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
         tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
                                           tangential_vector_line_segments]
-        bending_energy_lines = [
+        bending_lines = [
             np.mean(np.arctan2(np.sin(np.diff(angles)), np.cos(np.diff(angles))) ** 2) if len(angles) > 1 else 0.0
             for angles in tangential_angle_line_segments
         ]
@@ -2214,7 +2196,7 @@ class Structure(SarcAsM):
         line_features = {'n_vectors_lines': n_vectors_lines, 'length_lines': length_lines,
                          'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
                          'sarcomere_std_length_lines': sarcomere_std_length_lines,
-                         'bending_energy_lines': bending_energy_lines,
+                         'bending_lines': bending_lines,
                          'straightness_lines': straightness_lines,
                          'midline_mean_length_lines': midline_mean_length_lines,
                          'midline_std_length_lines': midline_std_length_lines,

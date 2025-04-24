@@ -1,4 +1,16 @@
-# Usage of this software for commercial purposes without a license is strictly prohibited.
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 University Medical Center Göttingen, Germany.
+# All rights reserved.
+#
+# Patent Pending: DE 10 2024 112 939.5
+# SPDX-License-Identifier: LicenseRef-Proprietary-See-LICENSE
+#
+# This software is licensed under a custom license. See the LICENSE file
+# in the root directory for full details.
+#
+# **Commercial use is prohibited without a separate license.**
+# Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
+
 
 import os.path
 from typing import Union
@@ -269,20 +281,19 @@ class Export:
     meta_keys_default = ['file_name', 'file_path', 'frames', 'size', 'pixelsize', 'timestamps',
                          'time', 'frametime']
 
-    structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'domain_area_mean',
-                              'domain_area_std', 'domain_oop_mean',
-                              'domain_oop_std', 'domain_slen_mean',
+    structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'cell_mask_intensity',
+                              'domain_area_mean', 'domain_area_std', 'domain_oop_mean',
+                              'domain_oop_std', 'domain_slen_mean', 'n_domains',
                               'myof_length_max', 'myof_length_mean', 'myof_length_std',
-                              'myof_bending_energy_mean', 'myof_bending_energy_std',
+                              'myof_bending_mean', 'myof_bending_std',
                               'myof_straightness_mean', 'myof_straightness_std',
-                              'n_domains',
                               'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
                               'sarcomere_length_std', 'sarcomere_oop',
                               'z_intensity_mean', 'z_intensity_std', 'z_lat_alignment_mean',
                               'z_lat_alignment_std', 'z_lat_dist_mean', 'z_lat_dist_std', 'z_lat_length_groups_mean',
                               'z_lat_neighbors_mean', 'z_lat_neighbors_std', 'z_length_max',
-                              'z_length_mean', 'z_length_std', 'z_oop', 'z_ratio_intensity',
-                              'z_straightness_mean', 'z_straightness_std']
+                              'z_length_mean', 'z_length_std', 'z_oop', 'z_mask_area', 'z_mask_area_ratio',
+                              'z_mask_intensity', 'z_straightness_mean', 'z_straightness_std']
 
     motion_keys_default = ['beating_rate', 'beating_rate_variability', 'contr_max', 'contr_max_avg', 'elong_max',
                            'elong_max_avg', 'equ', 'time', 'vel_contr_max', 'vel_contr_max_avg', 'vel_elong_max',

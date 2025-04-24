@@ -25,7 +25,7 @@
       <string>execute all of the below functions except cell mask prediction (check the parameters before)</string>
      </property>
      <property name="text">
-      <string>Full Analyzsis Structure</string>
+      <string>Full Analysis Structure</string>
      </property>
     </widget>
    </item>
@@ -340,12 +340,12 @@
          <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
         </property>
         <property name="text">
-         <string>Mean filter radius [µm]</string>
+         <string>Median filter radius [µm]</string>
         </property>
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_mean_filter_radius">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_median_filter_radius">
         <property name="toolTip">
          <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
         </property>
