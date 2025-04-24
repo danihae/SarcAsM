@@ -705,8 +705,8 @@ class Structure(SarcAsM):
         nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
-        wiggliness_mean, wiggliness_std = (nan_arrays() for _ in range(2))
-        myof_lines, lengths, straightness, frechet_straightness, wiggliness = (none_lists() for _ in range(5))
+        bending_mean, bending_std = (nan_arrays() for _ in range(2))
+        myof_lines, lengths, straightness, frechet_straightness, bending = (none_lists() for _ in range(5))
 
         # iterate frames
         print('\nStarting myofibril line analysis...')
@@ -730,7 +730,7 @@ class Structure(SarcAsM):
                     # line lengths and mean squared curvature (msc)
                     lengths_i = line_data_i['line_features']['length_lines']
                     straightness_i = line_data_i['line_features']['straightness_lines']
-                    wiggliness_i = line_data_i['line_features']['wiggliness_lines']
+                    bending_i = line_data_i['line_features']['bending_lines']
 
                     if len(lengths_i) > 0:
                         # create myofibril length map
@@ -753,12 +753,12 @@ class Structure(SarcAsM):
                                                                                           np.nanmax(myof_map_flat_i))
                         straightness_mean[frame_i], straightness_std[frame_i] = (np.mean(straightness_i),
                                                                                  np.std(straightness_i))
-                        wiggliness_mean[frame_i], wiggliness_std[frame_i] = (np.mean(wiggliness_i),
-                                                                                     np.std(wiggliness_i))
+                        bending_mean[frame_i], bending_std[frame_i] = (np.mean(bending_i),
+                                                                                     np.std(bending_i))
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
                     straightness[frame_i] = straightness_i
-                    wiggliness[frame_i] = wiggliness_i
+                    bending[frame_i] = bending_i
 
         # update structure dictionary
         myofibril_data = {'myof_length_mean': length_mean,
@@ -766,9 +766,9 @@ class Structure(SarcAsM):
                           'myof_length_max': length_max, 'myof_length': lengths,
                           'myof_straightness': straightness, 'myof_straightness_mean': straightness_mean,
                           'myof_straightness_std': straightness_std,
-                          'myof_wiggliness': wiggliness,
-                          'myof_wiggliness_mean': wiggliness_mean,
-                          'myof_wiggliness_std': wiggliness_std,
+                          'myof_bending': bending,
+                          'myof_bending_mean': bending_mean,
+                          'myof_bending_std': bending_std,
                           'params.analyze_myofibrils.persistence': persistence,
                           'params.analyze_myofibrils.threshold_distance': threshold_distance,
                           'params.analyze_myofibrils.frames': list_frames,
@@ -2183,11 +2183,11 @@ class Structure(SarcAsM):
             for line in lines
         ]
 
-        # Wiggliness: mean squared angular change
+        # Bending: mean squared angular change
         tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
         tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
                                           tangential_vector_line_segments]
-        wiggliness_lines = [
+        bending_lines = [
             np.mean(np.arctan2(np.sin(np.diff(angles)), np.cos(np.diff(angles))) ** 2) if len(angles) > 1 else 0.0
             for angles in tangential_angle_line_segments
         ]
@@ -2196,7 +2196,7 @@ class Structure(SarcAsM):
         line_features = {'n_vectors_lines': n_vectors_lines, 'length_lines': length_lines,
                          'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
                          'sarcomere_std_length_lines': sarcomere_std_length_lines,
-                         'wiggliness_lines': wiggliness_lines,
+                         'bending_lines': bending_lines,
                          'straightness_lines': straightness_lines,
                          'midline_mean_length_lines': midline_mean_length_lines,
                          'midline_std_length_lines': midline_std_length_lines,

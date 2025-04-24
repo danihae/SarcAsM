@@ -153,24 +153,24 @@ structure_feature_dict = {
         'function': 'Structure.analyze_myofibrils',
         'name': 'Myofibril lines'
     },
-    'myof_wiggliness': {
-        'description': 'Wiggliness (bending energy/mean squared curvature) of myofibril lines. List with np.array for each frame.',
+    'myof_bending': {
+        'description': 'Bending (mean squared curvature) of myofibril lines. List with np.array for each frame.',
         'data type': list[np.ndarray],
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Myofibril wiggliness'
+        'name': 'Myofibril bending'
     },
-    'myof_wiggliness_mean': {
-        'description': 'Mean of mean squared curvature of myofibril lines in each frame. np.array with value for each frame.',
+    'myof_bending_mean': {
+        'description': 'Mean of bending (mean squared curvature) of myofibril lines in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'Mean myofibril wiggliness'
+        'name': 'Mean myofibril bending'
     },
-    'myof_wiggliness_std': {
-        'description': 'Standard deviation of wiggliness (bending energy/mean squared curvature) of myofibril lines in each frame. '
+    'myof_bending_std': {
+        'description': 'Standard deviation of bending (mean squared curvature) of myofibril lines in each frame. '
                        'np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_myofibrils',
-        'name': 'STD myofibril wiggliness'
+        'name': 'STD myofibril bending'
     },
     'myof_straightness': {
         'description': 'Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 

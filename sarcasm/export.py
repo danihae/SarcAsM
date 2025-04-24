@@ -285,7 +285,7 @@ class Export:
                               'domain_area_mean', 'domain_area_std', 'domain_oop_mean',
                               'domain_oop_std', 'domain_slen_mean', 'n_domains',
                               'myof_length_max', 'myof_length_mean', 'myof_length_std',
-                              'myof_wiggliness_mean', 'myof_wiggliness_std',
+                              'myof_bending_mean', 'myof_bending_std',
                               'myof_straightness_mean', 'myof_straightness_std',
                               'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
                               'sarcomere_length_std', 'sarcomere_oop',
