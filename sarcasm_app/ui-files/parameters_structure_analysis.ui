@@ -25,7 +25,7 @@
       <string>execute all of the below functions except cell mask prediction (check the parameters before)</string>
      </property>
      <property name="text">
-      <string>Full Analyzsis Structure</string>
+      <string>Full Analysis Structure</string>
      </property>
     </widget>
    </item>

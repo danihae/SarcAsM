@@ -431,7 +431,7 @@ class Ui_Form(object):
         _translate = QtCore.QCoreApplication.translate
         Form.setWindowTitle(_translate("Form", "Form"))
         self.btn_analyze_structure.setToolTip(_translate("Form", "execute all of the below functions except cell mask prediction (check the parameters before)"))
-        self.btn_analyze_structure.setText(_translate("Form", "Full Analyzsis Structure"))
+        self.btn_analyze_structure.setText(_translate("Form", "Full Analysis Structure"))
         self.label_4.setToolTip(_translate("Form", "possible values: all, single number or comma separated numbers, note that time starts with 0"))
         self.label_4.setText(_translate("Form", "Frames"))
         self.le_general_frames.setToolTip(_translate("Form", "possible values: all, single number or comma separated numbers, note that time starts with 0"))
