@@ -32,7 +32,7 @@ class ExportPopup(QDialog):
     """
     __max_entries_per_row = 5
 
-    def __init__(self, model, control,popup_type:str='structure'):
+    def __init__(self, model, control,popup_type:str='structure',filename_pattern:str='export_%.csv'):
         super().__init__()
         valid={'structure','motion'}
         if popup_type not in valid:
@@ -50,14 +50,14 @@ class ExportPopup(QDialog):
         self.__h_box = None
         self.__le_file_path: QLineEdit
         self.__le_file_name: QLineEdit
-        self.init_ui(popup_type=popup_type)
+        self.init_ui(popup_type=popup_type,filename_pattern=filename_pattern)
 
         pass
 
     # todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
     # todo: need to adapt "export" since those are wrapped with a class now
 
-    def init_ui(self,popup_type:str):
+    def init_ui(self,popup_type:str,filename_pattern:str):
         self.setLayout(QVBoxLayout())
         self.__group_structure = QGroupBox(title='Structure Columns')
         self.__group_metadata = QGroupBox(title='Metadata Columns')
@@ -78,7 +78,7 @@ class ExportPopup(QDialog):
         self.__le_file_path = QLineEdit()
         self.__le_file_path.setToolTip('directory path where the files should be exported to')
         self.__le_file_name = QLineEdit()
-        self.__le_file_name.setText('export_%.csv')
+        self.__le_file_name.setText(filename_pattern)
         self.__le_file_name.setToolTip('File name pattern, the % is a must have, \n'
                                        'it is a placeholder for "structure" or "motion"')
 

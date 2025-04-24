@@ -178,7 +178,7 @@ class Application:
 
     def init_gui(self):
         self.__window.setWindowTitle('SarcAsM')
-        self.__window.setGeometry(0, 0, 700, 1000)
+        self.__window.setGeometry(0, 0, 800, 1000)
         self.__center_ui()
 
         main_layout = QVBoxLayout()

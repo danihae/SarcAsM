@@ -116,6 +116,8 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.8)
 
+        self.__parameters.get_parameter(name='structure.cell_mask.threshold').set_value(0.1)
+
 
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
@@ -264,6 +266,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_max')
 
+        self.__parameters.set_parameter(name='structure.cell_mask.threshold')
 
         self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')

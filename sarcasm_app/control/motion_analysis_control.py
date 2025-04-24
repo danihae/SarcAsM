@@ -243,7 +243,10 @@ class MotionAnalysisControl:
     def __on_btn_export_motion_data(self):
         if not self.__chk_initialized():
             return
-        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion')
+
+        from pathlib import Path
+        name = Path(self.__main_control.model.cell.filepath).stem
+        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion',filename_pattern=f'%_{name}_{self.__main_control.model.sarcomere.loi_name}.csv')
         self.__export_popup.show_popup()
 
 

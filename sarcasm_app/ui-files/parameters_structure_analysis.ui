@@ -258,207 +258,7 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_2">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Z-band analysis</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout_3">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="toolTip">
-         <string>Threshold for binarizing z-bands prior to labeling (0 - 1)</string>
-        </property>
-        <property name="text">
-         <string>Threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_threshold">
-        <property name="toolTip">
-         <string>Threshold for binarizing z-bands prior to labeling (0 - 1)</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>1.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.100000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_15">
-        <property name="toolTip">
-         <string>Minimal length of z-bands, smaller z-bands are removed.</string>
-        </property>
-        <property name="text">
-         <string>Min length [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_min_length">
-        <property name="toolTip">
-         <string>Minimal length of z-bands, smaller z-bands are removed.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>-10000000000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000000000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>1.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_z_band">
-        <property name="toolTip">
-         <string>execute z band analysis, check parameters before</string>
-        </property>
-        <property name="text">
-         <string>Analyze Z-bands</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_5">
-        <property name="toolTip">
-         <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
-        </property>
-        <property name="text">
-         <string>Median filter radius [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_median_filter_radius">
-        <property name="toolTip">
-         <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_8">
-        <property name="toolTip">
-         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
-        </property>
-        <property name="text">
-         <string>Theta phi min </string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_theta_phi_min">
-        <property name="toolTip">
-         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_17">
-        <property name="toolTip">
-         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
-        </property>
-        <property name="text">
-         <string>A min</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_a_min">
-        <property name="toolTip">
-         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_20">
-        <property name="toolTip">
-         <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
-        </property>
-        <property name="text">
-         <string>D max [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_d_max">
-        <property name="toolTip">
-         <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="label_32">
-        <property name="toolTip">
-         <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
-            Defaults to 0.25.</string>
-        </property>
-        <property name="text">
-         <string>D min [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_z_band_d_min">
-        <property name="toolTip">
-         <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
-            Defaults to 0.25.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="6" column="0" colspan="2">
+   <item row="8" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
      <property name="enabled">
       <bool>true</bool>
@@ -617,7 +417,7 @@
      </layout>
     </widget>
    </item>
-   <item row="7" column="0" colspan="2">
+   <item row="9" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_5">
      <property name="font">
       <font>
@@ -756,7 +556,7 @@
      </layout>
     </widget>
    </item>
-   <item row="8" column="0" colspan="2">
+   <item row="10" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
      <property name="font">
       <font>
@@ -1099,6 +899,265 @@
      <property name="text">
       <string>Export Structure Data</string>
      </property>
+    </widget>
+   </item>
+   <item row="7" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Z-band analysis</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="toolTip">
+         <string>Threshold for binarizing z-bands prior to labeling (0 - 1)</string>
+        </property>
+        <property name="text">
+         <string>Threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_threshold">
+        <property name="toolTip">
+         <string>Threshold for binarizing z-bands prior to labeling (0 - 1)</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.100000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_15">
+        <property name="toolTip">
+         <string>Minimal length of z-bands, smaller z-bands are removed.</string>
+        </property>
+        <property name="text">
+         <string>Min length [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_min_length">
+        <property name="toolTip">
+         <string>Minimal length of z-bands, smaller z-bands are removed.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="minimum">
+         <double>-10000000000000000000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000000000000000000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
+        </property>
+        <property name="text">
+         <string>Median filter radius [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_median_filter_radius">
+        <property name="toolTip">
+         <string>Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_8">
+        <property name="toolTip">
+         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
+            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+        </property>
+        <property name="text">
+         <string>Theta phi min </string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_theta_phi_min">
+        <property name="toolTip">
+         <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
+            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_17">
+        <property name="toolTip">
+         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+        </property>
+        <property name="text">
+         <string>A min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_a_min">
+        <property name="toolTip">
+         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_z_band">
+        <property name="toolTip">
+         <string>execute z band analysis, check parameters before</string>
+        </property>
+        <property name="text">
+         <string>Analyze Z-bands</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string>D limits [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_8">
+        <item>
+         <widget class="QLabel" name="label_32">
+          <property name="toolTip">
+           <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
+            Defaults to 0.25.</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_z_band_d_min">
+          <property name="toolTip">
+           <string>Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
+            Defaults to 0.25.</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>99999999.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_20">
+          <property name="toolTip">
+           <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
+            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_z_band_d_max">
+          <property name="toolTip">
+           <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
+            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>9999999.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="5" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_7">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Cell-mask analysis</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_8">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_42">
+        <property name="font">
+         <font>
+          <pointsize>11</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>Threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_cell_mask_threshold">
+        <property name="font">
+         <font>
+          <pointsize>11</pointsize>
+         </font>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_analyze_cell_mask">
+        <property name="text">
+         <string>Analyze Cell-mask</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
   </layout>

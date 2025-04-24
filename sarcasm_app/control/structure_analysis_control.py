@@ -82,7 +82,7 @@ class StructureAnalysisControl:
             network_model = None
         cell: Structure = TypeUtils.unbox(model.cell)
         size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter(
-                                                 'structure.predict_fast_movie.n_frames').get_value(),
+            'structure.predict_fast_movie.n_frames').get_value(),
                                              model.parameters.get_parameter(
                                                  'structure.predict_fast_movie.size_width').get_value(),
                                              model.parameters.get_parameter(
@@ -111,7 +111,7 @@ class StructureAnalysisControl:
         return True
 
     # removed cell_mask_prediction_network
-    #def __chk_cell_mask_prediction_network(self):
+    # def __chk_cell_mask_prediction_network(self):
     #    cell_mask_network=self.__main_control.model.parameters.get_parameter('structure.cell_mask_prediction_network')
     #    if cell_mask_network is None:
     #        self.__main_control.debug('no cell mask network was chosen for prediction')
@@ -168,6 +168,23 @@ class StructureAnalysisControl:
         self.__worker = worker
         return worker
 
+    def __on_btn_analyze_cell_mask(self):
+        if not self.__chk_initialized():
+            return
+        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
+        message_finished = f'Cell mask analysis completed.'
+
+        def __internal_call(w, m: ApplicationModel):
+            cell.analyze_cell_mask(m.parameters.get_parameter('structure.cell_mask.threshold').get_value())
+            pass
+
+        worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
+                                                   start_message='Starting analysis of cell mask.',
+                                                   finished_message=message_finished,
+                                                   finished_successful_action=cell.commit)
+        self.__worker = worker
+        return worker
+
     def __parse_frames(self, frames_str: str):
         if frames_str == '':
             return None
@@ -194,21 +211,21 @@ class StructureAnalysisControl:
             progress_notifier = self.__get_progress_notifier(w)
             cell: Structure = TypeUtils.unbox(m.cell)
             cell.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
-                                           threshold=m.parameters.get_parameter(
-                                               'structure.z_band_analysis.threshold').get_value(),
-                                           min_length=m.parameters.get_parameter(
-                                               'structure.z_band_analysis.min_length').get_value(),
-                                           median_filter_radius=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.median_filter_radius').get_value(),
-                                           theta_phi_min=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.theta_phi_min').get_value(),
-                                           a_min=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.a_min').get_value(),
-                                           d_max=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.d_max').get_value(),
-                                           d_min=m.parameters.get_parameter(
-                                               name='structure.z_band_analysis.d_min').get_value(),
-                                           progress_notifier=progress_notifier)
+                                 threshold=m.parameters.get_parameter(
+                                     'structure.z_band_analysis.threshold').get_value(),
+                                 min_length=m.parameters.get_parameter(
+                                     'structure.z_band_analysis.min_length').get_value(),
+                                 median_filter_radius=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.median_filter_radius').get_value(),
+                                 theta_phi_min=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.theta_phi_min').get_value(),
+                                 a_min=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.a_min').get_value(),
+                                 d_max=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.d_max').get_value(),
+                                 d_min=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.d_min').get_value(),
+                                 progress_notifier=progress_notifier)
             pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
@@ -365,12 +382,12 @@ class StructureAnalysisControl:
             return
         if not self.__chk_frames():
             return
-        #if not self.__chk_cell_mask_prediction_network():
+        # if not self.__chk_cell_mask_prediction_network():
         #    return
         # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_z_bands_predict)
-        # chain.add_step(self.on_btn_cell_mask_predict) # excluded from analyze structure
+        # chain.add_step(self.__on_btn_analyze_cell_mask) # excluded from analyze structure
         chain.add_step(self.on_btn_z_band)
         chain.add_step(self.on_btn_vectors)
         chain.add_step(self.on_btn_myofibril)
@@ -381,7 +398,10 @@ class StructureAnalysisControl:
     def __open_export_popup(self):
         if not self.__chk_initialized():
             return
-        self.__popup = ExportPopup(self.__main_control.model, self.__main_control,popup_type='structure')
+
+        from pathlib import Path
+        name=Path(self.__main_control.model.cell.filepath).stem
+        self.__popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='structure',filename_pattern=f'%_{name}.csv')
         self.__popup.show_popup()
 
     def bind_events(self):
@@ -408,6 +428,7 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.btn_structure_domain_analysis.clicked.connect(self.on_btn_domain_analysis)
         self.__structure_parameters_widget.btn_fast_movie_search.clicked.connect(self.on_btn_fast_movie_search_network)
         self.__structure_parameters_widget.btn_fast_movie.clicked.connect(self.on_btn_z_bands_predict_fast_movies)
+        self.__structure_parameters_widget.btn_structure_analyze_cell_mask.clicked.connect(self.__on_btn_analyze_cell_mask)
 
         # todo: bind parameters to ui elements
         parameters = self.__main_control.model.parameters
@@ -429,12 +450,15 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').connect(
             widget.dsb_fast_movie_clip_thresh_max)
 
+        parameters.get_parameter(name='structure.cell_mask.threshold').connect(widget.dsb_cell_mask_threshold)
+
         parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
         parameters.get_parameter(name='structure.frames').connect(widget.le_general_frames)
 
         parameters.get_parameter(name='structure.z_band_analysis.threshold').connect(widget.dsb_z_band_threshold)
         parameters.get_parameter(name='structure.z_band_analysis.min_length').connect(widget.dsb_z_band_min_length)
-        parameters.get_parameter(name='structure.z_band_analysis.median_filter_radius').connect(widget.dsb_z_band_median_filter_radius)
+        parameters.get_parameter(name='structure.z_band_analysis.median_filter_radius').connect(
+            widget.dsb_z_band_median_filter_radius)
         parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').connect(
             widget.dsb_z_band_theta_phi_min)
         parameters.get_parameter(name='structure.z_band_analysis.a_min').connect(widget.dsb_z_band_a_min)
@@ -453,8 +477,8 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.myofibril.threshold_distance').connect(
             widget.dsb_myofibril_thresh_dist)
         parameters.get_parameter(name='structure.myofibril.n_min').connect(widget.sb_myofibril_n_min)
-        parameters.get_parameter(name='structure.myofibril.median_filter_radius').connect(widget.dsb_myofibril_median_filter_radius)
-
+        parameters.get_parameter(name='structure.myofibril.median_filter_radius').connect(
+            widget.dsb_myofibril_median_filter_radius)
 
         parameters.get_parameter(name='structure.domain.analysis.d_max').connect(widget.dsb_domains_d_max)
         parameters.get_parameter(name='structure.domain.analysis.cosine_min').connect(widget.dsb_domains_cosine_min)
