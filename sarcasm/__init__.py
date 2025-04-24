@@ -12,6 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+from ._version import __version__
 from .core import SarcAsM
 from .structure import Structure
 from .motion import Motion
