@@ -199,37 +199,37 @@
         </property>
         <layout class="QFormLayout" name="formLayout_2">
          <item row="0" column="0">
-          <widget class="QCheckBox" name="chk_skip_cellmask">
+          <widget class="QCheckBox" name="chk_do_cellmask">
            <property name="text">
-            <string>Skip Analyze Cellmask</string>
+            <string>Analyze Cellmask</string>
            </property>
           </widget>
          </item>
          <item row="1" column="0">
-          <widget class="QCheckBox" name="chk_skip_zbands">
+          <widget class="QCheckBox" name="chk_do_zbands">
            <property name="text">
-            <string>Skip Analyze Z-Bands</string>
+            <string>Analyze Z-Bands</string>
            </property>
           </widget>
          </item>
          <item row="2" column="0">
-          <widget class="QCheckBox" name="chk_skip_vectors">
+          <widget class="QCheckBox" name="chk_do_vectors">
            <property name="text">
-            <string>Skip Analyze Vectors</string>
+            <string>Analyze Vectors</string>
            </property>
           </widget>
          </item>
          <item row="3" column="0">
-          <widget class="QCheckBox" name="chk_skip_myofibrils">
+          <widget class="QCheckBox" name="chk_do_myofibrils">
            <property name="text">
-            <string>Skip Analyze Myofibrils</string>
+            <string>Analyze Myofibrils</string>
            </property>
           </widget>
          </item>
          <item row="4" column="0">
-          <widget class="QCheckBox" name="chk_skip_domains">
+          <widget class="QCheckBox" name="chk_do_domains">
            <property name="text">
-            <string>Skip Analyze Domains</string>
+            <string>Analyze Domains</string>
            </property>
           </widget>
          </item>

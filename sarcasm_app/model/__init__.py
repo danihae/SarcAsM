@@ -219,11 +219,11 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.root').set_value('D:\\Test\\SarcasmTestBatch')
         self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(True)
-        self.__parameters.get_parameter(name='batch.skip_cellmask').set_value(False)
-        self.__parameters.get_parameter(name='batch.skip_zbands').set_value(False)
-        self.__parameters.get_parameter(name='batch.skip_vectors').set_value(False)
-        self.__parameters.get_parameter(name='batch.skip_myofibrils').set_value(False)
-        self.__parameters.get_parameter(name='batch.skip_domains').set_value(False)
+        self.__parameters.get_parameter(name='batch.do_cellmask').set_value(True)
+        self.__parameters.get_parameter(name='batch.do_zbands').set_value(True)
+        self.__parameters.get_parameter(name='batch.do_vectors').set_value(True)
+        self.__parameters.get_parameter(name='batch.do_myofibrils').set_value(True)
+        self.__parameters.get_parameter(name='batch.do_domains').set_value(True)
         # endregion
 
         pass
@@ -348,9 +348,9 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.root')
         self.__parameters.set_parameter(name='batch.recalculate.for.motion')
-        self.__parameters.set_parameter(name='batch.skip_cellmask')
-        self.__parameters.set_parameter(name='batch.skip_zbands')
-        self.__parameters.set_parameter(name='batch.skip_vectors')
-        self.__parameters.set_parameter(name='batch.skip_myofibrils')
-        self.__parameters.set_parameter(name='batch.skip_domains')
+        self.__parameters.set_parameter(name='batch.do_cellmask')
+        self.__parameters.set_parameter(name='batch.do_zbands')
+        self.__parameters.set_parameter(name='batch.do_vectors')
+        self.__parameters.set_parameter(name='batch.do_myofibrils')
+        self.__parameters.set_parameter(name='batch.do_domains')
         # endregion

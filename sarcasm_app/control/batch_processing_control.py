@@ -37,11 +37,11 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
         parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
-        parameters.get_parameter(name='batch.skip_cellmask').connect(widget.chk_skip_cellmask)
-        parameters.get_parameter(name='batch.skip_zbands').connect(widget.chk_skip_zbands)
-        parameters.get_parameter(name='batch.skip_vectors').connect(widget.chk_skip_vectors)
-        parameters.get_parameter(name='batch.skip_myofibrils').connect(widget.chk_skip_myofibrils)
-        parameters.get_parameter(name='batch.skip_domains').connect(widget.chk_skip_domains)
+        parameters.get_parameter(name='batch.do_cellmask').connect(widget.chk_do_cellmask)
+        parameters.get_parameter(name='batch.do_zbands').connect(widget.chk_do_zbands)
+        parameters.get_parameter(name='batch.do_vectors').connect(widget.chk_do_vectors)
+        parameters.get_parameter(name='batch.do_myofibrils').connect(widget.chk_do_myofibrils)
+        parameters.get_parameter(name='batch.do_domains').connect(widget.chk_do_domains)
 
         pass
 
