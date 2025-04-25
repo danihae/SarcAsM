@@ -1,36 +1,53 @@
-from multiprocessing import Pool
 import glob
+from multiprocessing import Pool
 from sarcasm import *
 
-
-folder = 'D:/2024_competition_data/'
+folder = 'D:/SarcAsM_drugs/'
 
 # find files
-files = glob.glob(folder + '/*/*.tif')[::-1]
+files = glob.glob(folder + '*.tif')
 print(f'{len(files)} tif-files found')
 
 
-def find_lois(file):
-    sarc_obj = SarcAsM(file)
-    sarc_obj.structure.predict_z_bands(siam_unet=True)
-    sarc_obj.structure.analyze_sarcomere_vectors(frames=0)
-    sarc_obj.structure.detect_rois(timepoint=0)
+# detect LOIs
+def detect_lois(file):
+    # initialize file
+    sarc = Structure(file)
+
+    # detect all sarcomere features for first frame only
+    sarc.detect_sarcomeres(frames=0)
+
+    # detect Z-bands for all frames with time-consistent 3D-U-Net, alternatively run detect_sarcomeres(frames='all')
+    sarc.detect_z_bands_fast_movie()
+
+    # analyze sarcomere vectors in first frame
+    sarc.analyze_sarcomere_vectors(frames=0)
+
+    # detect lines of interest (LOIs)
+    sarc.detect_lois(n_lois=4)
 
 
-def analyze_motion(file):
+# analyze all LOIs of one tif-file
+def analyze_lois(file):
     lois = Utils.get_lois_of_file(file)
     for file, loi in lois:
         try:
+            # initialize LOI
             mot_obj = Motion(file, loi)
+
+            # analysis of LOI with default parameters
             mot_obj.full_analysis_loi()
-            Plots.plot_loi_summary_motion(mot_obj)
+
         except Exception as e:
             print(file, loi)
             print(repr(e))
 
 
 if __name__ == '__main__':
-    # analyze ROIs
-    with Pool(8) as p:
-        p.map(analyze_motion, files)
+    # find LOIs
+    with Pool(4) as p:
+        p.map(detect_lois, files)
 
+    # analyze LOIs
+    with Pool(12) as p:
+        p.map(analyze_lois, files)

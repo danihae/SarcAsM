@@ -1,27 +1,25 @@
-from multiprocessing import Pool
 import glob
-
-from sarcasm import *
+from multiprocessing import Pool
+from sarcasm import Structure
 
 # select folder with tif files
 folder = 'D:/2023_SarcAsM_drugs_chronic/'
 
 # find all tif files in folder
-tif_files = glob.glob(folder + '*/*.tif')
-print(len(tif_files))
+tif_files = glob.glob(folder + '*.tif')
+print(f'{len(tif_files)} tif-files found')
 
-
+# function for analysis of single tif-file
 def analyze_tif(file):
     print(file)
     # initialize SarcAsM object
-    sarc_obj = SarcAsM(file)
+    sarc = Structure(file)
 
-    # predict sarcomere z-bands and cell mask
-    sarc_obj.structure.predict_z_bands(size=(2048, 2048))
-    sarc_obj.structure.predict_cell_mask(size=(2048, 2048))
+    # detect sarcomere z-bands, m-bands, sarcomere orientation and cell masks
+    sarc.detect_sarcomeres(max_patch_size=(2048, 2048))
 
-    # analyze sarcomere structures
-    sarc_obj.structure.full_analysis_structure(frames='all')
+    # analyze sarcomere structures (or use step-by-step analysis, see tutorial structure analysis)
+    sarc.full_analysis_structure(frames='all')
 
     print(f'{file} successfully analyzed!')
 
