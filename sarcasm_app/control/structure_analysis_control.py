@@ -175,7 +175,8 @@ class StructureAnalysisControl:
         message_finished = f'Cell mask analysis completed.'
 
         def __internal_call(w, m: ApplicationModel):
-            cell.analyze_cell_mask(m.parameters.get_parameter('structure.cell_mask.threshold').get_value())
+            cell.analyze_cell_mask(frames=m.parameters.get_parameter('structure.frames').get_value(),
+                                   threshold=m.parameters.get_parameter('structure.cell_mask.threshold').get_value())
             pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,

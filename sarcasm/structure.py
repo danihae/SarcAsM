@@ -292,30 +292,48 @@ class Structure(SarcAsM):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_cell_mask(self, threshold: float = 0.1) -> None:
+    def analyze_cell_mask(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1) -> None:
         """
-        Analyzes the area occupied by cells in the given image(s) and calculates the cell area ratio.
+        Analyzes the area occupied by cells in the given image(s) and calculates the average cell intensity and
+        cell area ratio.
 
         Parameters
         ----------
         threshold : float, optional
             Threshold value for binarizing the cell mask image. Pixels with intensity
             above threshold are considered cell. Defaults to 0.1.
+        frames: {'all', int, list, np.ndarray}, optional
+            Frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
+            selected frames). Defaults to 'all'.
         """
-        cell_mask = self.cell_mask
-        imgs = self.read_imgs()
+        if not os.path.exists(self.file_cell_mask):
+            raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
+        if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
+            cell_mask = tifffile.imread(self.file_cell_mask)
+            images = self.read_imgs()
+            list_frames = list(range(len(images)))
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
+            cell_mask = tifffile.imread(self.file_cell_mask, key=frames)
+            images = self.read_imgs(frames=frames)
+            if np.issubdtype(type(frames), np.integer):
+                list_frames = [frames]
+            else:
+                list_frames = list(frames)
+        else:
+            raise ValueError('frames argument not valid')
 
         if len(cell_mask.shape) == 2:
             cell_mask = np.expand_dims(cell_mask, 0)
-            imgs = np.expand_dims(imgs, 0)
+        if len(images.shape) == 2:
+            images = np.expand_dims(images, 0)
 
-        n_imgs = len(imgs)
+        n_imgs = len(images)
 
         # create empty arrays
         cell_area, cell_area_ratio = np.full(n_imgs, fill_value=np.nan), np.full(n_imgs, fill_value=np.nan)
         cell_mask_intensity = np.full(n_imgs, fill_value=np.nan)
 
-        for i, (img_i, cell_mask_i) in enumerate(zip(imgs, cell_mask)):
+        for i, (img_i, cell_mask_i) in enumerate(zip(images, cell_mask)):
             # binarize mask
             mask_i = cell_mask_i > threshold
 
@@ -328,6 +346,7 @@ class Structure(SarcAsM):
 
         _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
                  'cell_mask_intensity': cell_mask_intensity,
+                 'params.analyze_cell_mask.frames': list_frames,
                  'params.analyze_cell_mask.threshold': threshold}
         self.data.update(_dict)
         if self.auto_save:
@@ -385,6 +404,7 @@ class Structure(SarcAsM):
 
         if len(zbands.shape) == 2:
             zbands = np.expand_dims(zbands, 0)
+        if len(images.shape) == 2:
             images = np.expand_dims(images, 0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, 0)
