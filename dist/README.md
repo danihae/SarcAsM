@@ -10,7 +10,7 @@ Batch files are script files in DOS, OS/2 and Microsoft Windows. They consist of
 
 Before running the batch files, ensure that the following software is installed and added to your system path:
 
-- A Python distribution: SarcAsM is a Python-based tool, and thus requires a Python environment to run.
+- A Python distribution: SarcAsM is a Python-based tool, and thus requires a Python environment to run (>=3.10).
 - Pip: This is a package manager for Python. It's used to install and manage Python packages.
 - Git: This is a version control system that's used to manage and track changes in the SarcAsM source code.
 
@@ -40,30 +40,21 @@ Pip is usually included with modern Python installations, but if for some reason
 
 ## 1. Installation and Distribution Scripts
 
-There are two main scripts that facilitate the distribution and installation of SarcAsM: `build_dist.bat` and `build_minimal_dist.bat`.
+There is one script that facilitate the distribution and installation of SarcAsM: `build_minimal_dist.cmd`.
 
-### 1.1 Full Distribution: `build_dist.bat`
+
+### 1.2 Minimal Distribution: `build_minimal_dist.cmd`
 Additional Requirement for this script is an installed version of 7zip. Further 7zip has to be added to Windows PATH var.
-The `build_dist.bat` script is designed to package the entire virtual environment of the development setup, along with some additional files, into a zip distribution. This distribution is intended to function immediately upon setup on the target system, provided that the target system is running Windows.
+The `build_minimal_dist.cmd` script creates a minimal distribution by packaging only the essential components of SarcAsM into a zip archive. This archive includes a pip install script and a test file.
 
 To use this script:
 
-1. Run the `build_dist.bat` script to create the zip distribution.
-2. Extract the zip file on the target system.
-3. Run the `install.bat` script on the target system.
-
-### 1.2 Minimal Distribution: `build_minimal_dist.bat`
-
-The `build_minimal_dist.bat` script creates a minimal distribution by packaging only the essential components of SarcAsM into a zip archive. This archive includes a pip install script and a test file.
-
-To use this script:
-
-1. Run the `build_minimal_dist.bat` script to create the zip distribution.
-2. On the target system, run either `create_clean_venv.bat` or `create_clean_venv_cuda.bat` to install all pip requirements.
+1. Run the `build_minimal_dist.cmd` script to create the zip distribution.
+2. On the target system, run either `create_clean_venv.cmd` or `create_clean_venv_cuda.cmd` to install all pip requirements.
 
 ## 2. Running SarcAsM
 
-After installing the necessary software and pip requirements, execute the program by running the `run.bat` file. This batch file initiates the SarcAsM program, allowing you to begin your sarcomere structural and functional analysis.
+After installing the necessary software and pip requirements, execute the program by running the `run.cmd` file. This batch file initiates the SarcAsM program, allowing you to begin your sarcomere structural and functional analysis.
 
 By following these instructions, you should be able to successfully set up and run SarcAsM on your system.
 
