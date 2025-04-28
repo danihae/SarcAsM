@@ -1,4 +1,4 @@
-#python version should be >=3.9
+#python version should be >=3.10
 napari~=0.4.18
 torch>=2.0.0
 bio-image-unet==1.0.1a14
