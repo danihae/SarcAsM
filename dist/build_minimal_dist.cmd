@@ -21,8 +21,11 @@ copy ..\requirements.txt distribution_min\requirements.txt
 
 rem "2) COPY RUN BAT, CREATE_CLEAN_VENV.BAT"
 copy run.cmd distribution_min\run.cmd
+copy conda_run.cmd distribution_min\conda_run.cmd
 copy create_clean_venv.cmd distribution_min\create_clean_venv.cmd
-copy create_clean_venv_cuda.cmd distribution_min\create_clean_venv_cuda.cmd
+copy create_clean_venv_cuda.cmd distribution_min\create_clean_venv_cuda118.cmd
+copy conda_create_clean_venv.cmd distribution_min\create_clean_venv.cmd
+copy conda_create_clean_venv_cuda.cmd distribution_min\create_clean_venv_cuda118.cmd
 
 rem "3) COPY TEST NETWORKS"
 mkdir distribution_min\test
@@ -35,7 +38,8 @@ rem "4) ADD README"
 echo This minimal distribution needs a working python greater equal 3.10 version installed.
 echo It also requires installed GIT.
 echo Otherwise it will not work, the create_clean_venv.bat requires python in the path-variable.
-echo execute create_clean_venv.bat or the one with cuda depending on your system.
+echo If conda is used, use the conda_create_clean_venv cmd files.
+echo execute create_clean_venv.cmd or the one with cuda depending on your system.
 echo this will take a while, if its done you can use the run script.
 )>distribution_min\readme.txt
 
