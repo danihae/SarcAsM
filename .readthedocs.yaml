@@ -1,23 +1,15 @@
-# .readthedocs.yaml
-# Configuration for Read the Docs builds
-# See https://docs.readthedocs.io/en/stable/config-file/v2.html
-
 version: 2
 
-# Set the version of Python to use
 build:
   os: ubuntu-22.04
   tools:
     python: "3.10"
 
-# Define the Sphinx configuration file location
 sphinx:
   configuration: docs/conf.py
 
-# Define how to install Python dependencies
 python:
   install:
-    # Install the project itself using pip (which will use pyproject.toml)
-    # This installs SarcAsM and all dependencies listed in [tool.poetry.dependencies]
+    - requirements: requirements.txt   # Install dependencies from your base requirements.txt
     - method: pip
-      path: .
+      path: .                          # Install your package itself
