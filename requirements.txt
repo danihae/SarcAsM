@@ -20,3 +20,4 @@ openpyxl
 tifffile
 notebook
 orjson>=3.10.0
+sphinx-autoapi
