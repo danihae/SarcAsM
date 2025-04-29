@@ -1,76 +1,167 @@
-![SarcAsM logo](./docs/images/logo.png)
+# SarcAsM
 
-### A Python package for comprehensive analysis of sarcomere structure and function
+<img src="./docs/images/logo.png" alt="SarcAsM logo" width="200"/>
+
+**A Python package for comprehensive analysis of sarcomere structure and function in cardiomyocytes**
 
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/SarcAsM.svg)](https://python.org)
 [![Python package index](https://img.shields.io/pypi/v/SarcAsM.svg)](https://pypi.org/project/SarcAsM)
-[![Python package index download statistics](https://img.shields.io/pypi/dm/SarcAsM.svg)](https://pypistats.org/packages/SarcAsM)
-[![Development Status](https://img.shields.io/pypi/status/SarcAsM.svg)](https://en.wikipedia.org/wiki/Software_release_life_cycle#Alpha)
-[![DOI](https://zenodo.org/badge/xxxxxxx.svg)](https://zenodo.org/badge/latestdoi/xxxxxx)
 
-SarcAsM is an advanced Python package designed to analyze the structure and dynamics of sarcomeres in cardiomyocytes. By leveraging machine learning techniques, SarcAsM provides automated, fast, and unbiased assessments of sarcomeric Z-bands, sarcomeres, myofibrils, and sarcomere domains. Furthermore, SarcAsM tracks and analyzes the motion of individual sarcomere ~20 nm superresolution.
+## Overview
+
+SarcAsM (Sarcomere Analysis Multitool) is a Python package designed to analyze the structure and dynamics of sarcomeres in cardiomyocytes. It provides powerful tools for both structural analysis and functional assessment of sarcomere behavior in microscopy images and movies.
+
+For details, check out our preprint: `[Link to preprint will be added here]`
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Documentation](#documentation)
+- [Support](#support)
+- [Citation](#citation)
+- [License](#license)
+
+## Features
+
+![Graphical abstract](./docs/images/graphical_abstract.png)
+**Summary of SarcAsM workflow and analyzed features**
+
+- Robust AI-based sarcomere feature detection in microscopy images
+- Comprehensive multilevel analysis of sarcomere structure
+    - Z-bands morphometrics and lateral alignment
+    - Sarcomere lengths and orientations (sarcomere 'vectors')
+    - Myofibril lengths and shape
+    - Cell-level myofibril domains 
+- High-precision tracking of individual and average sarcomere motion with ~20 nm accuracy
+- Functional analysis of sarcomere contraction dynamics
+- Interactive Graphical User Interface (GUI)
+- Comprehensive Python API for integration into custom workflows
+- Batch processing capabilities for high-throughput analysis
+
 ## Installation
 
-### Installation of Python package
+### Option 1: Installation via PyPI (Recommended)
 
-For more experienced users or developers, SarcAsM can be installed via pip or directly from GitHub. This method requires a Python environment and Git.
+The easiest way to install SarcAsM is via pip:
 
-#### Create environment
-```sh
-conda create -y -n sarcasm-env python=3.9
-conda activate sarcasm-env
+```
+pip install sarc-asm
 ```
 
-#### Installation via PyPI (available upon publication):
-```sh
-pip install sarcasm
-```
+### Option 2: Installation from GitHub
 
-#### Installation from GitHub (available upon publication):
-```sh
+For the latest development version:
+
+```
 pip install git+https://github.com/danihae/sarcasm.git
 ```
 
-#### For reviewers (local directory):
-Make sure Python (>=3.9) is installed and/or create environment (see above). 
-1. [Download SarcAsM](https://e.pcloud.link/publink/show?code=kZUVoTZeXydDUIgTvJkRhDxLlheNp2G87w7).
-2. Install requirements by running ``pip install -r requirements.txt`` in console from sarcasm directory.
-4. Add SarcAsM package path to system path and test import. 
-```python
-import sys
+### Setting up a dedicated environment (Recommended)
 
-# Determine the path to your local SarcAsM directory
-package_path = "/path/to/sarcasm/"
+We strongly recommend creating a dedicated conda environment to avoid dependency conflicts:
 
-# Add the path to the system path
-sys.path.append(package_path)
-
-# Test: import the SarcAsM module or package from the local directory
-from sarcasm import *
 ```
-The full installation usually takes less than 5 min, depending on internet connection. For computers equipped with an NVIDIA GPU, make sure the Pytorch and CUDA toolkit versions match.
+conda create -y -n sarcasm-env python=3.10
+conda activate sarcasm-env
+pip install sarc-asm
+```
 
-We recommend the notebook 'quickstart_demo.ipynb' for testing of SarcAsM.
+**Note:** The full installation usually takes less than 5 minutes, depending on your internet connection. For computers equipped with an NVIDIA GPU, ensure the installed PyTorch and CUDA toolkit versions are compatible. See PyTorch installation instructions for details.
 
 ## Usage
 
-Detailed online documentation with tutorials and examples can be found [here](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/).
-A data set for testing is available in the folder 'test_data'.
+### Python Package
 
-### Standalone application with GUI (beta version)
-The app can be started by executing `sarcasm/app/__main__.py` or running `python -m app` from the SarcAsM root directory.
+After installation, SarcAsM can be imported and used in your Python scripts or Jupyter notebooks:
 
-### Python package
-After installation, SarcAsM is imported by ``from sarcasm import *``. If SarcAsM is in a local directory, add the path to the system path (see above). 
-The Jupyter Notebook 'quickstart_demo.ipynb' gives a short introduction into the functions of SarcAsM by analyzing two examples.
-Further examples and tutorials can be found under 'docs/notebooks' and in the [online documentation](https://filedn.eu/lKfS794F9UgX7PDuBQcfChB/SarcAsM_docs/). 
+```
+# Example workflow for structural analysis
+from sarcasm import Structure, Export
+
+# Load an image or movie
+sarc = Structure("path/to/your/image_or_movie.tif")
+
+# Detect sarcomeres
+sarc.detect_sarcomeres()
+
+# Analyze sarcomere length and orientations (sarcomere 'vectors')
+sarc.analyze_sarcomere_vectors()
+
+# Analyze Z-bands
+sarc.analyze_z_bands()
+
+# Analyze myofibrils
+sarc.analyze_myofibrils()
+
+# Analyze domains
+sarc.analyze_sarcomere_domains()
+
+# Export data to xlsx file (summary statistics of each frame, full data stored as json in file base directory)
+Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc_obj)
+```
+
+Check out `quickstart_demo.ipynb` in the repository root or our [documentation](https://sarcasm.readthedocs.io/)
+ for a practical introduction to SarcAsM's functionalities.
+
+### Graphical User Interface
+
+![SarcAsM GUI Screenshot](./docs/images/app_screenshot.png)
+
+The SarcAsM application provides an intuitive GUI built with Napari as image viewer for easy analysis:
+
+```
+# After activating your environment (e.g., conda activate sarcasm-env)
+python -m sarcasm_app
+```
+
+Alternatively, you can run `./sarcasm_app/__main__.py` directly from the SarcAsM root directory if the necessary dependencies are in your PYTHONPATH.
+
+## Documentation
+
+Detailed documentation, including tutorials, API reference, and usage examples, can be found at:
+
+[https://sarcasm.readthedocs.io/](https://sarcasm.readthedocs.io/)
+
+Additional resources:
+- Example notebooks located in the `docs/notebooks` directory within the repository.
+- Sample data for testing purposes is available in the `test_data` folder.
 
 ## Support
 
-If you encounter any issues or have any questions about using SarcAsM, please [open an issue](link-to-issue-tracker) on our GitHub repository.
+If you encounter any issues, have questions, or want to suggest improvements:
+- Please check the [online documentation](https://sarcasm.readthedocs.io/) first.
+- If the issue persists, [open an issue](https://github.com/danihae/SarcAsM/issues) on our GitHub repository. Provide as much detail as possible, including steps to reproduce the problem, error messages, and your operating system/environment details.
 
 ## Citation
 
 If you use SarcAsM in your research, please cite our paper:
 
-[insert citation here upon publication]
+```
+[Citation details will be added upon publication of the manuscript]
+```
+
+## License
+
+This software is patent pending (Patent Application No. DE 10 2024 112 939.5, Priority Date: 8.5.2024).
+
+### Academic and Non-Commercial Use
+This software is free for academic and non-commercial use. Users are granted a non-exclusive, non-transferable license to use the software for research, educational, and other non-commercial purposes.
+
+### Commercial Use Restrictions
+Commercial use of this software is strictly prohibited without obtaining a separate license agreement. This includes but is not limited to:
+- Using the software in a commercial product or service
+- Using the software to provide services to third parties
+- Reselling or redistributing the software
+
+For commercial licensing inquiries, please contact:
+
+**MBM ScienceBridge GmbH**,
+Hans-Adolf-Krebs-Weg 1,
+37077 Göttingen,
+Germany,
+https://sciencebridge.de/en/
+
+All rights not expressly granted are reserved. Unauthorized use may result in legal action.
+
