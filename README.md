@@ -1,10 +1,4 @@
-# SarcAsM
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/logo_invert.png">
-  <source media="(prefers-color-scheme: light)" srcset="./docs/images/logo.png">
-  <img alt="SarcAsM logo" src="./docs/images/logo.png" width="500">
-</picture>
+<img alt="SarcAsM logo" src="./docs/images/logo.png" style="width: 500px;">
 
 **A Python package for comprehensive analysis of sarcomere structure and function in cardiomyocytes**
 
@@ -15,6 +9,7 @@
 ## Overview
 
 SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package for cardiomyocyte sarcomere analysis. It enables precise multilevel structural and functional assessment of sarcomeres in microscopy images and movies, making it suitable for drug screening, disease phenotyping, and biomechanical studies.
+
 For details, check out our preprint: `[Link to preprint will be added here]`
 
 ## Table of Contents
