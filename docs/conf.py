@@ -57,7 +57,7 @@ extensions = [
 ]
 
 autoapi_type = 'python'
-autoapi_dirs = ['../sarcasm', '../contraction_net', '../../bio-image-unet/bio_image_unet']
+autoapi_dirs = ['../sarcasm', '../contraction_net']
 autoapi_ignore = ["*/test*.py", "*/tests/*.py", "*/type_utils.py", "*/siam_unet/*", "*/progress/*"]
 
 autosummary_generate = True  # Turn on sphinx.ext.autosummary
