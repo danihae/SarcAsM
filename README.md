@@ -1,16 +1,20 @@
 # SarcAsM
 
-<img src="./docs/images/logo.png" alt="SarcAsM logo" width="200"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/logo_invert.png">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/images/logo.png">
+  <img alt="SarcAsM logo" src="./docs/images/logo.png" width="500">
+</picture>
 
 **A Python package for comprehensive analysis of sarcomere structure and function in cardiomyocytes**
 
-[![Supported Python versions](https://img.shields.io/pypi/pyversions/SarcAsM.svg)](https://python.org)
-[![Python package index](https://img.shields.io/pypi/v/SarcAsM.svg)](https://pypi.org/project/SarcAsM)
+[![Supported Python versions](https://img.shields.io/pypi/pyversions/sarc-asm.svg)](https://python.org)
+[![Python package index](https://img.shields.io/pypi/v/SarcAsM.svg)](https://pypi.org/project/sarc-asm)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8232838.svg)](https://doi.org/10.5281/zenodo.8232838)
 
 ## Overview
 
-SarcAsM (Sarcomere Analysis Multitool) is a Python package designed to analyze the structure and dynamics of sarcomeres in cardiomyocytes. It provides powerful tools for both structural analysis and functional assessment of sarcomere behavior in microscopy images and movies.
-
+SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package for cardiomyocyte sarcomere analysis. It enables precise multilevel structural and functional assessment of sarcomeres in microscopy images and movies, making it suitable for drug screening, disease phenotyping, and biomechanical studies.
 For details, check out our preprint: `[Link to preprint will be added here]`
 
 ## Table of Contents
@@ -25,9 +29,6 @@ For details, check out our preprint: `[Link to preprint will be added here]`
 
 ## Features
 
-![Graphical abstract](./docs/images/graphical_abstract.png)
-**Summary of SarcAsM workflow and analyzed features**
-
 - Robust AI-based sarcomere feature detection in microscopy images
 - Comprehensive multilevel analysis of sarcomere structure
     - Z-bands morphometrics and lateral alignment
@@ -39,6 +40,9 @@ For details, check out our preprint: `[Link to preprint will be added here]`
 - Interactive Graphical User Interface (GUI)
 - Comprehensive Python API for integration into custom workflows
 - Batch processing capabilities for high-throughput analysis
+
+![Graphical abstract](./docs/images/graphical_abstract.png)
+**Summary of SarcAsM workflow and analyzed features**
 
 ## Installation
 
@@ -126,7 +130,7 @@ Detailed documentation, including tutorials, API reference, and usage examples, 
 
 Additional resources:
 - Example notebooks located in the `docs/notebooks` directory within the repository.
-- Sample data for testing purposes is available in the `test_data` folder.
+- Sample data for testing purposes is available at [https://doi.org/10.5281/zenodo.8232838](https://doi.org/10.5281/zenodo.8232838).
 
 ## Support
 
@@ -164,4 +168,3 @@ Germany,
 https://sciencebridge.de/en/
 
 All rights not expressly granted are reserved. Unauthorized use may result in legal action.
-
