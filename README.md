@@ -4,7 +4,6 @@
 
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/sarc-asm.svg)](https://python.org)
 [![Python package index](https://img.shields.io/pypi/v/sarc-asm.svg)](https://pypi.org/project/sarc-asm)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8232838.svg)](https://doi.org/10.5281/zenodo.8232838)
 
 ## Overview
 
