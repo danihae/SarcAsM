@@ -116,7 +116,7 @@ html_theme_options = {
 html_context = {
     'display_github': True,
     'github_user': 'danihae',
-    'github_repo': 'sarcasm',
+    'github_repo': 'SarcAsM',
     'github_version': 'main',
     'conf_py_path': '/docs/',
 }
