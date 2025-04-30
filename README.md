@@ -1,4 +1,6 @@
-<img alt="SarcAsM logo" src="https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/logo.png" style="width: 500px;">
+<p align="center">
+  <img alt="SarcAsM logo" src="https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/logo_gray.png" width="500">
+</p>
 
 **A Python package for comprehensive analysis of sarcomere structure and function in cardiomyocytes**
 
