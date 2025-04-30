@@ -105,6 +105,22 @@ pygments_style = None
 # html_theme = 'alabaster'
 html_theme = "sphinx_rtd_theme"
 
+html_theme_options = {
+    # ... other theme options you might have ...
+    'logo_only': False,
+    'display_version': True,
+    'prev_next_buttons_location': 'bottom',
+    'style_external_links': False,
+    'vcs_pageview_mode': '',
+
+    # Settings for the "Edit on GitHub" link
+    'display_github': True,             # Ensure the link is displayed
+    'github_user': 'danihae',           # Your GitHub username
+    'github_repo': 'sarcasm',           # Your repository name
+    'github_version': 'main/',          # The branch/tag RTD uses for 'latest' (e.g., 'main/', 'master/', 'develop/'). **Include the trailing slash.**
+    'conf_py_path': '/docs/',           # Path to the directory containing conf.py, relative to repo root. **Include leading and trailing slashes.**
+}
+
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
