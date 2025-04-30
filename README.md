@@ -1,4 +1,4 @@
-<img alt="SarcAsM logo" src="./docs/images/logo.png" style="width: 500px;">
+<img alt="SarcAsM logo" src="https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/logo.png" style="width: 500px;">
 
 **A Python package for comprehensive analysis of sarcomere structure and function in cardiomyocytes**
 
@@ -36,7 +36,8 @@ For details, check out our preprint: `[Link to preprint will be added here]`
 - Comprehensive Python API for integration into custom workflows
 - Batch processing capabilities for high-throughput analysis
 
-![Graphical abstract](./docs/images/graphical_abstract.png)
+![Graphical abstract](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/graphical_abstract.png)
+
 **Summary of SarcAsM workflow and analyzed features**
 
 ## Installation
@@ -106,7 +107,7 @@ Check out `quickstart_demo.ipynb` in the repository root or our [documentation](
 
 ### Graphical User Interface
 
-![SarcAsM GUI Screenshot](./docs/images/app_screenshot.png)
+![SarcAsM GUI Screenshot](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/app_screenshot.png)
 
 The SarcAsM application provides an intuitive GUI built with Napari as image viewer for easy analysis:
 
