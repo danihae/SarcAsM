@@ -524,8 +524,8 @@ class Structure(SarcAsM):
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.5,
-                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 4,
-                                  slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
+                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
+                                  slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1, backend='loky',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -547,6 +547,8 @@ class Structure(SarcAsM):
             Sarcomere size limits in µm (default is (1, 3) µm).
         threshold_sarcomere_mask : float
             Threshold to binarize sarcomere masks. Defaults to 0.1.
+        backend : str, optional
+            Backend for parallelization of profile processing. Defaults to 'loky'.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -620,7 +622,8 @@ class Structure(SarcAsM):
                                                                               median_filter_radius=median_filter_radius,
                                                                               slen_lims=slen_lims,
                                                                               interp_factor=interp_factor,
-                                                                              linewidth=linewidth)
+                                                                              linewidth=linewidth,
+                                                                              backend=backend)
 
             # write in list
             pos_vectors_px[frame_i] = pos_vectors_px_i
@@ -1724,6 +1727,7 @@ class Structure(SarcAsM):
             slen_lims: Tuple[float, float] = (1, 3),
             interp_factor: int = 4,
             linewidth: float = 0.3,
+            backend: str = 'loky',
     ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
     Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
         """
@@ -1802,7 +1806,7 @@ class Structure(SarcAsM):
             profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
             # Use parallel processing for faster execution
-            results = Parallel(n_jobs=-1)(
+            results = Parallel(n_jobs=-1, backend=backend)(
                 delayed(Utils.process_profile)(
                     profile, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor
                 ) for profile in profiles

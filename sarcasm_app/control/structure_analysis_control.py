@@ -110,17 +110,6 @@ class StructureAnalysisControl:
             return False
         return True
 
-    # removed cell_mask_prediction_network
-    # def __chk_cell_mask_prediction_network(self):
-    #    cell_mask_network=self.__main_control.model.parameters.get_parameter('structure.cell_mask_prediction_network')
-    #    if cell_mask_network is None:
-    #        self.__main_control.debug('no cell mask network was chosen for prediction')
-    #        return False
-    #    if cell_mask_network.get_value() == '':
-    #        self.__main_control.debug('no network file was chosen for cell mask prediction')
-    #        return False
-    #    return True
-
     def __chk_frames(self):
         frames = self.__main_control.model.parameters.get_parameter('structure.frames').get_value()
         if frames is None or frames == '':
@@ -256,7 +245,7 @@ class StructureAnalysisControl:
                 median_filter_radius=m.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=m.parameters.get_parameter('structure.vectors.line_width').get_value(),
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
-                progress_notifier=progress_notifier
+                backend='threading', progress_notifier=progress_notifier
             )
             pass
 

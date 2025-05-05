@@ -508,7 +508,7 @@ class Ui_Form(object):
         self.label_18.setToolTip(_translate("Form", "Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm)."))
         self.label_18.setText(_translate("Form", "Line width [µm]"))
         self.dsb_vectors_line_width.setToolTip(_translate("Form", "Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm)."))
-        self.label_21.setToolTip(_translate("Form", "Interpolation factor for profiles to calculate sarcomere length. Default to 4."))
+        self.label_21.setToolTip(_translate("Form", "Interpolation factor for profiles to calculate sarcomere length. Default to 0."))
         self.label_21.setText(_translate("Form", "Interpolation factor"))
         self.sb_vectors_interpolation_factor.setToolTip(_translate("Form", "Interpolation factor for profiles to calculate sarcomere length. Default to 4."))
         self.groupBox_5.setTitle(_translate("Form", "Myofibril analysis"))

@@ -98,10 +98,6 @@ class ApplicationModel:
         # region structure parameters
         self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
 
-        # was removed
-        #self.__parameters.get_parameter(name='structure.predict.time_consistent').set_value(False)
-        #self.__parameters.get_parameter(name='structure.predict.time_consistent.frame').set_value(32)
-
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
             1024)  # is the predict_size_min from ui
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
@@ -134,7 +130,7 @@ class ApplicationModel:
 
         self.__parameters.get_parameter(name='structure.vectors.radius').set_value(0.25)
         self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.2)
-        self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(4)
+        self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
 
