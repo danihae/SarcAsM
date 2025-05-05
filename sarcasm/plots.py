@@ -1322,7 +1322,7 @@ class Plots:
             ax.set_xlim(t_lim)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Z-band position Z(t) [µm]')
-        if y_lim is (None, None):
+        if y_lim == (None, None):
             ax.set_ylim(0, None)
         else:
             ax.set_ylim(y_lim)
