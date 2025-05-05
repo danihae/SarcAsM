@@ -309,7 +309,7 @@ class Motion(SarcAsM):
         """
 
         # select weights for convolutional neural network
-        if model is None or model is 'default':
+        if model == None or model is 'default':
             model = self.model_dir + 'model_ContractionNet.pt'
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
