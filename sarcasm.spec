@@ -1,5 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+import sys
+
+# Get SarcAsM version
+try:
+    from sarcasm import __version__ as version
+except ImportError:
+    version = '0.0.0-import-error'
+
+# Dynamic platform-aware naming
+appname = f"SarcAsM-v{version}"
 
 # 1. Include Napari resources
 napari_data = collect_data_files('napari')
@@ -11,12 +21,6 @@ vispy_data = collect_data_files('vispy')
 model_data = [
     ('models/*', 'models'),  # Recursive inclusion
 ]
-
-# 4. Get SarcAsM version
-try:
-    from sarcasm import __version__ as version
-except ImportError:
-    version = '0.0.0-import-error'
 
 a = Analysis(
     ['sarcasm_app/__main__.py'],
@@ -48,7 +52,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='SarcAsM',
+    name=appname,  # Dynamic versioned name
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,3 +67,32 @@ exe = EXE(
     entitlements_file=None,
     icon='docs/images/sarcasm.ico',
 )
+
+# Platform-specific configurations
+if sys.platform == 'darwin':
+    # macOS .app bundle configuration
+    app = BUNDLE(
+        exe,
+        name=f'{appname}.app',  # .app extension for macOS
+        icon='docs/images/sarcasm.icns',  # macOS requires .icns format
+        bundle_identifier='de.example.sarcasm',
+        info_plist={
+            'CFBundleName': 'SarcAsM',
+            'CFBundleDisplayName': 'SarcAsM',
+            'CFBundleShortVersionString': version,
+            'CFBundleVersion': version,
+            'NSHighResolutionCapable': 'True',
+            'LSUIElement': 'False',
+        }
+    )
+else:
+    # Windows/Linux configuration
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        name=appname,
+    )
