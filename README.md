@@ -6,6 +6,7 @@
 
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/sarc-asm.svg)](https://python.org)
 [![Python package index](https://img.shields.io/pypi/v/sarc-asm.svg)](https://pypi.org/project/sarc-asm)
+[![bioRxiv Preprint](https://img.shields.io/badge/bioRxiv-10.1101%2F2025.04.29.650605v1-orange)](https://www.biorxiv.org/content/10.1101/2025.04.29.650605v1)
 
 ## Overview
 
