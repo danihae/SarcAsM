@@ -140,11 +140,9 @@ If you encounter any issues, have questions, or want to suggest improvements:
 
 ## Citation
 
-If you use SarcAsM in your research, please cite our paper:
+If you use SarcAsM in your research, please cite our preprint for now (peer-reviewed publication will follow):
 
-```
-[Citation details will be added upon publication of the manuscript]
-```
+Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tiburcy, Branimir Berecic, et al. 2025. “SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes.” bioRxiv. https://doi.org/10.1101/2025.04.29.650605.
 
 ## License
 
