@@ -8,14 +8,27 @@ SarcAsM's GUI application uses `Napari image browser <https://napari.org/stable/
 Starting the App
 ================
 
-First, remember to activate your installation environment::
+There are two main ways to start the SarcAsM GUI:
 
-    conda activate sarcasm
+**1. Standalone Applications (Recommended for ease of use):**
 
-To start the app, run this inside the root directory of SarcAsM::
+*   Pre-built applications for **Windows (.exe)** and **macOS (.app)** are available for download directly from the **`GitHub Releases page <https://github.com/danihae/SarcAsM/releases>`_**.
+*   This method does not require a separate Python installation.
+*   **Note:**
+    *   These standalone applications are **early versions** and may take a **significant amount of time to start up** initially.
+    *   They are built using **Python 3.11**.
+    *   The **Windows version currently only utilizes the CPU** and does not support CUDA GPU acceleration. For high-performance needs, consider using the Python API (see documentation).
 
-    python -m sarcasm_app
+**2. From your Python Environment (Recommended for developers or API users):**
 
+*   If you have installed SarcAsM into a Python environment (e.g., via pip or conda):
+*   First, remember to activate your installation environment::
+
+      conda activate sarcasm-env # Or your specific environment name
+
+*   Then, to start the app, run this command::
+
+      python -m sarcasm_app
 
 Using the App
 =============

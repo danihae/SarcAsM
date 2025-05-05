@@ -114,14 +114,25 @@ Check out `quickstart_demo.ipynb` in the repository root or our [documentation](
 
 ![SarcAsM GUI Screenshot](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/app_screenshot.png)
 
-The SarcAsM application provides an intuitive GUI built with Napari as image viewer for easy analysis:
+SarcAsM includes an intuitive Graphical User Interface (GUI) built with Napari for interactive analysis and visualization.
 
-```
-# After activating your environment (e.g., conda activate sarcasm-env)
-python -m sarcasm_app
-```
+**How to Run the GUI:**
 
-Alternatively, you can run `./sarcasm_app/__main__.py` directly from the SarcAsM root directory if the necessary dependencies are in your PYTHONPATH.
+There are two main ways to run the SarcAsM GUI:
+
+1.  **Standalone Applications (Recommended for ease of use):**
+    *   Pre-built applications for **Windows (.exe)** and **macOS (.app)** are available for download directly from the **[GitHub Releases page](https://github.com/danihae/SarcAsM/releases)**.
+    *   This method does not require a separate Python installation.
+    *   **Note:** As mentioned in the release notes, these are early versions, and the initial startup might take some time. The Windows version currently uses CPU only.
+
+2.  **From your Python Environment (Recommended for developers or API users):**
+    *   If you have installed SarcAsM into a Python environment (e.g., via pip or conda from the source), you can launch the GUI using this command:
+      ```
+      # After activating your environment (e.g., conda activate sarcasm-env)
+      python -m sarcasm_app
+      ```
+    *   Alternatively, you can run `./sarcasm_app/__main__.py` directly from the SarcAsM root directory if the necessary dependencies are in your PYTHONPATH.
+
 
 ## Documentation
 
