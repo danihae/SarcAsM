@@ -12,4 +12,9 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-__version__ = "0.1.0"
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("sarc-asm")
+except:
+    __version__ = "0.0.0-dev"  # Fallback for development
