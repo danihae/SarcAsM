@@ -565,7 +565,7 @@ class Structure(SarcAsM):
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata['frames']))
             z_bands = tifffile.imread(self.file_zbands)
-            mbands = tifffile.imread(self.file_mbands) > threshold_mbands
+            mbands = tifffile.imread(self.file_mbands)
             orientation_field = tifffile.imread(self.file_orientation)
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
@@ -587,6 +587,9 @@ class Structure(SarcAsM):
             sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, axis=0)
+
+        # binarize M-bands
+        mbands = mbands > threshold_mbands
 
         n_frames = len(z_bands)
         pixelsize = self.metadata['pixelsize']
