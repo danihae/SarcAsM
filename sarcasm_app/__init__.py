@@ -38,10 +38,8 @@ class Application:
     def __init__(self):
         self.__app = QApplication([])
         QLocale.setDefault(QLocale(QLocale.English,QLocale.UnitedStates))
-        #self.setLocale(QLocale(QLocale.C))
-        #locale.setlocale(locale.LC_ALL, "en_US")
-        # todo: dark theme: https://stackoverflow.com/questions/48256772/dark-theme-for-qt-widgets
         self.__app.setStyle(QStyleFactory.create("Fusion"))  # try to fix the layout issue on macOs
+        self.__app.setWindowIcon(QIcon("../docs/images/sarcasm.ico"))
 
         # one of the "fast solutions" without dependencies on stackoverflow page above
         # Now use a palette to switch to dark colors:
@@ -62,10 +60,6 @@ class Application:
         self.__app.setPalette(self.__palette)
 
         self.__window = QWidget()
-
-        # Load and set the thumbnail as the window icon
-        thumbnail_path = "icon.png"
-        self.__app.setWindowIcon(QIcon(thumbnail_path))
 
         self.__file_selection = FileSelectionWidget()
         self.__structure_analysis_parameters = StructureAnalysisWidget()
