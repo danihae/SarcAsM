@@ -13,7 +13,6 @@
 
 
 import sys
-#import locale
 from PyQt5.QtCore import Qt, QLocale
 from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon
 from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox
@@ -31,6 +30,8 @@ from .view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidge
 from .view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
 from .view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
 from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
+
+from sarcasm import __version__ as version
 
 
 class Application:
@@ -171,7 +172,7 @@ class Application:
         pass
 
     def init_gui(self):
-        self.__window.setWindowTitle('SarcAsM')
+        self.__window.setWindowTitle(f'SarcAsM - v{version}')
         self.__window.setGeometry(0, 0, 800, 1000)
         self.__center_ui()
 
