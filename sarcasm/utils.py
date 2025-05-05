@@ -397,32 +397,52 @@ class Utils:
         return v
 
     @staticmethod
-    def process_profile(profile: np.ndarray, pixelsize, slen_lims=(1, 3), thres=0.25,
-                        min_dist=1, width=0.5, interp_factor=4) -> (float, float):
+    def process_profile(
+            profile: np.ndarray,
+            pixelsize: float,
+            slen_lims: tuple = (1, 3),
+            thres: float = 0.25,
+            min_dist: float = 1,
+            width: float = 0.5,
+            interp_factor: int = 4
+    ) -> Tuple[float, float]:
         """
-        Find peak distance in 1D intensity profile using interpolation and COM.
+        Find peak distance in a 1D intensity profile using interpolation and center of mass (COM).
+
+        This function detects peaks in a normalized 1D intensity profile, optionally interpolates
+        the profile using Akima interpolation, and refines the peak positions using the center of mass
+        within a local window.
 
         Parameters
         ----------
-        profile : ndarray
-            1D intensity profile
+        profile : np.ndarray
+            1D intensity profile.
         pixelsize : float
-            Physical size per pixel
-        slen_lims : tuple, optional
-            (min, max) valid peak separation range, by default (1, 3)
+            Physical size per pixel.
+        slen_lims : tuple of float, optional
+            (min, max) valid peak separation range, by default (1, 3).
         thres : float, optional
-            Peak detection height threshold [0-1], by default 0.3
-        min_dist : int, optional
-            Minimum peak separation in µm, by default 1 µm.
-        width : int, optional
-            Half-width of COM window in µm, by default 0.5 µm.
+            Peak detection height threshold (0-1), by default 0.25.
+        min_dist : float, optional
+            Minimum peak separation in µm, by default 1.
+        width : float, optional
+            Half-width of COM window in µm, by default 0.5.
         interp_factor : int, optional
-            Interpolation upsampling factor, by default 4
+            Interpolation upsampling factor, by default 4. If ≤ 1, no interpolation is performed.
 
         Returns
         -------
-        float
-            Peak separation distance or np.nan if invalid
+        slen_profile : float
+            Peak separation distance in micrometer, or np.nan if invalid.
+        center_offsets : float
+            Offset of the profile center in micrometer, or np.nan if invalid.
+
+        Notes
+        -----
+        - For `interp_factor` ≤ 1, no interpolation is performed and the original profile is used.
+        - The function uses Akima1DInterpolator for smooth interpolation when requested.
+        - Center of mass calculation is performed in a window around each detected peak for sub-pixel accuracy.
+        - If less than two peaks are detected, or the separation is outside `slen_lims`, returns (np.nan, np.nan).
         """
         # convert parameter to pixels
         min_dist_pixel = int(np.round(min_dist / pixelsize, 0))
@@ -434,26 +454,23 @@ class Utils:
         # Create position array
         pos_array = np.arange(len(profile)) * pixelsize
 
-        # Interpolate data with padding to avoid edge effects
-        pad_width = width_pixels
-        profile_padded = np.pad(profile, pad_width, mode='reflect')
-        pos_padded = np.linspace(pos_array[0] - pad_width * pixelsize,
-                                 pos_array[-1] + pad_width * pixelsize,
-                                 len(profile_padded))
-
-        # Create interpolation function with padded data
-        interp_func = Akima1DInterpolator(pos_padded[np.isfinite(profile_padded)],
-                                          profile_padded[np.isfinite(profile_padded)], method='akima')
-        x_interp = np.linspace(pos_array[0], pos_array[-1],
-                               num=len(profile) * interp_factor)
-        y_interp = interp_func(x_interp)
+        if interp_factor >= 1:
+            # Create interpolation function with padded data
+            interp_func = Akima1DInterpolator(pos_array[np.isfinite(profile)],
+                                              profile[np.isfinite(profile)], method='akima')
+            x_interp = np.linspace(pos_array[0], pos_array[-1],
+                                   num=len(profile) * interp_factor)
+            y_interp = interp_func(x_interp)
+        else:
+            y_interp = profile
+            x_interp = pos_array
+            interp_factor = 1
 
         # Find peaks with prominence to avoid noise
         peaks_idx, properties = find_peaks(y_interp,
                                            height=thres,
                                            distance=min_dist_pixel * interp_factor,
-                                           prominence=0.2,
-                                           width=3)
+                                           prominence=0.2)
 
         if len(peaks_idx) < 2:
             return np.nan, np.nan

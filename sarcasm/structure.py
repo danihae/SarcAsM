@@ -523,8 +523,8 @@ class Structure(SarcAsM):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', median_filter_radius: float = 0.25,
-                                  linewidth: float = 0.2, interp_factor: int = 4,
+    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.5,
+                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
@@ -535,6 +535,8 @@ class Structure(SarcAsM):
         frames : {'all', int, list, np.ndarray}, optional
             frames for sarcomere vector analysis ('all' for all frames, int for a single frame, list or ndarray for
             selected frames). Defaults to 'all'.
+        threshold_mbands : float, optional
+            Threshold to binarize sarcomere M-bands. Lower values might result in more false-positive sarcomere vectors. Defaults to 0.2.
         median_filter_radius : float, optional
             Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
         linewidth : float, optional
@@ -563,7 +565,7 @@ class Structure(SarcAsM):
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata['frames']))
             z_bands = tifffile.imread(self.file_zbands)
-            mbands = tifffile.imread(self.file_mbands) > 0.5
+            mbands = tifffile.imread(self.file_mbands) > threshold_mbands
             orientation_field = tifffile.imread(self.file_orientation)
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
@@ -1758,7 +1760,7 @@ class Structure(SarcAsM):
         linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
         # skeletonize mbands
-        mbands_skel = skeletonize(mbands > 0.5, method='lee')
+        mbands_skel = skeletonize(mbands, method='lee')
 
         # calculate and preprocess orientation map
         orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
