@@ -12,6 +12,12 @@ model_data = [
     ('models/*', 'models'),  # Recursive inclusion
 ]
 
+# 4. Get SarcAsM version
+try:
+    from sarcasm import __version__ as version
+except ImportError:
+    version = '0.0.0-import-error'
+
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],  # Project root
@@ -42,7 +48,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='SarcAsM',
+    name=f'SarcAsM-{version}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
