@@ -12,6 +12,8 @@ The package offers precise tracking of individual sarcomere motion with sub-20 n
 
 SarcAsM is designed to be accessible and versatile, featuring a high-level API for seamless integration into your analysis workflows and customization for specific research needs. The package includes a pre-trained generalist deep learning model that works effectively across diverse cardiac imaging datasets without requiring extensive retraining, making advanced sarcomere analysis immediately available to researchers regardless of their computational expertise.
 
+For algorithm details, check out our `preprint <https://doi.org/10.1101/2025.04.29.650605>`_.
+
 Using SarcAsM
 -------------
 
@@ -57,12 +59,9 @@ There are two ways to use SarcAsM:
 
 Citing SarcAsM
 --------------
-Authors: Daniel Härtter, Lara Hauke, Til Driehorst, Yuxi Long, Guobin Bao, Andreas Primeßnig, Branimir Berecic, Lukas Cyganek, Malte Tiburcy, Christoph F. Schmidt, Wolfram-Hubertus Zimmermann
 
-Title: " SarcAsM (Sarcomere Analysis Multi-tool): a comprehensive software tool for structural and functional analysis of sarcomeres in cardiomyocytes"
+Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tiburcy, Branimir Berecic, et al. 2025. “SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes.” bioRxiv. https://doi.org/10.1101/2025.04.29.650605.
 
-.. todo::
-   Update this upon actual publication. Probably insert bibtex as well.
 
 Contact
 -------
@@ -92,9 +91,9 @@ For inquiries regarding commercial licensing, please contact:
 
 **Full License Text:**
 
-The complete terms and conditions are available in the `LICENSE file <link-to-your-license-file>`_ included with this software distribution.
-
 .. _link-to-your-license-file: ../LICENSE
+
+The complete terms and conditions are available in the `LICENSE file <link-to-your-license-file>`_ included with this software distribution.
 
 
 Indices and tables
