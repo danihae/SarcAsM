@@ -354,7 +354,7 @@ class Structure(SarcAsM):
 
     def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
-                        a_min: float = 0.3, d_max: float = 4.0, d_min: float = 0.0,
+                        a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
