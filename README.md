@@ -7,15 +7,22 @@
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/sarc-asm.svg)](https://python.org)
 [![Python package index](https://img.shields.io/pypi/v/sarc-asm.svg)](https://pypi.org/project/sarc-asm)
 [![bioRxiv Preprint](https://img.shields.io/badge/bioRxiv-10.1101%2F2025.04.29.650605v1-orange)](https://www.biorxiv.org/content/10.1101/2025.04.29.650605v1)
+[![Documentation Status](https://readthedocs.org/projects/sarcasm/badge/?version=latest)](https://sarcasm.readthedocs.io/en/latest/?badge=latest)
+[![GitHub release](https://img.shields.io/github/v/release/danihae/SarcAsM)](https://github.com/danihae/SarcAsM/releases)
 
 ## Overview
 
 SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package for cardiomyocyte sarcomere analysis. It enables precise multilevel structural and functional assessment of sarcomeres in microscopy images and movies, making it suitable for drug screening, disease phenotyping, and biomechanical studies.
 
-For details, check out our preprint: 
+For details, check out our preprint:
 
 Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tiburcy, Branimir Berecic, et al. 2025. “SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes.” bioRxiv. https://doi.org/10.1101/2025.04.29.650605.
 
+➡️ **Documentation:** [https://sarcasm.readthedocs.io/](https://sarcasm.readthedocs.io/)
+
+💾 **Download App (Windows/MacOS):** [https://github.com/danihae/SarcAsM/releases](https://github.com/danihae/SarcAsM/releases)
+
+⚙️ **Python Package:** [https://pypi.org/project/sarc-asm](https://pypi.org/project/sarc-asm)
 
 ## Table of Contents
 
@@ -37,7 +44,7 @@ Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tibur
     - Cell-level myofibril domains 
 - High-precision tracking of individual and average sarcomere motion with ~20 nm accuracy
 - Functional analysis of sarcomere contraction dynamics
-- Interactive Graphical User Interface (GUI)
+- App with interactive Graphical User Interface (GUI)
 - Comprehensive Python API for integration into custom workflows
 - Batch processing capabilities for high-throughput analysis
 
@@ -45,7 +52,7 @@ Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tibur
 
 **Summary of SarcAsM workflow and analyzed features**
 
-## Installation
+## Installation of Python package
 
 ### Option 1: Installation via PyPI (Recommended)
 
@@ -110,15 +117,15 @@ Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc_obj)
 Check out `quickstart_demo.ipynb` in the repository root or our [documentation](https://sarcasm.readthedocs.io/)
  for a practical introduction to SarcAsM's functionalities.
 
-### Graphical User Interface
+### App
 
 ![SarcAsM GUI Screenshot](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/app_screenshot.png)
 
-SarcAsM includes an intuitive Graphical User Interface (GUI) built with Napari for interactive analysis and visualization.
+SarcAsM includes an app with intuitive Graphical User Interface (GUI) built with Napari for interactive analysis and visualization.
 
-**How to Run the GUI:**
+**How to Run the App:**
 
-There are two main ways to run the SarcAsM GUI:
+There are two main ways to run the SarcAsM App:
 
 1.  **Standalone Applications (Recommended for ease of use):**
     *   Pre-built applications for **Windows (.exe)** and **macOS (.app)** are available for download directly from the **[GitHub Releases page](https://github.com/danihae/SarcAsM/releases)**.

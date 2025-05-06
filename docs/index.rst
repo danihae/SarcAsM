@@ -3,25 +3,61 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-.. image:: images/graphical_abstract.png
-**Graphical summary of SarcAsM.** Top: Multi-level structural analysis of sarcomere architecture. Bottom: High-precision tracking and analysis of individual and average sarcomere motion.
+SarcAsM: AI-Powered Sarcomere Analysis
+=======================================
 
-SarcAsM is a comprehensive Python package for automated multiscale analysis of sarcomere organization and contractility in cardiomyocytes. Using a combination of custom deep learning and graph-based methods, SarcAsM simultaneously detects Z-bands, M-bands, sarcomere orientation, and cell/sarcomere masks to enable robust analysis across four hierarchical levels: Z-band morphology, individual sarcomere structure and dynamics, myofibril architecture, and whole-cell sarcomere domain patterns. The AI-based approach provides superior detection compared to traditional filter-based methods, especially in challenging imaging conditions with low signal-to-noise ratios.
+.. figure:: images/graphical_abstract.png
+   :alt: Graphical summary of SarcAsM
+   :align: center
 
-The package offers precise tracking of individual sarcomere motion with sub-20 nm spatial accuracy, allowing researchers to identify subtle contractile phenotypes in both structural and functional assays. SarcAsM supports a wide range of applications including developmental studies, disease modeling, drug screening, and mechanobiological and biophysical investigations. The multi-parameter analysis capabilities make it possible to characterize and distinguish even subtle pathological or drug-induced phenotypes in cardiac cells.
+   Graphical overview of SarcAsM's capabilities. *Top:* Multi-level structural analysis of sarcomere architecture. *Bottom:* High-precision tracking and analysis of individual and average sarcomere motion.
 
-SarcAsM is designed to be accessible and versatile, featuring a high-level API for seamless integration into your analysis workflows and customization for specific research needs. The package includes a pre-trained generalist deep learning model that works effectively across diverse cardiac imaging datasets without requiring extensive retraining, making advanced sarcomere analysis immediately available to researchers regardless of their computational expertise.
+SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package dedicated to the comprehensive analysis of cardiomyocyte sarcomere structure and function. It empowers researchers by enabling precise, multi-level assessment of sarcomeres from microscopy images and movies. This makes SarcAsM an invaluable tool for diverse applications, including drug screening, disease phenotyping, and fundamental biomechanical studies.
 
-For algorithm details, check out our `preprint <https://doi.org/10.1101/2025.04.29.650605>`_.
+Key Features
+------------
+
+SarcAsM comes packed with features designed for comprehensive sarcomere analysis:
+
+*   **AI-Driven Detection:** Robustly identifies sarcomere features in microscopy images using advanced AI.
+*   **In-Depth Structural Analysis:** Provides a multi-level examination of sarcomere architecture, including:
+
+    *   Z-band morphometrics and lateral alignment.
+    *   Sarcomere lengths and orientations (sarcomere 'vectors').
+    *   Myofibril characteristics (length, shape).
+    *   Cell-level myofibril domain organization.
+*   **Precision Motion Tracking:** Tracks individual and average sarcomere motion with exceptional accuracy (~20 nm).
+*   **Dynamic Functional Insights:** Facilitates detailed analysis of sarcomere contraction and relaxation dynamics.
+*   **Intuitive Standalone Application:** Offers an easy-to-use app with an interactive Graphical User Interface (GUI), no coding required.
+*   **Versatile Python API:** Includes a comprehensive Python API for custom script development and integration into existing analysis pipelines.
+*   **Efficient Batch Processing:** Streamlines high-throughput studies with powerful batch processing capabilities.
 
 Using SarcAsM
 -------------
 
-There are two ways to use SarcAsM:
+SarcAsM offers two convenient ways to analyze your data. Choose the one that best fits your workflow:
 
-1. Python package with high-level API for programming-affine users
+-   **Python Package:** For maximum flexibility, performance, and integration into custom analysis pipelines, we recommend the Python package:
 
-2. Easy-to-use standalone application with graphical user interface (currently in beta phase)
+    ⚙️ `Python Package <https://pypi.org/project/sarc-asm>`_
+
+    *   Ideal for programming-affine users, **handling large datasets, and achieving faster processing speeds**, especially when leveraging GPU acceleration (if available).
+    *   Provides a high-level API for scripting and advanced analysis.
+
+-   **Standalone Application:** For a user-friendly experience with a graphical interface, download our ready-to-use application:
+
+    💾 `Download App (Windows/MacOS) <https://github.com/danihae/SarcAsM/releases>`_
+
+    *   **Note:** The standalone application is great for getting started quickly. However, it may take some time to start up initially. The Windows version currently processes data using the CPU and does not support CUDA for GPU acceleration.
+
+
+Publication and Citation
+------------------------
+
+For a detailed description of SarcAsM, its validation, and example applications, please refer to our preprint. If you use SarcAsM in your research, we kindly ask you to cite this publication:
+
+Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Berecic, B., et al. (2025). SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes. *bioRxiv*. `https://doi.org/10.1101/2025.04.29.650605 <https://doi.org/10.1101/2025.04.29.650605>`_
+
 
 .. toctree::
    :maxdepth: 2
@@ -57,12 +93,6 @@ There are two ways to use SarcAsM:
    :caption: API reference:
 
 
-Citing SarcAsM
---------------
-
-Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tiburcy, Branimir Berecic, et al. 2025. “SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes.” bioRxiv. https://doi.org/10.1101/2025.04.29.650605.
-
-
 Contact
 -------
 For questions, requests and issues, please contact us or `open an issue on GitHub <https://github.com/danihae/sarcasm/issues>`_. For bugs, please append a comprehensive error report.
@@ -91,9 +121,7 @@ For inquiries regarding commercial licensing, please contact:
 
 **Full License Text:**
 
-.. _link-to-your-license-file: ../LICENSE
-
-The complete terms and conditions are available in the `LICENSE file <link-to-your-license-file>`_ included with this software distribution.
+The complete terms and conditions are available in the `LICENSE file <https://github.com/danihae/SarcAsM/blob/main/LICENSE>`_ included with this software distribution.
 
 
 Indices and tables
