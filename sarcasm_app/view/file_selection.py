@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '.\sarcasm_app\ui-files\file_selection.ui'
+# Form implementation generated from reading ui file './sarcasm_app/ui-files/file_selection.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -70,6 +70,9 @@ class Ui_Form(object):
         self.horizontalLayout_3.addWidget(self.btn_store_metadata)
         self.verticalLayout.addWidget(self.groupBox_2)
         self.groupBox_3 = QtWidgets.QGroupBox(Form)
+        font = QtGui.QFont()
+        font.setPointSize(11)
+        self.groupBox_3.setFont(font)
         self.groupBox_3.setObjectName("groupBox_3")
         self.horizontalLayout_5 = QtWidgets.QHBoxLayout(self.groupBox_3)
         self.horizontalLayout_5.setObjectName("horizontalLayout_5")
