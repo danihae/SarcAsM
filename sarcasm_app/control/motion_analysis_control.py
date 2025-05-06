@@ -246,7 +246,7 @@ class MotionAnalysisControl:
 
         from pathlib import Path
         name = Path(self.__main_control.model.cell.filepath).stem
-        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion',filename_pattern=f'%_{name}_{self.__main_control.model.sarcomere.loi_name}.csv')
+        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion',filename_pattern=f'%_{name}_{self.__main_control.model.sarcomere.loi_name}.$ext')
         self.__export_popup.show_popup()
 
 

@@ -391,7 +391,7 @@ class StructureAnalysisControl:
 
         from pathlib import Path
         name=Path(self.__main_control.model.cell.filepath).stem
-        self.__popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='structure',filename_pattern=f'%_{name}.csv')
+        self.__popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='structure',filename_pattern=f'%_{name}.$ext')
         self.__popup.show_popup()
 
     def bind_events(self):

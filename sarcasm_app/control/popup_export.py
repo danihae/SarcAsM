@@ -32,7 +32,7 @@ class ExportPopup(QDialog):
     """
     __max_entries_per_row = 5
 
-    def __init__(self, model, control,popup_type:str='structure',filename_pattern:str='export_%.csv'):
+    def __init__(self, model, control,popup_type:str='structure',filename_pattern:str='export_%.$ext'):
         super().__init__()
         valid={'structure','motion'}
         if popup_type not in valid:
@@ -45,6 +45,7 @@ class ExportPopup(QDialog):
         self.__group_metadata_old = None
         self.__group_structure_old = None
         self.__btn_export_as_csv = None
+        self.__btn_export_as_xlsx=None
         self.__model = model
         self.__control = control
         self.__h_box = None
@@ -92,8 +93,11 @@ class ExportPopup(QDialog):
 
         self.__btn_export_as_csv = QPushButton(text='Export as Csv')
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_csv))
+        self.__btn_export_as_csv.clicked.connect(lambda :self.__on_clicked_btn_export('csv'))
 
-        self.__btn_export_as_csv.clicked.connect(self.__on_clicked_btn_export_as_csv)
+        self.__btn_export_as_xlsx = QPushButton(text='Export as Xlsx')
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_xlsx))
+        self.__btn_export_as_xlsx.clicked.connect(lambda :self.__on_clicked_btn_export('xlsx'))
 
         self.__create_checkbox_from_list(Export.meta_keys_default, self.__group_metadata)
         self.__create_checkbox_from_list(Export.structure_keys_default, self.__group_structure)
@@ -105,7 +109,20 @@ class ExportPopup(QDialog):
         self.__le_file_path.setText(folderpath)
         pass
 
-    def __on_clicked_btn_export_as_csv(self):
+
+    def __on_clicked_btn_export(self,export_type:str='csv'):
+        """
+        Parameters
+        ----------
+        export_type str valid content {'csv','xlsx'}
+
+        Returns
+        -------
+
+        """
+        if export_type not in ['csv','xlsx']:
+            self.__control.debug('type has to be csv or xlsx')
+            return
         if self.__le_file_path.text() is None or self.__le_file_path.text() == '' or self.__le_file_name.text() is None or self.__le_file_name.text() == '':
             self.__control.debug('Please select a directory for exporting the data.')
             return
@@ -141,13 +158,19 @@ class ExportPopup(QDialog):
                 self.__control.debug('exported following motion keys')
                 self.__control.debug(to_export_motion.__str__())
 
-            filepath_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure')
-            filepath_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion')
+            filepath_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure').replace('$ext',export_type)
+            filepath_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion').replace('$ext',export_type)
 
             if to_export_structure is not None:
-                self.__export_to_file(filepath_structure, to_export_structure)
+                if export_type=='csv':
+                    self.__export_to_file(filepath_structure, to_export_structure)
+                elif export_type=='xlsx':
+                    self.__export_to_xlsx(filepath_structure, to_export_structure)
             if to_export_motion is not None:
-                self.__export_to_file(filepath_motion, to_export_motion)
+                if export_type=='csv':
+                    self.__export_to_file(filepath_motion, to_export_motion)
+                elif export_type=='xlsx':
+                    self.__export_to_xlsx(filepath_motion, to_export_motion)
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -173,6 +196,26 @@ class ExportPopup(QDialog):
             f.flush()
             f.close()
             pass
+        pass
+
+    def __export_to_xlsx(self,file,dictionary):
+        from openpyxl import Workbook
+        wb = Workbook()
+        # grab the active worksheet
+        ws = wb.active
+
+        for key in dictionary:
+            value = dictionary[key]
+            if isinstance(value, np.ndarray):
+                tmp= [key]
+                tmp.extend(value.tolist())
+                ws.append(tmp)
+                pass
+            else:
+                ws.append([key,value])
+                pass
+            pass
+        wb.save(file)
         pass
 
     def show_popup(self):
