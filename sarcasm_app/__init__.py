@@ -33,6 +33,7 @@ from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
 from sarcasm import __version__ as version
 
+QApplication.setAttribute(Qt.AA_Use96Dpi)  # disables automatic rescaling
 
 class Application:
 
