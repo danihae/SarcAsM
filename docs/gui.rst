@@ -12,12 +12,13 @@ There are two main ways to start the SarcAsM GUI:
 
 **1. Standalone Applications (Recommended for ease of use):**
 
-*   Pre-built applications for **Windows (.exe)** and **macOS (.app)** are available for download directly from the **`GitHub Releases page <https://github.com/danihae/SarcAsM/releases>`_**.
+*   Pre-built applications for **Windows (.exe)** and **macOS (.app)** are available for download directly from the `GitHub Releases page <https://github.com/danihae/SarcAsM/releases>`_.
 *   This method does not require a separate Python installation.
 *   **Note:**
+
     *   These standalone applications are **early versions** and may take a **significant amount of time to start up** initially.
     *   They are built using **Python 3.11**.
-    *   The **Windows version currently only utilizes the CPU** and does not support CUDA GPU acceleration. For high-performance needs, consider using the Python API (see documentation).
+    *   The **Windows version currently only utilizes the CPU** and does not support CUDA GPU acceleration. For high-performance needs, consider using the Python API.
 
 **2. From your Python Environment (Recommended for developers or API users):**
 

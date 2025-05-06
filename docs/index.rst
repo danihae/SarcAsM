@@ -12,7 +12,7 @@ SarcAsM: AI-Powered Sarcomere Analysis
 
    Graphical overview of SarcAsM's capabilities. *Top:* Multi-level structural analysis of sarcomere architecture. *Bottom:* High-precision tracking and analysis of individual and average sarcomere motion.
 
-SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package dedicated to the comprehensive analysis of cardiomyocyte sarcomere structure and function. It empowers researchers by enabling precise, multi-level assessment of sarcomeres from microscopy images and movies. This makes SarcAsM an invaluable tool for diverse applications, including drug screening, disease phenotyping, and fundamental biomechanical studies.
+SarcAsM (Sarcomere Analysis Multitool) is an AI-powered Python package for cardiomyocyte sarcomere analysis. It enables precise multilevel structural and functional assessment of sarcomeres in microscopy images and movies, making it suitable for drug screening, disease phenotyping, and biomechanical studies. Details see our 📄 `preprint <https://doi.org/10.1101/2025.04.29.650605>`_.
 
 Key Features
 ------------
