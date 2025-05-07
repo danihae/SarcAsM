@@ -420,7 +420,7 @@ class Structure(SarcAsM):
         # create empty arrays
         nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
         z_length_mean, z_length_std, z_length_max, z_length_sum, z_oop = (nan_arrays() for _ in range(5))
-        z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(2))
+        n_zbands, z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(3))
         z_mask_area, z_mask_intensity, z_mask_area_ratio = (nan_arrays() for _ in range(3))
         z_straightness_mean, z_straightness_std = (nan_arrays() for _ in range(2))
         z_lat_neighbors_mean, z_lat_neighbors_std = (nan_arrays() for _ in range(2))
@@ -480,6 +480,7 @@ class Structure(SarcAsM):
                 z_length_mean[frame_i], z_length_std[frame_i], z_length_max[frame_i], z_length_sum[frame_i] = np.mean(
                     z_length_i), np.std(
                     z_length_i), np.max(z_length_i), np.sum(z_length_i)
+            n_zbands[frame_i] = len(z_length_i)
             z_intensity_mean[frame_i], z_intensity_std[frame_i] = np.mean(z_intensity_i), np.std(z_intensity_i)
             z_straightness_mean[frame_i], z_straightness_std[frame_i] = np.mean(z_straightness_i), np.std(
                 z_straightness_i)
@@ -498,7 +499,7 @@ class Structure(SarcAsM):
                 z_lat_alignment_groups_i), np.nanstd(z_lat_alignment_groups_i)
 
         # create and save dictionary for cell structure
-        z_band_data = {'z_length': z_length, 'z_length_mean': z_length_mean, 'z_length_std': z_length_std,
+        z_band_data = {'n_zbands': n_zbands, 'z_length': z_length, 'z_length_mean': z_length_mean, 'z_length_std': z_length_std,
                        'z_length_max': z_length_max, 'z_intensity': z_intensity, 'z_intensity_mean': z_intensity_mean,
                        'z_intensity_std': z_intensity_std, 'z_orientation': z_orientation, 'z_oop': z_oop,
                        'z_straightness': z_straightness, 'z_mask_intensity': z_mask_intensity, 'z_labels': z_labels,
@@ -605,7 +606,7 @@ class Structure(SarcAsM):
         sarcomere_masks = np.zeros((self.metadata['frames'], *self.metadata['size']), dtype=bool)
         (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
-        oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(4))
+        n_vectors, n_mbands, oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(6))
 
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
@@ -615,17 +616,19 @@ class Structure(SarcAsM):
 
             (
                 pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
-                sarcomere_length_vectors_i,
-                sarcomere_orientation_vectors_i) = self.get_sarcomere_vectors(zbands_i, mbands_i,
-                                                                              orientation_field_i,
-                                                                              pixelsize=pixelsize,
-                                                                              median_filter_radius=median_filter_radius,
-                                                                              slen_lims=slen_lims,
-                                                                              interp_factor=interp_factor,
-                                                                              linewidth=linewidth,
-                                                                              backend=backend)
+                sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
+                n_mbands_i) = self.get_sarcomere_vectors(zbands_i, mbands_i,
+                                                         orientation_field_i,
+                                                         pixelsize=pixelsize,
+                                                         median_filter_radius=median_filter_radius,
+                                                         slen_lims=slen_lims,
+                                                         interp_factor=interp_factor,
+                                                         linewidth=linewidth,
+                                                         backend=backend)
 
             # write in list
+            n_vectors[frame_i] = len(sarcomere_length_vectors_i)
+            n_mbands[frame_i] = n_mbands_i
             pos_vectors_px[frame_i] = pos_vectors_px_i
             pos_vectors[frame_i] = pos_vectors_i
             sarcomere_length_vectors[frame_i] = sarcomere_length_vectors_i
@@ -657,7 +660,8 @@ class Structure(SarcAsM):
                         'params.analyze_sarcomere_vectors.median_filter_radius': median_filter_radius,
                         'params.analyze_sarcomere_vectors.slen_lims': slen_lims,
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
-                        'params.analyze_sarcomere_vectors.linewidth': linewidth, 'pos_vectors_px': pos_vectors_px,
+                        'params.analyze_sarcomere_vectors.linewidth': linewidth,
+                        'n_vectors': n_vectors, 'n_mbands': n_mbands, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
                         'sarcomere_area': sarcomere_area, 'sarcomere_area_ratio': sarcomere_area_ratio,
@@ -1729,7 +1733,7 @@ class Structure(SarcAsM):
             linewidth: float = 0.3,
             backend: str = 'loky',
     ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
-    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
+    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
         """
         Extract sarcomere orientation and length vectors.
 
@@ -1834,7 +1838,7 @@ class Structure(SarcAsM):
             sarcomere_length_vectors, z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
 
         return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
-                sarcomere_orientation_vectors)
+                sarcomere_orientation_vectors, n_mbands)
 
     @staticmethod
     def cluster_sarcomeres(pos_vectors: np.ndarray,

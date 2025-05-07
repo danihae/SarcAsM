@@ -288,7 +288,7 @@ class Export:
                               'myof_bending_mean', 'myof_bending_std',
                               'myof_straightness_mean', 'myof_straightness_std',
                               'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
-                              'sarcomere_length_std', 'sarcomere_oop',
+                              'sarcomere_length_std', 'sarcomere_oop', 'n_zbands', 'n_mbands', 'n_vectors',
                               'z_intensity_mean', 'z_intensity_std', 'z_lat_alignment_mean',
                               'z_lat_alignment_std', 'z_lat_dist_mean', 'z_lat_dist_std', 'z_lat_length_groups_mean',
                               'z_lat_neighbors_mean', 'z_lat_neighbors_std', 'z_length_max',

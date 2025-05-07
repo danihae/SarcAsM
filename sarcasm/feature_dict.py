@@ -197,7 +197,25 @@ structure_feature_dict = {
         'description': 'Number of sarcomere domains in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_domains',
-        'name': '# sarcomere domains'
+        'name': '# Sarcomere domains'
+    },
+    'n_mbands': {
+        'description': 'Number of estimated m-bands in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_vectors',
+        'name': '# M-bands'
+    },
+    'n_vectors': {
+        'description': 'Number of sarcomere vectors in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_sarcomere_vectors',
+        'name': '# Sarcomere vectors'
+    },
+    'n_zbands': {
+        'description': 'Number of Z-bands in each frame. np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_z_bands',
+        'name': '# Z-bands'
     },
     'pos_vectors': {
         'description': 'Position of sarcomere vectors in each frame in pixels. '
