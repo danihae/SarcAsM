@@ -15,8 +15,9 @@
 import traceback
 
 import numpy as np
+from PyQt5.QtGui import QTextBlock, QFont
 from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
-    QLineEdit, QWidget, QFileDialog, QMessageBox
+    QLineEdit, QWidget, QFileDialog, QMessageBox, QLabel
 
 from sarcasm.export import Export
 from sarcasm.type_utils import TypeUtils
@@ -51,6 +52,10 @@ class ExportPopup(QDialog):
         self.__h_box = None
         self.__le_file_path: QLineEdit
         self.__le_file_name: QLineEdit
+        self.__txt_description:QLabel
+        font=self.font()
+        font.setPointSize(11)
+        self.setFont(font)
         self.init_ui(popup_type=popup_type,filename_pattern=filename_pattern)
 
         pass
@@ -63,6 +68,10 @@ class ExportPopup(QDialog):
         self.__group_structure = QGroupBox(title='Structure Columns')
         self.__group_metadata = QGroupBox(title='Metadata Columns')
         self.__group_motion = QGroupBox(title='Motion Columns')
+
+        self.__group_structure.setFont(self.font())
+        self.__group_metadata.setFont(self.font())
+        self.__group_motion.setFont(self.font())
 
         self.__group_structure.setLayout(QGridLayout())
         self.__group_metadata.setLayout(QGridLayout())
@@ -81,7 +90,17 @@ class ExportPopup(QDialog):
         self.__le_file_name = QLineEdit()
         self.__le_file_name.setText(filename_pattern)
         self.__le_file_name.setToolTip('File name pattern, the % is a must have, \n'
-                                       'it is a placeholder for "structure" or "motion"')
+                                       'it is a placeholder for "structure" or "motion", \n also the $ext is a placeholder for the corresponding file extension, like .csv or .xlsx')
+        self.__txt_description = QLabel()
+
+        self.__txt_description.setText('To export data, first select the values you want to export. \nThen press on the "..." button to search the output directory or just copy the path into the first text field.\n'+
+                                            'If you want to change the file name pattern, do not forget to add a "%" this is a placeholder for "structure" or "motion" (depending on the type of export you do).\n'+
+                                            'Also do not forget the "$ext" this is another placeholder for the file extension, in case of CSV Export the extension will be "csv" in case of Xlsx export it will be "xlsx".\n'+
+                                            'If you have set everything, you can press "Export as Csv" or "Export as Xlsx" (or both if you want).')
+
+        self.__le_file_name.setFont(self.font())
+        self.__le_file_path.setFont(self.font())
+        self.__txt_description.setFont(self.font())
 
         btn_search = QPushButton(text='...')
         btn_search.clicked.connect(self.__on_clicked_btn_search)
@@ -90,6 +109,8 @@ class ExportPopup(QDialog):
         TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_name, 4))
         TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(btn_search, 1))
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__h_box))
+        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__txt_description))
+
 
         self.__btn_export_as_csv = QPushButton(text='Export as Csv')
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_csv))
@@ -98,6 +119,9 @@ class ExportPopup(QDialog):
         self.__btn_export_as_xlsx = QPushButton(text='Export as Xlsx')
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_xlsx))
         self.__btn_export_as_xlsx.clicked.connect(lambda :self.__on_clicked_btn_export('xlsx'))
+
+        self.__btn_export_as_xlsx.setFont(self.font())
+        self.__btn_export_as_csv.setFont(self.font())
 
         self.__create_checkbox_from_list(Export.meta_keys_default, self.__group_metadata)
         self.__create_checkbox_from_list(Export.structure_keys_default, self.__group_structure)
@@ -265,6 +289,9 @@ class ExportPopup(QDialog):
         row = 0
         col = 0
         all_checkbox = QCheckBox('all')
+        font=all_checkbox.font()
+        font.setPointSize(11)
+        all_checkbox.setFont(font)
         # todo: add event to all checkbox: which checks all other checkboxes in that group
         all_checkbox.clicked.connect(lambda value: self.__on_all_checkbox(container, value))
 
@@ -273,6 +300,7 @@ class ExportPopup(QDialog):
 
         for str_name in str_list:
             checkbox = QCheckBox(str_name)
+            checkbox.setFont(font)
             container.layout().addWidget(checkbox, col, row)
             col = col + 1
             if col >= self.__max_entries_per_row:
