@@ -135,7 +135,7 @@
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout_5">
       <item>
-       <widget class="QLineEdit" name="le_parameters_root">
+       <widget class="QLineEdit" name="le_parameters_path">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>1</horstretch>
@@ -147,16 +147,6 @@
         </property>
         <property name="placeholderText">
          <string>path to json file where the import/export should take place.</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="le_parameters_file_name">
-        <property name="toolTip">
-         <string>file name for parameters json file.</string>
-        </property>
-        <property name="text">
-         <string>parameters.json</string>
         </property>
        </widget>
       </item>

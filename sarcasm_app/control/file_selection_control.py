@@ -74,12 +74,9 @@ class FileSelectionControl:
         file = FileSelectionControl.__getOpenFilesAndDirs(caption='Open Parameter File or Select Directory',filter="Json File(*.json *.JSON)")
         if file is not None:
             if os.path.isdir(file[0]):
-                self.__file_selection_widget.le_parameters_root.setText(file[0])
+                self.__file_selection_widget.le_parameters_path.setText(os.path.join(file[0],'parameters.json'))
             else:
-                file_name = os.path.basename(file[0])
-                root=os.path.dirname(file[0])
-                self.__file_selection_widget.le_parameters_root.setText(root)
-                self.__file_selection_widget.le_parameters_file_name.setText(file_name)
+                self.__file_selection_widget.le_parameters_path.setText(file[0])
             pass
         pass
 
@@ -128,18 +125,24 @@ class FileSelectionControl:
 
 
     def on_btn_import_parameters(self):
-        # todo: import parameters from file, re-bind parameters to ui
-        if self.__file_selection_widget.le_parameters_root.text() != '' and self.__file_selection_widget.le_parameters_file_name.text() != '':
-            file_path=self.__file_selection_widget.le_parameters_root.text()+'/'+self.__file_selection_widget.le_parameters_file_name.text()
-            self.__main_control.model.parameters.load(file_path)
-            self.__main_control.debug('Parameters imported')
+        if self.__file_selection_widget.le_parameters_path.text() != '':
+            file_path = self.__file_selection_widget.le_parameters_path.text()
+
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                self.__main_control.model.parameters.load(file_path)
+                self.__main_control.debug('Parameters imported')
+            else:
+                self.__main_control.debug('Parameters not imported, file does not exist')
         pass
 
     def on_btn_export_parameters(self):
-        if self.__file_selection_widget.le_parameters_root.text() != '' and self.__file_selection_widget.le_parameters_file_name.text() != '':
-            file_path = self.__file_selection_widget.le_parameters_root.text() + '/' + self.__file_selection_widget.le_parameters_file_name.text()
-            self.__main_control.model.parameters.store(file_path)
-            self.__main_control.debug('Parameters exported to:' + file_path)
+        if self.__file_selection_widget.le_parameters_path.text() != '':
+            file_path = self.__file_selection_widget.le_parameters_path.text()
+            if not os.path.isdir(file_path):
+                self.__main_control.model.parameters.store(file_path)
+                self.__main_control.debug('Parameters exported to:' + file_path)
+            else:
+                self.__main_control.debug('Parameters NOT exported.')
             pass
         pass
 
