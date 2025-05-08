@@ -30,6 +30,7 @@ class Parameter:
         self.__lambda_get_value = None
         self.__lambda_set_value = None
         self.__get_value_parser = None  # function to parse value before returning it (for example the parse frames)
+        self.__ui_element_type  = None
         pass
 
     @property
@@ -54,10 +55,15 @@ class Parameter:
         old_value = self.__value
         self.__value = value
         if self.__lambda_set_value is not None:
-            sig = signature(self.__lambda_set_value)
-            if len(sig.parameters) == 1:
+            # using signature method causes issues in combination with checkbox
+            #sig = signature(self.__lambda_set_value)
+            #if len(sig.parameters) == 1:
+            #    self.__lambda_set_value(value)
+            #elif len(sig.parameters) >= 2:
+            #    self.__lambda_set_value(value, old_value)
+            if self.__ui_element_type == 'OneParameter':
                 self.__lambda_set_value(value)
-            elif len(sig.parameters) >= 2:
+            elif self.__ui_element_type == 'TwoParameters':
                 self.__lambda_set_value(value, old_value)
             pass
         pass
@@ -91,33 +97,39 @@ class Parameter:
         if isinstance(ui_element, QDoubleSpinBox):
             self.__lambda_set_value = ui_element.setValue
             self.__lambda_get_value = ui_element.value
+            self.__ui_element_type='OneParameter'
             ui_element.valueChanged.connect(self.__value_changed)
 
             pass
         elif isinstance(ui_element, QSpinBox):
             self.__lambda_set_value = ui_element.setValue
             self.__lambda_get_value = ui_element.value
+            self.__ui_element_type = 'OneParameter'
             ui_element.valueChanged.connect(self.__value_changed)
             pass
         elif isinstance(ui_element, QLineEdit):
             self.__lambda_set_value = lambda v: ui_element.setText(str(v))
             self.__lambda_get_value = ui_element.text
+            self.__ui_element_type = 'OneParameter'
             # ui_element.editingFinished.connect(self.__value_changed)  # is not updating on programmatically changing text field value
             ui_element.textChanged.connect(self.__value_changed)
             pass
         elif isinstance(ui_element, QCheckBox):
             self.__lambda_set_value = ui_element.setChecked
             self.__lambda_get_value = ui_element.isChecked
+            self.__ui_element_type = 'OneParameter'
             ui_element.stateChanged.connect(self.__value_changed)
             pass
         elif isinstance(ui_element, QComboBox):
             self.__lambda_set_value = ui_element.setCurrentText
             self.__lambda_get_value = ui_element.currentText
+            self.__ui_element_type = 'OneParameter'
             ui_element.currentTextChanged.connect(self.__value_changed)
             pass
         elif callable(ui_element):
             # this part is to provide a parameter with callback on change method
             # it only needs a set_value lambda which calls the "ui_element" with old value and new value
+            self.__ui_element_type = 'TwoParameters'
             self.__lambda_set_value = ui_element
             pass
         # elif isinstance(ui_element, QRadioButton):

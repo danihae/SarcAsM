@@ -15,7 +15,7 @@
 import glob
 
 import numpy as np
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog,QStackedWidget,QDialog,QListView,QLineEdit
 from tifffile import tifffile
 
 from sarcasm import SarcAsM, Structure
@@ -67,23 +67,79 @@ class FileSelectionControl:
         pass
 
     def on_search_parameters_file(self):
-        f_name = QFileDialog.getOpenFileName(caption='Open Parameters File', filter="Json File (*.json *.JSON)")
-        if f_name is not None:
-            self.__file_selection_widget.le_parameters_file.setText(f_name[0])
+        #f_name = QFileDialog.getOpenFileName(caption='Open Parameters File', filter="Json File (*.json *.JSON)")
+        #if f_name is not None:
+        #    self.__file_selection_widget.le_parameters_file.setText(f_name[0])
+        #
+        file = FileSelectionControl.__getOpenFilesAndDirs(caption='Open Parameter File or Select Directory',filter="Json File(*.json *.JSON)")
+        if file is not None:
+            if os.path.isdir(file[0]):
+                self.__file_selection_widget.le_parameters_root.setText(file[0])
+            else:
+                file_name = os.path.basename(file[0])
+                root=os.path.dirname(file[0])
+                self.__file_selection_widget.le_parameters_root.setText(root)
+                self.__file_selection_widget.le_parameters_file_name.setText(file_name)
+            pass
         pass
+
+    @staticmethod
+    def __getOpenFilesAndDirs(parent=None, caption='', directory='',filter='', initialFilter='', options=None):
+        def updateText():
+            # update the contents of the line edit widget with the selected files
+            selected = []
+            for index in view.selectionModel().selectedRows():
+                selected.append('"{}"'.format(index.data()))
+            lineEdit.setText(' '.join(selected))
+
+        dialog = QFileDialog(parent, windowTitle=caption)
+        dialog.setFileMode(dialog.ExistingFiles)
+        if options:
+            dialog.setOptions(options)
+        dialog.setOption(dialog.DontUseNativeDialog, True)
+        if directory:
+            dialog.setDirectory(directory)
+        if filter:
+            dialog.setNameFilter(filter)
+            if initialFilter:
+                dialog.selectNameFilter(initialFilter)
+
+        # by default, if a directory is opened in file listing mode,
+        # QFileDialog.accept() shows the contents of that directory, but we
+        # need to be able to "open" directories as we can do with files, so we
+        # just override accept() with the default QDialog implementation which
+        # will just return exec_()
+        dialog.accept = lambda: QDialog.accept(dialog)
+
+        # there are many item views in a non-native dialog, but the ones displaying
+        # the actual contents are created inside a QStackedWidget; they are a
+        # QTreeView and a QListView, and the tree is only used when the
+        # viewMode is set to QFileDialog.Details, which is not this case
+        stackedWidget = dialog.findChild(QStackedWidget)
+        view = stackedWidget.findChild(QListView)
+        view.selectionModel().selectionChanged.connect(updateText)
+
+        lineEdit = dialog.findChild(QLineEdit)
+        # clear the line edit contents whenever the current directory changes
+        dialog.directoryEntered.connect(lambda: lineEdit.setText(''))
+
+        dialog.exec_()
+        return dialog.selectedFiles()
+
 
     def on_btn_import_parameters(self):
         # todo: import parameters from file, re-bind parameters to ui
-        if self.__file_selection_widget.le_parameters_file.text() != '':
-            self.__main_control.model.parameters.load(self.__file_selection_widget.le_parameters_file.text())
+        if self.__file_selection_widget.le_parameters_root.text() != '' and self.__file_selection_widget.le_parameters_file_name.text() != '':
+            file_path=self.__file_selection_widget.le_parameters_root.text()+'/'+self.__file_selection_widget.le_parameters_file_name.text()
+            self.__main_control.model.parameters.load(file_path)
             self.__main_control.debug('Parameters imported')
         pass
 
     def on_btn_export_parameters(self):
-        if self.__file_selection_widget.le_parameters_file.text() != '':
-            self.__main_control.model.parameters.store(self.__file_selection_widget.le_parameters_file.text())
-            self.__main_control.debug(
-                'Parameters exported to:' + self.__file_selection_widget.le_parameters_file.text())
+        if self.__file_selection_widget.le_parameters_root.text() != '' and self.__file_selection_widget.le_parameters_file_name.text() != '':
+            file_path = self.__file_selection_widget.le_parameters_root.text() + '/' + self.__file_selection_widget.le_parameters_file_name.text()
+            self.__main_control.model.parameters.store(file_path)
+            self.__main_control.debug('Parameters exported to:' + file_path)
             pass
         pass
 

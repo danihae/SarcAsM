@@ -135,7 +135,30 @@
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout_5">
       <item>
-       <widget class="QLineEdit" name="le_parameters_file"/>
+       <widget class="QLineEdit" name="le_parameters_root">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>1</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:11pt;&quot;&gt;First select a json file (with search or just copy the full path into the first text field, excluding the file name).&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-size:11pt;&quot;&gt;The file name has to be declared in the second text field (default value is &amp;quot;parameters.json&amp;quot;).&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-size:11pt;&quot;&gt;Then press import (if you want to import a parameter-set).&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-size:11pt;&quot;&gt;Or press export (if you want to export the current parameter-set).&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="placeholderText">
+         <string>path to json file where the import/export should take place.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="le_parameters_file_name">
+        <property name="toolTip">
+         <string>file name for parameters json file.</string>
+        </property>
+        <property name="text">
+         <string>parameters.json</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_search_parameters_file">
