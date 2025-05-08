@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>481</width>
-    <height>1084</height>
+    <height>1091</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -22,22 +22,7 @@
       </font>
      </property>
      <property name="text">
-      <string>LOI file</string>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="0" colspan="2">
-    <widget class="QPushButton" name="btn_analyze_motion">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="toolTip">
-      <string>execute all of the below functions(check the parameters before)</string>
-     </property>
-     <property name="text">
-      <string>Full tracking and analysis of sarcomere motion</string>
+      <string>Select LOI file</string>
      </property>
     </widget>
    </item>
@@ -48,108 +33,11 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Detect Z-band positions</string>
-     </property>
-     <property name="flat">
-      <bool>false</bool>
-     </property>
-     <property name="checkable">
-      <bool>false</bool>
-     </property>
-     <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
-        <property name="toolTip">
-         <string>Threshold for peak finder</string>
-        </property>
-        <property name="text">
-         <string>Detection threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_threshold">
-        <property name="toolTip">
-         <string>Threshold for peak finder</string>
-        </property>
-        <property name="value">
-         <double>0.050000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_11">
-        <property name="toolTip">
-         <string>Minimal distance of z-band peaks in µm</string>
-        </property>
-        <property name="text">
-         <string>Min. distance [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_12">
-        <property name="toolTip">
-         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
-        </property>
-        <property name="text">
-         <string>Width [px]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_motion_detect_peaks">
-        <property name="toolTip">
-         <string>execute detect peaks on selected LOI file</string>
-        </property>
-        <property name="text">
-         <string>Detect Z-band positions</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_min_distance">
-        <property name="toolTip">
-         <string>Minimal distance of z-band peaks in µm</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999999999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_width">
-        <property name="toolTip">
-         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="4" column="0" colspan="2">
+   <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="font">
       <font>
        <pointsize>11</pointsize>
-       <weight>50</weight>
        <bold>false</bold>
       </font>
      </property>
@@ -173,7 +61,7 @@
          <string>execute track z-bands on selected LOI file</string>
         </property>
         <property name="text">
-         <string>Track Z-band motion</string>
+         <string>2. Track Z-band motion</string>
         </property>
        </widget>
       </item>
@@ -248,7 +136,7 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
+   <item row="6" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
      <property name="font">
       <font>
@@ -449,7 +337,7 @@
          <string>execute prediction and analysis of contractions, do not forget to select a contraction weights file</string>
         </property>
         <property name="text">
-         <string>Predict and Analyze contraction cycles</string>
+         <string>3. Predict and Analyze contraction cycles</string>
         </property>
        </widget>
       </item>
@@ -477,7 +365,7 @@
      </layout>
     </widget>
    </item>
-   <item row="6" column="0" colspan="2">
+   <item row="7" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
      <property name="font">
       <font>
@@ -703,14 +591,14 @@
          <string>execute sarcomere trajectories analysis</string>
         </property>
         <property name="text">
-         <string>Calculate and analyze sarcomere trajectories</string>
+         <string>4. Calculate and analyze sarcomere trajectories</string>
         </property>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item row="7" column="0" colspan="2">
+   <item row="9" column="0" colspan="2">
     <widget class="QPushButton" name="btn_plot_summary">
      <property name="font">
       <font>
@@ -722,7 +610,7 @@
      </property>
     </widget>
    </item>
-   <item row="1" column="0" colspan="2">
+   <item row="8" column="0" colspan="2">
     <widget class="QPushButton" name="btn_export_motion_data">
      <property name="font">
       <font>
@@ -730,8 +618,119 @@
       </font>
      </property>
      <property name="text">
-      <string>Export Motion Data</string>
+      <string>Export Motion Data (.csv/.xlsx)</string>
      </property>
+    </widget>
+   </item>
+   <item row="3" column="0" colspan="2">
+    <widget class="QPushButton" name="btn_analyze_motion">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="toolTip">
+      <string>execute all of the below functions(check the parameters before)</string>
+     </property>
+     <property name="text">
+      <string>Full tracking and analysis of sarcomere motion</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Detect Z-band positions</string>
+     </property>
+     <property name="flat">
+      <bool>false</bool>
+     </property>
+     <property name="checkable">
+      <bool>false</bool>
+     </property>
+     <layout class="QFormLayout" name="formLayout_2">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label">
+        <property name="toolTip">
+         <string>Threshold for peak finder</string>
+        </property>
+        <property name="text">
+         <string>Detection threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_threshold">
+        <property name="toolTip">
+         <string>Threshold for peak finder</string>
+        </property>
+        <property name="value">
+         <double>0.050000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="toolTip">
+         <string>Minimal distance of z-band peaks in µm</string>
+        </property>
+        <property name="text">
+         <string>Min. distance [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_12">
+        <property name="toolTip">
+         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
+        </property>
+        <property name="text">
+         <string>Width [px]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_motion_detect_peaks">
+        <property name="toolTip">
+         <string>execute detect peaks on selected LOI file</string>
+        </property>
+        <property name="text">
+         <string>1. Detect Z-band positions</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_min_distance">
+        <property name="toolTip">
+         <string>Minimal distance of z-band peaks in µm</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_detect_peaks_width">
+        <property name="toolTip">
+         <string>Width of interval around peak for precise determination of peak center, in pixels</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
   </layout>

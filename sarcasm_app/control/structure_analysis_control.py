@@ -377,7 +377,7 @@ class StructureAnalysisControl:
         # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_z_bands_predict)
-        # chain.add_step(self.__on_btn_analyze_cell_mask) # excluded from analyze structure
+        chain.add_step(self.__on_btn_analyze_cell_mask)
         chain.add_step(self.on_btn_z_band)
         chain.add_step(self.on_btn_vectors)
         chain.add_step(self.on_btn_myofibril)

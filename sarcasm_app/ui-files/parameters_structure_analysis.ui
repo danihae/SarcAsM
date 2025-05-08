@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>735</width>
-    <height>1382</height>
+    <height>1566</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -251,466 +251,7 @@
          <string>execute sarcomere prediction based on the given network</string>
         </property>
         <property name="text">
-         <string>Detect sarcomeres</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="8" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_3">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Sarcomere length and orientation analysis</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout_4">
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_23">
-        <property name="toolTip">
-         <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
-        </property>
-        <property name="text">
-         <string>Length limits [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_5">
-        <item>
-         <widget class="QLabel" name="label_25">
-          <property name="toolTip">
-           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
-          </property>
-          <property name="text">
-           <string>Min:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_min">
-          <property name="toolTip">
-           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>10000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>1.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_24">
-          <property name="toolTip">
-           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
-          </property>
-          <property name="text">
-           <string>Max:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_max">
-          <property name="toolTip">
-           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="maximum">
-           <double>10000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>4.000000000000000</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="4" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_vectors">
-        <property name="toolTip">
-         <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>
-        </property>
-        <property name="text">
-         <string>Analyze sarcomere vectors</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_6">
-        <property name="toolTip">
-         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
-        </property>
-        <property name="text">
-         <string>Radius [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_vectors_radius">
-        <property name="toolTip">
-         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_18">
-        <property name="toolTip">
-         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
-        </property>
-        <property name="text">
-         <string>Line width [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_vectors_line_width">
-        <property name="toolTip">
-         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_21">
-        <property name="toolTip">
-         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
-        </property>
-        <property name="text">
-         <string>Interpolation factor</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QSpinBox" name="sb_vectors_interpolation_factor">
-        <property name="toolTip">
-         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
-        </property>
-        <property name="maximum">
-         <number>99999999</number>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="9" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_5">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Myofibril analysis</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout_6">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_35">
-        <property name="toolTip">
-         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
-        </property>
-        <property name="text">
-         <string>Ratio Seeds</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_37">
-        <property name="toolTip">
-         <string>Persistence of line (average length and orientation for prior estimation)</string>
-        </property>
-        <property name="text">
-         <string>Persistence</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QSpinBox" name="sb_myofibril_persistence">
-        <property name="toolTip">
-         <string>Persistence of line (average length and orientation for prior estimation)</string>
-        </property>
-        <property name="maximum">
-         <number>10</number>
-        </property>
-        <property name="value">
-         <number>3</number>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_38">
-        <property name="toolTip">
-         <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
-        </property>
-        <property name="text">
-         <string>Threshold distance [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_myofibril_thresh_dist">
-        <property name="toolTip">
-         <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>100000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.300000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_22">
-        <property name="toolTip">
-         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
-        </property>
-        <property name="text">
-         <string>N min</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QSpinBox" name="sb_myofibril_n_min">
-        <property name="toolTip">
-         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
-        </property>
-        <property name="maximum">
-         <number>10000008</number>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_myofibril">
-        <property name="toolTip">
-         <string>execute myofibril length calculation</string>
-        </property>
-        <property name="text">
-         <string>Analyze myofibrils</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_myofibril_ratio_seeds">
-        <property name="toolTip">
-         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_41">
-        <property name="toolTip">
-         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
-        </property>
-        <property name="text">
-         <string>Median Filter Radius</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_myofibril_median_filter_radius">
-        <property name="toolTip">
-         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="10" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_4">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
-     <property name="title">
-      <string>Sarcomere domains analysis using clustering algorithm</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout_5">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
-        <property name="toolTip">
-         <string>Max. distance threshold for creating a network edge between vector ends</string>
-        </property>
-        <property name="text">
-         <string>D max </string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_16">
-        <property name="toolTip">
-         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
-        </property>
-        <property name="text">
-         <string>Cosine min</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_19">
-        <property name="toolTip">
-         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains. Defaults to 0.05.</string>
-        </property>
-        <property name="text">
-         <string>Leiden resolution</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_26">
-        <property name="toolTip">
-         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
-        </property>
-        <property name="text">
-         <string>Area min [µm]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_27">
-        <property name="toolTip">
-         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
-        </property>
-        <property name="text">
-         <string>Random seed</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_28">
-        <property name="toolTip">
-         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
-        </property>
-        <property name="text">
-         <string>Dilation radius</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_domain_analysis">
-        <property name="toolTip">
-         <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>
-        </property>
-        <property name="text">
-         <string>Analyze sarcomere domains</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domains_d_max">
-        <property name="toolTip">
-         <string>Max. distance threshold for creating a network edge between vector ends</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999995.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domains_cosine_min">
-        <property name="toolTip">
-         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domains_leiden_resolution">
-        <property name="toolTip">
-         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains. Defaults to 0.05.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>99999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domains_area_min">
-        <property name="toolTip">
-         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>9999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QSpinBox" name="sb_domains_random_seed">
-        <property name="toolTip">
-         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
-        </property>
-        <property name="maximum">
-         <number>999999999</number>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_domains_dilation_radius">
-        <property name="toolTip">
-         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>999999999.000000000000000</double>
+         <string>1. Detect sarcomeres</string>
         </property>
        </widget>
       </item>
@@ -734,7 +275,7 @@
          <string>Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.</string>
         </property>
         <property name="text">
-         <string>Detect Z-Bands Fast Movie</string>
+         <string>Optional: Detect Z-Bands Fast Movie</string>
         </property>
        </widget>
       </item>
@@ -889,16 +430,52 @@
      </layout>
     </widget>
    </item>
-   <item row="1" column="0" colspan="2">
-    <widget class="QPushButton" name="btn_export_structure_data">
+   <item row="5" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_7">
      <property name="font">
       <font>
        <pointsize>11</pointsize>
       </font>
      </property>
-     <property name="text">
-      <string>Export Structure Data</string>
+     <property name="title">
+      <string>Cell-mask analysis</string>
      </property>
+     <layout class="QFormLayout" name="formLayout_8">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_42">
+        <property name="font">
+         <font>
+          <pointsize>11</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>Threshold</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_cell_mask_threshold">
+        <property name="font">
+         <font>
+          <pointsize>11</pointsize>
+         </font>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_analyze_cell_mask">
+        <property name="text">
+         <string>2. Analyze Cell-mask</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item row="7" column="0" colspan="2">
@@ -1040,11 +617,14 @@
       </item>
       <item row="8" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_z_band">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
         <property name="toolTip">
          <string>execute z band analysis, check parameters before</string>
         </property>
         <property name="text">
-         <string>Analyze Z-bands</string>
+         <string>3. Analyze Z-bands</string>
         </property>
        </widget>
       </item>
@@ -1112,35 +692,443 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_7">
+   <item row="8" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_3">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
      <property name="font">
       <font>
        <pointsize>11</pointsize>
       </font>
      </property>
      <property name="title">
-      <string>Cell-mask analysis</string>
+      <string>Sarcomere length and orientation analysis</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_8">
+     <layout class="QFormLayout" name="formLayout_4">
       <item row="0" column="0">
-       <widget class="QLabel" name="label_42">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
+       <widget class="QLabel" name="label_6">
+        <property name="toolTip">
+         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
         </property>
         <property name="text">
-         <string>Threshold</string>
+         <string>Radius [µm]</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_cell_mask_threshold">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
+       <widget class="QDoubleSpinBox" name="dsb_vectors_radius">
+        <property name="toolTip">
+         <string>Radius around midline points to analyze sarcomere orientation, in µm (default is 0.25 µm).</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_18">
+        <property name="toolTip">
+         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
+        </property>
+        <property name="text">
+         <string>Line width [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_vectors_line_width">
+        <property name="toolTip">
+         <string>Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_21">
+        <property name="toolTip">
+         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
+        </property>
+        <property name="text">
+         <string>Interpolation factor</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_vectors_interpolation_factor">
+        <property name="toolTip">
+         <string>Interpolation factor for profiles to calculate sarcomere length. Default to 4.</string>
+        </property>
+        <property name="maximum">
+         <number>99999999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_23">
+        <property name="toolTip">
+         <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
+        </property>
+        <property name="text">
+         <string>Length limits [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <widget class="QLabel" name="label_25">
+          <property name="toolTip">
+           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
+          </property>
+          <property name="text">
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_min">
+          <property name="toolTip">
+           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>10000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_24">
+          <property name="toolTip">
+           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
+          </property>
+          <property name="text">
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_vectors_len_lims_max">
+          <property name="toolTip">
+           <string>Limits of lengths / wavelet distances in µm, range of sarcomere lengths</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>10000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>4.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_vectors">
+        <property name="toolTip">
+         <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>
+        </property>
+        <property name="text">
+         <string>4. Analyze sarcomere vectors</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="9" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_5">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Myofibril analysis</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_6">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_35">
+        <property name="toolTip">
+         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
+        </property>
+        <property name="text">
+         <string>Ratio Seeds</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_37">
+        <property name="toolTip">
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
+        </property>
+        <property name="text">
+         <string>Persistence</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_myofibril_persistence">
+        <property name="toolTip">
+         <string>Persistence of line (average length and orientation for prior estimation)</string>
+        </property>
+        <property name="maximum">
+         <number>10</number>
+        </property>
+        <property name="value">
+         <number>3</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_38">
+        <property name="toolTip">
+         <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
+        </property>
+        <property name="text">
+         <string>Threshold distance [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_myofibril_thresh_dist">
+        <property name="toolTip">
+         <string>Maximal distance for nearest neighbor estimation (in micrometer)</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>100000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.300000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_22">
+        <property name="toolTip">
+         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
+        </property>
+        <property name="text">
+         <string>N min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QSpinBox" name="sb_myofibril_n_min">
+        <property name="toolTip">
+         <string>Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.</string>
+        </property>
+        <property name="maximum">
+         <number>10000008</number>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_myofibril">
+        <property name="toolTip">
+         <string>execute myofibril length calculation</string>
+        </property>
+        <property name="text">
+         <string>5. Analyze myofibrils</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_myofibril_ratio_seeds">
+        <property name="toolTip">
+         <string>Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_41">
+        <property name="toolTip">
+         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
+        </property>
+        <property name="text">
+         <string>Median Filter Radius</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_myofibril_median_filter_radius">
+        <property name="toolTip">
+         <string>Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="10" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_4">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="title">
+      <string>Domains analysis using clustering algorithm</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_5">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="toolTip">
+         <string>Max. distance threshold for creating a network edge between vector ends</string>
+        </property>
+        <property name="text">
+         <string>D max </string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_d_max">
+        <property name="toolTip">
+         <string>Max. distance threshold for creating a network edge between vector ends</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999995.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_16">
+        <property name="toolTip">
+         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
+        </property>
+        <property name="text">
+         <string>Cosine min</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_cosine_min">
+        <property name="toolTip">
+         <string>Minimal absolute cosine between vector angles for creating a network edge between vector ends</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_19">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="text">
+         <string>Leiden resolution</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_leiden_resolution">
+        <property name="toolTip">
+         <string>Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
+            Greater resolution favors smaller domains. Defaults to 0.05.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>99999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_26">
+        <property name="toolTip">
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
+        </property>
+        <property name="text">
+         <string>Area min [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_area_min">
+        <property name="toolTip">
+         <string>Minimal area of domains/clusters (in µm^2). Defaults to 50.0.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_27">
+        <property name="toolTip">
+         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
+        </property>
+        <property name="text">
+         <string>Random seed</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QSpinBox" name="sb_domains_random_seed">
+        <property name="toolTip">
+         <string>Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.</string>
+        </property>
+        <property name="maximum">
+         <number>999999999</number>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_28">
+        <property name="toolTip">
+         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
+        </property>
+        <property name="text">
+         <string>Dilation radius</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_domains_dilation_radius">
+        <property name="toolTip">
+         <string>Dilation radius for refining domain area masks. Defaults to 3.</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -1150,14 +1138,29 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_analyze_cell_mask">
+      <item row="6" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_structure_domain_analysis">
+        <property name="toolTip">
+         <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>
+        </property>
         <property name="text">
-         <string>Analyze Cell-mask</string>
+         <string>6. Analyze domains</string>
         </property>
        </widget>
       </item>
      </layout>
+    </widget>
+   </item>
+   <item row="11" column="0" colspan="2">
+    <widget class="QPushButton" name="btn_export_structure_data">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>Export Structure Data (.csv/.xlsx)</string>
+     </property>
     </widget>
    </item>
   </layout>

@@ -103,14 +103,14 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
             1024)  # is the predict_size_max from ui
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
-        self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.8)
+        self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.98)
 
         self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(256)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(256)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.8)
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.98)
 
         self.__parameters.get_parameter(name='structure.cell_mask.threshold').set_value(0.1)
 
@@ -124,7 +124,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.z_band_analysis.median_filter_radius').set_value(0.2)
         self.__parameters.get_parameter(name='structure.z_band_analysis.theta_phi_min').set_value(0.4)
         self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.3)
-        self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(4.0)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(3.0)
         self.__parameters.get_parameter(name='structure.z_band_analysis.d_min').set_value(0.00)
 
 
