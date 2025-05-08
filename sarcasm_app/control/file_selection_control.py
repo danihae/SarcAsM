@@ -167,7 +167,7 @@ class FileSelectionControl:
             try:
                 d_pixel_size = float(pixel_size)
                 if d_pixel_size != 0 and d_pixel_size is not None:
-                    self.__main_control.model.cell.metadata['resxy'] = d_pixel_size
+                    self.__main_control.model.cell.metadata['pixelsize'] = d_pixel_size
                     self.__file_selection_widget.le_pixel_size.setStyleSheet("")  # reset style (red background)
             except ValueError:
                 self.__main_control.debug('the value in pixel size is not a number')
@@ -182,6 +182,8 @@ class FileSelectionControl:
             except ValueError:
                 self.__main_control.debug('the value in frame rate is not a number')
 
+        self.__main_control.init_scale_bar()
+
     def _init_file(self, file):
         # on file changed, clean up old files, napari viewer, models, etc.
         # todo: maybe switch to threaded execution (run_async_new)
@@ -194,11 +196,8 @@ class FileSelectionControl:
         self.__main_control.model.currentlyProcessing.set_value(True)
         self.__main_control.update_progress(10)
 
-        image = tifffile.imread(file)
-        lower_perc, upper_perc = np.percentile(image, q=[0.1, 99.9])
-        self.__main_control.viewer.add_image(image, name='ImageData', contrast_limits=[lower_perc, upper_perc])
-
         self.__main_control.model.init_cell(file)
+        self.__main_control.init_image_stack()
         self.__main_control.init_z_band_stack(fastmovie=True)
         self.__main_control.init_m_band_stack(visible=False)
         self.__main_control.init_z_lateral_connections(visible=False)
@@ -208,6 +207,7 @@ class FileSelectionControl:
         self.__main_control.init_myofibril_lines_stack(visible=False)
         self.__main_control.init_sarcomere_domain_stack(visible=False)
         self.__main_control.viewer.dims.set_current_step(0, 0)
+        self.__main_control.init_scale_bar()
 
         self.init_line_layer()  # initializes the layer for drawing loi's
 

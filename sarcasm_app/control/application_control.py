@@ -226,6 +226,35 @@ class ApplicationControl:
         file_name += "_loi" + self.model.file_extension
         return file_name, scan_line
 
+    def init_scale_bar(self):
+        # Extract metadata with defaults
+        meta = self.model.cell.metadata
+        frames = meta.get('frames', 0)
+        px = meta.get('pixelsize')  # None if missing
+
+        # Unit and base voxel size
+        unit = 'µm' if px is not None else 'pixel'
+        size = px or 1
+
+        # Build scale tuple: 2D for single frame, 3D otherwise
+        if frames == 1:
+            scale = (size, size)
+        else:
+            scale = (1, size, size)
+
+        # Apply to all layers and update viewer
+        for layer in self.viewer.layers:
+            layer.scale = scale
+
+        self.viewer.scale_bar.visible = True
+        self.viewer.scale_bar.unit = unit
+        self.viewer.reset_view()
+
+    def init_image_stack(self):
+        tmp = tifffile.imread(self.model.cell.filepath)
+        lower_perc, upper_perc = np.percentile(tmp, q=[0.1, 99.9])
+        self.viewer.add_image(tmp, name='ImageData', contrast_limits=[lower_perc, upper_perc])
+
     def init_z_band_stack(self, visible=True, fastmovie=False):
         if fastmovie and not os.path.exists(self.model.cell.file_zbands_fast_movie):
             fastmovie = False
