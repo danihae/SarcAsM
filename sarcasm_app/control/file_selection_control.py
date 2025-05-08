@@ -202,6 +202,7 @@ class FileSelectionControl:
         self.__main_control.update_progress(10)
 
         self.__main_control.model.init_cell(file)
+        self.__main_control.init_scale_bar()
         self.__main_control.init_image_stack()
         self.__main_control.init_z_band_stack(fastmovie=True)
         self.__main_control.init_m_band_stack(visible=False)
@@ -212,7 +213,6 @@ class FileSelectionControl:
         self.__main_control.init_myofibril_lines_stack(visible=False)
         self.__main_control.init_sarcomere_domain_stack(visible=False)
         self.__main_control.viewer.dims.set_current_step(0, 0)
-        self.__main_control.init_scale_bar()
 
         self.init_line_layer()  # initializes the layer for drawing loi's
 

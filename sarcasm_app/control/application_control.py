@@ -241,6 +241,7 @@ class ApplicationControl:
             scale = (size, size)
         else:
             scale = (1, size, size)
+        self.model.cell.metadata['scale'] = scale
 
         # Apply to all layers and update viewer
         for layer in self.viewer.layers:
@@ -253,7 +254,8 @@ class ApplicationControl:
     def init_image_stack(self):
         tmp = tifffile.imread(self.model.cell.filepath)
         lower_perc, upper_perc = np.percentile(tmp, q=[0.1, 99.9])
-        self.viewer.add_image(tmp, name='ImageData', contrast_limits=[lower_perc, upper_perc])
+        self.viewer.add_image(tmp, name='ImageData', contrast_limits=[lower_perc, upper_perc],
+                              scale=self.model.cell.metadata['scale'])
 
     def init_z_band_stack(self, visible=True, fastmovie=False):
         if fastmovie and not os.path.exists(self.model.cell.file_zbands_fast_movie):
@@ -266,7 +268,7 @@ class ApplicationControl:
             tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.1] = np.nan
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
-                                  visible=visible)
+                                  visible=visible, scale=self.model.cell.metadata['scale'])
 
     def init_m_band_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_mbands):
@@ -276,7 +278,7 @@ class ApplicationControl:
             tmp = tifffile.imread(self.model.cell.file_mbands)
             tmp[tmp < 0.1] = np.nan
             self.viewer.add_image(tmp, name='MbandMask', opacity=0.8, colormap='cool', blending='translucent',
-                                  visible=visible)
+                                  visible=visible, scale=self.model.cell.metadata['scale'])
 
     def init_cell_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
@@ -285,7 +287,8 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
-            self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible)
+            self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible,
+                                  scale=self.model.cell.metadata['scale'])
 
     def init_z_lateral_connections(self, visible=True):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
@@ -336,10 +339,12 @@ class ApplicationControl:
                                             [frame, z_ends_frame[j, l, 0], z_ends_frame[j, l, 1]]])
 
             labels_groups = np.asarray(labels_groups)
-            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5, visible=visible)
+            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5, visible=visible,
+                                   scale=self.model.cell.metadata['scale'])
             self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
-                              edge_width=1, opacity=0.15, visible=visible)
-            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3, visible=visible)
+                              edge_width=1, opacity=0.15, visible=visible, scale=self.model.cell.metadata['scale'])
+            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3, visible=visible,
+                                   scale=self.model.cell.metadata['scale'])
 
     def init_myofibril_lines_stack(self, visible=True):
         if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
@@ -355,7 +360,8 @@ class ApplicationControl:
                 for i, (lines_i, pos_vectors_i) in enumerate(zip(myof_lines, pos_vectors))]
             _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
             self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_vector_pos, shape_type='path',
-                                   edge_color='red', edge_width=2, opacity=0.5, visible=visible)
+                                   edge_color='red', edge_width=2, opacity=0.5, visible=visible,
+                                   scale=self.model.cell.metadata['scale'])
 
     def init_sarcomere_vector_stack(self, visible=True):
         if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
@@ -396,6 +402,8 @@ class ApplicationControl:
                                     vector_style='arrow', visible=visible)
             self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2,
                                    visible=visible)
+            self.viewer.layers['SarcomereVectors'].scale = self.model.cell.metadata['scale']
+            self.viewer.layers['MidlinePoints'].scale = self.model.cell.metadata['scale']
 
     def init_sarcomere_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
@@ -418,7 +426,8 @@ class ApplicationControl:
                 rgba_image[..., 2] = 0  # Blue channel
                 rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
 
-            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, visible=visible)
+            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, visible=visible,
+                                  scale=self.model.cell.metadata['scale'])
 
     def init_sarcomere_domain_stack(self, visible=True):
         if self.model.cell is None or 'domains' not in self.model.cell.data:
@@ -473,7 +482,8 @@ class ApplicationControl:
         with ThreadPoolExecutor(max_workers=min(8, len(frames_to_analyze))) as executor:
             for frame, mask in executor.map(process_frame_partial, frames_to_analyze):
                 _domain_masks[frame] = mask
-        self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35, visible=visible)
+        self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35, visible=visible,
+                               scale=self.model.cell.metadata['scale'])
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):
