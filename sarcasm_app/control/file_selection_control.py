@@ -80,6 +80,8 @@ class FileSelectionControl:
             pass
         pass
 
+    # source from (date of access: 2025-05-08 [YYYY-MM-DD]):
+    # https://stackoverflow.com/questions/64336575/select-a-file-or-a-folder-in-qfiledialog-pyqt5
     @staticmethod
     def __getOpenFilesAndDirs(parent=None, caption='', directory='',filter='', initialFilter='', options=None):
         def updateText():
