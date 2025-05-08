@@ -30,7 +30,7 @@ class Parameter:
         self.__lambda_get_value = None
         self.__lambda_set_value = None
         self.__get_value_parser = None  # function to parse value before returning it (for example the parse frames)
-        self.__ui_element_type  = None
+        self.__ui_element_type = None
         pass
 
     @property
@@ -56,15 +56,19 @@ class Parameter:
         self.__value = value
         if self.__lambda_set_value is not None:
             # using signature method causes issues in combination with checkbox
-            #sig = signature(self.__lambda_set_value)
-            #if len(sig.parameters) == 1:
+            # sig = signature(self.__lambda_set_value)
+            # if len(sig.parameters) == 1:
             #    self.__lambda_set_value(value)
-            #elif len(sig.parameters) >= 2:
+            # elif len(sig.parameters) >= 2:
             #    self.__lambda_set_value(value, old_value)
             if self.__ui_element_type == 'OneParameter':
                 self.__lambda_set_value(value)
-            elif self.__ui_element_type == 'TwoParameters':
-                self.__lambda_set_value(value, old_value)
+            elif self.__ui_element_type == 'NotSpecified':
+                sig = signature(self.__lambda_set_value)
+                if len(sig.parameters) == 1:
+                    self.__lambda_set_value(value)
+                elif len(sig.parameters) >= 2:
+                    self.__lambda_set_value(value, old_value)
             pass
         pass
 
@@ -97,7 +101,7 @@ class Parameter:
         if isinstance(ui_element, QDoubleSpinBox):
             self.__lambda_set_value = ui_element.setValue
             self.__lambda_get_value = ui_element.value
-            self.__ui_element_type='OneParameter'
+            self.__ui_element_type = 'OneParameter'
             ui_element.valueChanged.connect(self.__value_changed)
 
             pass
@@ -129,7 +133,7 @@ class Parameter:
         elif callable(ui_element):
             # this part is to provide a parameter with callback on change method
             # it only needs a set_value lambda which calls the "ui_element" with old value and new value
-            self.__ui_element_type = 'TwoParameters'
+            self.__ui_element_type = 'NotSpecified'
             self.__lambda_set_value = ui_element
             pass
         # elif isinstance(ui_element, QRadioButton):
