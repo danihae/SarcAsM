@@ -88,7 +88,7 @@ class FileSelectionControl:
             # update the contents of the line edit widget with the selected files
             selected = []
             for index in view.selectionModel().selectedRows():
-                selected.append('"{}"'.format(index.data()))
+                selected.append('{}'.format(index.data()))
             lineEdit.setText(' '.join(selected))
 
         dialog = QFileDialog(parent, windowTitle=caption)
