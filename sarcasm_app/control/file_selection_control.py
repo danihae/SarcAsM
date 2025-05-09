@@ -71,7 +71,7 @@ class FileSelectionControl:
         #if f_name is not None:
         #    self.__file_selection_widget.le_parameters_file.setText(f_name[0])
         #
-        file = FileSelectionControl.__getOpenFilesAndDirs(caption='Open Parameter File or Select Directory',filter="Json File(*.json *.JSON)")
+        file = FileSelectionControl.__getOpenFilesAndDirs(caption='Open Parameter File or Select Directory',filter="JSON File(*.json *.JSON)")
         if file is not None:
             if os.path.isdir(file[0]):
                 self.__file_selection_widget.le_parameters_path.setText(os.path.join(file[0],'parameters.json'))

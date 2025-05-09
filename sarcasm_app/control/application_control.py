@@ -400,7 +400,7 @@ class ApplicationControl:
                             vectors.append([start_point, vector_2])
             self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
                                     vector_style='arrow', visible=visible)
-            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=2,
+            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=1 / self.model.cell.metadata['pixelsize'],
                                    visible=visible)
             self.viewer.layers['SarcomereVectors'].scale = self.model.cell.metadata['scale']
             self.viewer.layers['MidlinePoints'].scale = self.model.cell.metadata['scale']

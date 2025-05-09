@@ -114,7 +114,7 @@ class Ui_Form(object):
         self.btn_store_metadata.setText(_translate("Form", "Store Metadata"))
         self.groupBox_3.setTitle(_translate("Form", "Parameter import/export"))
         self.le_parameters_path.setToolTip(_translate("Form", "<html><head/><body><p><span style=\" font-size:11pt;\">First select a json file (with search or just copy the full path into the first text field, excluding the file name).</span></p><p><span style=\" font-size:11pt;\">The file name has to be declared in the second text field (default value is &quot;parameters.json&quot;).</span></p><p><span style=\" font-size:11pt;\">Then press import (if you want to import a parameter-set).</span></p><p><span style=\" font-size:11pt;\">Or press export (if you want to export the current parameter-set).</span></p><p><br/></p></body></html>"))
-        self.le_parameters_path.setPlaceholderText(_translate("Form", "path to json file where the import/export should take place."))
+        self.le_parameters_path.setPlaceholderText(_translate("Form", " - path to json file for storing analysis parameters - "))
         self.btn_search_parameters_file.setText(_translate("Form", "Search"))
         self.btn_import_parameters.setText(_translate("Form", "Import"))
         self.btn_export_parameters.setText(_translate("Form", "Export"))
