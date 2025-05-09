@@ -215,7 +215,7 @@ class SarcAsM:
         """
         current_file = os.path.abspath(__file__)
         # Move two directories up to get the parent directory, then append 'models'
-        parent_dir = os.path.dirname(os.path.dirname(current_file))
+        parent_dir = os.path.dirname(current_file)
         return os.path.join(parent_dir, "models") + os.sep
 
     def read_imgs(self, frames: Union[str, int, List[int]] = None):
