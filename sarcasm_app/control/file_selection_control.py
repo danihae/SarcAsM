@@ -13,9 +13,10 @@
 
 
 import glob
+import json
 
 import numpy as np
-from PyQt5.QtWidgets import QFileDialog,QStackedWidget,QDialog,QListView,QLineEdit
+from PyQt5.QtWidgets import QFileDialog, QStackedWidget, QDialog, QListView, QLineEdit, QMessageBox, QDialogButtonBox
 from tifffile import tifffile
 
 from sarcasm import SarcAsM, Structure
@@ -67,64 +68,46 @@ class FileSelectionControl:
         pass
 
     def on_search_parameters_file(self):
-        #f_name = QFileDialog.getOpenFileName(caption='Open Parameters File', filter="Json File (*.json *.JSON)")
-        #if f_name is not None:
-        #    self.__file_selection_widget.le_parameters_file.setText(f_name[0])
-        #
-        file = FileSelectionControl.__getOpenFilesAndDirs(caption='Open Parameter File or Select Directory',filter="JSON File(*.json *.JSON)")
-        if file is not None:
-            if os.path.isdir(file[0]):
-                self.__file_selection_widget.le_parameters_path.setText(os.path.join(file[0],'parameters.json'))
-            else:
-                self.__file_selection_widget.le_parameters_path.setText(file[0])
-            pass
-        pass
+        """Handle parameter file selection with JSON validation"""
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Select Parameter File")
+        dialog.setFileMode(QFileDialog.AnyFile)
+        dialog.setAcceptMode(QFileDialog.AcceptOpen)  # Shows "Open" button
+        dialog.setNameFilter("JSON Files (*.json)")
+        dialog.setDefaultSuffix("json")
+        dialog.setOption(QFileDialog.DontUseNativeDialog)
 
-    # source from (date of access: 2025-05-08 [YYYY-MM-DD]):
-    # https://stackoverflow.com/questions/64336575/select-a-file-or-a-folder-in-qfiledialog-pyqt5
-    @staticmethod
-    def __getOpenFilesAndDirs(parent=None, caption='', directory='',filter='', initialFilter='', options=None):
-        def updateText():
-            # update the contents of the line edit widget with the selected files
-            selected = []
-            for index in view.selectionModel().selectedRows():
-                selected.append('{}'.format(index.data()))
-            lineEdit.setText(' '.join(selected))
+        # Configure for both existing and new files
+        if dialog.exec_():
+            selected_files = dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
 
-        dialog = QFileDialog(parent, windowTitle=caption)
-        dialog.setFileMode(dialog.ExistingFiles)
-        if options:
-            dialog.setOptions(options)
-        dialog.setOption(dialog.DontUseNativeDialog, True)
-        if directory:
-            dialog.setDirectory(directory)
-        if filter:
-            dialog.setNameFilter(filter)
-            if initialFilter:
-                dialog.selectNameFilter(initialFilter)
+                # Ensure .json extension
+                if not file_path.lower().endswith('.json'):
+                    file_path += '.json'
 
-        # by default, if a directory is opened in file listing mode,
-        # QFileDialog.accept() shows the contents of that directory, but we
-        # need to be able to "open" directories as we can do with files, so we
-        # just override accept() with the default QDialog implementation which
-        # will just return exec_()
-        dialog.accept = lambda: QDialog.accept(dialog)
+                # Create file if it doesn't exist
+                if not os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'w') as f:
+                            f.write('{}')  # Create valid empty JSON
+                    except Exception as e:
+                        QMessageBox.critical(None, "Error",
+                                             f"Could not create file:\n{str(e)}")
+                        return
 
-        # there are many item views in a non-native dialog, but the ones displaying
-        # the actual contents are created inside a QStackedWidget; they are a
-        # QTreeView and a QListView, and the tree is only used when the
-        # viewMode is set to QFileDialog.Details, which is not this case
-        stackedWidget = dialog.findChild(QStackedWidget)
-        view = stackedWidget.findChild(QListView)
-        view.selectionModel().selectionChanged.connect(updateText)
-
-        lineEdit = dialog.findChild(QLineEdit)
-        # clear the line edit contents whenever the current directory changes
-        dialog.directoryEntered.connect(lambda: lineEdit.setText(''))
-
-        dialog.exec_()
-        return dialog.selectedFiles()
-
+                # Validate JSON structure
+                try:
+                    with open(file_path, 'r') as f:
+                        json.load(f)  # Verify JSON is parseable
+                    self.__file_selection_widget.le_parameters_path.setText(file_path)
+                except json.JSONDecodeError:
+                    QMessageBox.warning(None, "Invalid JSON",
+                                        "The selected file contains invalid JSON format")
+                except Exception as e:
+                    QMessageBox.critical(None, "Error",
+                                         f"Failed to read file:\n{str(e)}")
 
     def on_btn_import_parameters(self):
         if self.__file_selection_widget.le_parameters_path.text() != '':
