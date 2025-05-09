@@ -52,7 +52,6 @@ class ExportPopup(QDialog):
         self.__h_box = None
         self.__le_file_path: QLineEdit
         self.__le_file_name: QLineEdit
-        self.__txt_description:QLabel
         font=self.font()
         font.setPointSize(11)
         self.setFont(font)
@@ -91,16 +90,9 @@ class ExportPopup(QDialog):
         self.__le_file_name.setText(filename_pattern)
         self.__le_file_name.setToolTip('File name pattern, the % is a must have, \n'
                                        'it is a placeholder for "structure" or "motion", \n also the $ext is a placeholder for the corresponding file extension, like .csv or .xlsx')
-        self.__txt_description = QLabel()
-
-        self.__txt_description.setText('To export data, first select the values you want to export. \nThen press on the "..." button to search the output directory or just copy the path into the first text field.\n'+
-                                            'If you want to change the file name pattern, do not forget to add a "%" this is a placeholder for "structure" or "motion" (depending on the type of export you do).\n'+
-                                            'Also do not forget the "$ext" this is another placeholder for the file extension, in case of CSV Export the extension will be "csv" in case of Xlsx export it will be "xlsx".\n'+
-                                            'If you have set everything, you can press "Export as Csv" or "Export as Xlsx" (or both if you want).')
 
         self.__le_file_name.setFont(self.font())
         self.__le_file_path.setFont(self.font())
-        self.__txt_description.setFont(self.font())
 
         btn_search = QPushButton(text='...')
         btn_search.clicked.connect(self.__on_clicked_btn_search)
@@ -109,14 +101,12 @@ class ExportPopup(QDialog):
         TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_name, 4))
         TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(btn_search, 1))
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__h_box))
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__txt_description))
 
-
-        self.__btn_export_as_csv = QPushButton(text='Export as Csv')
+        self.__btn_export_as_csv = QPushButton(text='Export as .csv')
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_csv))
         self.__btn_export_as_csv.clicked.connect(lambda :self.__on_clicked_btn_export('csv'))
 
-        self.__btn_export_as_xlsx = QPushButton(text='Export as Xlsx')
+        self.__btn_export_as_xlsx = QPushButton(text='Export as .xlsx')
         TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_xlsx))
         self.__btn_export_as_xlsx.clicked.connect(lambda :self.__on_clicked_btn_export('xlsx'))
 
