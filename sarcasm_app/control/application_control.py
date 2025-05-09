@@ -343,8 +343,6 @@ class ApplicationControl:
                                    scale=self.model.cell.metadata['scale'])
             self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
                               edge_width=1, opacity=0.15, visible=visible, scale=self.model.cell.metadata['scale'])
-            self.viewer.add_points(name='ZbandEnds', data=ends, face_color='w', size=3, visible=visible,
-                                   scale=self.model.cell.metadata['scale'])
 
     def init_myofibril_lines_stack(self, visible=True):
         if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
