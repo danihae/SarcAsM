@@ -217,7 +217,8 @@ class FileSelectionControl:
             layer = self.__main_control.viewer.layers.__getitem__('LOIs')
             self.__main_control.viewer.layers.remove(layer)
         # set the pre-selected color to red
-        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000'))
+        _scale = self.__main_control.model.cell.metadata['scale'][-2:]
+        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000', scale=_scale))
 
         pass
 

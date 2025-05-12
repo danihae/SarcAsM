@@ -267,6 +267,9 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.1] = np.nan
+            print(tmp.ndim)
+            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+                tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
                                   visible=visible, scale=self.model.cell.metadata['scale'])
 
@@ -277,6 +280,8 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_mbands)
             tmp[tmp < 0.1] = np.nan
+            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+                tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='MbandMask', opacity=0.8, colormap='cool', blending='translucent',
                                   visible=visible, scale=self.model.cell.metadata['scale'])
 
@@ -287,6 +292,8 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
+            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+                tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible,
                                   scale=self.model.cell.metadata['scale'])
 
@@ -310,7 +317,8 @@ class ApplicationControl:
             connections = []
             for frame in range(self.model.cell.metadata['frames']):
                 if 'params.analyze_z_bands.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_z_bands.frames']:
+                        self.model.cell.data['params.analyze_z_bands.frames'] and \
+                        self.model.cell.data['z_labels'][frame] is not None:
                     labels_frame = self.model.cell.data['z_labels'][frame].toarray()
                     groups_frame = self.model.cell.data['z_lat_groups'][frame]
                     labels_groups_frame = np.zeros_like(labels_frame)
@@ -398,7 +406,7 @@ class ApplicationControl:
                             vectors.append([start_point, vector_2])
             self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
                                     vector_style='arrow', visible=visible)
-            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=1 / self.model.cell.metadata['pixelsize'],
+            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=0.2 / self.model.cell.metadata['pixelsize'],
                                    visible=visible)
             self.viewer.layers['SarcomereVectors'].scale = self.model.cell.metadata['scale']
             self.viewer.layers['MidlinePoints'].scale = self.model.cell.metadata['scale']
@@ -410,6 +418,8 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
 
             tmp = tifffile.imread(self.model.cell.file_sarcomere_mask)
+            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+                tmp = np.expand_dims(tmp, axis=0)
 
             if tmp.ndim == 2:  # Single image
                 rgba_image = np.zeros((tmp.shape[0], tmp.shape[1], 4), dtype='uint8')
