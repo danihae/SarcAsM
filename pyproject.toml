@@ -1,41 +1,63 @@
 [tool.poetry]
 name = "sarc-asm"
-version = "0.1.6"
+version = "0.1.7a1"
 description = "Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
 authors = ["Daniel Haertter <dani.hae@posteo.de>"]
 readme = "README.md"
+repository = "https://github.com/danihae/SarcAsM"
 packages = [
     { include = "sarcasm" },
     { include = "sarcasm_app" },
     { include = "contraction_net" }
 ]
-repository = "https://github.com/danihae/SarcAsM"
-
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.14"
 orjson = "^3.10.0"
-napari = "~0.4.18"
+napari = ">=0.4.18,<0.7.0"
 torch = "^2.0.0"
-bio-image-unet = "^1.1.0"
+bio-image-unet = "^1.1.2"
 matplotlib = "^3.10.0"
-matplotlib-scalebar = "*"
-xmltodict = "~0.13.0"
+matplotlib-scalebar = "^0.8.0"
 PyQt5 = "~5.15.4"
-pandas = ">=1.3.3,<=2.2.1"
-trackpy = ">=0.5.0,<=0.6.2"
-scikit-learn = ">=1.0.2"
-PyWavelets = "~1.5.0"
-igraph = "*"
-numba = "*"
-qtutils = "*"
-networkx = "*"
-openpyxl = "*"
-tifffile = "*"
-notebook = "*"
+pandas = "^2.0.0"
+trackpy = "^0.6.4"
+scikit-learn = "^1.0.2"
+scikit-image = ">0.18,<1.0"
+PyWavelets = "^1.5.0"
+igraph = "^0.11.2"
+numba = "^0.61.2"
+qtutils = "^4.0.0"
+networkx = "^3.2"
+openpyxl = "^3.1.4"
+tifffile = ">=2023.12.9"
 
 [tool.poetry.group.dev.dependencies]
+notebook = "^7.0.0"
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "^7.0"
+sphinx-rtd-theme = "^2.0.0"
+sphinx-autoapi = "^3.0"
+nbsphinx = "^0.9.0"
+
+[tool.poetry.scripts]
+sarcasm = "sarcasm_app.__main__:main"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=1.7.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.readthedocs]
+version = 2
+# Build environment configuration
+build = { os = "ubuntu-22.04", tools = { python = "3.10" } }
+# Sphinx configuration
+sphinx = { configuration = "docs/conf.py" }
+
+# Python interpreter configuration and package installation
+# This tells Read the Docs to use Poetry to install your project
+# and the dependencies from the 'docs' group.
+python = { install = [
+    { method = "poetry", path = ".", with = ["docs"] }
+]}
