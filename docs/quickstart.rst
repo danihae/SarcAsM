@@ -5,6 +5,8 @@ Quickstart
 Sarcomere structure analysis
 ============================
 
+Test data for getting started can be found `here <https://zenodo.org/records/15389034/files/test_data.zip?download=1>`_.
+
 More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
 
 .. code-block:: python

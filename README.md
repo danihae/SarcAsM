@@ -84,6 +84,8 @@ pip install sarc-asm
 
 ## Usage
 
+Test data for getting started can be found [here](https://zenodo.org/records/15389034/files/test_data.zip?download=1).
+
 ### Python Package
 
 After installation, SarcAsM can be imported and used in your Python scripts or Jupyter notebooks:

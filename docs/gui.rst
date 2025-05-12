@@ -4,6 +4,7 @@ GUI Usage
 
 SarcAsM's GUI application uses `Napari image browser <https://napari.org/stable/index.html>`_ as image viewer. Check out `this page <https://napari.org/stable/tutorials/fundamentals/viewer.html>`_ for a primer on Napari's GUI.
 
+Test data for getting started can be found `here <https://zenodo.org/records/15389034/files/test_data.zip?download=1>`_.
 
 Starting the App
 ================
