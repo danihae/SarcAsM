@@ -129,6 +129,9 @@ class SarcAsM:
         # Initialize subsystems: metadata handler
         self.meta_data_handler = MetaDataHandler(self)
 
+        # Dictionary of models
+        self.model_dir = Utils.get_models_dir()
+
         # Device configuration: auto-detect or validate provided device
         if device == "auto":
             self.device = Utils.get_device(print_device=False)
@@ -207,16 +210,6 @@ class SarcAsM:
     def open_base_dir(self):
         """Opens the base directory of the tiff file in the file explorer."""
         Utils.open_folder(self.base_dir)
-
-    @property
-    def model_dir(self) -> str:
-        """
-        Returns the path to the model directory.
-        """
-        current_file = os.path.abspath(__file__)
-        # Move two directories up to get the parent directory, then append 'models'
-        parent_dir = os.path.dirname(current_file)
-        return os.path.join(parent_dir, "models") + os.sep
 
     def read_imgs(self, frames: Union[str, int, List[int]] = None):
         """Load tif file, and optionally select channel"""

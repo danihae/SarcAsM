@@ -17,9 +17,9 @@ napari_data = collect_data_files('napari')
 # 2. Include Vispy resources (critical for GLSL shaders)
 vispy_data = collect_data_files('vispy')
 
-# 3. Include your models directory (recursive)
+# 3. Include models directory (recursive)
 model_data = [
-    ('models/*', 'models'),  # Recursive inclusion
+    ('sarcasm/models', 'sarcasm/models'),
 ]
 
 a = Analysis(
@@ -65,7 +65,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='docs/images/sarcasm.ico',
+    icon='sarcasm_app/icons/sarcasm.ico',
 )
 
 # Platform-specific configurations
@@ -74,7 +74,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name=f'{appname}.app',  # .app extension for macOS
-        icon='docs/images/sarcasm.icns',  # macOS requires .icns format
+        icon='sarcasm_app/icons/sarcasm.icns',  # macOS requires .icns format
         bundle_identifier='de.example.sarcasm',
         info_plist={
             'CFBundleName': 'SarcAsM',

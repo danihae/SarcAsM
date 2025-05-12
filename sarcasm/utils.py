@@ -15,13 +15,14 @@
 import datetime
 import glob
 import os
+import sys
 import platform
 import subprocess
 import warnings
+from pathlib import Path
 from typing import Tuple, Any, List, Union
 os.environ["KMP_WARNINGS"] = "False"
 warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", message=".*omp_set_nested.*")
 
 import numpy as np
 import tifffile
@@ -79,6 +80,16 @@ class Utils:
         """
         t = datetime.datetime.today()
         return t.strftime('%Y%m%d')
+
+    @staticmethod
+    def get_models_dir() -> Path:
+        """Returns path to 'sarcasm/models' directory."""
+        base_path = Path(__file__).resolve().parent  # Adjust parent levels as needed
+
+        models_dir = base_path / "models"
+        if not models_dir.exists():
+            raise FileNotFoundError(f"Models directory missing: {models_dir}")
+        return models_dir
 
     @staticmethod
     def get_tif_files_in_folder(folder: str) -> List[str]:
