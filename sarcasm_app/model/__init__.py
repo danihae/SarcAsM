@@ -202,7 +202,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='motion.track_z_bands.memory_interpolation').set_value(3)
 
         self.__parameters.get_parameter(name='motion.systoles.weights').set_value('default')  # weights is a network file
-        self.__parameters.get_parameter(name='motion.systoles.threshold').set_value(0.03)
+        self.__parameters.get_parameter(name='motion.systoles.threshold').set_value(0.3)
         self.__parameters.get_parameter(name='motion.systoles.slen_limits.lower').set_value(1.2)
         self.__parameters.get_parameter(name='motion.systoles.slen_limits.upper').set_value(3.0)
         self.__parameters.get_parameter(name='motion.systoles.n_sarcomeres_min').set_value(4)
