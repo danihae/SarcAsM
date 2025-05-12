@@ -6,11 +6,10 @@ build:
     python: "3.11"
 
 sphinx:
-  configuration: docs/conf.py  # Path to your Sphinx conf.py file
+  configuration: docs/conf.py
 
-python:
-  install:
-    - method: pip
-      path: .  # This installs your package from the current directory
-      extra_requirements:
-        - docs  # This installs the optional 'docs' dependencies from pyproject.toml
+jobs:
+  post_create_environment:
+    - pip install poetry==1.8.2
+  post_install:
+    - poetry install --with docs --no-interaction

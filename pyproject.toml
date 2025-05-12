@@ -35,6 +35,9 @@ tifffile = ">=2023.12.9"
 [tool.poetry.group.dev.dependencies]
 notebook = "^7.0.0"
 
+[tool.poetry.group.docs]
+optional = true
+
 [tool.poetry.group.docs.dependencies]
 sphinx = "^7.0"
 sphinx-rtd-theme = "^2.0.0"
