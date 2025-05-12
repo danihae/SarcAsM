@@ -386,7 +386,7 @@ class Structure(SarcAsM):
         """
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
+        if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0) or (len(self.data['params.detect_sarcomeres.frames']) == 1 and len(frames) == 1):
             zbands = tifffile.imread(self.file_zbands)
             orientation_field = tifffile.imread(self.file_orientation)
             images = self.read_imgs()
