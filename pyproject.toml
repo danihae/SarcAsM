@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sarc-asm"
-version = "0.1.7a1"
+version = "0.1.7"
 description = "Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
 authors = ["Daniel Haertter <dani.hae@posteo.de>"]
 readme = "README.md"
