@@ -5,7 +5,7 @@ Installation
 Installation via pip
 ====================
 
-#. Create and activate a new environment (tested with Python 3.10 and 3.11)::
+#. Create and activate a new environment (tested with Python >=3.10)::
 
         conda create -n sarcasm python==3.10
         conda activate sarcasm
@@ -24,7 +24,7 @@ Installation via github
         git clone https://github.com/danihae/SarcAsM
         cd sarcasm
 
-#. Create a new environment (tested with Python 3.10 and 3.11)::
+#. Create a new environment (tested with Python >=3.10)::
 
         conda create -n sarcasm python==3.10
         conda activate sarcasm
@@ -33,6 +33,6 @@ Installation via github
 
 #. Finally, install all the required packages from pip via::
 
-        pip install -r requirements.txt
+        pip install .
 
-The full installation usually takes less than 5 min, depending on internet connection.
+The full installation usually takes less than 2 min, depending on internet connection.
