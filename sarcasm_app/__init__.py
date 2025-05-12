@@ -13,9 +13,10 @@
 
 
 import sys
+import requests
 from PyQt5.QtCore import Qt, QLocale
 from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon
-from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox
+from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox, QMessageBox
 from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
 
 from .control.application_control import ApplicationControl
@@ -41,7 +42,7 @@ class Application:
         self.__app = QApplication([])
         QLocale.setDefault(QLocale(QLocale.English,QLocale.UnitedStates))
         self.__app.setStyle(QStyleFactory.create("Fusion"))  # try to fix the layout issue on macOs
-        self.__app.setWindowIcon(QIcon("../docs/images/sarcasm.ico"))
+        self.__app.setWindowIcon(QIcon("./icons/sarcasm.ico"))
 
         # one of the "fast solutions" without dependencies on stackoverflow page above
         # Now use a palette to switch to dark colors:
@@ -172,6 +173,43 @@ class Application:
             ui_element=lambda new_value: self.__update_busy_label(new_value))
         pass
 
+    @staticmethod
+    def check_github_release(owner, repo, current_version):
+        """Check GitHub for the latest release and print if a new version is available.
+           Only runs when packaged with PyInstaller.
+        """
+        # Only check if running in a PyInstaller bundle
+        if not (getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')):
+            return None  # Or "" if you prefer
+
+        url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                latest = response.json()
+                latest_version = latest.get("tag_name") or latest.get("name")
+                release_url = latest.get("html_url", f"https://github.com/{owner}/{repo}/releases/latest")
+                # Try to get the first asset download link, if it exists
+                assets = latest.get("assets", [])
+                if assets:
+                    asset = assets[0]
+                    download_url = asset.get("browser_download_url")
+                else:
+                    download_url = release_url  # Fallback to release page
+
+                if latest_version and latest_version != current_version:
+                    msg = (
+                        f"New release available: {latest_version} (You have: {current_version})\n"
+                        f"Download: {download_url}\n"
+                    )
+                    return msg
+                else:
+                    return "You have the latest version."
+            else:
+                return f"Failed to fetch release info: {response.status_code}"
+        except Exception as e:
+            return f"Error checking for updates: {e}"
+
     def init_gui(self):
         self.__window.setWindowTitle(f'SarcAsM - v{version}')
         self.__window.setGeometry(0, 0, 800, 1000)
@@ -204,6 +242,15 @@ class Application:
 
         self.__window.setLayout(main_layout)
         self.__disable_scroll_on_spinbox()
+
         self.__window.show()
+
+        # Check release and notify when there's an update
+        owner = "danihae"
+        repo = "SarcAsM"
+        msg = self.check_github_release(owner, repo, version)
+        self.debug(msg)
+        if msg and "New release available" in msg:
+            QMessageBox.information(self.__window, "Update Available", msg)
 
         sys.exit(self.__app.exec_())
