@@ -121,7 +121,7 @@ Check out `quickstart_demo.ipynb` in the repository root or our [documentation](
 
 ### App
 
-![SarcAsM GUI Screenshot](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/app_screenshot.png)
+![SarcAsM GUI Workflow](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/SarcAsM_app.gif)
 
 SarcAsM includes an app with intuitive Graphical User Interface (GUI) built with Napari for interactive analysis and visualization.
 
