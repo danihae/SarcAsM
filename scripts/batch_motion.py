@@ -1,11 +1,12 @@
 import glob
+import os
 from multiprocessing import Pool
 from sarcasm import *
 
 folder = 'D:/SarcAsM_drugs/'
 
 # find files
-files = glob.glob(folder + '*.tif')
+files = glob.glob(os.path.join(folder, '*.tif'))
 print(f'{len(files)} tif-files found')
 
 

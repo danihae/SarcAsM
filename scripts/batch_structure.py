@@ -1,4 +1,5 @@
 import glob
+import os
 from multiprocessing import Pool
 from sarcasm import Structure
 
@@ -6,7 +7,7 @@ from sarcasm import Structure
 folder = 'D:/2023_SarcAsM_drugs_chronic/'
 
 # find all tif files in folder
-tif_files = glob.glob(folder + '*.tif')
+tif_files = glob.glob(os.path.join(folder, '*.tif'))
 print(f'{len(tif_files)} tif-files found')
 
 # function for analysis of single tif-file
