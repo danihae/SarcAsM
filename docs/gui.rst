@@ -35,7 +35,7 @@ There are two main ways to start the SarcAsM GUI:
 Using the App
 =============
 
-.. image:: images/SarcAsM_app.git
+.. image:: images/SarcAsM_app.gif
    :alt: Workflow of the SarcAsM application with GUI
 
 The SarcAsM GUI integrates controls (left panel) with a Napari image viewer (right panel). Follow the steps in the control panel sections for analysis.
