@@ -50,6 +50,8 @@ SarcAsM offers two convenient ways to analyze your data. Choose the one that bes
 
     *   **Note:** The standalone application is great for getting started quickly. However, it may take some time to start up initially. The Windows version currently processes data using the CPU and does not support CUDA for GPU acceleration.
 
+.. image:: images/SarcAsM_app.gif
+   :alt: Workflow of the easy-to-use SarcAsM application with GUI
 
 Publication and Citation
 ------------------------
