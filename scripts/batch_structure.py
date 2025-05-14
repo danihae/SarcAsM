@@ -22,6 +22,9 @@ def analyze_tif(file):
     # analyze sarcomere structures (or use step-by-step analysis, see tutorial structure analysis)
     sarc.full_analysis_structure(frames='all')
 
+    # remove intermediate tiff files to save storage, optional
+    # sarc.remove_intermediate_tiffs()
+
     print(f'{file} successfully analyzed!')
 
 
