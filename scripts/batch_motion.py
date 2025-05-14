@@ -27,6 +27,9 @@ def detect_lois(file):
     # detect lines of interest (LOIs)
     sarc.detect_lois(n_lois=4)
 
+    # remove intermediate tiff files to save storage, optional
+    # sarc.remove_intermediate_tiffs()
+
 
 # analyze all LOIs of one tif-file
 def analyze_lois(file):
