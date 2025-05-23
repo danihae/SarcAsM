@@ -153,6 +153,7 @@ class SarcAsM:
     def __getattr__(self, name: str) -> Any:
         """Dynamic loading of analysis result TIFFs"""
         attr_map = {
+            'image': self.filepath,
             'zbands': self.file_zbands,
             'zbands_fast_movie': self.file_zbands_fast_movie,
             'mbands': self.file_mbands,
@@ -164,12 +165,15 @@ class SarcAsM:
         if name in attr_map:
             import tifffile
             filepath = attr_map[name]
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(
-                    f"Required analysis file missing: {os.path.basename(filepath)}\n"
-                    f"Run the 'detect_sarcomeres' to create this file."
-                )
-            return tifffile.imread(filepath)
+            if name == 'image':
+                return self.read_imgs()
+            else:
+                if not os.path.exists(filepath):
+                    raise FileNotFoundError(
+                        f"Required analysis file missing: {os.path.basename(filepath)}\n"
+                        f"Run the 'detect_sarcomeres' to create this file."
+                    )
+                return tifffile.imread(filepath)
 
         raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
 
