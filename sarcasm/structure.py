@@ -1208,7 +1208,7 @@ class Structure(SarcAsM):
                                         linewidth=int(linewidth / self.metadata['pixelsize']))
         profiles = np.asarray(profiles)
         if export_raw:
-            imgs_raw = tifffile.imread(self.filepath)
+            imgs_raw = self.image
             profiles_raw = self.kymograph_movie(imgs_raw, line, order=order,
                                                 linewidth=int(linewidth / self.metadata['pixelsize']))
         else:
