@@ -36,7 +36,7 @@ class SarcAsM:
         Path to the TIFF file for analysis.
     restart : bool, optional
         If True, deletes existing analysis and starts fresh (default: False).
-    channel : int, None or Literal['RGB'], optional
+    channel : int or None, optional
         Specifies the channel with sarcomeres in multicolor stacks (default: None).
     auto_save : bool, optional
         Automatically saves analysis results when True (default: True).
@@ -81,7 +81,7 @@ class SarcAsM:
             self,
             filepath: Union[str, os.PathLike],
             restart: bool = False,
-            channel: Union[int, None, Literal['RGB']] = None,
+            channel: Union[int, None] = None,
             auto_save: bool = True,
             use_gui: bool = False,
             device: Union[torch.device, Literal['auto', 'mps', 'cuda', 'cpu']] = 'auto',
@@ -216,26 +216,34 @@ class SarcAsM:
         Utils.open_folder(self.base_dir)
 
     def read_imgs(self, frames: Union[str, int, List[int]] = None):
-        """Load tif file, and optionally select channel"""
-        if frames is None or frames == 'all':
-            data = tifffile.imread(self.filepath)
-        else:
-            data = tifffile.imread(self.filepath, key=frames)
+        """
+        Load TIFF files with automatic channel detection:
+        - Last dimension ≤7 → treated as channels
+        - Auto-selects channel 0 if multichannel and no channel specified
+        - Handles movies (time) and volumes (z-stacks)
+        """
+        # Load data (all frames by default)
+        data = tifffile.imread(self.filepath) if frames in {None, 'all'} else \
+            tifffile.imread(self.filepath, key=frames)
 
-        if self.channel is not None:
-            if self.channel == 'RGB':
-                # Convert RGB to grayscale
-                if data.ndim == 3 and data.shape[2] == 3:  # Single RGB image
-                    data = np.dot(data[..., :3], [0.2989, 0.5870, 0.1140])
-                elif data.ndim == 4 and data.shape[3] == 3:  # Stack of RGB images
-                    data = np.dot(data[..., :3], [0.2989, 0.5870, 0.1140])
-            elif isinstance(self.channel, int):
-                if data.ndim == 3:
-                    data = data[:, :, self.channel]
-                elif data.ndim == 4:
-                    data = data[:, :, :, self.channel]
+        # Auto-detect if last dimension contains channels
+        has_channels = data.ndim >= 3 and 2 <= data.shape[-1] <= 7
+
+        if has_channels:
+            if self.channel is None:
+                # Auto-select first channel and warn user
+                print(f"Multi-channel image detected (shape: {data.shape}). "
+                      f"Automatically selecting channel 0. "
+                      f"Specify channel parameter to select different channel.")
+                data = data[..., 0]
+                self.channel = 0
             else:
-                raise Exception('Parameter "channel" must be either int or "RGB"')
+                # User specified a channel
+                if self.channel >= data.shape[-1]:
+                    raise ValueError(f"Channel {self.channel} invalid for shape {data.shape}")
+                data = data[..., self.channel]
+        elif self.channel is not None:
+            raise ValueError(f"No channels detected in image (shape: {data.shape})")
 
         return data
 
