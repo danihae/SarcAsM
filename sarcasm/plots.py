@@ -244,7 +244,7 @@ class Plots:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   height_fraction=0.035, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -264,7 +264,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w',
-                                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                                             sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
@@ -309,7 +309,7 @@ class Plots:
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
-                         sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                         sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1315,7 +1315,7 @@ class Plots:
 
         # plot trajectories
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            ax.plot(time[:idxlim[1] - idxlim[0]], z_pos[:, idxlim[0]:idxlim[1]], linewidth=0.75, c=color)
+            ax.plot(time[:idxlim[1] - idxlim[0]], z_pos[:, idxlim[0]:idxlim[1]].T, linewidth=0.75, c=color)
             ax.set_xlim(0, tlim[1] - tlim[0])
         else:
             ax.plot(time, z_pos.T, linewidth=0.75, c=color)
