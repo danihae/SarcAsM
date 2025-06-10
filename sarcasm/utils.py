@@ -15,7 +15,6 @@
 import datetime
 import glob
 import os
-import sys
 import platform
 import subprocess
 import warnings
@@ -35,6 +34,7 @@ from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
 from skimage.draw import line
 from skimage.morphology import disk
+from skimage.transform import resize, rescale
 
 
 class Utils:
@@ -406,6 +406,106 @@ class Utils:
             v[:, 1:-1] = (x[:, 2:] - x[:, :-2]) / (2 * dt)
 
         return v
+
+    @staticmethod
+    def scale_back(
+            paths: List[str],
+            original_xy_shape: Tuple[int, int],
+            output_dir: str,
+            mask_data: bool = False
+    ) -> None:
+        """
+        Restore rescaled TIFFs to their original XY resolution.
+        Assumes all TIFFs in 'paths' should be restored to the same 'original_xy_shape'.
+
+        Parameters
+        ----------
+        paths : List[str]
+            List of paths to the rescaled TIFF files.
+        original_xy_shape : Tuple[int, int]
+            The target original (height, width) for the XY dimensions.
+            This shape is applied to all images in 'paths'.
+        output_dir : str
+            Directory where the restored TIFFs will be saved.
+        mask_data : bool, optional
+            If True, indicates the data represents segmentation masks,
+            and nearest-neighbor interpolation will be used for upscaling
+            to preserve discrete label values. Defaults to False (uses cubic).
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        for path in paths:  # Iterate through file paths
+            try:
+                img = tifffile.imread(path)
+            except Exception as e:
+                print(f"Error reading {path}: {e}")
+                continue
+
+            ndim = img.ndim
+            current_xy_shape = img.shape[-2:]
+            target_xy_shape = original_xy_shape
+
+            interpolation_order = 0
+
+            if ndim == 2:  # Image is 2D (X, Y)
+                if current_xy_shape == target_xy_shape:
+                    resized_image = img.copy()
+                else:
+                    resized_image = resize(
+                        img,
+                        target_xy_shape,
+                        order=interpolation_order,
+                        preserve_range=True,
+                        anti_aliasing=False,
+                    ).astype(img.dtype)
+
+            elif ndim == 3:  # Image is 3D (Z, X, Y) or (T, X, Y)
+                # Create an output array with the correct target shape
+                output_shape_3d = (img.shape[0],) + target_xy_shape
+                resized_image = np.zeros(output_shape_3d, dtype=img.dtype)
+                for i in range(img.shape[0]):  # Iterate over the Z/T stack
+                    if current_xy_shape == target_xy_shape:
+                        resized_image[i] = img[i].copy()
+                    else:
+                        resized_image[i] = resize(
+                            img[i],
+                            target_xy_shape,
+                            order=interpolation_order,
+                            preserve_range=True,
+                            anti_aliasing=False,
+                        ).astype(img.dtype)
+
+            elif ndim == 4:  # Image is 4D (C, Z, X, Y) or (T, C, X, Y) etc.
+                # Create an output array with the correct target shape
+                output_shape_4d = img.shape[:2] + target_xy_shape
+                resized_image = np.zeros(output_shape_4d, dtype=img.dtype)
+                for c in range(img.shape[0]):  # Iterate over channels
+                    for zt in range(img.shape[1]):  # Iterate over Z/T stack
+                        if current_xy_shape == target_xy_shape:
+                            resized_image[c, zt] = img[c, zt].copy()
+                        else:
+                            resized_image[c, zt] = resize(
+                                img[c, zt],
+                                target_xy_shape,
+                                order=interpolation_order,
+                                preserve_range=True,
+                                anti_aliasing=False,
+                            ).astype(img.dtype)
+            else:
+                print(f"Skipping {path}: Unsupported image dimensionality {ndim}. Supports 2D, 3D, 4D.")
+                continue
+
+            # Save the restored image
+            out_filename = os.path.basename(path)
+            out_path = os.path.join(output_dir, out_filename)
+
+            try:
+                tifffile.imwrite(
+                    out_path,
+                    resized_image,
+                )
+            except Exception as e:
+                print(f"Error saving {out_path}: {e}")
 
     @staticmethod
     def process_profile(

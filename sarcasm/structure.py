@@ -187,6 +187,7 @@ class Structure(SarcAsM):
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           model_path: str = None, max_patch_size: Tuple[int, int] = (1024, 1024),
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
+                          rescale_factor: float = 1.0,
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
         Predict sarcomeres (Z-bands, mbands, distance, orientation) with U-Net.
@@ -207,6 +208,11 @@ class Structure(SarcAsM):
             Default is 'all'.
         clip_thres : tuple of float, optional
             Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
+        rescale_factor : float, optional
+            Factor by which to rescale the input images in the XY dimensions before prediction.
+            For example, 0.5 reduces the XY resolution by half.
+            The images and all subsequent outputs will be rescaled back to their original resolution after prediction.
+            Default is 1.0 (no rescaling).
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
 
@@ -226,6 +232,34 @@ class Structure(SarcAsM):
         else:
             raise ValueError('frames argument not valid')
 
+        if images.ndim < 2:
+            raise ValueError("Images must be at least 2D (Y,X) to have XY dimensions for rescaling.")
+        original_xy_shape = images.shape[-2:]
+
+        if rescale_factor != 1.0:
+            from skimage.transform import rescale
+
+            current_ndim = images.ndim
+            if current_ndim == 2:  # Input is (Y, X)
+                # Scale factors for Y, X
+                scale_vector = (rescale_factor, rescale_factor)
+            elif current_ndim == 3:  # Input is (Z, Y, X) or (T, Y, X)
+                # Scale factors for Z, Y, X (or T, Y, X) - only scale last two
+                scale_vector = (1.0, rescale_factor, rescale_factor)
+            else:
+                raise ValueError(f"Unsupported image dimensionality for rescaling: {current_ndim}D. Expected 2D or 3D.")
+
+            print(f"Rescaling image from {images.shape} by factor {rescale_factor} on XY axes...")
+            images = rescale(
+                images,
+                scale_vector,
+                order=0,
+                mode='reflect',
+                preserve_range=True,
+                channel_axis=None
+            ).astype(images.dtype)
+            print(f"Rescaled image shape: {images.shape}")
+
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.model_dir, 'model_sarcomeres_generalist.pt')
@@ -237,9 +271,30 @@ class Structure(SarcAsM):
         del _
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        _dict = {'params.detect_sarcomeres.frames': list_frames, 'params.detect_sarcomeres.model': model_path,
-                 'params.detect_sarcomeres.normalization_mode': normalization_mode,
-                 'params.detect_sarcomeres.clip_threshold': clip_thres}
+
+        if rescale_factor != 1.0:
+            output_files = [
+                self.file_zbands, self.file_mbands,
+                self.file_orientation, self.file_cell_mask,
+                self.file_sarcomere_mask
+            ]
+
+            output_dir = os.path.dirname(output_files[0])  # Save in same directory
+
+            Utils.scale_back(
+                paths=output_files,
+                original_xy_shape=original_xy_shape,
+                output_dir=output_dir,
+                mask_data=False
+            )
+
+        _dict = {
+            'params.detect_sarcomeres.frames': list_frames,
+            'params.detect_sarcomeres.model': model_path,
+            'params.detect_sarcomeres.normalization_mode': normalization_mode,
+            'params.detect_sarcomeres.clip_threshold': clip_thres,
+            'params.detect_sarcomeres.rescale_factor': rescale_factor,
+        }
         self.data.update(_dict)
         if self.auto_save:
             self.store_structure_data()
