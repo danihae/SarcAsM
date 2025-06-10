@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>735</width>
-    <height>1566</height>
+    <height>1580</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -82,16 +82,6 @@
       <property name="bottomMargin">
        <number>5</number>
       </property>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_2">
-        <property name="toolTip">
-         <string>Path of trained network weights for U-Net or Siam-U-Net</string>
-        </property>
-        <property name="text">
-         <string>Network model</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
@@ -108,6 +98,35 @@
          <widget class="QPushButton" name="btn_search_network">
           <property name="text">
            <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_43">
+          <property name="text">
+           <string>Rescale factor</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="dsb_predict_rescale_factor">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="maximum">
+           <double>5.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.100000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.000000000000000</double>
           </property>
          </widget>
         </item>
@@ -255,6 +274,16 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="toolTip">
+         <string>Path of trained network weights for U-Net or Siam-U-Net</string>
+        </property>
+        <property name="text">
+         <string>Network model</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -269,16 +298,6 @@
       <string>Detection of Z-bands in high-speed movies</string>
      </property>
      <layout class="QFormLayout" name="formLayout_7">
-      <item row="3" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_fast_movie">
-        <property name="toolTip">
-         <string>Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.</string>
-        </property>
-        <property name="text">
-         <string>Optional: Detect Z-Bands Fast Movie</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_29">
         <property name="text">
@@ -320,7 +339,7 @@
             Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
           </property>
           <property name="text">
-           <string>Width [px]</string>
+           <string>Width [px]:</string>
           </property>
          </widget>
         </item>
@@ -342,7 +361,7 @@
             Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
           </property>
           <property name="text">
-           <string>Height [px]</string>
+           <string>Height [px]:</string>
           </property>
          </widget>
         </item>
@@ -360,7 +379,7 @@
         <item>
          <widget class="QLabel" name="label_31">
           <property name="text">
-           <string>N Frames</string>
+           <string>N Frames:</string>
           </property>
          </widget>
         </item>
@@ -426,6 +445,16 @@
          </widget>
         </item>
        </layout>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_fast_movie">
+        <property name="toolTip">
+         <string>Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.</string>
+        </property>
+        <property name="text">
+         <string>Optional: Detect Z-Bands Fast Movie</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

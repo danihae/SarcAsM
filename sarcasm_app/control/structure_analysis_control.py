@@ -70,6 +70,7 @@ class StructureAnalysisControl:
                                clip_thres=(
                                    model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
                                    model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
+                               rescale_factor=model.parameters.get_parameter('structure.predict.rescale_factor').get_value(),
                                progress_notifier=progress_notifier)
 
         pass
@@ -77,7 +78,7 @@ class StructureAnalysisControl:
     def __predict_call_fast_movie(self, worker, model: ApplicationModel):
         progress_notifier = self.__get_progress_notifier(worker)
 
-        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
+        network_model = model.parameters.get_parameter('structure.predict_fast_movie.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
         cell: Structure = TypeUtils.unbox(model.cell)
@@ -425,6 +426,7 @@ class StructureAnalysisControl:
         widget = self.__structure_parameters_widget
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
+        parameters.get_parameter(name='structure.predict.rescale_factor').connect(widget.dsb_predict_rescale_factor)
         parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_width)
         parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_height)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_predict_clip_thresh_min)
