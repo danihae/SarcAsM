@@ -252,7 +252,7 @@ class ApplicationControl:
         self.viewer.reset_view()
 
     def init_image_stack(self):
-        tmp = tifffile.imread(self.model.cell.filepath)
+        tmp = self.model.cell.image
         lower_perc, upper_perc = np.percentile(tmp, q=[0.1, 99.9])
         self.viewer.add_image(tmp, name='ImageData', contrast_limits=[lower_perc, upper_perc],
                               scale=self.model.cell.metadata['scale'])

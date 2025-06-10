@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>725</width>
+    <width>749</width>
     <height>302</height>
    </rect>
   </property>
@@ -106,6 +106,16 @@
       </item>
       <item>
        <widget class="QLineEdit" name="le_pixel_size"/>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Channel</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spinbox_channel"/>
       </item>
       <item>
        <widget class="QPushButton" name="btn_store_metadata">
