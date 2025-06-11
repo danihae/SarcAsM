@@ -267,7 +267,6 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.1] = np.nan
-            print(tmp.ndim)
             if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',

@@ -76,7 +76,6 @@ class BatchProcessingControl:
     def on_btn_batch_processing_structure(self):
 
         tif_files = glob.glob(self.__batch_processing_widget.le_root_directory.text() + '*/*.tif')
-        print(len(tif_files))
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_structure_async,

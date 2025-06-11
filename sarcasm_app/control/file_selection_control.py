@@ -12,23 +12,17 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-import glob
 import json
-
-import numpy as np
-from PyQt5.QtWidgets import QFileDialog, QStackedWidget, QDialog, QListView, QLineEdit, QMessageBox, QDialogButtonBox
-from tifffile import tifffile
-
-from sarcasm import SarcAsM, Structure
-from .popup_export import ExportPopup
-from .application_control import ApplicationControl
-from ..view.file_selection import Ui_Form as FileSelectionWidget
-from sarcasm.type_utils import TypeUtils
-import platform
 import os
+import platform
 import subprocess
 
-from sarcasm.ioutils import IOUtils
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+from sarcasm import SarcAsM
+from sarcasm.type_utils import TypeUtils
+from .application_control import ApplicationControl
+from ..view.file_selection import Ui_Form as FileSelectionWidget
 
 
 class FileSelectionControl:
@@ -169,6 +163,8 @@ class FileSelectionControl:
                     self.__file_selection_widget.le_frame_time.setStyleSheet("")  # QLineEdit{background : lightgreen;}
             except ValueError:
                 self.__main_control.debug('the value in frame rate is not a number')
+
+        ## channel = self.__file_selection_widget.le_channel.text()
 
         self.__main_control.init_scale_bar()
 

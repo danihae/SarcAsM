@@ -84,7 +84,7 @@ class Utils:
     @staticmethod
     def get_models_dir() -> Path:
         """Returns path to 'sarcasm/models' directory."""
-        base_path = Path(__file__).resolve().parent  # Adjust parent levels as needed
+        base_path = Path(__file__).resolve().parent
 
         models_dir = base_path / "models"
         if not models_dir.exists():

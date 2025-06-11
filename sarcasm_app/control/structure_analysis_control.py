@@ -132,7 +132,7 @@ class StructureAnalysisControl:
         if not self.__chk_prediction_network():
             return
         cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Z-bands detected and saved in {cell.base_dir}'
+        message_finished = f'Sarcomeres detected and saved in {cell.base_dir}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
@@ -148,7 +148,7 @@ class StructureAnalysisControl:
         if not self.__chk_prediction_network_fast_movie():
             return
         cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Z-bands fast movies detected and saved in {cell.base_dir}'
+        message_finished = f'Z-bands in fast movies detected and saved in {cell.base_dir}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call_fast_movie,
                                                    start_message='Start prediction of sarcomere z-bands fast movies',
