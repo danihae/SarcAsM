@@ -46,15 +46,22 @@ class FileSelectionControl:
         self.__file_selection_widget.le_cell_file.returnPressed.connect(self.on_return_pressed_cell_file)
 
         # call the method on editFinished and returnPressed
-        self.__file_selection_widget.le_pixel_size.editingFinished.connect(self.on_return_pressed_framerate_pixelsize)
-        self.__file_selection_widget.le_frame_time.editingFinished.connect(self.on_return_pressed_framerate_pixelsize)
-        self.__file_selection_widget.le_frame_time.returnPressed.connect(self.on_return_pressed_framerate_pixelsize)
-        self.__file_selection_widget.le_pixel_size.returnPressed.connect(self.on_return_pressed_framerate_pixelsize)
+        self.__file_selection_widget.le_pixel_size.editingFinished.connect(self.on_return_pressed_pixel_size_frame_rate)
+        self.__file_selection_widget.le_frame_time.editingFinished.connect(self.on_return_pressed_pixel_size_frame_rate)
+        self.__file_selection_widget.le_frame_time.returnPressed.connect(self.on_return_pressed_pixel_size_frame_rate)
+        self.__file_selection_widget.le_pixel_size.returnPressed.connect(self.on_return_pressed_pixel_size_frame_rate)
+
+        self.__file_selection_widget.spinbox_channel.valueChanged.connect(self.on_changed_channel)
 
         self.__file_selection_widget.btn_search_parameters_file.clicked.connect(self.on_search_parameters_file)
         self.__file_selection_widget.btn_import_parameters.clicked.connect(self.on_btn_import_parameters)
         self.__file_selection_widget.btn_export_parameters.clicked.connect(self.on_btn_export_parameters)
         pass
+
+    def on_changed_channel(self):
+        self.__main_control.model.cell.metadata.channel = int(self.__file_selection_widget.spinbox_channel.value())
+        self.__main_control.init_image_stack()
+
 
     def on_set_to_default(self):
         # set all parameters back to default values
@@ -141,7 +148,7 @@ class FileSelectionControl:
             return
         self._init_file(self.__file_selection_widget.le_cell_file.text())
 
-    def on_return_pressed_framerate_pixelsize(self, event=None):
+    def on_return_pressed_pixel_size_frame_rate(self, event=None):
         if self.__main_control.model.cell is None:
             return
         pixel_size = self.__file_selection_widget.le_pixel_size.text()
@@ -149,7 +156,7 @@ class FileSelectionControl:
             try:
                 d_pixel_size = float(pixel_size)
                 if d_pixel_size != 0 and d_pixel_size is not None:
-                    self.__main_control.model.cell.metadata['pixelsize'] = d_pixel_size
+                    self.__main_control.model.cell.metadata.pixelsize = d_pixel_size
                     self.__file_selection_widget.le_pixel_size.setStyleSheet("")  # reset style (red background)
             except ValueError:
                 self.__main_control.debug('the value in pixel size is not a number')
@@ -159,12 +166,10 @@ class FileSelectionControl:
             try:
                 d_frame_rate = float(frame_rate)
                 if d_frame_rate != 0 and d_frame_rate is not None:
-                    self.__main_control.model.cell.metadata['frametime'] = d_frame_rate
+                    self.__main_control.model.cell.metadata.frametime = d_frame_rate
                     self.__file_selection_widget.le_frame_time.setStyleSheet("")  # QLineEdit{background : lightgreen;}
             except ValueError:
                 self.__main_control.debug('the value in frame rate is not a number')
-
-        ## channel = self.__file_selection_widget.le_channel.text()
 
         self.__main_control.init_scale_bar()
 
@@ -213,7 +218,7 @@ class FileSelectionControl:
             layer = self.__main_control.viewer.layers.__getitem__('LOIs')
             self.__main_control.viewer.layers.remove(layer)
         # set the pre-selected color to red
-        _scale = self.__main_control.model.cell.metadata['scale'][-2:]
+        _scale = self.__main_control.model.cell.scale[-2:]
         self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000', scale=_scale))
 
         pass
@@ -247,39 +252,69 @@ class FileSelectionControl:
 
         cell = TypeUtils.unbox(self.__main_control.model.cell)
         if isfloat(self.__file_selection_widget.le_pixel_size.text()):
-            cell.metadata['pixelsize'] = float(
+            cell.metadata.pixelsize = float(
                 self.__file_selection_widget.le_pixel_size.text())
         if isfloat(self.__file_selection_widget.le_frame_time.text()):
-            cell.metadata['frametime'] = float(
+            cell.metadata.frametime = float(
                 self.__file_selection_widget.le_frame_time.text())
-        cell.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
-        cell.meta_data_handler.commit()
+
+        axes = self.__file_selection_widget.le_axes.text().upper()
+        # check if all letters are either X, Y, T, C or Z and that not one letter appears more than once
+        def validate_letters_warn(seq: str) -> bool:
+            """Return True if `seq` is a unique subset of {X,Y,T,C,Z}; else print warnings."""
+            allowed = set("XYTCZ")
+            invalid = set(seq) - allowed
+            dup = {c for c in seq if seq.count(c) > 1}
+            if invalid:
+                self.__main_control.debug(f"Warning: invalid character(s): {''.join(sorted(invalid))}")
+            if dup:
+                self.__main_control.debug(f"Warning: duplicate character(s): {''.join(sorted(dup))}")
+            return not (invalid or dup)
+
+        axes_valid = validate_letters_warn(axes)
+        if axes_valid:
+            self.__main_control.model.cell.metadata.axes = axes
+            self.__main_control.init_image_stack()
+        else:
+            self.__file_selection_widget.le_axes.setStyleSheet("QLineEdit{background : red;}")
+
+        cell.save_metadata()
 
     def _init_meta_data(self):
-        # set metadata with cut off comma's
+        # set metadata
         cell = TypeUtils.unbox(self.__main_control.model.cell)
 
-        if 'pixelsize' in cell.metadata and cell.metadata['pixelsize'] is not None:
-            pixel_size = cell.metadata['pixelsize']
-            pixel_size *= 10000
-            pixel_size = int(pixel_size)
-            pixel_size = float(pixel_size) / 10000
-            self.__file_selection_widget.le_pixel_size.setText(str(pixel_size))
+        # pixel size
+        if cell.metadata.pixelsize is not None:
+            pixel_size = cell.metadata.pixelsize
+            self.__file_selection_widget.le_pixel_size.setText(str(round(pixel_size, 5)))
+            if not 0.5 >= pixel_size >= 0.01:
+                self.__main_control.debug(f"Warning: Pixel size of {round(pixel_size, 5)} µm not in reasonable range "
+                                          f"between 0.01–0.5 µm. Please enter correct pixel size. ")
+                self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
+
         else:
             self.__file_selection_widget.le_pixel_size.setPlaceholderText('- enter metadata manually -')
             self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
 
-        if 'frametime' in cell.metadata and cell.metadata['frametime'] is not None:
-            frame_rate = cell.metadata['frametime']
-            frame_rate *= 10000
-            frame_rate = int(frame_rate)
-            frame_rate = float(frame_rate) / 10000
-            self.__file_selection_widget.le_frame_time.setText(str(frame_rate))
+        # frame time
+        if cell.metadata.frametime is not None:
+            frame_rate = cell.metadata.frametime
+            self.__file_selection_widget.le_frame_time.setText(str(round(frame_rate, 5)))
         else:
             # no need for marking frame time
             self.__file_selection_widget.le_frame_time.setPlaceholderText('- enter metadata manually -')
-            # self.__file_selection_widget.le_frame_time.setStyleSheet("QLineEdit{background : red;}")
-        pass
+
+        # axes
+        axes = cell.metadata.axes
+        self.__file_selection_widget.le_axes.setText(str(axes))
+
+        # channel
+        if cell.metadata.channel is not None:
+            self.__file_selection_widget.spinbox_channel.setDisabled(False)
+            self.__file_selection_widget.spinbox_channel.setValue(cell.metadata.channel)
+            self.__file_selection_widget.spinbox_channel.setMinimum(0)
+            self.__file_selection_widget.spinbox_channel.setMaximum(cell.metadata.shape_orig[-1] - 1)
 
     def _init_loi_from_file(self):
         # read loi files, store the line data in dictionary and in ui loi list

@@ -108,6 +108,16 @@
        <widget class="QLineEdit" name="le_pixel_size"/>
       </item>
       <item>
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>Axes</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="le_axes"/>
+      </item>
+      <item>
        <widget class="QLabel" name="label_4">
         <property name="text">
          <string>Channel</string>
@@ -115,7 +125,11 @@
        </widget>
       </item>
       <item>
-       <widget class="QSpinBox" name="spinbox_channel"/>
+       <widget class="QSpinBox" name="spinbox_channel">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_store_metadata">
@@ -126,7 +140,7 @@
          </size>
         </property>
         <property name="text">
-         <string>Store Metadata</string>
+         <string>Apply and save</string>
         </property>
        </widget>
       </item>

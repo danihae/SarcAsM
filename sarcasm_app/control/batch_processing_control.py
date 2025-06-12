@@ -13,18 +13,16 @@
 
 
 import glob
-from typing import Any, List, Union, Tuple
+import traceback
+from typing import Union, Tuple
 
 import qtutils
-import traceback
 from PyQt5.QtWidgets import QFileDialog
-from multiprocessing import Pool
-
-from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
-from .application_control import ApplicationControl
-from sarcasm import SarcAsM, Utils, Motion, Structure
-from sarcasm.meta_data_handler import MetaDataHandler
 from bio_image_unet.progress import ProgressNotifier
+
+from sarcasm import Utils, Motion, Structure
+from .application_control import ApplicationControl
+from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
 
 class BatchProcessingControl:
@@ -147,17 +145,16 @@ class BatchProcessingControl:
     def __get_sarc_object(file: str, frame_time: float, pixel_size: float, force_override: bool) -> Structure:
 
         sarc_obj = Structure(file, use_gui=True)
-        has_metadata = MetaDataHandler.check_meta_data_exists(tif_file=file, channel=sarc_obj.channel)
-        if not has_metadata or force_override:
-            sarc_obj.metadata['pixelsize'] = pixel_size
-            sarc_obj.metadata['frametime'] = frame_time
+        if force_override:
+            sarc_obj.metadata.pixelsize = pixel_size
+            sarc_obj.metadata.frametime = frame_time
             sarc_obj.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
             sarc_obj.meta_data_handler.commit()
             pass
         return sarc_obj
-        pass
 
-    def __calculate_requirements_of_motion(self, sarc_obj: Structure, model):
+    @staticmethod
+    def __calculate_requirements_of_motion(sarc_obj: Structure, model):
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
@@ -183,7 +180,7 @@ class BatchProcessingControl:
                 model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
                 model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
             ),
-            radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
+            median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
             linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
             interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
         )

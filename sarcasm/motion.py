@@ -51,7 +51,7 @@ class Motion(SarcAsM):
             If True, LOI dictionary is saved at end of processing steps.
         """
         super().__init__(filename)  # init super SarcAsM object
-        assert self.metadata['frametime'] is not None, "frametime is not defined in metadata"
+        assert self.metadata.frametime is not None, "frametime is not defined in metadata"
 
         self.loi_data = {}  # init empty dictionary
         self.loi_file = os.path.join(os.path.splitext(filename)[0], loi_name)  # folder for loi data
@@ -144,13 +144,13 @@ class Motion(SarcAsM):
             data = IOUtils.json_deserialize(self.loi_file)
             if 'length' not in data.keys():
                 data['length'] = np.sqrt((data['line_start_x'] - data['line_end_x']) ** 2 +
-                                         (data['line_start_y'] - data['line_end_y']) ** 2) * self.metadata['pixelsize']
+                                         (data['line_start_y'] - data['line_end_y']) ** 2) * self.metadata.pixelsize
                 data['line'] = np.asarray(
                     [[data['line_start_x'], data['line_start_y']], [data['line_end_x'], data['line_end_y']]])
             # x_pos is 0 until line length(included)
             x_pos = np.linspace(0, data['length'], data['profiles'].shape[1])
             no_frames = len(data['profiles'])
-            time = np.arange(0, no_frames * self.metadata['frametime'], self.metadata['frametime'])
+            time = np.arange(0, no_frames * self.metadata.frametime, self.metadata.frametime)
             if 'profiles_raw' not in data.keys():
                 data['profiles_raw'] = None
             return (x_pos, data['profiles'], data['profiles_raw'], data['line'], time,
@@ -175,8 +175,8 @@ class Motion(SarcAsM):
         if not self.loi_data:
             raise ValueError('loi_data is not initialized, create intensity profiles first')
         self.loi_data['params.detect_peaks'] = {'thresh': thres, 'min_dist': min_dist, 'width': width}
-        min_dist_pixels = int(round(min_dist / self.metadata['pixelsize'], 0))
-        width_pixels = int(round(width / self.metadata['pixelsize'], 0))
+        min_dist_pixels = int(round(min_dist / self.metadata.pixelsize, 0))
+        width_pixels = int(round(width / self.metadata.pixelsize, 0))
         for i, y in enumerate(self.loi_data['y_int']):
             peaks_i = Utils.peakdetekt(self.loi_data['x_pos'], y, thres=thres, min_dist=min_dist_pixels,
                                        width=width_pixels)
@@ -248,7 +248,7 @@ class Motion(SarcAsM):
 
         # set short trajectories (len<min_length) to np.nan
         len_z_pos = np.count_nonzero(~np.isnan(z_pos), axis=1)
-        z_pos = z_pos[len_z_pos > int(min_length / self.metadata['frametime'])]
+        z_pos = z_pos[len_z_pos > int(min_length / self.metadata.frametime)]
 
         # set t range and z range
         if t_range is not None:
@@ -322,19 +322,19 @@ class Motion(SarcAsM):
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
         contr[n_sarcomeres_time < n_sarcomeres_min] = 0
         # merge very close contractions and remove short contractions
-        structure_closing = np.ones(max(1, int(merge_time_max / self.metadata['frametime'])))
-        structure_opening = np.ones(max(1, int(contr_time_min / self.metadata['frametime'])))
+        structure_closing = np.ones(max(1, int(merge_time_max / self.metadata.frametime)))
+        structure_opening = np.ones(max(1, int(contr_time_min / self.metadata.frametime)))
         contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
         # remove incomplete contractions at the beginning and end of time series
         contr = clear_border(contr, buffer_size=buffer_frames)
 
         # analyze contractions
         start_contr_frame = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
-        start_contr = start_contr_frame * self.metadata['frametime']
+        start_contr = start_contr_frame * self.metadata.frametime
         labels_contr, n_contr = label(contr)
         time_contr = np.asarray(
             [np.count_nonzero(labels_contr == i) for i in np.unique(labels_contr)[1:]]) * \
-                     self.metadata['frametime']
+                     self.metadata.frametime
         beating_rate = 1 / np.mean(np.diff(start_contr))
         beating_rate_variability = np.std(np.diff(start_contr))
 
@@ -343,11 +343,11 @@ class Motion(SarcAsM):
         # remove incomplete quiescent periods at the beginning and end of time series
         quiet = clear_border(quiet, buffer_size=buffer_frames)
         start_quiet_frame = np.where(np.diff(quiet.astype('float32')) > 0.5)[0]
-        start_quiet = start_quiet_frame * self.metadata['frametime']
+        start_quiet = start_quiet_frame * self.metadata.frametime
         labels_quiet, n_quiet = label(quiet)
         time_quiet = np.asarray(
             [np.count_nonzero(labels_quiet == i) for i in np.unique(labels_quiet)[1:]]) * \
-                     self.metadata['frametime']
+                     self.metadata.frametime
         time_quiet_avg = np.mean(time_quiet)
         time_contr_avg = np.mean(time_contr)
         # time of full contraction cycles (equivalent to 1/beating_rate)
@@ -399,14 +399,14 @@ class Motion(SarcAsM):
         slen_avg = np.nanmean(slen, axis=0)
         n_sarcomeres = slen.shape[0]
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
-        frametime = self.metadata['frametime']
+        frametime = self.metadata.frametime
 
         # smooth slen with sav. golay filter and calculate velocity
         vel = Utils.custom_diff(Utils.nan_sav_golay(slen, filter_params_vel[0], filter_params_vel[1]), frametime)
         vel_avg = np.nanmean(vel, axis=0)
 
         # calculate sarcomere equ length and delta sarcomere length
-        dilate_contr = int(dilate_contr * 2 / self.metadata['frametime'])
+        dilate_contr = int(dilate_contr * 2 / self.metadata.frametime)
         if dilate_contr == 0:
             contr_dilated = self.loi_data['contr']
         elif dilate_contr > 0:
@@ -490,8 +490,8 @@ class Motion(SarcAsM):
                 vel_elong_max[j][i] = np.nanmax(vel_i)
                 # time to peak
                 if np.count_nonzero(np.isnan(delta_i)) == 0:
-                    time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata['frametime']
-                    time_to_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+                    time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata.frametime
+                    time_to_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata.frametime
                 if custom_perc:
                     for k, (p0, p1) in enumerate(custom_perc):
                         if p0 < p1:  # shortening
@@ -518,7 +518,7 @@ class Motion(SarcAsM):
                                 t1, contr1 = np.nan, np.nan
                         else:
                             raise ValueError('p0 and p1 must be different.')
-                        custom_perc_time[k][j, i] = (t1 - t0) * self.metadata['frametime']
+                        custom_perc_time[k][j, i] = (t1 - t0) * self.metadata.frametime
 
         # average contraction
         for i in range(self.loi_data['n_contr']):
@@ -532,8 +532,8 @@ class Motion(SarcAsM):
             vel_elong_max_avg[i] = np.nanmax(vel_i)
             # time to peak
             if np.count_nonzero(np.isnan(delta_i)) == 0:
-                time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata['frametime']
-                time_to_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata['frametime']
+                time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata.frametime
+                time_to_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata.frametime
             if custom_perc:
                 for k, (p0, p1) in enumerate(custom_perc):
                     if p0 < p1:  # shortening
@@ -560,7 +560,7 @@ class Motion(SarcAsM):
                             t1_avg, contr1_avg = np.nan, np.nan
                     else:
                         raise ValueError('p0 and p1 must be different.')
-                    custom_perc_time_avg[k][i] = (t1_avg - t0_avg) * self.metadata['frametime']
+                    custom_perc_time_avg[k][i] = (t1_avg - t0_avg) * self.metadata.frametime
 
         # calculate surplus motion index
         self.calculate_surplus_motion_index()
@@ -596,8 +596,8 @@ class Motion(SarcAsM):
         for i, contraction_i in enumerate(np.arange(1, n_contr + 1)):
             vel_i = vel[:, contraction_labels == contraction_i]
             vel_avg_i = vel_avg[contraction_labels == contraction_i]
-            abs_motion_single_i = np.sum(np.abs(vel_i), axis=1) * self.metadata['frametime']
-            abs_motion_avg_i = np.sum(np.abs(vel_avg_i)) * self.metadata['frametime']
+            abs_motion_single_i = np.sum(np.abs(vel_i), axis=1) * self.metadata.frametime
+            abs_motion_avg_i = np.sum(np.abs(vel_avg_i)) * self.metadata.frametime
             abs_motion_single[i] = abs_motion_single_i
             abs_motion_avg[i] = abs_motion_avg_i
 
@@ -695,7 +695,7 @@ class Motion(SarcAsM):
 
         """
         if self.loi_data['n_contr'] > 0:
-            time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata['frametime'])
+            time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata.frametime)
 
             corr_delta_slen = np.zeros((self.loi_data['n_sarcomeres'], self.loi_data['n_sarcomeres'],
                                         self.loi_data['n_contr'], self.loi_data['n_contr'])) * np.nan
@@ -780,7 +780,7 @@ class Motion(SarcAsM):
 
         # Analyze oscillation frequencies of average sarcomere length change
         cfs_avg, frequencies = self.wavelet_analysis_oscillations(self.loi_data['delta_slen_avg'],
-                                                                  self.metadata['frametime'],
+                                                                  self.metadata.frametime,
                                                                   min_scale=min_scale,
                                                                   max_scale=max_scale,
                                                                   num_scales=num_scales,
@@ -794,7 +794,7 @@ class Motion(SarcAsM):
         mags = []
         for d_i in self.loi_data['delta_slen']:
             cfs_i, _ = self.wavelet_analysis_oscillations(d_i,
-                                                          self.metadata['frametime'],
+                                                          self.metadata.frametime,
                                                           min_scale=min_scale,
                                                           max_scale=max_scale,
                                                           num_scales=num_scales,

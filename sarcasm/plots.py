@@ -239,11 +239,11 @@ class Plots:
         img = sarc_obj.read_imgs(frames=frame)
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
 
-        plot = ax.imshow(img, cmap=cmap, alpha=alpha)
+        _ = ax.imshow(img, cmap=cmap, alpha=alpha)
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.035, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -263,7 +263,7 @@ class Plots:
             PlotUtils.change_color_spines(ax_inset, 'w')
 
             if scalebar:
-                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w',
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w',
                                              sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -308,7 +308,7 @@ class Plots:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(
-                ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
+                ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
                          sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -369,7 +369,7 @@ class Plots:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(
-                ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
+                ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
                          sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -390,7 +390,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(
-                    ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color=color_scalebar,
+                    ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
                              sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -425,7 +425,7 @@ class Plots:
         ax.imshow(img, cmap=cmap, alpha=alpha)
 
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -469,7 +469,7 @@ class Plots:
         cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
         ax.imshow(masked_labels, cmap=cmap)
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -485,7 +485,7 @@ class Plots:
             ax_inset.set_yticks([])
 
             if scalebar:
-                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                        height_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -548,7 +548,7 @@ class Plots:
         if shuffle:
             labels_plot = Utils.shuffle_labels(labels_plot)
 
-        z_ends = sarc_obj.data['z_ends'][frame].astype('float32') / sarc_obj.metadata['pixelsize']
+        z_ends = sarc_obj.data['z_ends'][frame].astype('float32') / sarc_obj.metadata.pixelsize
         z_links = sarc_obj.data['z_lat_links'][frame]
         masked_labels = np.ma.masked_where(labels_plot == 0, labels_plot)
         cmap = plt.cm.prism
@@ -561,7 +561,7 @@ class Plots:
         ax.scatter(z_ends[:, 0, 1], z_ends[:, 0, 0], c='k', marker='.', s=markersize, zorder=3, edgecolors='none')
         ax.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3, edgecolors='none')
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -587,7 +587,7 @@ class Plots:
             ax_inset.set_ylim(y2, y1)
 
             if scalebar:
-                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                        height_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -632,10 +632,10 @@ class Plots:
         plot2 = ax2.imshow(orientation_field[1], cmap=cmap)
 
         if scalebar:
-            ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                     height_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
-            ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                     height_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -648,10 +648,10 @@ class Plots:
             plt.colorbar(plot2, ax=ax2, label=r'Y-Field', shrink=shrink_colorbar, orientation=orient_colorbar)
 
         if scalebar:
-            ax1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+            ax1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
-            ax2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+            ax2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -676,10 +676,10 @@ class Plots:
             PlotUtils.plot_box(ax2, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
             if scalebar:
-                ax_inset1.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                ax_inset1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                         height_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
-                ax_inset2.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='w', sep=1,
+                ax_inset2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
                                         height_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -810,10 +810,9 @@ class Plots:
                                                                  'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
 
-        pos_vectors = sarc_obj.data['pos_vectors'][frame] / sarc_obj.metadata['pixelsize']
+        pos_vectors = sarc_obj.data['pos_vectors'][frame] / sarc_obj.metadata.pixelsize
         sarcomere_orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
-        sarcomere_length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata[
-            'pixelsize']
+        sarcomere_length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame] / sarc_obj.metadata.pixelsize
         orientation_vectors = np.asarray(
             [np.cos(sarcomere_orientation_vectors), -np.sin(sarcomere_orientation_vectors)])
 
@@ -842,7 +841,7 @@ class Plots:
         if legend:
             ax.legend(loc=3, fontsize=PlotUtils.fontsize - 2)
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -883,7 +882,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
             if scalebar:
-                ax_inset.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k',
+                ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k',
                                              sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1, }))
 
@@ -930,8 +929,8 @@ class Plots:
         domain_mask = sarc_obj._analyze_domains(domains, pos_vectors=pos_vectors,
                                                  sarcomere_length_vectors=sarcomere_length_vectors,
                                                  sarcomere_orientation_vectors=sarcomere_orientation_vectors,
-                                                 size=sarc_obj.metadata['size'],
-                                                 pixelsize=sarc_obj.metadata['pixelsize'],
+                                                 size=sarc_obj.metadata.size,
+                                                 pixelsize=sarc_obj.metadata.pixelsize,
                                                  dilation_radius=dilation_radius, area_min=area_min)[0]
 
         domain_mask_masked = np.ma.masked_where(domain_mask == 0, domain_mask)
@@ -946,7 +945,7 @@ class Plots:
         ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
 
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_title(title, fontsize=PlotUtils.fontsize)
@@ -1001,7 +1000,7 @@ class Plots:
         lines = sarc_obj.data['myof_lines'][frame]
         pos_vectors = sarc_obj.data['pos_vectors_px'][frame]
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
@@ -1022,7 +1021,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(
-                    ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                    ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                              height_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
@@ -1094,8 +1093,8 @@ class Plots:
                                                       pos_vectors=pos_vectors,
                                                       sarcomere_orientation_vectors=orientation_vectors,
                                                       sarcomere_length_vectors=length_vectors,
-                                                      size=sarc_obj.metadata['size'],
-                                                      pixelsize=sarc_obj.metadata['pixelsize'],
+                                                      size=sarc_obj.metadata.size,
+                                                      pixelsize=sarc_obj.metadata.pixelsize,
                                                       median_filter_radius=median_filter_radius)
 
         if show_z_bands:
@@ -1109,7 +1108,7 @@ class Plots:
         vmin, vmax = 0, np.nanmax(myof_length_map) if vmax is None else vmax
         plot = ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax, alpha=alpha)
         if scalebar:
-            ax.add_artist(ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         if colorbar:
@@ -1138,7 +1137,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(
-                    ScaleBar(sarc_obj.metadata['pixelsize'], units='µm', frameon=False, color='k', sep=1,
+                    ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                              height_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
@@ -1292,7 +1291,7 @@ class Plots:
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
             start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
             tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
+            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
         else:
             tlim, idxlim = (None, None), (None, None)
 
@@ -1411,7 +1410,7 @@ class Plots:
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
             start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
             tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
+            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
         else:
             tlim, idxlim = (None, None), (None, None)
         # get data
@@ -1475,7 +1474,7 @@ class Plots:
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
             start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
             tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
+            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
         else:
             tlim, idxlim = (None, None), (None, None)
         # get data
@@ -1549,7 +1548,7 @@ class Plots:
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
             start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
             tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata['frametime']), int(tlim[1] / motion_obj.metadata['frametime']))
+            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
         else:
             tlim, idxlim = (None, None), (None, None)
         for i, (vel_i, delta_i) in enumerate(zip(vel, delta_slen)):

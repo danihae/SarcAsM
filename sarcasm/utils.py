@@ -963,7 +963,7 @@ class Utils:
         ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors / 2  # End point 2
 
         # Initialize output arrays
-        distance = np.full(sarc_obj.metadata['size'], np.nan, dtype='float32')
+        distance = np.full(sarc_obj.metadata.size, np.nan, dtype='float32')
 
         def create_distance_array(l):
             """Creates a normalized distance array for a line segment."""

@@ -19,7 +19,7 @@ import shutil
 import warnings
 from collections import deque
 from multiprocessing import Pool
-from typing import Optional, Tuple, Union, List, Literal, Any, Dict
+from typing import Optional, Tuple, Union, List, Literal, Any
 os.environ["KMP_WARNINGS"] = "False"
 warnings.filterwarnings("ignore", message=".*omp_set_nested.*")
 
@@ -53,47 +53,70 @@ from sarcasm.utils import Utils
 
 class Structure(SarcAsM):
     """
-    Class to analyze sarcomere morphology.
+    Class for analyzing sarcomere morphology.
+
+    Parameters
+    ----------
+    filepath : str | os.PathLike
+        Path to the image file that contains the myocyte.
+    restart : bool, optional
+        If ``True`` the previous analysis folder is deleted and a fresh run is
+        started (default: ``False``).
+    pixelsize : float or None, optional
+        Physical pixel size in µm.  If ``None`` the value is taken from file
+        metadata; otherwise the supplied number overrides all metadata.
+    frametime : float or None, optional
+        Time between frames in s.  If ``None`` it is taken from metadata; an
+        explicit number overrides it.
+    channel : int | None, optional
+        Index of the fluorescence channel that shows the sarcomeres.  If the
+        image has only one channel this argument is ignored.
+    axes : str | None, optional
+        Explicit dimension order (e.g. ``'TXYC'``).  ``None`` lets the base
+        class auto-detect the order.
+    auto_save : bool, optional
+        Write analysis results to disk automatically (default ``True``).
+    use_gui : bool, optional
+        Activate GUI mode (default ``False``).
+    device : torch.device | Literal['auto'], optional
+        Device on which PyTorch kernels are executed.  ``'auto'`` selects CUDA
+        or MPS when available (default ``'auto'``).
+    **info : Any
+        Additional key-value pairs that are stored in the metadata file.
 
     Attributes
     ----------
     data : dict
-        A dictionary with structure data.
+        Dictionary that contains numeric results of the morphology analysis
+        (populated after running the respective detection routines).
     """
 
     def __init__(self,
                  filepath: Union[str, os.PathLike],
                  restart: bool = False,
-                 channel: Union[int, None, Literal['RGB']] = None,
+                 pixelsize: Union[float, None] = None,
+                 frametime: Union[float, None] = None,
+                 channel: Union[int, None] = None,
+                 axes: Union[str, None] = None,
                  auto_save: bool = True,
                  use_gui: bool = False,
                  device: Union[torch.device, Literal['auto']] = 'auto',
-                 **info: Dict[str, Any]
-                 ) -> None:
+                 **info: Any) -> None:
         """
-        Initialize the structural analysis of a tiff file.
-
-        Parameters
-        ----------
-        filepath : str | os.PathLike
-            Path to the TIFF file for analysis.
-        restart : bool, optional
-            If True, deletes existing analysis and starts fresh (default: False).
-        channel : int, None or Literal['RGB'], optional
-            Specifies the channel with sarcomeres in multicolor stacks (default: None).
-        auto_save : bool, optional
-            Automatically saves analysis results when True (default: True).
-        use_gui : bool, optional
-            Indicates GUI mode operation (default: False).
-        device : Union[torch.device, Literal['auto']], optional
-            Device for PyTorch computations. 'auto' selects CUDA/MPS if available (default: 'auto').
-        **info : Any
-            Additional metadata as keyword arguments (e.g. cell_line='wt').
+        Instantiate a Structure object and initialize the common SarcAsM base.
         """
-        # init super SarcAsM object
-        super().__init__(filepath=filepath, restart=restart, channel=channel, auto_save=auto_save, use_gui=use_gui,
-                         device=device, **info)
-
+        super().__init__(
+            filepath=filepath,
+            restart=restart,
+            pixelsize=pixelsize,
+            frametime=frametime,
+            channel=channel,
+            axes=axes,
+            auto_save=auto_save,
+            use_gui=use_gui,
+            device=device,
+            **info
+        )
 
         # Initialize structure data dictionary
         if os.path.exists(self.__get_structure_data_file()):
@@ -175,7 +198,7 @@ class Structure(SarcAsM):
             new_key = key.replace('timepoints', 'frames')
             self.data[new_key] = self.data[key]
             if isinstance(self.data[new_key], str) and self.data[new_key] == 'all':
-                self.data[new_key] = list(range(self.metadata['frames']))
+                self.data[new_key] = list(range(self.metadata.n_stack))
 
         if self.data is None:
             raise Exception('Loading of structure failed')
@@ -363,7 +386,7 @@ class Structure(SarcAsM):
         """
         if not os.path.exists(self.file_cell_mask):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
+        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
             cell_mask = tifffile.imread(self.file_cell_mask)
             images = self.read_imgs()
             list_frames = list(range(len(images)))
@@ -396,8 +419,8 @@ class Structure(SarcAsM):
             cell_mask_intensity[i] = np.mean(img_i[mask_i])
 
             # total cell area and ratio to total image area
-            cell_area[i] = np.sum(mask_i) * self.metadata['pixelsize'] ** 2
-            cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * self.metadata['pixelsize'] ** 2)
+            cell_area[i] = np.sum(mask_i) * self.metadata.pixelsize ** 2
+            cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * self.metadata.pixelsize ** 2)
 
         _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
                  'cell_mask_intensity': cell_mask_intensity,
@@ -441,7 +464,7 @@ class Structure(SarcAsM):
         """
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0) or (len(self.data['params.detect_sarcomeres.frames']) == 1 and len(frames) == 1):
+        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0) or (len(self.data['params.detect_sarcomeres.frames']) == 1 and len(frames) == 1):
             zbands = tifffile.imread(self.file_zbands)
             orientation_field = tifffile.imread(self.file_orientation)
             images = self.read_imgs()
@@ -466,14 +489,14 @@ class Structure(SarcAsM):
         n_imgs = len(zbands)
 
         # create empty lists
-        none_lists = lambda: [None] * self.metadata['frames']
+        none_lists = lambda: [None] * self.metadata.n_stack
         z_length, z_intensity, z_straightness, z_orientation = (none_lists() for _ in range(4))
         z_lat_neighbors, z_lat_alignment, z_lat_dist = (none_lists() for _ in range(3))
         z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = (none_lists() for _ in range(3))
         z_labels, z_ends, z_lat_links, z_lat_groups = (none_lists() for _ in range(4))
 
         # create empty arrays
-        nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
+        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
         z_length_mean, z_length_std, z_length_max, z_length_sum, z_oop = (nan_arrays() for _ in range(5))
         n_zbands, z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(3))
         z_mask_area, z_mask_intensity, z_mask_area_ratio = (nan_arrays() for _ in range(3))
@@ -495,7 +518,7 @@ class Structure(SarcAsM):
 
             # analyze z-band features
             z_band_features = self._analyze_z_bands(zbands_i, labels_i, labels_skel_i, image_i, orientation_field_i,
-                                                    pixelsize=self.metadata['pixelsize'], threshold=threshold,
+                                                    pixelsize=self.metadata.pixelsize, threshold=threshold,
                                                     min_length=min_length, median_filter_radius=median_filter_radius,
                                                     a_min=a_min, theta_phi_min=theta_phi_min,
                                                     d_max=d_max, d_min=d_min)
@@ -523,7 +546,7 @@ class Structure(SarcAsM):
             if 'cell_mask_area' in self.data:
                 z_mask_area_ratio[frame_i] = z_mask_area_i / self.data['cell_mask_area'][frame_i]
             else:
-                z_mask_area_ratio[frame_i] = z_mask_area_i / (self.metadata['size'][0] * self.metadata['size'][1])
+                z_mask_area_ratio[frame_i] = z_mask_area_i / (self.metadata.size[0] * self.metadata.size[1])
 
             z_labels[frame_i] = sparse.coo_matrix(labels_i)
             z_lat_links[frame_i] = z_lat_links_i
@@ -579,7 +602,7 @@ class Structure(SarcAsM):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.5,
+    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1, backend='loky',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -619,9 +642,9 @@ class Structure(SarcAsM):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
         _detected_frames = self.data['params.detect_sarcomeres.frames']
-        if ((isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0)
+        if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.metadata['frames']))
+            list_frames = list(range(self.metadata.n_stack))
             z_bands = tifffile.imread(self.file_zbands)
             mbands = tifffile.imread(self.file_mbands)
             orientation_field = tifffile.imread(self.file_orientation)
@@ -650,15 +673,15 @@ class Structure(SarcAsM):
         mbands = mbands > threshold_mbands
 
         n_frames = len(z_bands)
-        pixelsize = self.metadata['pixelsize']
+        pixelsize = self.metadata.pixelsize
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata['frames']
-        nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
+        none_lists = lambda: [None] * self.metadata.n_stack
+        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
         (pos_vectors, pos_vectors_px, sarcomere_length_vectors,
          sarcomere_orientation_vectors) = (none_lists() for _ in range(4))
         midline_id_vectors, midline_length_vectors = (none_lists() for _ in range(2))
-        sarcomere_masks = np.zeros((self.metadata['frames'], *self.metadata['size']), dtype=bool)
+        sarcomere_masks = np.zeros((self.metadata.n_stack, *self.metadata.size), dtype=bool)
         (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         n_vectors, n_mbands, oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(6))
@@ -706,7 +729,7 @@ class Structure(SarcAsM):
 
             # calculate sarcomere mask area
             sarcomere_masks[frame_i] = sarcomere_mask_i > threshold_sarcomere_mask
-            sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.metadata['pixelsize'] ** 2
+            sarcomere_area[frame_i] = np.sum(sarcomere_mask_i) * self.metadata.pixelsize ** 2
             if 'cell_mask_area' in self.data:
                 sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['cell_mask_area'][i]
 
@@ -759,8 +782,8 @@ class Structure(SarcAsM):
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
-                frames = list(range(self.metadata['frames']))
+            if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
+                frames = list(range(self.metadata.n_stack))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
@@ -772,7 +795,7 @@ class Structure(SarcAsM):
                 raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere vectors' first!")
 
         if frames == 'all':
-            n_imgs = self.metadata['frames']
+            n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
         elif isinstance(frames, int):
             list_frames = [frames]
@@ -788,8 +811,8 @@ class Structure(SarcAsM):
         midline_length_vectors = [self.data['midline_length_vectors'][frame] for frame in list_frames]
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata['frames']
-        nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
+        none_lists = lambda: [None] * self.metadata.n_stack
+        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
         bending_mean, bending_std = (nan_arrays() for _ in range(2))
@@ -808,7 +831,7 @@ class Structure(SarcAsM):
                 line_data_i = self.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
                                                sarcomere_orientation_vectors_i,
                                                midline_length_vectors_t=midline_length_vectors_i,
-                                               pixelsize=self.metadata['pixelsize'], ratio_seeds=ratio_seeds,
+                                               pixelsize=self.metadata.pixelsize, ratio_seeds=ratio_seeds,
                                                persistence=persistence, threshold_distance=threshold_distance,
                                                n_min=n_min)
                 lines_i = line_data_i['lines']
@@ -825,8 +848,8 @@ class Structure(SarcAsM):
                                                                       pos_vectors=pos_vectors_i,
                                                                       sarcomere_orientation_vectors=sarcomere_orientation_vectors_i,
                                                                       sarcomere_length_vectors=sarcomere_length_vectors_i,
-                                                                      size=self.metadata['size'],
-                                                                      pixelsize=self.metadata['pixelsize'],
+                                                                      size=self.metadata.size,
+                                                                      pixelsize=self.metadata.pixelsize,
                                                                       median_filter_radius=median_filter_radius)
 
                         myof_map_flat_i = myof_map_i.flatten()
@@ -900,8 +923,8 @@ class Structure(SarcAsM):
         if 'pos_vectors' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
-            if (isinstance(frames, str) and frames == 'all') or (self.metadata['frames'] == 1 and frames == 0):
-                frames = list(range(self.metadata['frames']))
+            if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
+                frames = list(range(self.metadata.n_stack))
             if np.issubdtype(type(frames), np.integer):
                 frames = [frames]
             if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
@@ -913,7 +936,7 @@ class Structure(SarcAsM):
                 raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere_vectors' first!")
 
         if frames == 'all':
-            n_imgs = self.metadata['frames']
+            n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
         elif isinstance(frames, int):
             n_imgs = 1
@@ -930,8 +953,8 @@ class Structure(SarcAsM):
         midline_id_vectors = [np.asarray(self.data['midline_id_vectors'][t]) for t in list_frames]
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata['frames']
-        nan_arrays = lambda: np.full(self.metadata['frames'], np.nan)
+        none_lists = lambda: [None] * self.metadata.n_stack
+        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
         n_domains, domain_area_mean, domain_area_std = (nan_arrays() for _ in range(3))
         domain_slen_mean, domain_slen_std = (nan_arrays() for _ in range(2))
         domain_oop_mean, domain_oop_std = (nan_arrays() for _ in range(2))
@@ -949,8 +972,8 @@ class Structure(SarcAsM):
                 total=len(pos_vectors))):
             cluster_data_t = self.cluster_sarcomeres(pos_vectors_i, sarcomere_length_vectors_i,
                                                      sarcomere_orientation_vectors_i,
-                                                     pixelsize=self.metadata['pixelsize'],
-                                                     size=self.metadata['size'],
+                                                     pixelsize=self.metadata.pixelsize,
+                                                     size=self.metadata.size,
                                                      d_max=d_max, cosine_min=cosine_min,
                                                      leiden_resolution=leiden_resolution, random_seed=random_seed,
                                                      area_min=area_min, dilation_radius=dilation_radius)
@@ -1012,7 +1035,7 @@ class Structure(SarcAsM):
         loi_data = self.line_growth(points_t=pos_vectors, sarcomere_length_vectors_t=sarcomere_length_vectors,
                                     sarcomere_orientation_vectors_t=sarcomere_orientation_vectors,
                                     midline_length_vectors_t=midline_length_vectors,
-                                    pixelsize=self.metadata['pixelsize'],
+                                    pixelsize=self.metadata.pixelsize,
                                     ratio_seeds=ratio_seeds, persistence=persistence,
                                     threshold_distance=threshold_distance, random_seed=random_seed)
         self.data['loi_data'] = loi_data
@@ -1159,7 +1182,7 @@ class Structure(SarcAsM):
         points_clusters = []
         loi_lines = []
         len_loi_lines = []
-        add_length = add_length / self.metadata['pixelsize']
+        add_length = add_length / self.metadata.pixelsize
         for label_i in range(self.data['loi_data']['n_lines_clusters']):
             points_cluster_i = []
             for k in np.where(self.data['loi_data']['line_cluster'] == label_i)[0]:
@@ -1260,12 +1283,12 @@ class Structure(SarcAsM):
             file_z_bands = self.file_zbands
         imgs_sarcomeres = tifffile.imread(file_z_bands)
         profiles = self.kymograph_movie(imgs_sarcomeres, line, order=order,
-                                        linewidth=int(linewidth / self.metadata['pixelsize']))
+                                        linewidth=int(linewidth / self.metadata.pixelsize))
         profiles = np.asarray(profiles)
         if export_raw:
             imgs_raw = self.image
             profiles_raw = self.kymograph_movie(imgs_raw, line, order=order,
-                                                linewidth=int(linewidth / self.metadata['pixelsize']))
+                                                linewidth=int(linewidth / self.metadata.pixelsize))
         else:
             profiles_raw = None
 
@@ -1275,7 +1298,7 @@ class Structure(SarcAsM):
             lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
             return np.sum(lengths)
 
-        length = __calculate_segmented_line_length(line) * self.metadata['pixelsize']
+        length = __calculate_segmented_line_length(line) * self.metadata.pixelsize
 
         loi_data = {'profiles': profiles, 'profiles_raw': profiles_raw,
                     'line': line, 'linewidth': linewidth, 'length': length}
@@ -1355,7 +1378,7 @@ class Structure(SarcAsM):
         if 'pos_vectors' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
 
-        if self.metadata['frames'] == 1:
+        if self.metadata.n_stack == 1:
             raise ValueError('LOI detection not possible in single images. '
                              'Sarcomere motion tracking is only possible in high-speed movies; (t, x, y) stacks.')
 

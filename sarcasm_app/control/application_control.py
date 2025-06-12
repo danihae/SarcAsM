@@ -227,10 +227,9 @@ class ApplicationControl:
         return file_name, scan_line
 
     def init_scale_bar(self):
-        # Extract metadata with defaults
-        meta = self.model.cell.metadata
-        frames = meta.get('frames', 0)
-        px = meta.get('pixelsize')  # None if missing
+        # Extract metadata
+        frames = self.model.cell.metadata.n_stack
+        px = self.model.cell.metadata.pixelsize
 
         # Unit and base voxel size
         unit = 'µm' if px is not None else 'pixel'
@@ -241,7 +240,7 @@ class ApplicationControl:
             scale = (size, size)
         else:
             scale = (1, size, size)
-        self.model.cell.metadata['scale'] = scale
+        self.model.cell.scale = scale
 
         # Apply to all layers and update viewer
         for layer in self.viewer.layers:
@@ -252,10 +251,15 @@ class ApplicationControl:
         self.viewer.reset_view()
 
     def init_image_stack(self):
+        if self.viewer.layers.__contains__('ImageData'):
+            layer = self.viewer.layers.__getitem__('ImageData')
+            self.viewer.layers.remove(layer)
         tmp = self.model.cell.image
         lower_perc, upper_perc = np.percentile(tmp, q=[0.1, 99.9])
         self.viewer.add_image(tmp, name='ImageData', contrast_limits=[lower_perc, upper_perc],
-                              scale=self.model.cell.metadata['scale'])
+                              scale=self.model.cell.scale)
+        current_index = list(self.viewer.layers).index(self.viewer.layers['ImageData'])
+        self.viewer.layers.move(current_index, 0)
 
     def init_z_band_stack(self, visible=True, fastmovie=False):
         if fastmovie and not os.path.exists(self.model.cell.file_zbands_fast_movie):
@@ -267,10 +271,10 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.1] = np.nan
-            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+            if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
-                                  visible=visible, scale=self.model.cell.metadata['scale'])
+                                  visible=visible, scale=self.model.cell.scale)
 
     def init_m_band_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_mbands):
@@ -279,10 +283,10 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_mbands)
             tmp[tmp < 0.1] = np.nan
-            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+            if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='MbandMask', opacity=0.8, colormap='cool', blending='translucent',
-                                  visible=visible, scale=self.model.cell.metadata['scale'])
+                                  visible=visible, scale=self.model.cell.scale)
 
     def init_cell_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
@@ -291,10 +295,10 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
-            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+            if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
             self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible,
-                                  scale=self.model.cell.metadata['scale'])
+                                  scale=self.model.cell.scale)
 
     def init_z_lateral_connections(self, visible=True):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
@@ -311,10 +315,10 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
                 pass
             # create labels and connections for all frames and add as label and line layers
-            labels_groups = np.zeros((self.model.cell.metadata['frames'], *self.model.cell.metadata['size']), dtype='uint16')
+            labels_groups = np.zeros((self.model.cell.metadata.n_stack, *self.model.cell.metadata.size), dtype='uint16')
             ends = []
             connections = []
-            for frame in range(self.model.cell.metadata['frames']):
+            for frame in range(self.model.cell.metadata.n_stack):
                 if 'params.analyze_z_bands.frames' in self.model.cell.data and frame in \
                         self.model.cell.data['params.analyze_z_bands.frames'] and \
                         self.model.cell.data['z_labels'][frame] is not None:
@@ -331,7 +335,7 @@ class ApplicationControl:
 
                     z_ends_frame = np.array(self.model.cell.data['z_ends'][frame], dtype=float)
                     z_ends_frame[z_ends_frame == None] = np.nan
-                    z_ends_frame = z_ends_frame / self.model.cell.metadata['pixelsize']
+                    z_ends_frame = z_ends_frame / self.model.cell.metadata.pixelsize
 
                     z_links_frame = self.model.cell.data['z_lat_links'][frame]
 
@@ -347,9 +351,9 @@ class ApplicationControl:
 
             labels_groups = np.asarray(labels_groups)
             self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5, visible=visible,
-                                   scale=self.model.cell.metadata['scale'])
+                                   scale=self.model.cell.scale)
             self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
-                              edge_width=1, opacity=0.15, visible=visible, scale=self.model.cell.metadata['scale'])
+                              edge_width=1, opacity=0.15, visible=visible, scale=self.model.cell.scale)
 
     def init_myofibril_lines_stack(self, visible=True):
         if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
@@ -366,7 +370,7 @@ class ApplicationControl:
             _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
             self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_vector_pos, shape_type='path',
                                    edge_color='red', edge_width=2, opacity=0.5, visible=visible,
-                                   scale=self.model.cell.metadata['scale'])
+                                   scale=self.model.cell.scale)
 
     def init_sarcomere_vector_stack(self, visible=True):
         if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
@@ -381,17 +385,15 @@ class ApplicationControl:
             # create sarcomere vectors for all frames and add as vector layer
             vectors = []
             pos_vectors = []
-            for frame in range(self.model.cell.metadata['frames']):
+            for frame in range(self.model.cell.metadata.n_stack):
                 if 'params.analyze_sarcomere_vectors.frames' in self.model.cell.data and frame in \
                         self.model.cell.data['params.analyze_sarcomere_vectors.frames'] and self.model.cell.data['pos_vectors'][frame] is not None:
-                    pos_vectors_frame = self.model.cell.data['pos_vectors'][frame] / self.model.cell.metadata[
-                                                  'pixelsize']
+                    pos_vectors_frame = self.model.cell.data['pos_vectors'][frame] / self.model.cell.metadata.pixelsize
                     if len(pos_vectors_frame) > 0:
                         sarc_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][
                             frame]
                         sarc_length_vectors = self.model.cell.data['sarcomere_length_vectors'][frame] / \
-                                              self.model.cell.metadata[
-                                                  'pixelsize']
+                                              self.model.cell.metadata.pixelsize
                         orientation_vectors = np.asarray(
                             [np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
                         for i in range(len(pos_vectors_frame)):
@@ -405,10 +407,10 @@ class ApplicationControl:
                             vectors.append([start_point, vector_2])
             self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
                                     vector_style='arrow', visible=visible)
-            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=0.2 / self.model.cell.metadata['pixelsize'],
+            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=0.2 / self.model.cell.metadata.pixelsize,
                                    visible=visible)
-            self.viewer.layers['SarcomereVectors'].scale = self.model.cell.metadata['scale']
-            self.viewer.layers['MidlinePoints'].scale = self.model.cell.metadata['scale']
+            self.viewer.layers['SarcomereVectors'].scale = self.model.cell.scale
+            self.viewer.layers['MidlinePoints'].scale = self.model.cell.scale
 
     def init_sarcomere_mask_stack(self, visible=True):
         if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
@@ -417,7 +419,7 @@ class ApplicationControl:
                 self.viewer.layers.remove(layer)
 
             tmp = tifffile.imread(self.model.cell.file_sarcomere_mask)
-            if self.model.cell.metadata['frames'] > 1 and tmp.ndim==2:
+            if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
 
             if tmp.ndim == 2:  # Single image
@@ -434,7 +436,7 @@ class ApplicationControl:
                 rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
 
             self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, visible=visible,
-                                  scale=self.model.cell.metadata['scale'])
+                                  scale=self.model.cell.scale)
 
     def init_sarcomere_domain_stack(self, visible=True):
         if self.model.cell is None or 'domains' not in self.model.cell.data:
@@ -443,8 +445,8 @@ class ApplicationControl:
             self.viewer.layers.remove('SarcomereDomains')
 
         cell = self.model.cell
-        total_frames = cell.metadata['frames']
-        size = cell.metadata['size']
+        total_frames = cell.metadata.n_stack
+        size = cell.metadata.size
 
         _domain_masks = np.zeros((total_frames, *size), dtype='uint16')
 
@@ -456,7 +458,7 @@ class ApplicationControl:
 
         area_min = cell.data.get('params.analyze_sarcomere_domains.area_min')
         dilation_radius = cell.data.get('params.analyze_sarcomere_domains.dilation_radius')
-        pixelsize = cell.metadata['pixelsize']
+        pixelsize = cell.metadata.pixelsize
 
         def process_frame(frame, cell, area_min, dilation_radius, pixelsize, size):
             domains = cell.data['domains'][frame]
@@ -490,7 +492,7 @@ class ApplicationControl:
             for frame, mask in executor.map(process_frame_partial, frames_to_analyze):
                 _domain_masks[frame] = mask
         self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35, visible=visible,
-                               scale=self.model.cell.metadata['scale'])
+                               scale=self.model.cell.scale)
 
     def run_async_new(self, parameters, call_lambda, start_message, finished_message, finished_action=None,
                       finished_successful_action=None):
