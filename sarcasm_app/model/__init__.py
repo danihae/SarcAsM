@@ -114,10 +114,8 @@ class ApplicationModel:
 
         self.__parameters.get_parameter(name='structure.cell_mask.threshold').set_value(0.1)
 
-
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
-
 
         self.__parameters.get_parameter(name='structure.z_band_analysis.threshold').set_value(0.5)
         self.__parameters.get_parameter(name='structure.z_band_analysis.min_length').set_value(0.2)
@@ -152,19 +150,6 @@ class ApplicationModel:
         # endregion
 
         # region loi parameters
-        """
-                 frame: int = 0, n_lois: int = 4, n_seeds: int = 200, persistence: int = 2,
-                            threshold_distance: float = 0.3, score_threshold: Optional[float] = None,
-                            mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
-                            number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
-                            sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
-                            sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
-                            msc_lims: Tuple[float, float] = (0, 1), max_orient_change: float = 30,
-                            midline_mean_length_lims: Tuple[float, float] = (0, 20),
-                            midline_std_length_lims: Tuple[float, float] = (0, 5),
-                            midline_min_length_lims: Tuple[float, float] = (0, 20), distance_threshold_lois: float = 40,
-                            linkage: str = 'single', linewidth: float = 0.65, order: int = 0, export_raw: bool = False
-                """
         self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
         self.__parameters.get_parameter(name='loi.detect.ratio_seeds').set_value(0.1)
@@ -225,8 +210,8 @@ class ApplicationModel:
         # region batch processing parameters
         # todo: currently set values here for testing (default values, matching the test data i'm using for batch processing ui tests)
         # todo: remove those values when finished with testing
-        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.13)
-        self.__parameters.get_parameter(name='batch.frame.time').set_value(0.1)
+        self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.)
+        self.__parameters.get_parameter(name='batch.frame.time').set_value(0.)
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.root').set_value('D:\\Test\\SarcasmTestBatch')
