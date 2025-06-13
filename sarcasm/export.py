@@ -66,7 +66,7 @@ class MultiStructureAnalysis:
         if load_data:
             self.load_data()
 
-    def get_data(self, structure_keys=None, meta_keys=None):
+    def get_data(self, structure_keys=None):
         """
         Iterate files and get structure data.
 
@@ -74,8 +74,6 @@ class MultiStructureAnalysis:
         ----------
         structure_keys : list, optional
             List of keys to extract structure data (default is None).
-        meta_keys : list, optional
-            List of keys to extract metadata (default is None).
 
         Returns
         -------
@@ -85,7 +83,7 @@ class MultiStructureAnalysis:
         for i, tif_file in enumerate(tqdm(self.files)):
             try:
                 sarc_obj = Structure(filepath=tif_file)
-                dict_i = Export.get_structure_dict(sarc_obj, meta_keys, structure_keys,
+                dict_i = Export.get_structure_dict(sarc_obj, structure_keys,
                                                    experiment=self.experiment,
                                                    **self.conditions)
                 self.data.append(dict_i)
@@ -140,10 +138,11 @@ class MultiStructureAnalysis:
         -------
         None
         """
+        _data = self.data.applymap(Export.flatten_single)
         if format == '.xlsx':
-            self.data.to_excel(filepath, index=False)
+            _data.to_excel(filepath, index=False)
         elif format == '.csv':
-            self.data.to_csv(filepath, index=False)
+            _data.to_csv(filepath, index=False)
         else:
             raise ValueError('Unsupported file format')
 
@@ -184,7 +183,7 @@ class MultiLOIAnalysis:
         if load_data:
             self.load_data()
 
-    def get_data(self, loi_keys=None, meta_keys=None):
+    def get_data(self, loi_keys=None):
         """
         Iterate files and get motion data.
 
@@ -192,8 +191,6 @@ class MultiLOIAnalysis:
         ----------
         loi_keys : list, optional
             List of keys to extract motion data (default is None).
-        meta_keys : list, optional
-            List of keys to extract metadata (default is None).
 
         Returns
         -------
@@ -203,7 +200,7 @@ class MultiLOIAnalysis:
         for tif_file, loi_name in tqdm(self.lois):
             try:
                 motion_obj = Motion(tif_file, loi_name)
-                dict_i = Export.get_motion_dict(motion_obj, meta_keys, loi_keys, **self.conditions)
+                dict_i = Export.get_motion_dict(motion_obj, loi_keys, **self.conditions)
                 self.data.append(dict_i)
             except Exception as e:
                 print(f'{tif_file}, {loi_name} failed!')
@@ -256,10 +253,11 @@ class MultiLOIAnalysis:
         -------
         None
         """
+        _data = self.data.applymap(Export.flatten_single)
         if format == '.xlsx':
-            self.data.to_excel(filepath, index=False)
+            _data.to_excel(filepath, index=False)
         elif format == '.csv':
-            self.data.to_csv(filepath, index=False)
+            _data.to_csv(filepath, index=False)
         else:
             raise ValueError('Unsupported file format')
 
@@ -270,8 +268,6 @@ class Export:
 
     Attributes
     ----------
-    meta_keys_default : list
-        Default metadata keys.
     structure_keys_default : list
         Default structure keys.
     motion_keys_default : list
@@ -391,6 +387,13 @@ class Export:
             if isinstance(df[key][0], np.ndarray):
                 df_reduced.drop(key, axis=1, inplace=True)
         return df_reduced
+
+    @staticmethod
+    def flatten_single(x):
+        """Return the lone element if x is a 1-element list/ndarray; otherwise x."""
+        if isinstance(x, (list, np.ndarray)) and len(x) == 1:
+            return x[0]
+        return x
 
     @staticmethod
     def get_motion_dict(motion_obj, loi_keys=None, concat=False, **conditions):

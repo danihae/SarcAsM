@@ -151,11 +151,11 @@ class BatchProcessingControl:
 
         # let the user pick / create the Excel workbook
         default = Path(folder)
-        file_export = str(QFileDialog.getSaveFileName(
+        file_export, _ = QFileDialog.getSaveFileName(
             caption="Save structure measurements",
             directory=str(default),
             filter="Excel Workbook (*.xlsx);;All Files (*)"
-        ))
+        )
         if not file_export:                                            # user pressed Cancel
             return
 
@@ -231,8 +231,7 @@ class BatchProcessingControl:
             sarc_obj.metadata.frametime = frame_time
             sarc_obj.metadata.channel = channel
             sarc_obj.metadata.axes = axes
-            sarc_obj.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
-            sarc_obj.meta_data_handler.commit()
+            sarc_obj.save_metadata()
             pass
         return sarc_obj
 
