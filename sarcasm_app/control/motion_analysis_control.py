@@ -19,7 +19,7 @@ from sarcasm import Plots
 from sarcasm_app.control.chain_execution import ChainExecution
 from sarcasm_app import ApplicationControl
 from sarcasm_app.control.popup_export import ExportPopup
-from sarcasm_app.view.parameter_motion_analysis import Ui_Form as MotionAnalysisWidget
+from sarcasm_app.view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
 from sarcasm.motion import Motion
 from sarcasm.type_utils import TypeUtils
 

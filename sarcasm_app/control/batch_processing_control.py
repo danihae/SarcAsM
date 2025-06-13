@@ -14,6 +14,7 @@
 
 import glob
 import traceback
+from pathlib import Path
 from typing import Union, Tuple
 
 import qtutils
@@ -86,7 +87,26 @@ class BatchProcessingControl:
     def __batch_process_structure_async(self, worker, model):
         progress_notifier = self.__get_progress_notifier(worker)
 
-        tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
+        root = Path(model.parameters.get_parameter(name='batch.root').get_value())
+
+        excluded_names = {
+            'zbands.tif',
+            'mbands.tif',
+            'cell_mask.tif',
+            'orientation.tif',
+            'sarcomere_mask.tif'
+        }
+
+        tif_files = [
+            p for p in root.rglob('*')
+            if p.suffix.lower() in ('.tif', '.tiff') and p.name.lower() not in excluded_names
+        ]
+
+        n_tif_files = len(tif_files)
+        if n_tif_files == 0:
+            self.__main_control.debug(f"No TIFF files found in {root}")
+        else:
+            self.__main_control.debug(f"Found {n_tif_files} TIFF files to process")
 
         n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
@@ -99,12 +119,11 @@ class BatchProcessingControl:
             except Exception as e:
                 # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
-                               message='Exception happened during processing of file:' + file)
-                qtutils.inmain(self.__main_control.debug, message='message:' + repr(e))
+                             message=f'Exception happened during processing of file: {str(file)}')
+                qtutils.inmain(self.__main_control.debug, message='message: ' + str(repr(e)))
                 qtutils.inmain(self.__main_control.debug, message='')
                 traceback.print_exception(e)
                 # todo: add log file to batch processing
-
                 pass
             pass
 
@@ -134,7 +153,7 @@ class BatchProcessingControl:
                 # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
                                message='Exception happened during processing of file:' + file)
-                qtutils.inmain(self.__main_control.debug, message='message:' + repr(e))
+                qtutils.inmain(self.__main_control.debug, message=f'Error: {repr(e)}')
                 qtutils.inmain(self.__main_control.debug, message='')
                 # todo: add log file to batch processing
                 pass
@@ -313,6 +332,7 @@ class BatchProcessingControl:
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                    model_path=network_model,
                                    max_patch_size=size,
+                                   rescale_factor=model.parameters.get_parameter('structure.predict.rescale_factor').get_value(),
                                    clip_thres=(
                                        model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
                                        model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),

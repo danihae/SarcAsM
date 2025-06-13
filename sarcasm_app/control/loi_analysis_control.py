@@ -17,7 +17,7 @@ import os
 
 from sarcasm import TypeUtils, SarcAsM, Structure
 from .application_control import ApplicationControl
-from ..view.parameter_loi_analysis import Ui_Form as LoiAnalysisWidget
+from ..view.parameters_loi_analysis import Ui_Form as LoiAnalysisWidget
 from ..model import ApplicationModel, Parameters
 
 

@@ -22,7 +22,7 @@ from sarcasm import SarcAsM, Structure
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from .popup_export import ExportPopup
-from ..view.parameter_structure_analysis import Ui_Form as StructureAnalysisWidget
+from ..view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
 from sarcasm.type_utils import TypeUtils
 
