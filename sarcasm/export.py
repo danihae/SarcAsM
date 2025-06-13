@@ -278,9 +278,6 @@ class Export:
         Default motion keys.
     """
 
-    meta_keys_default = ['file_name', 'file_path', 'frames', 'size', 'pixelsize', 'timestamps',
-                         'time', 'frametime']
-
     structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'cell_mask_intensity',
                               'domain_area_mean', 'domain_area_std', 'domain_oop_mean',
                               'domain_oop_std', 'domain_slen_mean', 'n_domains',
@@ -308,7 +305,7 @@ class Export:
                            'ratio_delta_slen_mutual_serial', 'ratio_vel_mutual_serial']
 
     @staticmethod
-    def get_structure_dict(sarc_obj, meta_keys=None, structure_keys=None, **conditions):
+    def get_structure_dict(sarc_obj, structure_keys=None, **conditions):
         """
         Create a dictionary of structure and metadata features from a SarcAsM object.
 
@@ -316,8 +313,6 @@ class Export:
         ----------
         sarc_obj : SarcAsM
             Object of SarcAsM class or Motion class.
-        meta_keys : list, optional
-            List of metadata keys (default is None).
         structure_keys : list, optional
             List of structure keys (default is None).
         conditions : kwargs
@@ -328,19 +323,14 @@ class Export:
         dict
             Dictionary containing selected metadata and structure features.
         """
+        metadata_dict = sarc_obj.metadata.to_dict()
         if structure_keys is None:
             structure_keys = Export.structure_keys_default
-        if meta_keys is None:
-            meta_keys = Export.meta_keys_default
-        missing_meta_keys = [key for key in meta_keys if key not in sarc_obj.metadata]
-        if missing_meta_keys:
-            print('Missing metadata keys: ', missing_meta_keys)
-        dict_metadata_select = {key: sarc_obj.metadata.get(key, np.nan) for key in meta_keys}
         missing_structure_keys = [key for key in structure_keys if key not in sarc_obj.data]
         if missing_structure_keys:
             print('Missing structure keys: ', missing_structure_keys)
         dict_structure_select = {key: sarc_obj.data.get(key, np.nan) for key in structure_keys}
-        dict_ = {**dict_metadata_select, **dict_structure_select}
+        dict_ = {**metadata_dict, **dict_structure_select}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
                 dict_[condition] = value(sarc_obj.filepath)
@@ -403,7 +393,7 @@ class Export:
         return df_reduced
 
     @staticmethod
-    def get_motion_dict(motion_obj, meta_keys=None, loi_keys=None, concat=False, **conditions):
+    def get_motion_dict(motion_obj, loi_keys=None, concat=False, **conditions):
         """
         Create a dictionary of motion features and metadata from a Motion object.
 
@@ -411,8 +401,6 @@ class Export:
         ----------
         motion_obj : Motion
             Object of Motion class for LOI analysis.
-        meta_keys : list, optional
-            List of metadata keys (default is None).
         loi_keys : list, optional
             List of LOI keys (default is None).
         concat : bool, optional
@@ -425,19 +413,14 @@ class Export:
         dict
             Dictionary containing selected metadata and motion features.
         """
+        metadata_dict = motion_obj.metadata.to_dict()
         if loi_keys is None:
             loi_keys = Export.motion_keys_default
-        if meta_keys is None:
-            meta_keys = Export.meta_keys_default
-        missing_meta_keys = [key for key in meta_keys if key not in motion_obj.metadata]
-        if missing_meta_keys:
-            print('Missing metadata keys: ', missing_meta_keys)
-        dict_metadata_select = {key: motion_obj.metadata.get(key, np.nan) for key in meta_keys}
         missing_loi_keys = [key for key in loi_keys if key not in motion_obj.loi_data]
         if missing_loi_keys:
             print('Missing loi keys: ', missing_loi_keys)
         dict_loi_select = {key: motion_obj.loi_data[key] if key in motion_obj.loi_data else np.nan for key in loi_keys}
-        dict_ = {**dict_metadata_select, **dict_loi_select, 'loi_name': motion_obj.loi_name}
+        dict_ = {**metadata_dict, **dict_loi_select, 'loi_name': motion_obj.loi_name}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
                 dict_[condition] = value(motion_obj.filepath)
