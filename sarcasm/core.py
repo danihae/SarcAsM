@@ -407,10 +407,12 @@ class SarcAsM:
 
         # file has NO channel axis
         elif self.metadata.channel is not None:
-            raise ValueError(
-                "Parameter 'channel' was supplied but the image contains no "
-                "channel dimension."
-            )
+            message = "Parameter 'channel' was supplied but the image contains no channel dimension."
+            if not self.use_gui:
+                raise ValueError(message)
+            else:
+                print('Warning: ' + message)
+
         else:
             self.metadata.channel = None
 
