@@ -13,7 +13,7 @@
 
 
 import os.path
-from typing import Union
+from typing import Union, List
 
 import types
 import numpy as np
@@ -56,7 +56,7 @@ class MultiStructureAnalysis:
         DataFrame to store the structure data.
     """
 
-    def __init__(self, list_files: list, folder: str, experiment: str = None, load_data: bool = False, **conditions):
+    def __init__(self, list_files: List, folder: str, experiment: str = None, load_data: bool = False, **conditions):
         self.folder = folder
         self.experiment = experiment
         self.files = list_files

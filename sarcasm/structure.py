@@ -272,7 +272,7 @@ class Structure(SarcAsM):
             else:
                 raise ValueError(f"Unsupported image dimensionality for rescaling: {current_ndim}D. Expected 2D or 3D.")
 
-            print(f"Rescaling image from {images.shape} by factor {rescale_factor} on XY axes...")
+            print(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
             images = rescale(
                 images,
                 scale_vector,

@@ -46,6 +46,8 @@ class BatchProcessingControl:
 
         parameters.get_parameter(name='batch.pixel.size').connect(widget.dsb_pixel_size)
         parameters.get_parameter(name='batch.frame.time').connect(widget.dsb_frame_time)
+        parameters.get_parameter(name='batch.channel').connect(widget.sb_batch_channel)
+        parameters.get_parameter(name='batch.axes').connect(widget.le_batch_axes)
         parameters.get_parameter(name='batch.force.override').connect(widget.chk_force_override)
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
@@ -84,9 +86,7 @@ class BatchProcessingControl:
 
         pass
 
-    def __batch_process_structure_async(self, worker, model):
-        progress_notifier = self.__get_progress_notifier(worker)
-
+    def __get_tiff_files(self, model):
         root = Path(model.parameters.get_parameter(name='batch.root').get_value())
 
         excluded_names = {
@@ -108,14 +108,23 @@ class BatchProcessingControl:
         else:
             self.__main_control.debug(f"Found {n_tif_files} TIFF files to process")
 
+        return tif_files
+
+    def __batch_process_structure_async(self, worker, model):
+        progress_notifier = self.__get_progress_notifier(worker)
+
+        tif_files = self.__get_tiff_files(model)
+
         n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
+        channel = model.parameters.get_parameter(name='batch.channel').get_value()
+        axes = model.parameters.get_parameter(name='batch.axes').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
         # currently only run in sequential mode - no thread pool used
         for i, file in enumerate(progress_notifier.iterator(tif_files)):
             try:
-                self.__single_structure_analysis(file, frame_time, pixel_size, force_override, model)
+                self.__single_structure_analysis(file, frame_time, pixel_size, channel, axes, force_override, model)
             except Exception as e:
                 # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
@@ -128,6 +137,18 @@ class BatchProcessingControl:
             pass
 
     pass
+
+    def on_btn_batch_export_structure(self, worker, model):
+        tif_files = self.__get_tiff_files(model)
+
+        """
+        1. open file explorer to select output file path
+        2. init MultiStructureAnalysis with tif_files
+        3. get_data
+        4. export_data 
+        """
+
+
 
     def on_btn_batch_processing_motion(self):
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
@@ -144,11 +165,13 @@ class BatchProcessingControl:
         n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
+        channel = model.parameters.get_parameter(name='batch.channel').get_value()
+        axes = model.parameters.get_parameter(name='batch.axes').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
 
         for i, file in enumerate(progress_notifier.iterator(tif_files)):
             try:
-                self.__single_motion_analysis(file, frame_time, pixel_size, force_override, model)
+                self.__single_motion_analysis(file, frame_time, pixel_size, channel, axes, force_override, model)
             except Exception as e:
                 # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
@@ -161,12 +184,15 @@ class BatchProcessingControl:
         pass
 
     @staticmethod
-    def __get_sarc_object(file: str, frame_time: float, pixel_size: float, force_override: bool) -> Structure:
+    def __get_sarc_object(file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
+                          force_override: bool) -> Structure:
 
         sarc_obj = Structure(file, use_gui=True)
         if force_override:
             sarc_obj.metadata.pixelsize = pixel_size
             sarc_obj.metadata.frametime = frame_time
+            sarc_obj.metadata.channel = channel
+            sarc_obj.metadata.axes = axes
             sarc_obj.meta_data_handler.store_meta_data(True)  # store meta-data and override if necessary
             sarc_obj.meta_data_handler.commit()
             pass
@@ -205,10 +231,10 @@ class BatchProcessingControl:
         )
         pass
 
-    def __single_motion_analysis(self, file: str, frame_time: float, pixel_size: float, force_override: bool,
-                                 model):
+    def __single_motion_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
+                                 force_override: bool, model):
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
-                                                            force_override=force_override)
+                                                            channel=channel, axes=axes, force_override=force_override)
         # add some flag if those calculations should be done or not
         if model.parameters.get_parameter('batch.recalculate.for.motion').get_value():
             self.__calculate_requirements_of_motion(sarc_obj, model)
@@ -310,16 +336,15 @@ class BatchProcessingControl:
         motion_obj.store_loi_data()
         pass
 
-    def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, force_override: bool,
-                                    model):
+    def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
+                                    force_override: bool, model):
         # attention: this method is not executed in qt thread! --> every information to ui needs to be done either
         # on another place or within a wrapper for QT Main thread (like the package qtutils.inmain does)
 
         # initialize SarcAsM object
         # check for metadata
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
-                                                            force_override=force_override)
-        frames = model.parameters.get_parameter('structure.frames').get_value()
+                                                            channel=channel, axes=axes, force_override=force_override)
         # predict sarcomere z-bands and cell mask
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':

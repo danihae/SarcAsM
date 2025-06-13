@@ -212,6 +212,8 @@ class ApplicationModel:
         # todo: remove those values when finished with testing
         self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.1)
         self.__parameters.get_parameter(name='batch.frame.time').set_value(0.1)
+        self.__parameters.get_parameter(name='batch.channel').set_value(0)
+        self.__parameters.get_parameter(name='batch.axes').set_value("")
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(False)
@@ -338,6 +340,8 @@ class ApplicationModel:
         # region batch processing parameters
         self.__parameters.set_parameter(name='batch.pixel.size')
         self.__parameters.set_parameter(name='batch.frame.time')
+        self.__parameters.set_parameter(name='batch.channel')
+        self.__parameters.set_parameter(name='batch.axes')
         self.__parameters.set_parameter(name='batch.force.override')
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.root')
