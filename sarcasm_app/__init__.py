@@ -245,12 +245,12 @@ class Application:
 
         self.__window.show()
 
-        # Check release and notify when there's an update
-        owner = "danihae"
-        repo = "SarcAsM"
-        msg = self.check_github_release(owner, repo, version)
-        self.debug(msg)
-        if msg and "New release available" in msg:
-            QMessageBox.information(self.__window, "Update Available", msg)
+        # # Check release and notify when there's an update
+        # owner = "danihae"
+        # repo = "SarcAsM"
+        # msg = self.check_github_release(owner, repo, version)
+        # self.debug(msg)
+        # if msg and "New release available" in msg:
+        #     QMessageBox.information(self.__window, "Update Available", msg)
 
         sys.exit(self.__app.exec_())
