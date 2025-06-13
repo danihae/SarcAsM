@@ -21,7 +21,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import Utils, Motion, Structure
+from sarcasm import Utils, Motion, Structure, MultiStructureAnalysis
 from .application_control import ApplicationControl
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
@@ -43,6 +43,7 @@ class BatchProcessingControl:
         self.__batch_processing_widget.btn_batch_processing_motion.clicked.connect(
             self.on_btn_batch_processing_motion)
         self.__batch_processing_widget.btn_search.clicked.connect(self.on_search)
+        self.__batch_processing_widget.btn_batch_export_structure.clicked.connect(self.on_btn_batch_export_structure)
 
         parameters.get_parameter(name='batch.pixel.size').connect(widget.dsb_pixel_size)
         parameters.get_parameter(name='batch.frame.time').connect(widget.dsb_frame_time)
@@ -138,17 +139,54 @@ class BatchProcessingControl:
 
     pass
 
-    def on_btn_batch_export_structure(self, worker, model):
+    def on_btn_batch_export_structure(self):
+        """UI callback: *Batch → Export Structure* button."""
+        model = self.__main_control.model
         tif_files = self.__get_tiff_files(model)
+        folder = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
 
-        """
-        1. open file explorer to select output file path
-        2. init MultiStructureAnalysis with tif_files
-        3. get_data
-        4. export_data 
-        """
+        if not tif_files:                                              # nothing to do
+            self.__main_control.debug("No processable TIFF files were found in the selected directory.")
+            return
 
+        # let the user pick / create the Excel workbook
+        default = Path(folder)
+        file_export = str(QFileDialog.getSaveFileName(
+            caption="Save structure measurements",
+            directory=str(default),
+            filter="Excel Workbook (*.xlsx);;All Files (*)"
+        ))
+        if not file_export:                                            # user pressed Cancel
+            return
 
+        # store arguments for the worker and launch it asynchronously
+        self.__export_args = (tif_files, Path(file_export))
+
+        worker = self.__main_control.run_async_new(
+            parameters=model,
+            call_lambda=self.__batch_export_structure_async,
+            start_message="Start batch export structure ",
+            finished_message="Finished batch export structure "
+        )
+        self.__worker = worker
+
+    def __batch_export_structure_async(self, worker, model):
+        progress_notifier = self.__get_progress_notifier(worker)       # reuse existing helper
+        tif_files, file_export = self.__export_args
+        folder = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
+
+        try:
+            msa = MultiStructureAnalysis(tif_files, folder=folder)
+            # progress bar while gathering data
+            for _ in progress_notifier.iterator([0]):
+                msa.get_data()
+
+            msa.export_data(file_export)
+        except Exception as e:
+            # marshal the error back to the GUI
+            qtutils.inmain(self.__main_control.debug,
+                           message=f"Export failed: {repr(e)}")
+            traceback.print_exception(e)
 
     def on_btn_batch_processing_motion(self):
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
