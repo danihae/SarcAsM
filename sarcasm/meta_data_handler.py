@@ -42,7 +42,7 @@ class ImageMetadata:
 
     # Computed properties (set in __post_init__) and SarcAsM metadata
     time: Optional[np.ndarray] = field(init=False, repr=False)
-    version: str = field(default_factory=lambda: __version__)
+    sarcasm_version: str = field(default_factory=lambda: __version__)
     timestamp_analysis: str = field(default_factory=lambda: datetime.datetime.now().isoformat())
 
     # User-specified channel with sarcomere signal
