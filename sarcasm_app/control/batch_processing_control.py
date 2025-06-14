@@ -16,6 +16,7 @@ import glob
 import traceback
 from pathlib import Path
 from typing import Union, Tuple
+import concurrent.futures
 
 import qtutils
 from PyQt5.QtWidgets import QFileDialog
@@ -51,6 +52,7 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.axes').connect(widget.le_batch_axes)
         parameters.get_parameter(name='batch.force.override').connect(widget.chk_force_override)
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
+        parameters.get_parameter(name='batch.delete_intermediary_tiffs').connect(widget.chk_delete_intermediary_tiffs)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
         parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
         parameters.get_parameter(name='batch.do_cellmask').connect(widget.chk_do_cellmask)
@@ -76,8 +78,6 @@ class BatchProcessingControl:
         return progress_notifier
 
     def on_btn_batch_processing_structure(self):
-
-        tif_files = glob.glob(self.__batch_processing_widget.le_root_directory.text() + '*/*.tif')
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_structure_async,
@@ -112,32 +112,62 @@ class BatchProcessingControl:
         return tif_files
 
     def __batch_process_structure_async(self, worker, model):
-        progress_notifier = self.__get_progress_notifier(worker)
+        """
+        Analyse every TIFF in `tif_files` concurrently.
 
-        tif_files = self.__get_tiff_files(model)
+        Each file is completely independent, so we can run the costly
+        `__single_structure_analysis` in a thread pool.
 
-        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
+        Errors are tunneled back to the main thread so that we can log them
+        through Qt-safe helpers (`qtutils.inmain`).
+        """
+        tif_files: list[Path] = self.__get_tiff_files(model)
+
+        n_pools = int(model.parameters
+                           .get_parameter(name='batch.thread_pool_size')
+                           .get_value()) or 1
+
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
         channel = model.parameters.get_parameter(name='batch.channel').get_value()
         axes = model.parameters.get_parameter(name='batch.axes').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
-        # currently only run in sequential mode - no thread pool used
-        for i, file in enumerate(progress_notifier.iterator(tif_files)):
-            try:
-                self.__single_structure_analysis(file, frame_time, pixel_size, channel, axes, force_override, model)
-            except Exception as e:
-                # this part has to be added to qt thread
-                qtutils.inmain(self.__main_control.debug,
-                             message=f'Exception happened during processing of file: {str(file)}')
-                qtutils.inmain(self.__main_control.debug, message='message: ' + str(repr(e)))
-                qtutils.inmain(self.__main_control.debug, message='')
-                traceback.print_exception(e)
-                # todo: add log file to batch processing
-                pass
-            pass
 
-    pass
+        # Helper that is executed inside every worker thread
+        def _run_single(file_):
+            try:
+                self.__single_structure_analysis(
+                    file_, frame_time, pixel_size,
+                    channel, axes, force_override, model
+                )
+                return (file_, None)          # success
+            except Exception as exc:          # capture exception -> propagate
+                return (file_, exc)
+
+        # Kick off the pool and iterate over completed futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_pools) as pool:
+            future_map = {pool.submit(_run_single, f): f for f in tif_files}
+
+            total = len(tif_files)
+            finished = 0
+
+            for fut in concurrent.futures.as_completed(future_map):
+                finished += 1
+
+                qtutils.inmain(
+                    self.__main_control.update_progress,
+                    finished / total * 100
+                )
+
+                file_, err = fut.result()     # unpack tuple returned above
+                if err is not None:
+                    # Marshal logging back to the Qt main thread
+                    qtutils.inmain(
+                        self.__main_control.debug,
+                        message=f'Exception while processing {file_}: {err!r}'
+                    )
+                    traceback.print_exception(err)
+
 
     def on_btn_batch_export_structure(self):
         """UI callback: *Batch → Export Structure* button."""
@@ -331,6 +361,10 @@ class BatchProcessingControl:
                 # todo: add log file to batch processing
                 pass
             pass
+
+        if model.parameters.get_parameter('batch.delete_intermediary_tiffs').get_value():
+            sarc_obj.remove_intermediate_tiffs()
+
         pass
 
     def __single_motion_loi_analysis(self, motion_obj: Motion, model):
@@ -446,6 +480,9 @@ class BatchProcessingControl:
             )
 
         sarc_obj.store_structure_data()
+        if model.parameters.get_parameter('batch.delete_intermediary_tiffs').get_value():
+            sarc_obj.remove_intermediate_tiffs()
+
         pass
 
     def on_search(self):

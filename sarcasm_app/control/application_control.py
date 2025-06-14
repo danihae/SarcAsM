@@ -128,7 +128,7 @@ class ApplicationControl:
     def update_progress(self, value):
         progress_bar = self._window.findChild(QProgressBar, name='progressBarMain')
         if progress_bar is not None:
-            progress_bar.setValue(value)
+            progress_bar.setValue(int(value))
 
     def __add_line_to_napari(self, line_to_draw,edge_width:float=0.65):
         # note that first coordinate in the point tuples is Y and second is X

@@ -113,7 +113,6 @@ class ExportPopup(QDialog):
         self.__btn_export_as_xlsx.setFont(self.font())
         self.__btn_export_as_csv.setFont(self.font())
 
-        self.__create_checkbox_from_list(Export.meta_keys_default, self.__group_metadata)
         self.__create_checkbox_from_list(Export.structure_keys_default, self.__group_structure)
         self.__create_checkbox_from_list(Export.motion_keys_default, self.__group_motion)
         pass
@@ -149,23 +148,16 @@ class ExportPopup(QDialog):
             to_export_structure = None
             to_export_motion = None
 
-            if len(self.__from_checkboxes_to_str_list(self.__group_structure, self.__group_structure_old)) != 0 or len(
-                    self.__from_checkboxes_to_str_list(self.__group_metadata, self.__group_metadata_old)) != 0:
+            if len(self.__from_checkboxes_to_str_list(self.__group_structure, self.__group_structure_old)) != 0:
                 to_export_structure = Export.get_structure_dict(sarc_obj=self.__model.cell,
                                                                 structure_keys=self.__from_checkboxes_to_str_list(
-                                                                    self.__group_structure, self.__group_structure_old),
-                                                                meta_keys=self.__from_checkboxes_to_str_list(
-                                                                    self.__group_metadata,
-                                                                    self.__group_metadata_old))
+                                                                    self.__group_structure, self.__group_structure_old))
                 print(to_export_structure)
                 self.__control.debug('exported following structure keys')
                 self.__control.debug(to_export_structure.__str__())
 
-            if len(self.__from_checkboxes_to_str_list(self.__group_metadata, self.__group_metadata_old)) != 0 or len(
-                    self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
+            if len(self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
                 to_export_motion = Export.get_motion_dict(motion_obj=self.__model.sarcomere,
-                                                                           meta_keys=self.__from_checkboxes_to_str_list(
-                                                                               self.__group_metadata),
                                                                            loi_keys=self.__from_checkboxes_to_str_list(
                                                                                self.__group_motion))
                 print(to_export_motion)

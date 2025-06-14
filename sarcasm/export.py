@@ -335,7 +335,7 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_structure_data(filepath, sarc_obj: Union[Structure, Motion], meta_keys=None, structure_keys=None, remove_arrays=True,
+    def export_structure_data(filepath, sarc_obj: Union[Structure, Motion], structure_keys=None, remove_arrays=True,
                               fileformat='.xlsx'):
         """
         Export structure data to a file.
@@ -346,8 +346,6 @@ class Export:
             Path to the output file.
         sarc_obj : SarcAsM
             Object of SarcAsM class.
-        meta_keys : list, optional
-            List of metadata keys (default is None).
         structure_keys : list, optional
             List of structure keys (default is None).
         remove_arrays : bool, optional
@@ -355,8 +353,7 @@ class Export:
         fileformat : str, optional
             Format of the output file (default is '.xlsx').
         """
-        structure_dict = Export.get_structure_dict(sarc_obj, meta_keys=meta_keys,
-                                                   structure_keys=structure_keys)
+        structure_dict = Export.get_structure_dict(sarc_obj, structure_keys=structure_keys)
         structure_df = pd.DataFrame(structure_dict)
         if remove_arrays:
             structure_df = Export.remove_arrays_dataframe(structure_df)
@@ -438,7 +435,7 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_motion_data(mot_obj: Motion, filepath, meta_keys=None, motion_keys=None, remove_arrays=True, fileformat='.xlsx'):
+    def export_motion_data(mot_obj: Motion, filepath, motion_keys=None, remove_arrays=True, fileformat='.xlsx'):
         """
         Export motion data to a file.
 
@@ -448,8 +445,6 @@ class Export:
             Object of Motion class.
         filepath : str
             Path to the output file.
-        meta_keys : list, optional
-            List of metadata keys (default is None).
         motion_keys : list, optional
             List of motion keys (default is None).
         remove_arrays : bool, optional
@@ -457,7 +452,7 @@ class Export:
         fileformat : str, optional
             Format of the output file (default is '.xlsx').
         """
-        motion_dict = Export.get_motion_dict(mot_obj, meta_keys=meta_keys, loi_keys=motion_keys)
+        motion_dict = Export.get_motion_dict(mot_obj, loi_keys=motion_keys)
         motion_df = pd.DataFrame(motion_dict)
         if remove_arrays:
             motion_df = Export.remove_arrays_dataframe(motion_df)
