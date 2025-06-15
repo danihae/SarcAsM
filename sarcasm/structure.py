@@ -1486,7 +1486,7 @@ class Structure(SarcAsM):
     @staticmethod
     def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray,
                          image_raw: np.ndarray, orientation_field: np.ndarray,
-                         pixelsize: float, min_length: float = 1.0, threshold: float = 0.1,
+                         pixelsize: float, min_length: float = 1.0, threshold: float = 0.5,
                          median_filter_radius: float = 0.25,
                          a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
                          d_min: float = 0.25) -> Tuple:
