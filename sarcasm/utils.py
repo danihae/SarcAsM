@@ -34,7 +34,9 @@ from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
 from skimage.draw import line
 from skimage.morphology import disk
-from skimage.transform import resize, rescale
+from skimage.transform import resize
+import igraph as ig
+
 
 
 class Utils:
@@ -406,6 +408,59 @@ class Utils:
             v[:, 1:-1] = (x[:, 2:] - x[:, :-2]) / (2 * dt)
 
         return v
+
+    @staticmethod
+    def skeleton_length_igraph(regionmask: np.ndarray, intensity_image=None) -> float:
+        """
+        Return the arc-length of a non-branching skeleton in physical units.
+
+        Parameters
+        ----------
+        regionmask : 2-D boolean array
+            One-pixel-wide skeleton (True = foreground).
+
+        Returns
+        -------
+        float
+            Path length.
+        """
+        # coordinates of all skeleton pixels
+        coords = np.column_stack(np.nonzero(regionmask))
+        n = len(coords)
+        _sum = regionmask.sum()
+        if n == 0 or _sum == 0:
+            return 0.0
+
+        # build graph
+        g = ig.Graph(n)
+        coord_to_idx = {tuple(p): i for i, p in enumerate(coords)}
+        edges, weights = [], []
+
+        for idx, (r, c) in enumerate(coords):
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == dc == 0:
+                        continue
+                    nbr = (r + dr, c + dc)
+                    j = coord_to_idx.get(nbr)
+                    if j is not None and j > idx:  # avoid duplicates
+                        edges.append((idx, j))
+                        weights.append(np.hypot(dr, dc))  # 1 or √2
+
+        g.add_edges(edges)
+        g.es["weight"] = weights
+
+        # end points = degree-1 vertices
+        ends = [v.index for v in g.vs if g.degree(v) == 1]
+        if len(ends) != 2:  # branched loop: sum all edges
+            length_px = sum(weights)
+        else:
+            path_edges = g.get_shortest_paths(ends[0], ends[1],
+                                              weights="weight",
+                                              output="epath")[0]
+            length_px = sum(g.es[e]["weight"] for e in path_edges)
+
+        return length_px
 
     @staticmethod
     def scale_back(

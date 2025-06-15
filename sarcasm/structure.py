@@ -1478,7 +1478,7 @@ class Structure(SarcAsM):
             Labeled regions in the skeletonized image.
         """
         mask = image > threshold
-        mask_skel = morphology.skeletonize(mask)
+        mask_skel = morphology.skeletonize(mask, method='lee')
         labels = label(mask)
         labels_skel = mask_skel * labels
         return labels, labels_skel
@@ -1534,11 +1534,12 @@ class Structure(SarcAsM):
               linked groups of z-bands, and their respective sizes, lengths, and alignments.
         """
         # analyze skeletonized labels to determine z-band backbone length
-        props_skel = regionprops_table(labels_skel, properties=['label', 'perimeter'])
+        props_skel = regionprops_table(labels_skel, properties=['label', ],
+                                       extra_properties=(Utils.skeleton_length_igraph, ))
         labels_list = props_skel['label']
 
         # remove short z-bands
-        length = props_skel['perimeter'] * pixelsize
+        length = props_skel['skeleton_length_igraph'] * pixelsize
         labels_list_ = labels_list.copy()
         labels_list[length < min_length] = 0
         labels_list = np.insert(labels_list, 0, 0)
