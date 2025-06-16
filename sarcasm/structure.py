@@ -286,6 +286,15 @@ class Structure(SarcAsM):
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.model_dir, 'model_sarcomeres_generalist.pt')
+            if self.metadata.pixelsize < 0.1:
+                print(
+                    f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is smaller than the optimal range "
+                    f"(0.1-0.35 µm). For using it pixelsize might be too small. Consider increasing rescale_factor for optimal results.")
+            elif self.metadata.pixelsize > 0.35:
+                print(
+                    f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is larger than the optimal range "
+                    f"(0.1-0.35 µm). For using it pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
+            print(f"Using default model: {model_path}. ")
         _ = Predict_UNet(images, model_params=model_path, result_path=self.base_dir,
                          max_patch_size=max_patch_size, normalization_mode=normalization_mode,
                          network=MultiOutputNestedUNet_3Levels,
