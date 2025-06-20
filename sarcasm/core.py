@@ -159,9 +159,12 @@ class SarcAsM:
             try:
                 self.metadata = ImageMetadata.load_from_file(self.meta_file)
             except:
-                MetaDataError(
-                    "Loading metadata failed. This can happen when the metadata file was "
-                    "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
+                if not self.use_gui:
+                    MetaDataError(
+                        "Loading metadata failed. This can happen when the metadata file was "
+                        "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
+                else:
+                    pass
         else:
             # Will be populated by read_imgs, then saved
             _ = self.image
