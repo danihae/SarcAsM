@@ -202,7 +202,7 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_image(ax: Axes, sarc_obj: Union[Structure, Motion], frame: int = 0, cmap: str = 'grey',
+    def plot_image(ax: Axes, sarc_obj: Union[Structure, Motion], frame: int = 0, cmap: str = 'gray',
                    alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
                    title: Union[None, str] = None, show_loi: bool = False,
                    zoom_region: Tuple[int, int, int, int] = None,
