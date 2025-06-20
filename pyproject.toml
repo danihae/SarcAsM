@@ -1,66 +1,66 @@
-[tool.poetry]
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
 name = "sarc-asm"
 version = "0.2.0"
 description = "Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
-authors = ["Daniel Haertter <dani.hae@posteo.de>"]
 readme = "README.md"
-repository = "https://github.com/danihae/SarcAsM"
+requires-python = ">=3.10,<3.14"
+authors = [
+    { name = "Daniel Haertter", email = "dani.hae@posteo.de" }
+]
+dependencies = [
+    "numpy>=2.2.5",
+    "orjson>=3.10.0,<4.0.0",
+    "napari>=0.4.18,<0.7.0",
+    "torch>=2.0.0,<3.0.0",
+    "bio-image-unet>=1.1.2,<2.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "matplotlib-scalebar>=0.8.0,<0.9.0",
+    "PyQt5>=5.15.4,<5.16.0",
+    "pandas>=2.0.0,<3.0.0",
+    "trackpy>=0.6.4,<0.7.0",
+    "scikit-learn>=1.0.2,<2.0.0",
+    "scikit-image>0.18,<1.0",
+    "PyWavelets>=1.5.0,<2.0.0",
+    "igraph>=0.11.2,<0.12.0",
+    "numba>=0.61.2,<0.62.0",
+    "qtutils>=4.0.0,<5.0.0",
+    "networkx>=3.2,<4.0",
+    "openpyxl>=3.1.4,<4.0.0",
+    "tifffile>=2023.12.9"
+]
+
+[project.urls]
+Repository = "https://github.com/danihae/SarcAsM"
+
+[project.scripts]
+sarcasm = "sarcasm_app.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "notebook>=7.0.0,<8.0.0"
+]
+docs = [
+    "sphinx>=7.0,<8.0",
+    "sphinx-rtd-theme>=2.0.0,<3.0.0",
+    "sphinx-autoapi>=3.0,<4.0",
+    "nbsphinx>=0.9.0,<0.10.0"
+]
+
+[tool.poetry]
 packages = [
     { include = "sarcasm" },
     { include = "sarcasm_app" },
     { include = "contraction_net" }
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<3.14"
-orjson = "^3.10.0"
-napari = ">=0.4.18,<0.7.0"
-torch = "^2.0.0"
-bio-image-unet = "^1.1.2"
-matplotlib = "^3.10.0"
-matplotlib-scalebar = "^0.8.0"
-PyQt5 = "~5.15.4"
-pandas = "^2.0.0"
-trackpy = "^0.6.4"
-scikit-learn = "^1.0.2"
-scikit-image = ">0.18,<1.0"
-PyWavelets = "^1.5.0"
-igraph = "^0.11.2"
-numba = "^0.61.2"
-qtutils = "^4.0.0"
-networkx = "^3.2"
-openpyxl = "^3.1.4"
-tifffile = ">=2023.12.9"
-
-[tool.poetry.group.dev.dependencies]
-notebook = "^7.0.0"
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-sphinx = "^7.0"
-sphinx-rtd-theme = "^2.0.0"
-sphinx-autoapi = "^3.0"
-nbsphinx = "^0.9.0"
-
-[tool.poetry.scripts]
-sarcasm = "sarcasm_app.__main__:main"
-
-[build-system]
-requires = ["poetry-core>=1.7.0"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.readthedocs]
 version = 2
-# Build environment configuration
 build = { os = "ubuntu-22.04", tools = { python = "3.10" } }
-# Sphinx configuration
 sphinx = { configuration = "docs/conf.py" }
-
-# Python interpreter configuration and package installation
-# This tells Read the Docs to use Poetry to install your project
-# and the dependencies from the 'docs' group.
 python = { install = [
     { method = "poetry", path = ".", with = ["docs"] }
 ]}
