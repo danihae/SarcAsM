@@ -19,7 +19,7 @@ def analyze_tif(file):
     # detect sarcomere z-bands, m-bands, sarcomere orientation and cell masks
     sarc.detect_sarcomeres(max_patch_size=(2048, 2048))
 
-    # analyze sarcomere structures (or use step-by-step analysis, see tutorial structure analysis)
+    # analyze sarcomere structures (or use step-by-step analysis to tune parameter, see tutorial structure analysis)
     sarc.full_analysis_structure(frames='all')
 
     # remove intermediate tiff files to save storage, optional
