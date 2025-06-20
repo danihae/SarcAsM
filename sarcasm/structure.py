@@ -459,15 +459,15 @@ class Structure(SarcAsM):
             Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.
         theta_phi_min : float, optional
             Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.
+            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.4.
         a_min: float, optional
             Minimal lateral alignment between z-band ends to create a lateral connection. Defaults to 0.3.
         d_max : float, optional
             Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 5.0.
+            (for lateral alignment and distance analysis). Defaults to 3.0.
         d_min : float, optional
             Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
-            Defaults to 0.25.
+            Defaults to 0.0.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
