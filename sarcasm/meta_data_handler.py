@@ -53,8 +53,8 @@ class ImageMetadata:
 
     def __post_init__(self):
         """Compute derived fields after initialization."""
-        if not hasattr(self, 'version') or self.version is None:
-            self.version = __version__
+        if not hasattr(self, 'sarcasm_version') or self.sarcasm_version is None:
+            self.sarcasm_version = __version__
         if not hasattr(self, 'timestamp_analysis') or self.timestamp_analysis is None:
             self.timestamp_analysis = datetime.datetime.now().isoformat()
 

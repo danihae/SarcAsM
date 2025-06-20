@@ -156,7 +156,12 @@ class SarcAsM:
         # Load existing or create new metadata
         self.meta_file = Path(self.data_dir) / "metadata.json"
         if self.meta_file.exists() and not self.restart:
-            self.metadata = ImageMetadata.load_from_file(self.meta_file)
+            try:
+                self.metadata = ImageMetadata.load_from_file(self.meta_file)
+            except:
+                MetaDataError(
+                    "Loading metadata failed. This can happen when the metadata file was "
+                    "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
         else:
             # Will be populated by read_imgs, then saved
             _ = self.image
