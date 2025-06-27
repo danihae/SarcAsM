@@ -101,12 +101,6 @@ structure_feature_dict = {
         'function': 'Structure.analyze_sarcomere_domains',
         'name': 'Sarcomere domains'
     },
-    'max_score_vectors': {
-        'description': 'Wavelet score of each sarcomere vector. List with np.array for each frame.',
-        'data type': list[np.ndarray],
-        'function': 'Structure.analyze_sarcomere_vectors',
-        'name': 'Max score sarcomere vectors'
-    },
     'midline_id_vectors': {
         'description': 'Midline identifier of each sarcomere vector. '
                        'Value reflects midline label, with unique label for each sarcomere midline. '
@@ -231,7 +225,7 @@ structure_feature_dict = {
         'name': 'Sarcomere area [µm²]'
     },
     'sarcomere_area_ratio': {
-        'description': 'Ratio of image area occupied by sarcomeres. np.ndarray with value for each frame.',
+        'description': 'Ratio of cell mask area occupied by sarcomeres. np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'Sarcomere area ratio'
@@ -281,30 +275,6 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'Structure.analyze_sarcomere_vectors',
         'name': 'STD sarcomere orientation [rad]'
-    },
-    'wavelet_bank': {
-        'description': 'Wavelet bank. Only stored if save_all=True.',
-        'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_vectors',
-        'name': 'Wavelet bank'
-    },
-    'wavelet_max_score': {
-        'description': 'Spatial map of maximum wavelet score. Only stored if save_all=True.',
-        'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_vectors',
-        'name': 'Wavelet max score'
-    },
-    'wavelet_sarcomere_length': {
-        'description': 'Spatial map of sarcomere length. Only stored if save_all=True.',
-        'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_vectors',
-        'name': 'Sarcomere length [µm]'
-    },
-    'wavelet_sarcomere_orientation': {
-        'description': 'Spatial map of sarcomere orientation. Only stored if save_all=True.',
-        'data type': np.ndarray,
-        'function': 'Structure.analyze_sarcomere_vectors',
-        'name': 'Sarcomere orientation [rad]'
     },
     'z_avg_intensity': {
         'description': 'Average intensity of Z-bands, i.e. average pixel values of all Z-bands. '
