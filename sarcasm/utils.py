@@ -149,6 +149,21 @@ class Utils:
         else:
             subprocess.Popen(["xdg-open", path])
 
+
+    @staticmethod
+    def check_and_round_max_patch_size(max_patch_size):
+        """Checks whether each element of tuple is divisible by 16, and if not, rounds them up"""
+        rounded_patch_size = []
+        for dim in max_patch_size:
+            if dim % 8 != 0:
+                rounded_dim = ((dim // 16) + 1) * 16
+                print(f"Warning: {dim} is not divisible by 16, rounding up to {rounded_dim}.")
+                rounded_patch_size.append(rounded_dim)
+            else:
+                rounded_patch_size.append(dim)
+        return tuple(rounded_patch_size)
+
+
     @staticmethod
     def two_sample_t_test(data: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
         """

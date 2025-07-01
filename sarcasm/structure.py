@@ -243,6 +243,7 @@ class Structure(SarcAsM):
         -------
         None
         """
+        max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if isinstance(frames, str) and frames == 'all':
             images = self.read_imgs()
             list_frames = list(range(len(images)))
@@ -363,6 +364,7 @@ class Structure(SarcAsM):
 
         if model_path is None:
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
+        max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if len(max_patch_size) != 3:
             raise ValueError('patch size for prediction has to be be (frames, x, y)')
         _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.base_dir,
