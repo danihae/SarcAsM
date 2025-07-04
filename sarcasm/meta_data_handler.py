@@ -12,12 +12,12 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 import datetime
-import dataclasses
-from dataclasses import dataclass, field, asdict
-from typing import Optional, List, Tuple, Any, Dict
 import json
-import numpy as np
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from typing import Optional, List, Tuple, Any, Dict
+
+import numpy as np
 
 from sarcasm._version import __version__
 
@@ -57,12 +57,6 @@ class ImageMetadata:
             self.sarcasm_version = __version__
         if not hasattr(self, 'timestamp_analysis') or self.timestamp_analysis is None:
             self.timestamp_analysis = datetime.datetime.now().isoformat()
-
-        # Create time array if we have both frametime and a stack
-        if self.frametime and self.n_stack > 1:
-            self.time = np.arange(0, self.n_stack * self.frametime, self.frametime)
-        else:
-            self.time = None
 
     def add_user_info(self, **kwargs):
         """Add arbitrary user metadata after initialization."""

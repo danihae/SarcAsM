@@ -538,6 +538,14 @@ class SarcAsM:
         self.metadata.timestamps = ts
         self.metadata.channel = self.metadata.channel
 
+        # Create time array if we have both frametime and a stack
+        if self.metadata.frametime and self.metadata.n_stack > 1:
+            self.metadata.time = np.arange(0, self.metadata.n_stack *
+                                  self.metadata.frametime,
+                                  self.metadata.frametime)
+        else:
+            self.metadata.time = None
+
         # Add user info
         self.metadata.add_user_info(**self.info)
 
