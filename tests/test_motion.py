@@ -224,16 +224,16 @@ class TestMotionIntegration:
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
         sarc.delete_lois()
-        sarc.detect_lois(n_lois=2, persistence=6, mode='fit_straight_line')
+        sarc.detect_lois(n_lois=2, persistence=5, mode='fit_straight_line')
         
         lois = sarc.get_list_lois()
         if len(lois) < 2:
             pytest.skip("Not enough LOIs detected for multiple LOI test")
             
         # Test first LOI
-        # file1, roi1 = lois[0]
-        # mot_obj1 = Motion(file1, roi1)
-        # mot_obj1.full_analysis_loi()
+        file1, roi1 = lois[0]
+        mot_obj1 = Motion(file1, roi1)
+        mot_obj1.full_analysis_loi()
         
         # Test second LOI
         file2, roi2 = lois[1]
@@ -241,7 +241,7 @@ class TestMotionIntegration:
         mot_obj2.full_analysis_loi()
         
         # Verify both analyses completed
-        # assert 'delta_slen' in mot_obj1.loi_data
+        assert 'delta_slen' in mot_obj1.loi_data
         assert 'delta_slen' in mot_obj2.loi_data      
 
         # Cleanup intermediate files
