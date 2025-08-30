@@ -18,4 +18,4 @@ jobs:
           python-version: '3.12'
       - run: pip install uv
       - run: uv build
-      - run: uv publish --no-build
+      - run: uv publish
