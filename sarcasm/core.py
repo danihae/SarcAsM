@@ -34,7 +34,7 @@ class SarcAsM:
 
     Parameters
     ----------
-    filepath : str | os.PathLike
+    file_path : str | os.PathLike
         Path to the TIFF file for analysis.
     restart : bool, optional
         If True, deletes existing analysis and starts fresh (default: False).
@@ -65,7 +65,7 @@ class SarcAsM:
 
     Attributes
     ----------
-    filepath : str
+    file_path : str
         Absolute path to the input TIFF file.
     base_dir : str
         Base directory for all analysis artefacts of this TIFF.
@@ -94,11 +94,9 @@ class SarcAsM:
         Binary sarcomere mask.
     """
 
-    metadata: ImageMetadata
-
     def __init__(
             self,
-            filepath: Union[str, os.PathLike],
+            file_path: Union[str, os.PathLike],
             restart: bool = False,
             pixelsize: Union[float, None] = None,
             frametime: Union[float, None] = None,
@@ -110,9 +108,9 @@ class SarcAsM:
             **info: Dict[str, Any]
     ):
         # Convert filename to absolute path (as a string)
-        self.filepath = os.path.abspath(str(filepath))
-        if not os.path.exists(self.filepath):
-            raise FileNotFoundError(f"Input file not found: {self.filepath}")
+        self.file_path = os.path.abspath(str(file_path))
+        if not os.path.exists(self.file_path):
+            raise FileNotFoundError(f"Input file not found: {self.file_path}")
 
         # Configuration
         self.auto_save = auto_save
@@ -121,7 +119,7 @@ class SarcAsM:
         self.info = info
 
         # Directory structure: use the filename without extension as the base directory
-        base_name = os.path.splitext(self.filepath)[0]
+        base_name = os.path.splitext(self.file_path)[0]
         self.base_dir = base_name + '/'  # This is a directory path as a string.
         self.data_dir = os.path.join(self.base_dir, "data/")
         self.analysis_dir = os.path.join(self.base_dir, "analysis/")
@@ -145,8 +143,8 @@ class SarcAsM:
 
         # Initialize metadata
         self.metadata = ImageMetadata(
-            file_name=os.path.basename(self.filepath),
-            file_path=self.filepath,
+            file_name=os.path.basename(self.file_path),
+            file_path=self.file_path,
             pixelsize = pixelsize,
             frametime = frametime,
             channel = channel,
@@ -194,7 +192,7 @@ class SarcAsM:
     def __getattr__(self, name: str) -> Any:
         """Dynamic loading of analysis result TIFFs"""
         attr_map = {
-            'image': self.filepath,
+            'image': self.file_path,
             'zbands': self.file_zbands,
             'zbands_fast_movie': self.file_zbands_fast_movie,
             'mbands': self.file_mbands,
@@ -205,16 +203,16 @@ class SarcAsM:
 
         if name in attr_map:
             import tifffile
-            filepath = attr_map[name]
+            file_path = attr_map[name]
             if name == 'image':
                 return self.read_imgs()
             else:
-                if not os.path.exists(filepath):
+                if not os.path.exists(file_path):
                     raise FileNotFoundError(
-                        f"Required analysis file missing: {os.path.basename(filepath)}\n"
+                        f"Required analysis file missing: {os.path.basename(file_path)}\n"
                         f"Run the 'detect_sarcomeres' to create this file."
                     )
-                return tifffile.imread(filepath)
+                return tifffile.imread(file_path)
 
         raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
 
@@ -233,7 +231,7 @@ class SarcAsM:
             f"╔══════════════════════════════════════════════════════",
             f"║ SarcAsM Analysis v{self.metadata.version}",
             f"║ ─────────────────────────────────────────────────────",
-            f"║ File path: {os.path.basename(self.filepath)}",
+            f"║ File path: {os.path.basename(self.file_path)}",
             f"║ Base directory: {os.path.dirname(self.base_dir)}",
             f"║ Device: {self.device}",
             f"║ Pixel size: {round(self.metadata.pixelsize, 5)} µm",
@@ -253,7 +251,7 @@ class SarcAsM:
         """
         Save the current metadata object to self.meta_file as JSON.
         """
-        self.metadata.save_to_file(Path(self.meta_file))
+        ImageMetadata.save_to_file(self.metadata, self.meta_file)
 
     def read_imgs(self, frames=None, axes=None):
         """
@@ -271,7 +269,7 @@ class SarcAsM:
         np.ndarray
             Image data in internal format: (Y, X) or (Stack, Y, X).
         """
-        with tifffile.TiffFile(self.filepath) as tif:
+        with tifffile.TiffFile(self.file_path) as tif:
             series = tif.series[0]
             raw_data = series.asarray()
 
@@ -502,7 +500,7 @@ class SarcAsM:
         ft = float(ft) if ft else None
 
         # Apply overrides - user values take precedence when provided
-        self.metadata.pixelsize = self.metadata.pixelsize if self.metadata.pixelsize is not None else px
+        self.metadata.pixelsize = self.metadata.pixelsize if self.metadata.pixelsize is not None else (float(px) if px is not None else None)
         self.metadata.frametime = self.metadata.frametime if self.metadata.frametime is not None else ft
 
         # Calculate stack length
@@ -515,7 +513,7 @@ class SarcAsM:
         # Validation checks
         if self.metadata.pixelsize is None and not self.use_gui:
             raise MetaDataError(
-                f"Pixel size could not be extracted from {self.filepath}. "
+                f"Pixel size could not be extracted from {self.file_path}. "
                 f"Please enter manually (e.g., Structure(filename, pixelsize=0.1))."
             )
 
@@ -551,8 +549,7 @@ class SarcAsM:
 
         # Save metadata if auto_save is enabled
         if self.auto_save:
-            meta_file = Path(self.data_dir) / "metadata.json"
-            self.metadata.save_to_file(meta_file)
+            ImageMetadata.save_to_file(self.metadata, self.meta_file)
 
         return self.metadata
 

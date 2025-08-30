@@ -24,16 +24,16 @@ from sarcasm._version import __version__
 
 @dataclass
 class ImageMetadata:
-    """Complete metadata container with persistence capabilities."""
+    """Metadata of tif file."""
 
     # Core image properties (set during read_imgs)
-    axes: str = ""
+    axes: str | None = None
     pixelsize: Optional[float] = None
     frametime: Optional[float] = None
     shape_orig: Tuple[int, ...] = field(default_factory=tuple)
-    shape: Tuple[int, ...] = None
-    n_stack: int = None
-    size: Tuple[int, int] = None
+    shape: Tuple[int, ...] | None = None
+    n_stack: int | None = None
+    size: Tuple[int, int] | None = None
     timestamps: Optional[List[float]] = None
 
     # File properties (set during initialization)
@@ -58,6 +58,12 @@ class ImageMetadata:
         if not hasattr(self, 'timestamp_analysis') or self.timestamp_analysis is None:
             self.timestamp_analysis = datetime.datetime.now().isoformat()
 
+        # Create time array if we have both frametime and a stack
+        if self.frametime is not None and self.n_stack is not None and self.n_stack > 1:
+            self.time = np.arange(0, self.n_stack * self.frametime, self.frametime)
+        else:
+            self.time = None
+
     def add_user_info(self, **kwargs):
         """Add arbitrary user metadata after initialization."""
         self.user_info.update(kwargs)
@@ -65,10 +71,6 @@ class ImageMetadata:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         result = asdict(self)
-
-        # Handle numpy arrays
-        if self.time is not None:
-            result['time'] = self.time.tolist()
 
         # Flatten user_info into the main dict
         user_info = result.pop('user_info', {})
@@ -90,10 +92,6 @@ class ImageMetadata:
         # Create instance
         instance = cls(**known_data)
 
-        # Manually set init=False fields after initialization
-        if 'time' in data and data['time'] is not None:
-            instance.time = np.array(data['time'])
-
         # Add remaining data as user_info
         remaining_user_data = {k: v for k, v in user_data.items()
                                if k not in dataclass_fields}
@@ -101,14 +99,22 @@ class ImageMetadata:
 
         return instance
 
-    def save_to_file(self, filepath: Path):
+    @classmethod
+    def save_to_file(cls, instance, filepath: Path):
         """Save metadata to JSON file."""
+        # Convert numpy array to list for JSON serialization
+        data = instance.to_dict()
+        if 'time' in data and isinstance(data['time'], np.ndarray):
+            data['time'] = data['time'].tolist()
         with open(filepath, 'w') as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(data, f, indent=2)
 
     @classmethod
     def load_from_file(cls, filepath: Path) -> 'ImageMetadata':
         """Load metadata from JSON file."""
         with open(filepath, 'r') as f:
             data = json.load(f)
+        # Convert time list back to numpy array
+        if 'time' in data and isinstance(data['time'], list):
+            data['time'] = np.array(data['time'])
         return cls.from_dict(data)

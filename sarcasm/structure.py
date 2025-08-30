@@ -57,8 +57,8 @@ class Structure(SarcAsM):
 
     Parameters
     ----------
-    filepath : str | os.PathLike
-        Path to the image file that contains the myocyte.
+    file_path : str | os.PathLike
+        Path to the image tif file.
     restart : bool, optional
         If ``True`` the previous analysis folder is deleted and a fresh run is
         started (default: ``False``).
@@ -92,7 +92,7 @@ class Structure(SarcAsM):
     """
 
     def __init__(self,
-                 filepath: Union[str, os.PathLike],
+                 file_path: Union[str, os.PathLike],
                  restart: bool = False,
                  pixelsize: Union[float, None] = None,
                  frametime: Union[float, None] = None,
@@ -106,7 +106,7 @@ class Structure(SarcAsM):
         Instantiate a Structure object and initialize the common SarcAsM base.
         """
         super().__init__(
-            filepath=filepath,
+            file_path=file_path,
             restart=restart,
             pixelsize=pixelsize,
             frametime=frametime,
@@ -198,14 +198,15 @@ class Structure(SarcAsM):
             new_key = key.replace('timepoints', 'frames')
             self.data[new_key] = self.data[key]
             if isinstance(self.data[new_key], str) and self.data[new_key] == 'all':
-                self.data[new_key] = list(range(self.metadata.n_stack))
+                n_stack = self.metadata.n_stack if self.metadata.n_stack is not None else 0
+                self.data[new_key] = list(range(n_stack))
 
         if self.data is None:
             raise Exception('Loading of structure failed')
 
     def get_list_lois(self):
         """Returns list of LOIs"""
-        return Utils.get_lois_of_file(self.filepath)
+        return Utils.get_lois_of_file(self.file_path)
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           model_path: str = None, max_patch_size: Tuple[int, int] = (1024, 1024),
@@ -287,11 +288,11 @@ class Structure(SarcAsM):
         print('\nPredicting sarcomeres ...')
         if model_path is None or model_path == 'generalist':
             model_path = os.path.join(self.model_dir, 'model_sarcomeres_generalist.pt')
-            if self.metadata.pixelsize < 0.1:
+            if self.metadata.pixelsize is not None and self.metadata.pixelsize < 0.1:
                 print(
                     f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is smaller than the optimal range "
                     f"(0.1-0.35 µm). For using it pixelsize might be too small. Consider increasing rescale_factor for optimal results.")
-            elif self.metadata.pixelsize > 0.35:
+            elif self.metadata.pixelsize is not None and self.metadata.pixelsize > 0.35:
                 print(
                     f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is larger than the optimal range "
                     f"(0.1-0.35 µm). For using it pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
@@ -1319,16 +1320,26 @@ class Structure(SarcAsM):
                                  f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
         IOUtils.json_serialize(loi_data, save_name)
 
-    def detect_lois(self, frame: int = 0, n_lois: int = 4, ratio_seeds: float = 0.1, persistence: int = 4,
+    def detect_lois(self, frame: int = 0, 
+                    n_lois: int = 4, 
+                    ratio_seeds: float = 0.1, 
+                    persistence: int = 4,
                     threshold_distance: float = 0.5,
-                    mode: str = 'longest_in_cluster', random_seed: Optional[int] = None,
-                    number_lims: Tuple[int, int] = (10, 50), length_lims: Tuple[float, float] = (0, 200),
+                    mode: str = 'longest_in_cluster', 
+                    random_seed: Optional[int] = None,
+                    number_lims: Tuple[int, int] = (10, 50), 
+                    length_lims: Tuple[float, float] = (0, 200),
                     sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
                     sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
                     midline_mean_length_lims: Tuple[float, float] = (0, 50),
                     midline_std_length_lims: Tuple[float, float] = (0, 50),
-                    midline_min_length_lims: Tuple[float, float] = (0, 50), distance_threshold_lois: float = 40,
-                    linkage: str = 'single', linewidth: float = 0.65, order: int = 0, export_raw: bool = False) -> None:
+                    midline_min_length_lims: Tuple[float, float] = (0, 50), 
+                    distance_threshold_lois: float = 40,
+                    linkage: str = 'single', 
+                    linewidth: float = 0.65, 
+                    order: int = 0, 
+                    export_raw: bool = False
+                    ) -> None:
         """
         Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
 
