@@ -4,13 +4,26 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "sarc-asm"
-version = "0.2.1"
-description = "Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
+description = "AI-based Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 authors = [
     { name = "Daniel Haertter", email = "dani.hae@posteo.de" }
 ]
+license = { file = "LICENSE" }
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
 dependencies = [
     "numpy>=2.2.5",
     "orjson>=3.10.0,<4.0.0",
@@ -35,6 +48,9 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/danihae/SarcAsM"
+Documentation = "https://sarcasm.readthedocs.io"
+Issues = "https://github.com/danihae/SarcAsM/issues"
+Changelog = "https://github.com/danihae/SarcAsM/releases"
 
 [project.scripts]
 sarcasm = "sarcasm_app.__main__:main"
@@ -43,12 +59,28 @@ sarcasm = "sarcasm_app.__main__:main"
 dev = [
     "notebook>=7.0.0,<8.0.0"
 ]
+test = [
+    "pytest>=8.4.1",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",  # For parallel test execution
+]
 
 [tool.poetry]
+name = "sarc-asm"
+version = "0.2.3"
+description = "AI-based Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
+authors = ["Daniel Haertter <dani.hae@posteo.de>"]
 packages = [
     { include = "sarcasm" },
     { include = "sarcasm_app" },
     { include = "contraction_net" }
+]
+include = [{ path = "LICENSE", format = ["sdist", "wheel"] }]
+
+# Exclude large test data from package distribution
+exclude = [
+    "test_data/**/*",
+    "test_data/"
 ]
 
 [tool.poetry.group.docs]
