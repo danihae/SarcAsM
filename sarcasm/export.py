@@ -61,7 +61,7 @@ class MultiStructureAnalysis:
         self.experiment = experiment
         self.files = list_files
         self.conditions = conditions
-        self.data = None
+        self.data = pd.DataFrame
 
         if load_data:
             self.load_data()
