@@ -8,6 +8,7 @@ jobs:
   build-and-publish:
     if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-test')
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     steps:
