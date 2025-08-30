@@ -1,19 +1,8 @@
 .idea/
-/notebooks_private/
-/models_old/
-/training_data/
-/training_temp/
-/benchmarking/
 /build/
-/notebooks_sarcasm/
-/test_data_sarcasm_paper/
-/SarcAsM_dist/
 /dist/
-/_test_data/
-/zenodo/
-/training_data/
-/training_data_final/
 /.DS_Store
+/private/
 /.vscode/
 *.pyc
 *.pyo
@@ -22,3 +11,5 @@ __pycache__/
 *.egg-info/
 *.log
 *.DS_Store
+sarcasm/.DS_Store
+scripts/.DS_Store
