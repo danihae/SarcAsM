@@ -4,7 +4,9 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*' # Trigger on version tags like v0.2.3
-
+    tags-ignore:
+      - 'v*-test*'              # But explicitly ignore tags that end with -test
+      
 jobs:
   build-and-publish:
     name: Build and publish to PyPI
