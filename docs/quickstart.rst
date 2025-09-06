@@ -14,8 +14,8 @@ More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
     from sarcasm import *
 
     # initialize Structure object for tif-file
-    filename = '/path/to/file.tif'
-    sarc_obj = Structure(filename)
+    file_path = '/path/to/file.tif'
+    sarc_obj = Structure(file_path)
 
     # detect sarcomere Z-bands, M-bands, orientation, sarcomere mask and cell mask by deep learning
     sarc_obj.detect_sarcomeres()
@@ -45,8 +45,8 @@ More detailed instruction see :doc:`../notebooks/tutorial_motion_analysis`.
     from sarcasm import *
 
     # initialize Structure object for tif-file
-    filename = '/path/to/file.tif'
-    sarc_obj = Structure(filename)
+    file_path = '/path/to/file.tif'
+    sarc_obj = Structure(file_path)
 
     # automatically detect lines of interest (LOIs) for sarcomere tracking
     sarc_obj.detect_lois(n_lois=4)
