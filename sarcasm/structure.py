@@ -501,14 +501,16 @@ class Structure(SarcAsM):
         n_imgs = len(zbands)
 
         # create empty lists
-        none_lists = lambda: [None] * self.metadata.n_stack
+        def none_lists():
+            return [None] * self.metadata.n_stack
         z_length, z_intensity, z_straightness, z_orientation = (none_lists() for _ in range(4))
         z_lat_neighbors, z_lat_alignment, z_lat_dist = (none_lists() for _ in range(3))
         z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = (none_lists() for _ in range(3))
         z_labels, z_ends, z_lat_links, z_lat_groups = (none_lists() for _ in range(4))
 
         # create empty arrays
-        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
+        def nan_arrays():
+            return np.full(self.metadata.n_stack, np.nan)
         z_length_mean, z_length_std, z_length_max, z_length_sum, z_oop = (nan_arrays() for _ in range(5))
         n_zbands, z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(3))
         z_mask_area, z_mask_intensity, z_mask_area_ratio = (nan_arrays() for _ in range(3))
@@ -688,8 +690,10 @@ class Structure(SarcAsM):
         pixelsize = self.metadata.pixelsize
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata.n_stack
-        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
+        def none_lists():
+            return [None] * self.metadata.n_stack
+        def nan_arrays():
+            return np.full(self.metadata.n_stack, np.nan)
         (pos_vectors, pos_vectors_px, sarcomere_length_vectors,
          sarcomere_orientation_vectors) = (none_lists() for _ in range(4))
         midline_id_vectors, midline_length_vectors = (none_lists() for _ in range(2))
@@ -823,8 +827,10 @@ class Structure(SarcAsM):
         midline_length_vectors = [self.data['midline_length_vectors'][frame] for frame in list_frames]
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata.n_stack
-        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
+        def none_lists():
+            return [None] * self.metadata.n_stack
+        def nan_arrays():
+            return np.full(self.metadata.n_stack, np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
         straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
         bending_mean, bending_std = (nan_arrays() for _ in range(2))
@@ -965,8 +971,10 @@ class Structure(SarcAsM):
         midline_id_vectors = [np.asarray(self.data['midline_id_vectors'][t]) for t in list_frames]
 
         # create empty arrays
-        none_lists = lambda: [None] * self.metadata.n_stack
-        nan_arrays = lambda: np.full(self.metadata.n_stack, np.nan)
+        def none_lists():
+            return [None] * self.metadata.n_stack
+        def nan_arrays():
+            return np.full(self.metadata.n_stack, np.nan)
         n_domains, domain_area_mean, domain_area_std = (nan_arrays() for _ in range(3))
         domain_slen_mean, domain_slen_std = (nan_arrays() for _ in range(2))
         domain_oop_mean, domain_oop_std = (nan_arrays() for _ in range(2))
@@ -1936,7 +1944,7 @@ class Structure(SarcAsM):
 
 
         else:
-            sarcomere_length_vectors, z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
+            sarcomere_length_vectors, _z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
 
         return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, n_mbands)

@@ -572,7 +572,7 @@ class TrainingDataGenerator:
         """
         # Transform FWHM to sigma
         minor_sigma = minor / 2.355
-        major_sigma = major / 2.355
+        major / 2.355
 
         # Calculate the size of the kernel in pixels and create meshgrid
         size_pixel = TrainingDataGenerator.round_up_to_odd(size / pixelsize)
@@ -909,7 +909,7 @@ class TrainingDataGenerator:
         props = skimage.measure.regionprops_table(mbands_labels, properties=['label', 'coords', 'feret_diameter_max'])
         list_labels, coords_mbands, length_mbands = props['label'], props['coords'], props['feret_diameter_max']
 
-        pos_vectors_px, pos_vectors, mband_id_vectors, mband_length_vectors = [], [], [], []
+        pos_vectors_px, _pos_vectors, mband_id_vectors, mband_length_vectors = [], [], [], []
         if n_mbands > 0:
             for i, (label_i, coords_i, length_mband_i) in enumerate(
                     zip(list_labels, coords_mbands, length_mbands)):

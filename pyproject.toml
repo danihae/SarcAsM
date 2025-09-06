@@ -54,7 +54,7 @@ Changelog = "https://github.com/danihae/SarcAsM/releases"
 sarcasm = "sarcasm_app.__main__:main"
 
 [project.optional-dependencies]
-dev = ["notebook>=7.0.0,<8.0.0"]
+dev = ["notebook>=7.0.0,<8.0.0", "ruff>=0.6.0"]
 test = ["pytest>=8.4.1", "pytest-cov>=4.0.0", "pytest-xdist>=3.0.0"]
 docs = [
   "sphinx>=7.0,<8.0",
@@ -62,6 +62,37 @@ docs = [
   "sphinx-autoapi>=3.0,<4.0",
   "nbsphinx>=0.9.0,<0.10.0"
 ]
+
+[tool.ruff]
+line-length = 88
+exclude = [
+    ".git",
+    ".mypy_cache", 
+    ".ruff_cache",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "docs"
+]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E4",  # Import errors
+    "E7",  # Statement errors  
+    "E9",  # Runtime errors
+    "F",   # Pyflakes (undefined names, unused imports)
+]
+
+ignore = [
+    "E501",  # Line too long (let formatter handle this)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"test_*.py" = ["F401"]   # Allow unused imports in tests
+"docs/*" = ["E402"]      # Allow import violations in docs
 
 [tool.hatch.build.targets.sdist]
 include = [

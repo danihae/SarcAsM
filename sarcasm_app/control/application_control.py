@@ -334,7 +334,7 @@ class ApplicationControl:
                     labels_groups[frame] = labels_groups_frame
 
                     z_ends_frame = np.array(self.model.cell.data['z_ends'][frame], dtype=float)
-                    z_ends_frame[z_ends_frame == None] = np.nan
+                    z_ends_frame[z_ends_frame is None] = np.nan
                     z_ends_frame = z_ends_frame / self.model.cell.metadata.pixelsize
 
                     z_links_frame = self.model.cell.data['z_lat_links'][frame]

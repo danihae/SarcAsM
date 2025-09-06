@@ -17,7 +17,6 @@ import os.path
 import warnings
 from typing import Union, Tuple, Optional, Literal
 
-import matplotlib
 import numpy as np
 from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
@@ -1112,7 +1111,7 @@ class Plots:
                                    height_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         if colorbar:
-            cbar = plt.colorbar(mappable=plot, ax=ax, shrink=shrink_colorbar, orientation=orient_colorbar,
+            plt.colorbar(mappable=plot, ax=ax, shrink=shrink_colorbar, orientation=orient_colorbar,
                                 label='Myofibril length [µm]')
         ax.set_xticks([])
         ax.set_yticks([])
