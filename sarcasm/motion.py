@@ -35,26 +35,26 @@ from sarcasm.utils import Utils
 class Motion(SarcAsM):
     """Class for tracking and analysis of sarcomere motion at line of interest LOI"""
 
-    def __init__(self, filename: str, loi_name: str, restart: bool = False, auto_save: bool = True):
+    def __init__(self, file_path: str, loi_name: str, restart: bool = False, auto_save: bool = True):
         """
         Initialization of a Motion object for single LOI (Line of Interest) analysis
 
         Parameters
         ----------
-        filename : str
-            Filename of cardiomyocyte tif-movie
+        file_path : str
+            File path of cardiomyocyte tif-movie
         loi_name : str
-            Filename of LOI (only basename). All LOI files can be found by loi_files = glob.glob(cell.folder + '*.json')
+            Name of LOI (only basename). All LOI files can be found by loi_files = glob.glob(cell.folder + '*.json')
         restart : bool
             If True, analysis is started from beginning, and empty LOI dictionary is initialized
         auto_save : bool
             If True, LOI dictionary is saved at end of processing steps.
         """
-        super().__init__(filename)  # init super SarcAsM object
+        super().__init__(file_path)  # init super SarcAsM object
         assert self.metadata.frametime is not None, "frametime is not defined in metadata"
 
         self.loi_data = {}  # init empty dictionary
-        self.loi_file = os.path.join(os.path.splitext(filename)[0], loi_name)  # folder for loi data
+        self.loi_file = os.path.join(os.path.splitext(file_path)[0], loi_name)  # folder for loi data
         self.loi_name = Motion.get_loi_name_from_file_name(loi_name)  # loi_name is the file name of the json self file
 
         # create folder for LOI (sub-folder in cell folder) for analysis
@@ -88,8 +88,8 @@ class Motion(SarcAsM):
             self.store_loi_data()
 
     @staticmethod
-    def get_loi_name_from_file_name(filename) -> str:
-        return filename.replace(".temp", "").replace("_loi", "").replace(".json", "").replace(".csv", "")
+    def get_loi_name_from_file_name(file_name) -> str:
+        return file_name.replace(".temp", "").replace("_loi", "").replace(".json", "").replace(".csv", "")
 
     def __get_loi_data_file_name(self, is_temp_file=False) -> str:
         if is_temp_file:
@@ -309,7 +309,7 @@ class Motion(SarcAsM):
         """
 
         # select weights for convolutional neural network
-        if model == None or model is 'default':
+        if model == None or model == 'default':
             model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,

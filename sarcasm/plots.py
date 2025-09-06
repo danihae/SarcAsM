@@ -78,7 +78,7 @@ class Plots:
 
     @staticmethod
     def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
-                                filename=None):
+                                file_path=None):
         """
         Plots a summary of the motion of the line of interest (LOI).
 
@@ -92,8 +92,8 @@ class Plots:
             The time limits for the plot in seconds. Defaults to (0, 12).
         t_lim_overlay : tuple of float, optional
             The time limits for the overlay plots in seconds. Defaults to (-0.1, 2.9)
-        filename : str, optional
-            The filename to save the plot. Defaults to None.
+        file_path : str, optional
+            The file path to save the plot. Defaults to None.
         """
 
         mosaic = """
@@ -105,7 +105,7 @@ class Plots:
 
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_2cols),
                                       constrained_layout=True)
-        title = f'File: {motion_obj.filepath}, \nLOI: {motion_obj.loi_name}'
+        title = f'File: {motion_obj.file_path}, \nLOI: {motion_obj.loi_name}'
         fig.suptitle(title, fontsize=PlotUtils.fontsize)
 
         # A- image cell w/ LOI
@@ -128,13 +128,13 @@ class Plots:
 
         PlotUtils.label_all_panels(axs)
 
-        if filename is None:
-            filename = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
-        fig.savefig(filename, dpi=PlotUtils.dpi)
+        if file_path is None:
+            file_path = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
+        fig.savefig(file_path, dpi=PlotUtils.dpi)
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: Structure, frame: int = 0, filepath: str = None,
+    def plot_loi_detection(sarc_obj: Structure, frame: int = 0, file_path: str = None,
                            cmap_z_bands='Greys'):
         """
         Plots all steps of automated LOI finding algorithm
@@ -145,7 +145,7 @@ class Plots:
             Instance of Structure class
         frame: int
             The time point to plot.
-        filepath: str
+        file_path: str
             Path to save the plot. If None, plot is not saved.
         cmap_z_bands : str, optional
             Colormap of Z-bands. Defaults to 'Greys'.
@@ -197,8 +197,8 @@ class Plots:
                            fontweight='bold')
         axs['d'].set_title('4. LOI lines', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
 
-        if filepath is not None:
-            fig.savefig(filepath, dpi=300)
+        if file_path is not None:
+            fig.savefig(file_path, dpi=300)
         plt.show()
 
     @staticmethod

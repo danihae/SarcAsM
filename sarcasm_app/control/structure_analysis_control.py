@@ -18,7 +18,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import SarcAsM, Structure
+from sarcasm import Structure
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from .popup_export import ExportPopup
@@ -162,7 +162,7 @@ class StructureAnalysisControl:
         if not self.__chk_initialized():
             return
         cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Cell mask analysis completed.'
+        message_finished = 'Cell mask analysis completed.'
 
         def __internal_call(w, m: ApplicationModel):
             cell.analyze_cell_mask(frames=m.parameters.get_parameter('structure.frames').get_value(),
@@ -391,7 +391,7 @@ class StructureAnalysisControl:
             return
 
         from pathlib import Path
-        name=Path(self.__main_control.model.cell.filepath).stem
+        name=Path(self.__main_control.model.cell.file_path).stem
         self.__popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='structure',filename_pattern=f'%_{name}.$ext')
         self.__popup.show_popup()
 

@@ -12,7 +12,6 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-import numpy as np
 from PyQt5.QtWidgets import QFileDialog
 
 from sarcasm import Plots
@@ -65,8 +64,8 @@ class MotionAnalysisControl:
         # line objects müssten also alle im line_dict drin sein
         cell = TypeUtils.unbox(self.__main_control.model.cell)
 
-        line = self.__main_control.model.line_dictionary[cell.filepath][txt]
-        file_name, scan_line = self.__main_control.get_file_name_from_scheme(cell.filepath, txt)
+        line = self.__main_control.model.line_dictionary[cell.file_path][txt]
+        file_name, scan_line = self.__main_control.get_file_name_from_scheme(cell.file_path, txt)
         if self.__main_control.model.sarcomere is None or \
                 self.__main_control.model.sarcomere.loi_name != Motion.get_loi_name_from_file_name(file_name):
             self.__main_control.model.init_sarcomere(file_name)
@@ -245,7 +244,7 @@ class MotionAnalysisControl:
             return
 
         from pathlib import Path
-        name = Path(self.__main_control.model.cell.filepath).stem
+        name = Path(self.__main_control.model.cell.file_path).stem
         self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion',filename_pattern=f'%_{name}_{self.__main_control.model.sarcomere.loi_name}.$ext')
         self.__export_popup.show_popup()
 

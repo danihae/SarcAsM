@@ -184,16 +184,16 @@ class ApplicationControl:
 
         line_key_points = (line_start, line_end, line_thickness,line) # add line data to key points entry
         list_entry = self.get_entry_key_for_line(line_key_points)
-        if list_entry in self.model.line_dictionary[self.model.cell.filepath]:  # if element already contained, ignore
+        if list_entry in self.model.line_dictionary[self.model.cell.file_path]:  # if element already contained, ignore
             # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
-            if 'last' in self.model.line_dictionary[self.model.cell.filepath] and line_key_points == \
-                    self.model.line_dictionary[self.model.cell.filepath]['last']:
-                file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.filepath, 'last')
+            if 'last' in self.model.line_dictionary[self.model.cell.file_path] and line_key_points == \
+                    self.model.line_dictionary[self.model.cell.file_path]['last']:
+                file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.file_path, 'last')
                 self.model.init_sarcomere(file_name)
             return
 
         # add line and line_ux to dictionary for later usage
-        self.model.line_dictionary[self.model.cell.filepath][list_entry] = line_key_points
+        self.model.line_dictionary[self.model.cell.file_path][list_entry] = line_key_points
         # add line to napari
         self.__add_line_to_napari(line)
 
@@ -201,7 +201,7 @@ class ApplicationControl:
         # todo: should be done via callback method
 
         if self.__callback_loi_list_updated is not None:
-            dictionary_entry=self.model.line_dictionary[self.model.cell.filepath]
+            dictionary_entry=self.model.line_dictionary[self.model.cell.file_path]
             self.__callback_loi_list_updated(dictionary_entry)
 
         pass
@@ -532,7 +532,7 @@ class ApplicationControl:
                     self.call_lambda(self, parameters)
                     self.finished_successful.emit()
                     self.succeeded = True
-                except Exception as e:
+                except Exception:
                     # todo: improve exception display, type of exception, message etc.
                     tb = traceback.format_exc()
                     print(tb)

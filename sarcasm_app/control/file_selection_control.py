@@ -203,8 +203,8 @@ class FileSelectionControl:
         # init or update dictionary
         cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
 
-        if cell.filepath not in self.__main_control.model.line_dictionary:
-            self.__main_control.model.line_dictionary[cell.filepath] = {}
+        if cell.file_path not in self.__main_control.model.line_dictionary:
+            self.__main_control.model.line_dictionary[cell.file_path] = {}
             pass
 
         self._init_meta_data()

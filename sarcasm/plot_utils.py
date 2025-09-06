@@ -264,7 +264,7 @@ class PlotUtils:
         ax.tick_params(axis='x', labelrotation=rotation)
 
     @staticmethod
-    def plot_func_to_img(sarc_obj: Union[SarcAsM, Motion], plot_func, img_filename, figsize=(6, 6), scalebar=False,
+    def plot_func_to_img(sarc_obj: Union[SarcAsM, Motion], plot_func, img_file_path, figsize=(6, 6), scalebar=False,
                          dpi=300):
         """
         Generates a plot using a specified plotting function and saves it as an image file.
@@ -276,8 +276,8 @@ class PlotUtils:
         plot_func : function
             The plotting function that takes an Axes object, a sarcomere object, and a boolean indicating
             whether to include a scalebar. It should plot the data onto the provided Axes object.
-        img_filename : str
-            The filename (including path) where the image will be saved.
+        img_file_path : str
+            The file path where the image will be saved.
         figsize : tuple of int or float, optional
             The size of the figure (width, height) in inches. Default is (6, 6).
         scalebar : bool, optional
@@ -296,7 +296,7 @@ class PlotUtils:
         ax.axis('off')
 
         # Save the figure without edges or padding
-        fig.savefig(img_filename, bbox_inches='tight', pad_inches=0, dpi=dpi)
+        fig.savefig(img_file_path, bbox_inches='tight', pad_inches=0, dpi=dpi)
 
         # Close the figure
         plt.close(fig)

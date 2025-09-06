@@ -113,24 +113,24 @@ class Utils:
         return files
 
     @staticmethod
-    def get_lois_of_file(filename_cell: str) -> List[Tuple[str, str]]:
+    def get_lois_of_file(file_path: str) -> List[Tuple[str, str]]:
         """
         Get the lines of interests (LOIs) of a tif-file.
 
         Parameters
         ----------
-        filename_cell : str
-            Path to the file of the cell.
+        file_path : str
+            Path to the tif file.
 
         Returns
         -------
         list
             List of tuples, each containing the cell file path and LOI filename.
         """
-        cell_dir = filename_cell[:-4] + '/'
-        assert os.path.isdir(cell_dir), "File not yet analyzed."
-        list_lois = glob.glob(cell_dir + '*.json')
-        return [(filename_cell, os.path.basename(loi)) for loi in list_lois]
+        _dir = file_path[:-4] + '/'
+        assert os.path.isdir(_dir), "File not yet analyzed."
+        list_lois = glob.glob(_dir + '*.json')
+        return [(file_path, os.path.basename(loi)) for loi in list_lois]
 
     @staticmethod
     def open_folder(path: str):
@@ -143,7 +143,7 @@ class Utils:
             Path to the folder.
         """
         if platform.system() == "Windows":
-            os.startfile(path)
+            subprocess.Popen(["explorer", path])
         elif platform.system() == "Darwin":
             subprocess.Popen(["open", path])
         else:
@@ -815,7 +815,6 @@ class Utils:
         # correlate lines of both directions and calculate phase shift
         corr = correlate(row_even, row_uneven, mode='same')
         corr_window = corr[int(corr.shape[0] / 2 - shift_max): int(corr.shape[0] / 2 + shift_max)]
-        x = np.arange(corr.shape[0]) - corr.shape[0] / 2
         x_window = np.arange(corr_window.shape[0]) - corr_window.shape[0] / 2
         shift = int(x_window[np.argmax(corr_window)])
         print(f'Phase shift = {shift} pixel')

@@ -1,14 +1,13 @@
 import pytest
-import os
 from sarcasm import Structure, Motion
 
 
 class TestMotion:
     """Tests for LOI detection and motion analysis."""
     
-    def test_loi_detection_pipeline(self, motion_filepath):
+    def test_loi_detection_pipeline(self, motion_file_path):
         """Test complete LOI detection pipeline."""
-        sarc = Structure(motion_filepath, restart=True)
+        sarc = Structure(motion_file_path, restart=True)
         
         # Run detection pipeline
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
@@ -34,9 +33,9 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
             
-    def test_motion_object_initialization(self, motion_filepath):
+    def test_motion_object_initialization(self, motion_file_path):
         """Test Motion object creation and initialization."""
-        sarc = Structure(motion_filepath, restart=True)
+        sarc = Structure(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -55,9 +54,9 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
         
-    def test_full_analysis_loi(self, motion_filepath):
+    def test_full_analysis_loi(self, motion_file_path):
         """Test complete LOI motion analysis."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -82,9 +81,9 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
 
-    def test_get_list_lois(self, motion_filepath):
+    def test_get_list_lois(self, motion_file_path):
         """Test getting list of LOIs from Structure object."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -97,9 +96,9 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
         
-    def test_delete_lois(self, motion_filepath):
+    def test_delete_lois(self, motion_file_path):
         """Test LOI deletion functionality."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -123,9 +122,9 @@ class TestMotion:
         (2, 6, 'fit_straight_line'),
         (3, 7, 'fit_straight_line'),
     ])
-    def test_loi_detection_parameters(self, motion_filepath, n_lois, persistence, mode):
+    def test_loi_detection_parameters(self, motion_file_path, n_lois, persistence, mode):
         """Test LOI detection with different parameters."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -142,18 +141,18 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
         
-    def test_detect_sarcomeres_single_frame(self, motion_filepath):
+    def test_detect_sarcomeres_single_frame(self, motion_file_path):
         """Test sarcomere detection on single frame."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         
         # Verify detection attributes exist
         assert hasattr(sarc, 'zbands')
         assert hasattr(sarc, 'mbands')
         
-    def test_detect_z_bands_fast_movie(self, motion_filepath):
+    def test_detect_z_bands_fast_movie(self, motion_file_path):
         """Test fast Z-band detection for movies."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         
         # Run fast Z-band detection
@@ -165,9 +164,9 @@ class TestMotion:
         # Cleanup intermediate files
         sarc.remove_intermediate_tiffs()
         
-    def test_analyze_sarcomere_vectors(self, motion_filepath):
+    def test_analyze_sarcomere_vectors(self, motion_file_path):
         """Test sarcomere vector analysis."""
-        sarc = Structure(motion_filepath)
+        sarc = Structure(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         
@@ -185,10 +184,10 @@ class TestMotionIntegration:
     
     @pytest.mark.slow
     @pytest.mark.integration
-    def test_complete_motion_workflow(self, motion_filepath):
+    def test_complete_motion_workflow(self, motion_file_path):
         """Test complete motion analysis workflow from start to finish."""
         # Structure initialization and detection
-        sarc = Structure(motion_filepath, restart=True)
+        sarc = Structure(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -217,9 +216,9 @@ class TestMotionIntegration:
         
     @pytest.mark.slow
     @pytest.mark.integration  
-    def test_multiple_lois_analysis(self, motion_filepath):
+    def test_multiple_lois_analysis(self, motion_file_path):
         """Test analysis of multiple LOIs."""
-        sarc = Structure(motion_filepath, restart=True)
+        sarc = Structure(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)

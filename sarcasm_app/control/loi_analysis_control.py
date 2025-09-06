@@ -12,10 +12,9 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-import numpy as np
 import os
 
-from sarcasm import TypeUtils, SarcAsM, Structure
+from sarcasm import TypeUtils, Structure
 from .application_control import ApplicationControl
 from ..view.parameters_loi_analysis import Ui_Form as LoiAnalysisWidget
 from ..model import ApplicationModel, Parameters

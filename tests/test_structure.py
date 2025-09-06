@@ -1,32 +1,31 @@
 import pytest
-import os
 from sarcasm import Structure
 
 
 class TestStructureMetadata:
     """Test metadata functionality on one fixed file."""
 
-    def test_initialization_auto_pixelsize(self, structure_metadata_filepath):
+    def test_initialization_auto_pixelsize(self, structure_metadata_file_path):
         """Test basic Structure initialization with auto pixel size."""
-        sarc = Structure(structure_metadata_filepath, restart=True)
+        sarc = Structure(structure_metadata_file_path, restart=True)
         assert isinstance(sarc, Structure)
-        assert sarc.filepath is not None
+        assert sarc.file_path is not None
         assert sarc.metadata.pixelsize is not None
         
-    def test_initialization_manual_pixelsize(self, structure_metadata_filepath):
+    def test_initialization_manual_pixelsize(self, structure_metadata_file_path):
         """Test Structure initialization with manual pixel size."""
-        sarc = Structure(structure_metadata_filepath, restart=True, pixelsize=0.1)
+        sarc = Structure(structure_metadata_file_path, restart=True, pixelsize=0.1)
         assert isinstance(sarc, Structure)
         assert sarc.metadata.pixelsize == 0.1
         
-    def test_initialization_with_metadata(self, structure_metadata_filepath):
+    def test_initialization_with_metadata(self, structure_metadata_file_path):
         """Test Structure initialization with additional metadata."""
-        sarc = Structure(structure_metadata_filepath, cell_line='WT', treatment='control', restart=True)
+        sarc = Structure(structure_metadata_file_path, cell_line='WT', treatment='control', restart=True)
         assert isinstance(sarc, Structure)
         assert sarc.metadata.user_info['cell_line'] == 'WT'
         assert sarc.metadata.user_info['treatment'] == 'control'
         
-    def test_multiple_metadata_entries(self, structure_metadata_filepath):
+    def test_multiple_metadata_entries(self, structure_metadata_file_path):
         """Test Structure with multiple metadata entries."""
         metadata = {
             'experiment_date': '2025-08-29',
@@ -34,14 +33,14 @@ class TestStructureMetadata:
             'cell_type': 'cardiomyocyte',
             'researcher': 'Daniel'
         }
-        sarc = Structure(structure_metadata_filepath, **metadata, restart=True)
+        sarc = Structure(structure_metadata_file_path, **metadata, restart=True)
         
         for key, value in metadata.items():
             assert sarc.metadata.user_info[key] == value
         
-    def test_structure_metadata_properties(self, structure_metadata_filepath):
+    def test_structure_metadata_properties(self, structure_metadata_file_path):
         """Test that metadata is properly initialized."""
-        sarc = Structure(structure_metadata_filepath, restart=False)
+        sarc = Structure(structure_metadata_file_path, restart=False)
         
         # Check core metadata properties exist
         assert hasattr(sarc, 'metadata')
@@ -50,19 +49,19 @@ class TestStructureMetadata:
         assert hasattr(sarc.metadata, 'sarcasm_version')
         assert hasattr(sarc.metadata, 'timestamp_analysis')
         
-    def test_filepath_storage(self, structure_metadata_filepath):
+    def test_file_path_storage(self, structure_metadata_file_path):
         """Test that file path is correctly stored."""
-        sarc = Structure(structure_metadata_filepath, restart=False)
-        assert structure_metadata_filepath in sarc.filepath or structure_metadata_filepath == sarc.filepath
+        sarc = Structure(structure_metadata_file_path, restart=False)
+        assert structure_metadata_file_path in sarc.file_path or structure_metadata_file_path == sarc.file_path
 
 
 class TestStructureTimelapseAnalysis:
     """Test analysis pipeline on time-lapse files."""
 
     @pytest.mark.slow
-    def test_timelapse_sarcomere_detection(self, structure_timelapse_filepath):
+    def test_timelapse_sarcomere_detection(self, structure_timelapse_file_path):
         """Test sarcomere detection on time-lapse."""
-        sarc = Structure(structure_timelapse_filepath, restart=False)
+        sarc = Structure(structure_timelapse_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         
         # Verify detection attributes exist
@@ -71,9 +70,9 @@ class TestStructureTimelapseAnalysis:
         assert hasattr(sarc, 'cell_mask')
         
     @pytest.mark.slow
-    def test_timelapse_full_analysis(self, structure_timelapse_filepath):
+    def test_timelapse_full_analysis(self, structure_timelapse_file_path):
         """Test complete structural analysis pipeline on time-lapse."""
-        sarc = Structure(structure_timelapse_filepath, restart=False)
+        sarc = Structure(structure_timelapse_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         sarc.full_analysis_structure()
         
@@ -86,9 +85,9 @@ class TestStructureTimelapseAnalysis:
 class TestStructureSingleImageAnalysis:
     """Test analysis pipeline on single images."""
 
-    def test_single_image_sarcomere_detection(self, structure_single_filepath):
+    def test_single_image_sarcomere_detection(self, structure_single_file_path):
         """Test sarcomere detection on single image."""
-        sarc = Structure(structure_single_filepath, restart=False)
+        sarc = Structure(structure_single_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         
         # Verify detection attributes exist
@@ -96,9 +95,9 @@ class TestStructureSingleImageAnalysis:
         assert hasattr(sarc, 'mbands')
         assert hasattr(sarc, 'cell_mask')
         
-    def test_single_image_full_analysis(self, structure_single_filepath):
+    def test_single_image_full_analysis(self, structure_single_file_path):
         """Test complete structural analysis pipeline on single image."""
-        sarc = Structure(structure_single_filepath, restart=False)
+        sarc = Structure(structure_single_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         sarc.full_analysis_structure()
         
@@ -122,10 +121,10 @@ class TestStructureIntegration:
     
     @pytest.mark.slow
     @pytest.mark.integration
-    def test_complete_workflow_timelapse(self, structure_timelapse_filepath):
+    def test_complete_workflow_timelapse(self, structure_timelapse_file_path):
         """Test complete Structure workflow on time-lapse."""
         # Initialize with metadata
-        sarc = Structure(structure_timelapse_filepath, 
+        sarc = Structure(structure_timelapse_file_path, 
                         experiment_type='timelapse',
                         restart=True)
         
@@ -143,10 +142,10 @@ class TestStructureIntegration:
         assert sarc.metadata.user_info['experiment_type'] == 'timelapse'
         
     @pytest.mark.integration
-    def test_complete_workflow_single_image(self, structure_single_filepath):
+    def test_complete_workflow_single_image(self, structure_single_file_path):
         """Test complete Structure workflow on single image."""
         # Initialize with metadata
-        sarc = Structure(structure_single_filepath, 
+        sarc = Structure(structure_single_file_path, 
                         experiment_type='single_image',
                         restart=True)
         

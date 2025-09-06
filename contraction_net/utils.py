@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from scipy.ndimage import label, distance_transform_edt
-from skimage.morphology import binary_dilation, remove_small_holes, binary_closing
+from skimage.morphology import binary_dilation, binary_closing
 
 
 def simulate_training_data(folder, input_len=512, n=100, freq_range=(0.04, 0.25), prob_zeros=0.5,
@@ -121,11 +121,11 @@ def find_txt_files(root_dir):
     """
     txt_files = []
     # Walk through the directory tree
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        for filename in filenames:
-            if filename.endswith('.txt'):
+    for dirpath, dirnames, file_paths in os.walk(root_dir):
+        for file_path in file_paths:
+            if file_path.endswith('.txt'):
                 # Append the full path of text files to the list
-                txt_files.append(os.path.join(dirpath, filename))
+                txt_files.append(os.path.join(dirpath, file_path))
     return txt_files
 
 

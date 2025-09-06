@@ -230,7 +230,7 @@ class BatchProcessingControl:
         progress_notifier = self.__get_progress_notifier(worker)
 
         tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
-        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
+        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()  # todo add parallel processing
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
         channel = model.parameters.get_parameter(name='batch.channel').get_value()
@@ -488,7 +488,7 @@ class BatchProcessingControl:
     def on_search(self):
         # f_name is a tuple
         file = str(QFileDialog.getExistingDirectory(caption="Select Root Directory"))
-        if file is not None and file is not '':
+        if file is not None and file != '':
             self.__batch_processing_widget.le_root_directory.setText(file)
         pass
 

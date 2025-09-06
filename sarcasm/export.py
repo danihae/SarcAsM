@@ -82,7 +82,7 @@ class MultiStructureAnalysis:
         self.data = []
         for i, tif_file in enumerate(tqdm(self.files)):
             try:
-                sarc_obj = Structure(filepath=tif_file)
+                sarc_obj = Structure(file_path=tif_file)
                 dict_i = Export.get_structure_dict(sarc_obj, structure_keys,
                                                    experiment=self.experiment,
                                                    **self.conditions)
@@ -123,13 +123,13 @@ class MultiStructureAnalysis:
             raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                   'Set load_data=False.')
 
-    def export_data(self, filepath, format='.xlsx'):
+    def export_data(self, file_path, format='.xlsx'):
         """
         Export the DataFrame to .xlsx or .csv format.
 
         Parameters
         ----------
-        filepath : str
+        file_path : str
             Path to the output file.
         format : str, optional
             Format of the output file ('.xlsx' or '.csv') (default is '.xlsx').
@@ -140,9 +140,9 @@ class MultiStructureAnalysis:
         """
         _data = self.data.applymap(Export.flatten_single)
         if format == '.xlsx':
-            _data.to_excel(filepath, index=False)
+            _data.to_excel(file_path, index=False)
         elif format == '.csv':
-            _data.to_csv(filepath, index=False)
+            _data.to_csv(file_path, index=False)
         else:
             raise ValueError('Unsupported file format')
 
@@ -238,13 +238,13 @@ class MultiLOIAnalysis:
             raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                   'Set load_data=False.')
 
-    def export_data(self, filepath, format='.xlsx'):
+    def export_data(self, file_path, format='.xlsx'):
         """
         Export the DataFrame to .xlsx or .csv format.
 
         Parameters
         ----------
-        filepath : str
+        file_path : str
             Path to the output file.
         format : str, optional
             Format of the output file ('.xlsx' or '.csv') (default is '.xlsx').
@@ -255,9 +255,9 @@ class MultiLOIAnalysis:
         """
         _data = self.data.applymap(Export.flatten_single)
         if format == '.xlsx':
-            _data.to_excel(filepath, index=False)
+            _data.to_excel(file_path, index=False)
         elif format == '.csv':
-            _data.to_csv(filepath, index=False)
+            _data.to_csv(file_path, index=False)
         else:
             raise ValueError('Unsupported file format')
 
@@ -329,20 +329,20 @@ class Export:
         dict_ = {**metadata_dict, **dict_structure_select}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
-                dict_[condition] = value(sarc_obj.filepath)
+                dict_[condition] = value(sarc_obj.file_path)
             else:
                 dict_[condition] = value
         return dict_
 
     @staticmethod
-    def export_structure_data(filepath, sarc_obj: Union[Structure, Motion], structure_keys=None, remove_arrays=True,
+    def export_structure_data(file_path, sarc_obj: Union[Structure, Motion], structure_keys=None, remove_arrays=True,
                               fileformat='.xlsx'):
         """
         Export structure data to a file.
 
         Parameters
         ----------
-        filepath : str
+        file_path : str
             Path to the output file.
         sarc_obj : SarcAsM
             Object of SarcAsM class.
@@ -358,11 +358,11 @@ class Export:
         if remove_arrays:
             structure_df = Export.remove_arrays_dataframe(structure_df)
         if fileformat == '.xlsx':
-            structure_df.to_excel(filepath)
+            structure_df.to_excel(file_path)
         elif fileformat == '.csv':
-            structure_df.to_csv(filepath)
+            structure_df.to_csv(file_path)
         elif fileformat == '.xml':
-            structure_df.to_xml(filepath)
+            structure_df.to_xml(file_path)
 
     @staticmethod
     def remove_arrays_dataframe(df):
@@ -423,7 +423,7 @@ class Export:
         dict_ = {**metadata_dict, **dict_loi_select, 'loi_name': motion_obj.loi_name}
         for condition, value in conditions.items():
             if isinstance(value, types.FunctionType):
-                dict_[condition] = value(motion_obj.filepath)
+                dict_[condition] = value(motion_obj.file_path)
             else:
                 dict_[condition] = value
         if concat:
@@ -431,11 +431,11 @@ class Export:
                 if isinstance(value, np.ndarray):
                     if len(value.shape) == 2:
                         dict_[key] = np.concatenate(value)
-        dict_['tif_name'] = motion_obj.filepath
+        dict_['tif_name'] = motion_obj.file_path
         return dict_
 
     @staticmethod
-    def export_motion_data(mot_obj: Motion, filepath, motion_keys=None, remove_arrays=True, fileformat='.xlsx'):
+    def export_motion_data(mot_obj: Motion, file_path, motion_keys=None, remove_arrays=True, fileformat='.xlsx'):
         """
         Export motion data to a file.
 
@@ -443,7 +443,7 @@ class Export:
         ----------
         mot_obj : Motion
             Object of Motion class.
-        filepath : str
+        file_path : str
             Path to the output file.
         motion_keys : list, optional
             List of motion keys (default is None).
@@ -457,8 +457,8 @@ class Export:
         if remove_arrays:
             motion_df = Export.remove_arrays_dataframe(motion_df)
         if fileformat == '.xlsx':
-            motion_df.to_excel(filepath)
+            motion_df.to_excel(file_path)
         elif fileformat == '.csv':
-            motion_df.to_csv(filepath)
+            motion_df.to_csv(file_path)
         else:
             raise ValueError('Unsupported file format')

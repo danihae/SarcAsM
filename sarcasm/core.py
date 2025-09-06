@@ -107,7 +107,7 @@ class SarcAsM:
             device: Union[torch.device, Literal['auto', 'mps', 'cuda', 'cpu']] = 'auto',
             **info: Dict[str, Any]
     ):
-        # Convert filename to absolute path (as a string)
+        # Convert file_path to absolute path (as a string)
         self.file_path = os.path.abspath(str(file_path))
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"Input file not found: {self.file_path}")
@@ -295,7 +295,11 @@ class SarcAsM:
             data = self._permute_to_internal(raw_data, processed_axes)
 
             # Apply frame selection if specified
-            if frames not in (None, 'all') and meta.n_stack > 1:
+            if isinstance(frames, np.ndarray):
+                frames = list(frames)
+            if isinstance(frames, str) and frames != 'all':
+                raise ValueError("'frames' has to be list, ndarray, int or 'all'.")
+            if frames is not None and not frames == 'all' and meta.n_stack > 1:
                 data = data[frames]
 
             # Final cleanup and metadata updates
@@ -514,7 +518,7 @@ class SarcAsM:
         if self.metadata.pixelsize is None and not self.use_gui:
             raise MetaDataError(
                 f"Pixel size could not be extracted from {self.file_path}. "
-                f"Please enter manually (e.g., Structure(filename, pixelsize=0.1))."
+                f"Please enter manually (e.g., Structure(file_path, pixelsize=0.1))."
             )
 
         if self.metadata.pixelsize and not (0.01 <= self.metadata.pixelsize <= 0.5):

@@ -15,9 +15,8 @@
 import traceback
 
 import numpy as np
-from PyQt5.QtGui import QTextBlock, QFont
 from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
-    QLineEdit, QWidget, QFileDialog, QMessageBox, QLabel
+    QLineEdit, QWidget, QFileDialog, QMessageBox
 
 from sarcasm.export import Export
 from sarcasm.type_utils import TypeUtils
@@ -164,21 +163,21 @@ class ExportPopup(QDialog):
                 self.__control.debug('exported following motion keys')
                 self.__control.debug(to_export_motion.__str__())
 
-            filepath_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure').replace('$ext',export_type)
-            filepath_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion').replace('$ext',export_type)
+            file_path_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure').replace('$ext',export_type)
+            file_path_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion').replace('$ext',export_type)
 
             if to_export_structure is not None:
                 if export_type=='csv':
-                    self.__export_to_file(filepath_structure, to_export_structure)
+                    self.__export_to_file(file_path_structure, to_export_structure)
                 elif export_type=='xlsx':
-                    self.__export_to_xlsx(filepath_structure, to_export_structure)
+                    self.__export_to_xlsx(file_path_structure, to_export_structure)
             if to_export_motion is not None:
                 if export_type=='csv':
-                    self.__export_to_file(filepath_motion, to_export_motion)
+                    self.__export_to_file(file_path_motion, to_export_motion)
                 elif export_type=='xlsx':
-                    self.__export_to_xlsx(filepath_motion, to_export_motion)
+                    self.__export_to_xlsx(file_path_motion, to_export_motion)
 
-        except Exception as e:
+        except Exception:
             tb = traceback.format_exc()
             self.__control.debug(tb)
             print('Exception occurred on export')
