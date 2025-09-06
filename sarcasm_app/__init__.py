@@ -15,8 +15,8 @@
 import sys
 import requests
 from PyQt5.QtCore import Qt, QLocale
-from PyQt5.QtGui import QPalette, QColor, QPixmap, QIcon
-from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox, QMessageBox
+from PyQt5.QtGui import QPalette, QColor, QIcon
+from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox
 from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
 
 from .control.application_control import ApplicationControl
