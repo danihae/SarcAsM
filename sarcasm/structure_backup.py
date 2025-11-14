@@ -14,29 +14,38 @@
 
 import glob
 import os
+import random
 import shutil
+import warnings
+from collections import deque
+from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List, Literal, Any
 
+import igraph as ig
+import networkx as nx
 import numpy as np
+import pandas as pd
 import tifffile
 import torch
+from bio_image_unet import multi_output_unet3d as unet3d
+from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet_3Levels
+from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
-from scipy import stats, sparse
+from joblib import Parallel, delayed
+from scipy import ndimage, stats, sparse
+from scipy.optimize import curve_fit, linear_sum_assignment
+from scipy.spatial import cKDTree
+from scipy.spatial.distance import directed_hausdorff, squareform, pdist
+from skimage import segmentation, morphology, measure
+from skimage.draw import line
+from skimage.measure import label, regionprops_table
+from skimage.morphology import skeletonize, disk, binary_dilation
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.neighbors import NearestNeighbors
 
 from sarcasm.core import SarcAsM
 from sarcasm.ioutils import IOUtils
 from sarcasm.utils import Utils
-
-# Import structure modules
-from sarcasm.structure_modules import (
-    z_band_analysis,
-    sarcomere_vectors,
-    myofibril_analysis,
-    domain_clustering,
-    kymograph,
-    detection,
-    loi_detection
-)
 
 
 class Structure(SarcAsM):
@@ -273,24 +282,42 @@ class Structure(SarcAsM):
             ).astype(images.dtype)
             print(f"Rescaled image shape: {images.shape}")
 
-        # Check pixelsize is not None
-        if self.metadata.pixelsize is None:
-            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
-        
-        # Delegate to detection module
-        detection.detect_sarcomeres_unet(
-            images=images,
-            model_path=model_path,
-            base_dir=self.base_dir,
-            model_dir=str(self.model_dir),
-            pixelsize=self.metadata.pixelsize,
-            max_patch_size=max_patch_size,
-            normalization_mode=normalization_mode,
-            clip_thres=clip_thres,
-            rescale_factor=rescale_factor,
-            device=self.device,
-            progress_notifier=progress_notifier
-        )
+        print('\nPredicting sarcomeres ...')
+        if model_path is None or model_path == 'generalist':
+            model_path = os.path.join(self.model_dir, 'model_sarcomeres_generalist.pt')
+            if self.metadata.pixelsize is not None and self.metadata.pixelsize < 0.1:
+                print(
+                    f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is smaller than the optimal range "
+                    f"(0.1-0.35 µm). For using it pixelsize might be too small. Consider increasing rescale_factor for optimal results.")
+            elif self.metadata.pixelsize is not None and self.metadata.pixelsize > 0.35:
+                print(
+                    f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(self.metadata.pixelsize, 3)} µm) is larger than the optimal range "
+                    f"(0.1-0.35 µm). For using it pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
+            print(f"Using default model: {model_path}. ")
+        _ = Predict_UNet(images, model_params=model_path, result_path=self.base_dir,
+                         max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                         network=MultiOutputNestedUNet_3Levels,
+                         clip_threshold=clip_thres, device=self.device,
+                         progress_notifier=progress_notifier)
+        del _
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        if rescale_factor != 1.0:
+            output_files = [
+                self.file_zbands, self.file_mbands,
+                self.file_orientation, self.file_cell_mask,
+                self.file_sarcomere_mask
+            ]
+
+            output_dir = os.path.dirname(output_files[0])  # Save in same directory
+
+            Utils.scale_back(
+                paths=output_files,
+                original_xy_shape=original_xy_shape,
+                output_dir=output_dir,
+                mask_data=False
+            )
 
         _dict = {
             'params.detect_sarcomeres.frames': list_frames,
@@ -331,21 +358,19 @@ class Structure(SarcAsM):
         -------
         None
         """
+        print('\nPredicting sarcomere z-bands ...')
+
         if model_path is None:
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
-        
-        # Delegate to detection module
-        detection.detect_z_bands_fast_movie_unet(
-            images=self.read_imgs(),
-            model_path=model_path,
-            base_dir=self.base_dir,
-            model_dir=str(self.model_dir),
-            max_patch_size=max_patch_size,
-            normalization_mode=normalization_mode,
-            clip_thres=clip_thres,
-            device=self.device,
-            progress_notifier=progress_notifier
-        )
+        max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
+        if len(max_patch_size) != 3:
+            raise ValueError('patch size for prediction has to be be (frames, x, y)')
+        _ = unet3d.Predict(self.read_imgs(), model_params=model_path, result_path=self.base_dir,
+                           max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                           device=self.device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
+        del _
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         _dict = {'params.detect_z_bands_fast_movie.model': model_path,
                  'params.detect_z_bands_fast_movie.max_patch_size': max_patch_size,
                  'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,
@@ -403,9 +428,8 @@ class Structure(SarcAsM):
             cell_mask_intensity[i] = np.mean(img_i[mask_i])
 
             # total cell area and ratio to total image area
-            if self.metadata.pixelsize is not None:
-                cell_area[i] = np.sum(mask_i) * self.metadata.pixelsize ** 2
-                cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * self.metadata.pixelsize ** 2)
+            cell_area[i] = np.sum(mask_i) * self.metadata.pixelsize ** 2
+            cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * self.metadata.pixelsize ** 2)
 
         _dict = {'cell_mask_area': cell_area, 'cell_mask_area_ratio': cell_area_ratio,
                  'cell_mask_intensity': cell_mask_intensity,
@@ -500,17 +524,15 @@ class Structure(SarcAsM):
         for i, (frame_i, zbands_i, image_i, orientation_field_i) in enumerate(
                 progress_notifier.iterator(zip(list_frames, zbands, images, orientation_field), total=n_imgs)):
 
-            # Delegate to z_band_analysis module
-            labels_i, labels_skel_i = z_band_analysis.segment_z_bands(zbands_i, threshold=threshold)
+            # segment z-bands
+            labels_i, labels_skel_i = self.segment_z_bands(zbands_i)
 
             # analyze z-band features
-            z_band_features = z_band_analysis.analyze_z_bands(
-                zbands_i, labels_i, labels_skel_i, image_i, orientation_field_i,
-                pixelsize=self.metadata.pixelsize, threshold=threshold,
-                min_length=min_length, median_filter_radius=median_filter_radius,
-                a_min=a_min, theta_phi_min=theta_phi_min,
-                d_max=d_max, d_min=d_min
-            )
+            z_band_features = self._analyze_z_bands(zbands_i, labels_i, labels_skel_i, image_i, orientation_field_i,
+                                                    pixelsize=self.metadata.pixelsize, threshold=threshold,
+                                                    min_length=min_length, median_filter_radius=median_filter_radius,
+                                                    a_min=a_min, theta_phi_min=theta_phi_min,
+                                                    d_max=d_max, d_min=d_min)
 
             (
                 z_length_i, z_intensity_i, z_straightness_i, z_mask_intensity_i, z_mask_area_i, orientation_i,
@@ -677,21 +699,16 @@ class Structure(SarcAsM):
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         n_vectors, n_mbands, oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(6))
 
-        # Check pixelsize is not None
-        if pixelsize is None:
-            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
-
         # iterate images
         print('\nStarting sarcomere length and orientation analysis...')
         for i, (frame_i, zbands_i, mbands_i, orientation_field_i, sarcomere_mask_i) in enumerate(
                 progress_notifier.iterator(zip(list_frames, z_bands, mbands, orientation_field, sarcomere_mask),
                                            total=n_frames)):
 
-            # Delegate to sarcomere_vectors module
             (
                 pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i, midline_length_vectors_i,
                 sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
-                n_mbands_i) = sarcomere_vectors.get_sarcomere_vectors(zbands_i, mbands_i,
+                n_mbands_i) = self.get_sarcomere_vectors(zbands_i, mbands_i,
                                                          orientation_field_i,
                                                          pixelsize=pixelsize,
                                                          median_filter_radius=median_filter_radius,
@@ -826,8 +843,7 @@ class Structure(SarcAsM):
                     midline_length_vectors),
                 total=len(pos_vectors_px))):
             if len(np.asarray(pos_vectors_px_i).T) > 0:
-                # Delegate to myofibril_analysis module
-                line_data_i = myofibril_analysis.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
+                line_data_i = self.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
                                                sarcomere_orientation_vectors_i,
                                                midline_length_vectors_t=midline_length_vectors_i,
                                                pixelsize=self.metadata.pixelsize, ratio_seeds=ratio_seeds,
@@ -842,8 +858,8 @@ class Structure(SarcAsM):
                     bending_i = line_data_i['line_features']['bending_lines']
 
                     if len(lengths_i) > 0:
-                        # Delegate to myofibril_analysis module for map creation
-                        myof_map_i = myofibril_analysis.create_myofibril_length_map(myof_lines=lines_i, myof_length=lengths_i,
+                        # create myofibril length map
+                        myof_map_i = self.create_myofibril_length_map(myof_lines=lines_i, myof_length=lengths_i,
                                                                       pos_vectors=pos_vectors_i,
                                                                       sarcomere_orientation_vectors=sarcomere_orientation_vectors_i,
                                                                       sarcomere_length_vectors=sarcomere_length_vectors_i,
@@ -971,8 +987,7 @@ class Structure(SarcAsM):
                 zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     midline_id_vectors),
                 total=len(pos_vectors))):
-            # Delegate to domain_clustering module
-            cluster_data_t = domain_clustering.cluster_sarcomeres(pos_vectors_i, sarcomere_length_vectors_i,
+            cluster_data_t = self.cluster_sarcomeres(pos_vectors_i, sarcomere_length_vectors_i,
                                                      sarcomere_orientation_vectors_i,
                                                      pixelsize=self.metadata.pixelsize,
                                                      size=self.metadata.size,
@@ -1034,8 +1049,7 @@ class Structure(SarcAsM):
             self.data['sarcomere_length_vectors'][frame], \
             self.data['sarcomere_orientation_vectors'][frame], \
             self.data['midline_length_vectors'][frame]
-        # Delegate to myofibril_analysis module
-        loi_data = myofibril_analysis.line_growth(points_t=pos_vectors, sarcomere_length_vectors_t=sarcomere_length_vectors,
+        loi_data = self.line_growth(points_t=pos_vectors, sarcomere_length_vectors_t=sarcomere_length_vectors,
                                     sarcomere_orientation_vectors_t=sarcomere_orientation_vectors,
                                     midline_length_vectors_t=midline_length_vectors,
                                     pixelsize=self.metadata.pixelsize,
@@ -1074,24 +1088,40 @@ class Structure(SarcAsM):
         midline_min_length_lims : tuple of float, optional
             Limits for minimum length of the midline in LOI (min, max). Defaults to (0, 50).
         """
-        # Delegate to loi_detection module
-        (filtered_lois, filtered_lois_vectors,
-         filtered_features) = loi_detection.filter_lois(
-            lois=self.data['loi_data']['lines'],
-            loi_features=self.data['loi_data']['line_features'],
-            lois_vectors=self.data['loi_data']['lines_vectors'],
-            number_lims=number_lims,
-            length_lims=length_lims,
-            sarcomere_mean_length_lims=sarcomere_mean_length_lims,
-            sarcomere_std_length_lims=sarcomere_std_length_lims,
-            midline_mean_length_lims=midline_mean_length_lims,
-            midline_std_length_lims=midline_std_length_lims,
-            midline_min_length_lims=midline_min_length_lims
+        # Retrieve LOIs and their features from the structure dict
+        lois = self.data['loi_data']['lines']
+        loi_features = self.data['loi_data']['line_features']
+        lois_vectors = self.data['loi_data']['lines_vectors']
+
+        # Convert feature lists to numpy arrays for boolean operations
+        n_vectors = np.array(loi_features['n_vectors_lines'])
+        length = np.array(loi_features['length_lines'])
+        sarc_mean = np.array(loi_features['sarcomere_mean_length_lines'])
+        sarc_std = np.array(loi_features['sarcomere_std_length_lines'])
+        mid_mean = np.array(loi_features['midline_mean_length_lines'])
+        mid_std = np.array(loi_features['midline_std_length_lines'])
+        mid_min = np.array(loi_features['midline_min_length_lines'])
+
+        # Apply filters based on the provided limits
+        is_good = (
+                (n_vectors >= number_lims[0]) & (n_vectors < number_lims[1]) &
+                (length >= length_lims[0]) & (length < length_lims[1]) &
+                (sarc_mean >= sarcomere_mean_length_lims[0]) & (sarc_mean < sarcomere_mean_length_lims[1]) &
+                (sarc_std >= sarcomere_std_length_lims[0]) & (sarc_std < sarcomere_std_length_lims[1]) &
+                (mid_mean >= midline_mean_length_lims[0]) & (mid_mean < midline_mean_length_lims[1]) &
+                (mid_std >= midline_std_length_lims[0]) & (mid_std < midline_std_length_lims[1]) &
+                (mid_min >= midline_min_length_lims[0]) & (mid_min < midline_min_length_lims[1])
         )
 
-        self.data['loi_data']['lines'] = filtered_lois
-        self.data['loi_data']['lines_vectors'] = filtered_lois_vectors
-        self.data['loi_data']['line_features'] = filtered_features
+        # Filter the lines and vectors
+        self.data['loi_data']['lines'] = [loi for i, loi in enumerate(lois) if is_good[i]]
+        self.data['loi_data']['lines_vectors'] = [pos_vectors for i, pos_vectors in enumerate(lois_vectors) if
+                                                  is_good[i]]
+
+        # Filter the features dataframe and convert back to dict
+        df_features = pd.DataFrame(loi_features)
+        filtered_df_features = df_features[is_good].reset_index(drop=True)
+        self.data['loi_data']['line_features'] = filtered_df_features.to_dict(orient='list')
 
     def _hausdorff_distance_lois(self, symmetry_mode: str = 'max') -> None:
         """
@@ -1102,11 +1132,19 @@ class Structure(SarcAsM):
         symmetry_mode : str, optional
             Choose 'min' or 'max', whether min/max(H(loi_i, loi_j), H(loi_j, loi_i)). Defaults to 'max'.
         """
-        # Delegate to loi_detection module
-        hausdorff_dist_matrix = loi_detection.hausdorff_distance_lois(
-            lines_vectors=self.data['loi_data']['lines_vectors'],
-            symmetry_mode=symmetry_mode
-        )
+        # get points of LOI lines
+        lines_vectors = self.data['loi_data']['lines_vectors']
+
+        # hausdorff distance between LOIss
+        hausdorff_dist_matrix = np.zeros((len(lines_vectors), len(lines_vectors)))
+        for i, loi_i in enumerate(lines_vectors):
+            for j, loi_j in enumerate(lines_vectors):
+                if symmetry_mode == 'min':
+                    hausdorff_dist_matrix[i, j] = min(directed_hausdorff(loi_i, loi_j)[0],
+                                                      directed_hausdorff(loi_j, loi_i)[0])
+                if symmetry_mode == 'max':
+                    hausdorff_dist_matrix[i, j] = max(directed_hausdorff(loi_i, loi_j)[0],
+                                                      directed_hausdorff(loi_j, loi_i)[0])
 
         self.data['loi_data']['hausdorff_dist_matrix'] = hausdorff_dist_matrix
         if self.auto_save:
@@ -1128,15 +1166,19 @@ class Structure(SarcAsM):
             - 'single' uses the minimum of the distances between all observations of the two sets.
             Defaults to 'single'.
         """
-        # Delegate to loi_detection module
-        cluster_labels, n_clusters = loi_detection.cluster_lois(
-            hausdorff_dist_matrix=self.data['loi_data']['hausdorff_dist_matrix'],
-            distance_threshold=distance_threshold_lois,
-            linkage=linkage
-        )
-
-        self.data['loi_data']['line_cluster'] = cluster_labels
-        self.data['loi_data']['n_lines_clusters'] = n_clusters
+        if len(self.data['loi_data']['lines_vectors']) == 0:
+            self.data['loi_data']['line_cluster'] = []
+            self.data['loi_data']['n_lines_clusters'] = 0
+        elif len(self.data['loi_data']['lines_vectors']) == 1:
+            self.data['loi_data']['line_cluster'] = [[0]]
+            self.data['loi_data']['n_lines_clusters'] = 1
+        else:
+            clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=distance_threshold_lois,
+                                                 metric='precomputed',
+                                                 linkage=linkage).fit(
+                self.data['loi_data']['hausdorff_dist_matrix'])
+            self.data['loi_data']['line_cluster'] = clustering.labels_
+            self.data['loi_data']['n_lines_clusters'] = len(np.unique(clustering.labels_))
         if self.auto_save:
             self.store_structure_data()
 
@@ -1150,61 +1192,87 @@ class Structure(SarcAsM):
         n_lois : int
             If int, only n longest LOIs are saved. If None, all are saved.
         """
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.fit_straight_line_to_clusters(
-            lines_vectors=self.data['loi_data']['lines_vectors'],
-            cluster_labels=self.data['loi_data']['line_cluster'],
-            n_clusters=self.data['loi_data']['n_lines_clusters'],
-            pixelsize=self.metadata.pixelsize,
-            add_length=add_length,
-            n_lois=n_lois
-        )
 
-        self.data['loi_data']['loi_lines'] = np.asarray(loi_lines, dtype=object)
+        def linear(x, a, b):
+            return a * x + b
+
+        points_clusters = []
+        loi_lines = []
+        len_loi_lines = []
+        add_length = add_length / self.metadata.pixelsize
+        for label_i in range(self.data['loi_data']['n_lines_clusters']):
+            points_cluster_i = []
+            for k in np.where(self.data['loi_data']['line_cluster'] == label_i)[0]:
+                points_cluster_i.append(self.data['loi_data']['lines_vectors'][k])
+            points_clusters.append(np.concatenate(points_cluster_i).T)
+            p_i, pcov_i = curve_fit(linear, points_clusters[label_i][1], points_clusters[label_i][0])
+            x_range_i = np.linspace(np.min(points_clusters[label_i][1]) - add_length / np.sqrt(1 + p_i[0] ** 2),
+                                    np.max(points_clusters[label_i][1]) + add_length / np.sqrt(1 + p_i[0] ** 2), num=2)
+            y_i = linear(x_range_i, p_i[0], p_i[1])
+            len_i = np.sqrt(np.diff(x_range_i) ** 2 + np.diff(y_i) ** 2)
+            x_range_i, y_i = np.round(x_range_i, 1), np.round(y_i, 1)
+            loi_lines.append(np.asarray((y_i, x_range_i)).T)
+            len_loi_lines.append(len_i)
+
+        len_loi_lines = np.asarray(len_loi_lines).flatten()
+        loi_lines = np.asarray(loi_lines)
+
+        # sort lines by length
+        length_idxs = len_loi_lines.argsort()
+        loi_lines = loi_lines[length_idxs[::-1]][:n_lois]
+        len_loi_lines = len_loi_lines[length_idxs[::-1]][:n_lois]
+
+        self.data['loi_data']['loi_lines'] = np.asarray(loi_lines)
         self.data['loi_data']['len_loi_lines'] = np.asarray(len_loi_lines)
         if self.auto_save:
             self.store_structure_data()
 
     def _longest_in_cluster(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_longest_in_cluster(
-            lines=self.data['loi_data']['lines'],
-            pos_vectors=self.data['pos_vectors_px'][frame],
-            cluster_labels=self.data['loi_data']['line_cluster'],
-            n_clusters=self.data['loi_data']['n_lines_clusters'],
-            n_lois=n_lois
-        )
-
+        lines = self.data['loi_data']['lines']
+        pos_vectors = self.data['pos_vectors_px'][frame]
+        lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
+        longest_lines = []
+        for label_i in range(self.data['loi_data']['n_lines_clusters']):
+            lines_cluster_i = [line_j for j, line_j in enumerate(lines) if lines_cluster[j] == label_i]
+            points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
+                                      lines_cluster[j] == label_i]
+            length_lines_cluster_i = [len(line_j) for line_j in lines_cluster_i]
+            longest_line = points_lines_cluster_i[np.argmax(length_lines_cluster_i)]
+            longest_lines.append(longest_line)
+        # get n longest lines
+        sorted_by_length = sorted(longest_lines, key=lambda x: len(x[1]), reverse=True)
+        if len(longest_lines) < n_lois:
+            print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
+        loi_lines = sorted_by_length[:n_lois]
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.auto_save:
             self.store_structure_data()
 
     def _random_from_cluster(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_random_from_cluster(
-            lines=self.data['loi_data']['lines'],
-            pos_vectors=self.data['pos_vectors_px'][frame],
-            cluster_labels=self.data['loi_data']['line_cluster'],
-            n_clusters=self.data['loi_data']['n_lines_clusters'],
-            n_lois=n_lois
-        )
-
+        lines = self.data['loi_data']['lines']
+        pos_vectors = self.data['pos_vectors_px'][frame]
+        lines_cluster = np.asarray(self.data['loi_data']['line_cluster'])
+        random_lines = []
+        for label_i in range(self.data['loi_data']['n_lines_clusters']):
+            points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
+                                      lines_cluster[j] == label_i]
+            random_line = random.choice(points_lines_cluster_i)
+            random_lines.append(random_line)
+        # select clusters randomly
+        loi_lines = random.sample(random_lines, n_lois)
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.auto_save:
             self.store_structure_data()
 
     def _random_lois(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_random_lois(
-            lines=self.data['loi_data']['lines'],
-            pos_vectors=self.data['pos_vectors_px'][frame],
-            n_lois=n_lois
-        )
-
+        lines = self.data['loi_data']['lines']
+        pos_vectors = self.data['pos_vectors_px'][frame]
+        loi_lines = random.sample(lines, n_lois)
+        loi_lines = [pos_vectors[line_i] for line_i in loi_lines]
         self.data['loi_data']['loi_lines'] = loi_lines
-        self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        self.data['loi_data']['len_loi_lines'] = [len(line_i) for line_i in loi_lines]
         if self.auto_save:
             self.store_structure_data()
 
@@ -1226,27 +1294,23 @@ class Structure(SarcAsM):
         export_raw : bool, optional
             If True, intensity kymograph along LOI from raw microscopy image is additionally stored. Defaults to False.
         """
-        if self.metadata.pixelsize is None:
-            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
         if os.path.exists(self.file_zbands_fast_movie):
             file_z_bands = self.file_zbands_fast_movie
         else:
             file_z_bands = self.file_zbands
         imgs_sarcomeres = tifffile.imread(file_z_bands)
-        profiles = kymograph.kymograph_movie(imgs_sarcomeres, line, order=order,
+        profiles = self.kymograph_movie(imgs_sarcomeres, line, order=order,
                                         linewidth=int(linewidth / self.metadata.pixelsize))
         profiles = np.asarray(profiles)
         if export_raw:
             imgs_raw = self.image
-            profiles_raw = kymograph.kymograph_movie(imgs_raw, line, order=order,
+            profiles_raw = self.kymograph_movie(imgs_raw, line, order=order,
                                                 linewidth=int(linewidth / self.metadata.pixelsize))
         else:
             profiles_raw = None
 
         # length of line
         def __calculate_segmented_line_length(line):
-            # Ensure line is a proper numeric numpy array
-            line = np.asarray(line, dtype=np.float64)
             diffs = np.diff(line, axis=0)
             lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
             return np.sum(lengths)
@@ -1420,3 +1484,1190 @@ class Structure(SarcAsM):
         if not self.auto_save:
             self.store_structure_data()
             self.auto_save = True
+
+    @staticmethod
+    def segment_z_bands(image: np.ndarray, threshold: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Segment z-bands from U-Net result (threshold, make binary, skeletonize, label regions).
+
+        Parameters
+        ----------
+        image : np.ndarray
+            Input image from U-Net.
+        threshold : float, optional
+            Threshold value for binarizing the image. Defaults to 0.15.
+
+        Returns
+        -------
+        labels : np.ndarray
+            Labeled regions in the thresholded image.
+        labels_skel : np.ndarray
+            Labeled regions in the skeletonized image.
+        """
+        mask = image > threshold
+        mask_skel = morphology.skeletonize(mask, method='lee')
+        labels = label(mask)
+        labels_skel = mask_skel * labels
+        return labels, labels_skel
+
+    @staticmethod
+    def _analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndarray,
+                         image_raw: np.ndarray, orientation_field: np.ndarray,
+                         pixelsize: float, min_length: float = 1.0, threshold: float = 0.5,
+                         median_filter_radius: float = 0.25,
+                         a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
+                         d_min: float = 0.25) -> Tuple:
+        """
+        Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
+        straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
+        groups of lateral z-bands (length, alignment, size).
+
+        Parameters
+        ----------
+        zbands : np.ndarray
+            The segmented map of z-bands.
+        labels : np.ndarray
+            The labeled image of z-bands.
+        labels_skel : np.ndarray
+            The skeletonized labels of z-bands.
+        image_raw : np.ndarray
+            The raw image.
+        orientation_field : np.ndarray
+            Sarcomere orientation field.
+        pixelsize : float
+            The size of pixels in the image.
+        min_length : float, optional
+            The minimum length threshold for z-bands. Default is 1.0.
+        threshold : float, optional
+            The threshold value for intensity. Default is 0.1.
+        median_filter_radius : float, optional
+            Radius of kernel to smooth orientation field. Default is 0.2 µm.
+        a_min : float, optional
+            The minimum value for alignment. Default is 0.25. Links with smaller alignment are set to np.nan.
+        theta_phi_min : float, optional
+            The minimum dot product/cosine between the direction of a Z-band end and the direction of line from end to other Z-band end.
+        d_max : float, optional
+            The maximum distance between z-band ends. Default is 5.0 µm. Larger distances are set to np.nan.
+        d_min : float, optional
+            The minimum distance between z-band ends. Default is 0 µm. Smaller distances are set to np.nan.
+
+        Returns
+        -------
+        tuple
+            A comprehensive tuple containing arrays and values describing the analyzed properties of z-bands:
+            - Lengths, intensities, straightness, ratio of intensities, average intensity, orientations,
+              orientational order parameter, list of z-band labels, processed labels image, number of lateral neighbors,
+              lateral distances, lateral alignments, links between z-band ends, coordinates of z-band ends,
+              linked groups of z-bands, and their respective sizes, lengths, and alignments.
+        """
+        # analyze skeletonized labels to determine z-band backbone length
+        props_skel = regionprops_table(labels_skel, properties=['label', ],
+                                       extra_properties=(Utils.skeleton_length_igraph, ))
+        labels_list = props_skel['label']
+
+        # remove short z-bands
+        length = props_skel['skeleton_length_igraph'] * pixelsize
+        labels_list_ = labels_list.copy()
+        labels_list[length < min_length] = 0
+        labels_list = np.insert(labels_list, 0, 0)
+        labels_list_ = np.insert(labels_list_, 0, 0)
+        labels = Utils.map_array(labels, labels_list_, labels_list)
+        labels, forward_map, inverse_map = segmentation.relabel_sequential(labels)
+        labels_list = labels_list[labels_list != 0]
+
+        # sarcomere orientation map
+        smooth_radius_px = int(median_filter_radius / pixelsize)
+        sarcomere_orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True,
+                                                                radius=smooth_radius_px)
+
+        # analyze z-band labels
+        props = regionprops_table(labels, intensity_image=image_raw, properties=['label', 'area', 'convex_area',
+                                                                                 'mean_intensity', 'orientation',
+                                                                                 'image', 'bbox', 'centroid'])
+        # z-band length
+        length = length[length >= min_length]
+
+        # straightness of z-bands (area/convex_hull)
+        straightness = props['area'] / props['convex_area']
+
+        # fluorescence intensity of each individual z-band, the total area, and the average intensity of z-band mask
+        intensity = props['mean_intensity']
+        z_mask = zbands > threshold
+        z_mask_area = np.sum(z_mask.astype('uint8')) * pixelsize ** 2
+        z_mask_intensity = np.mean(image_raw[z_mask])
+
+        # z band orientational order parameter
+        orientation = props['orientation']
+        if len(orientation) > 0:
+            oop = 1 / len(orientation) * np.abs(np.sum(np.exp(orientation * 2 * 1j)))
+        else:
+            oop = np.nan
+
+        # local lateral z-band alignment and distance
+        n_z = len(np.unique(labels)) - 1
+
+        if n_z > 0:
+
+            # get two ends of each z-band
+            z_ends = np.zeros((n_z, 2, 2)) * np.nan  # (z-band idx, upper/lower end, x/y)
+            z_orientation = np.zeros((n_z, 2)) * np.nan  # (z-band idx, upper/lower)
+            pad_width = int(round(1 / pixelsize, 0))
+
+            for i, zbands_i in enumerate(props['image']):
+                zbands_i = np.pad(zbands_i, (pad_width, pad_width))
+
+                # skeletonize
+                skel_i = skeletonize(zbands_i, method='lee')
+
+                # detect line ends
+                def line_end_filter(d):
+                    return (d[4] == 1) and np.sum(d) == 2
+
+                z_ends_i = ndimage.generic_filter(skel_i, line_end_filter, (3, 3))
+                z_ends_i = np.asarray(np.where(z_ends_i == 1))
+                z_ends_i[0] += props['bbox-0'][i] - pad_width
+                z_ends_i[1] += props['bbox-1'][i] - pad_width
+                centroid_i = (props['centroid-0'][i], props['centroid-1'][i])
+
+                if len(z_ends_i.T) == 2:
+                    if z_ends_i[1, 0] > z_ends_i[1, 1]:
+                        z_ends_i = z_ends_i[:, ::-1]
+                    # Get orientations from map and add π/2
+                    orientation_ends_i = np.asarray([sarcomere_orientation[z_ends_i[0][0], z_ends_i[1][0]] + np.pi / 2,
+                                                     sarcomere_orientation[z_ends_i[0][1], z_ends_i[1][1]] + np.pi / 2])
+
+                    # Calculate local directions from endpoints to their own positions in skeleton
+                    _orient_1 = np.arctan2(z_ends_i[0, 0] - centroid_i[0], z_ends_i[1, 0] - centroid_i[1])
+                    _orient_2 = np.arctan2(z_ends_i[0, 1] - centroid_i[0], z_ends_i[1, 1] - centroid_i[1])
+
+                    # Better angle difference calculation (minimum angle in range [0, π])
+                    def angle_diff(a1, a2):
+                        return np.abs((a1 - a2 + np.pi) % (2 * np.pi) - np.pi)
+
+                    # Apply π shift if angles differ by more than π/2
+                    if angle_diff(orientation_ends_i[0], _orient_1) > np.pi / 2:
+                        orientation_ends_i[0] = orientation_ends_i[0] + np.pi
+                    if angle_diff(orientation_ends_i[1], _orient_2) > np.pi / 2:
+                        orientation_ends_i[1] = orientation_ends_i[1] + np.pi
+
+                    orientation_ends_i = -orientation_ends_i + np.pi / 2
+
+                    # # Ensure angles stay in range [-π, π]
+                    orientation_ends_i[0] = (orientation_ends_i[0] + np.pi) % (2 * np.pi) - np.pi
+                    orientation_ends_i[1] = (orientation_ends_i[1] + np.pi) % (2 * np.pi) - np.pi
+
+                    z_orientation[i] = orientation_ends_i
+                    z_ends[i] = z_ends_i.T * pixelsize
+
+            # lateral alignment index and distance of z-bands
+            def lateral_alignment(pos_i, pos_j, theta_i, theta_j):
+                phi_ij = np.arctan2((pos_j[1] - pos_i[1]), (pos_j[0] - pos_i[0])) % (2 * np.pi)
+                phi_ji = (phi_ij + np.pi) % (2 * np.pi)
+
+                a_ji = np.cos(theta_i - theta_j + np.pi) * np.cos(theta_i - phi_ij) * np.cos(theta_j - phi_ji)
+
+                if np.cos(theta_i - theta_j + np.pi) > 0 and np.cos(theta_i - phi_ij) > theta_phi_min and np.cos(
+                        theta_j - phi_ji) > theta_phi_min:
+                    return a_ji
+                else:
+                    return np.nan
+
+            # distance of z-band ends
+            _z_ends = np.reshape(z_ends, (n_z * 2, 2), order='F')
+            D = squareform(pdist(_z_ends, 'euclidean'))
+
+            # Set NaNs for specified indices (ends of same objects) and the lower triangle
+            indices = np.arange(0, n_z * 2, 2)
+            mask = np.ones((n_z * 2, n_z * 2))
+            mask[indices, indices] = 0
+            mask[indices, indices + 1] = 0
+            mask[indices + 1, indices] = 0
+            mask[indices + 1, indices + 1] = 0
+            mask[np.tril(mask) > 0] = np.nan
+
+            # filter distance matrix
+            D[(D > d_max) | (D < d_min) | (mask == 0)] = np.nan
+
+            # indices of end-end-distances shorter than d_max
+            _z_orientation = np.reshape(z_orientation, (n_z * 2), order='F')
+            _idxs = np.asarray(np.where(~np.isnan(D)))
+
+            # matrix with lateral alignments A
+            A = np.zeros_like(D) * np.nan
+            for (i, j) in _idxs.T:
+                A_ij = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
+                A[i, j] = A_ij if A_ij >= a_min else np.nan
+            D[np.isnan(A)] = np.nan
+
+            # make matrices symmetric for undirected graph
+            D = (D + D.T) / 2
+            A = (A + A.T) / 2
+
+            def compute_cost_matrix(D, A, penalty=1e6):
+                """
+                Compute the cost matrix for linking Z-band ends based on a cost 1 - A favoring optimal alignment.
+
+                Parameters:
+                ----------
+                D : ndarray
+                    Distance matrix between Z-band ends.
+                A : ndarray
+                    Alignment matrix between Z-band ends.
+                w_dist : float
+                    Weight for distance in the cost function.
+                w_align : float
+                    Weight for alignment in the cost function.
+                penalty : float
+                    Penalty for invalid links (e.g., NaN or out-of-range values).
+
+                Returns:
+                -------
+                C : ndarray
+                    Cost matrix for linking Z-band ends.
+                """
+                # Ensure alignment values are valid (replace NaNs with 0)
+                A = np.nan_to_num(A, nan=0.0)
+
+                # Compute cost matrix
+                C = 1 - A
+
+                # Set invalid links (e.g., NaNs in D) to a very high cost
+                C[np.isnan(D)] = penalty
+
+                return C
+
+            def solve_linking(C):
+                """
+                Solve the optimal linking problem using the Hungarian algorithm.
+
+                Parameters:
+                ----------
+                C : ndarray
+                    Cost matrix for linking Z-band ends.
+
+                Returns:
+                -------
+                row_ind : ndarray
+                    Row indices of the optimal assignment.
+                col_ind : ndarray
+                    Column indices of the optimal assignment.
+                """
+                # Use scipy's linear_sum_assignment to solve the assignment problem
+                row_ind, col_ind = linear_sum_assignment(C)
+
+                return row_ind, col_ind
+
+            # Step 1: Compute cost matrix
+            C = compute_cost_matrix(D, A)
+
+            # Step 2: Solve optimal linking using Hungarian algorithm
+            row_ind, col_ind = solve_linking(C)
+
+            # Step 3: Create adjacency matrix for valid links
+            links = np.zeros_like(D)
+            for i, j in zip(row_ind, col_ind):
+                links[i, j] = 1 if D[i, j] <= d_max and A[i, j] >= a_min else 0
+
+            # reshape arrays
+            links = links.reshape((n_z, 2, n_z, 2), order='F')
+            lat_dist = D.reshape((n_z, 2, n_z, 2), order='F')
+            lat_alignment = A.reshape((n_z, 2, n_z, 2), order='F')
+
+            # number of lateral neighbors
+            links_z = np.sum(links, axis=(1, 3))
+            lat_neighbors = np.count_nonzero(links_z, axis=1)
+
+            # convert links, lat_dist and lat_alignment to lists
+            links = np.where(links == 1)
+            lat_dist = lat_dist[links]
+            lat_alignment = lat_alignment[links]
+            links = np.asarray(links)
+
+            # analyze laterally linked groups
+            def analyze_linked_groups(connectivity_matrix, distance_matrix, alignment_matrix):
+                G = nx.Graph()
+
+                for n in range(n_z):
+                    G.add_node(n)
+
+                # Efficiently add edges based on connectivity and criteria
+                for n, (idx_i, end_i, idx_j, end_j) in enumerate(connectivity_matrix.T):
+                    G.add_edge(idx_i, idx_j, alignment=alignment_matrix[n], distance=distance_matrix[n])
+
+                # Find connected components in the graph with best matches
+                _linked_groups = list(nx.connected_components(G))
+
+                _size_groups = np.asarray([len(group) for group in _linked_groups])
+                # Calculate length of each group
+                _length_groups = []
+                _alignment_groups = []
+                for group in _linked_groups:
+                    sum_distance = 0
+                    sum_alignment = 0
+                    for node in group:
+                        edges = G.edges(node, data=True)
+                        for _, _, data in edges:
+                            if G.has_edge(_, node):  # Check if edge is within the current group
+                                sum_distance += data['distance']
+                                sum_alignment += data['alignment']
+                    sum_distance /= 2  # Each edge is counted twice (undirected graph), so divide by 2
+                    _length_groups.append(sum_distance + np.sum(length[list(group)]))
+                    _alignment_groups.append(sum_alignment / len(group))
+                _linked_groups = [list(s) for s in _linked_groups]
+                return (_linked_groups, np.asarray(_size_groups), np.asarray(_length_groups),
+                        np.asarray(_alignment_groups))
+
+            linked_groups, size_groups, length_groups, alignment_groups = analyze_linked_groups(links, lat_dist,
+                                                                                                lat_alignment)
+        else:
+            (lat_neighbors, lat_dist, lat_alignment, links, z_ends,
+             linked_groups, size_groups, length_groups, alignment_groups) = [], [], [], [], [], [], [], [], []
+
+        return (length, intensity, straightness, z_mask_intensity, z_mask_area, orientation, oop, labels_list, labels,
+                lat_neighbors, lat_dist, lat_alignment, links, z_ends, linked_groups, size_groups, length_groups,
+                alignment_groups)
+
+    @staticmethod
+    def get_sarcomere_vectors(
+            zbands: np.ndarray,
+            mbands: np.ndarray,
+            orientation_field: np.ndarray,
+            pixelsize: float,
+            median_filter_radius: float = 0.25,
+            slen_lims: Tuple[float, float] = (1, 3),
+            interp_factor: int = 4,
+            linewidth: float = 0.3,
+            backend: str = 'loky',
+    ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
+    Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
+        """
+        Extract sarcomere orientation and length vectors.
+
+        Parameters
+        ----------
+        zbands : np.ndarray
+            2D array representing the semantic segmentation map of Z-bands.
+        mbands : np.ndarray
+            2D array representing the semantic segmentation map of mbands.
+        orientation_field : np.ndarray
+            2D array representing the orientation field.
+        pixelsize : float
+            Size of a pixel in micrometers.
+        median_filter_radius : float, optional
+            Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
+        slen_lims : tuple of float, optional
+            Sarcomere size limits in micrometers (default is (1, 3)).
+        interp_factor : int, optional
+            Interpolation factor for profiles to calculate sarcomere length. Defaults to 4.
+        linewidth : float, optional
+            Line width of profiles to calculate sarcomere length. Defaults to 0.3 µm.
+
+        Returns
+        -------
+        pos_vectors : np.ndarray
+            Array of position vectors for sarcomeres.
+        sarcomere_orientation_vectors : np.ndarray
+            Sarcomere orientation values at midline points.
+        sarcomere_length_vectors : np.ndarray
+            Sarcomere length values at midline points.
+        sarcomere_mask : np.ndarray
+            Mask indicating the presence of sarcomeres.
+        """
+        radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
+        linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
+
+        # skeletonize mbands
+        mbands_skel = skeletonize(mbands, method='lee')
+
+        # calculate and preprocess orientation map
+        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
+
+        # label mbands
+        midline_labels, n_mbands = ndimage.label(mbands_skel,
+                                                   ndimage.generate_binary_structure(2, 2))
+
+        # iterate mbands and create an additional list with labels and midline length (approx. by max. Feret diameter)
+        props = measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
+        list_labels, coords_mbands, length_mbands = (props['label'], props['coords'],
+                                                         props['feret_diameter_max'] * pixelsize)
+
+        pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
+        if n_mbands > 0:
+            for i, (label_i, coords_i, length_midline_i) in enumerate(
+                    zip(list_labels, coords_mbands, length_mbands)):
+                pos_vectors_px.append(coords_i)
+                midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
+                midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
+
+            pos_vectors_px = np.concatenate(pos_vectors_px, axis=0)
+            midline_id_vectors = np.concatenate(midline_id_vectors)
+            midline_length_vectors = np.concatenate(midline_length_vectors)
+
+            sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
+
+            ends1 = pos_vectors_px.T + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+                (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
+            )
+            ends2 = pos_vectors_px.T - (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
+                (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
+            )
+
+            # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
+            profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
+
+            # Use parallel processing for faster execution
+            results = Parallel(n_jobs=-1, backend=backend)(
+                delayed(Utils.process_profile)(
+                    profile, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor
+                ) for profile in profiles
+            )
+
+            # Convert results to array
+            sarcomere_length_vectors, center_offsets = np.array(results).T
+
+            # get vector positions in µm and correct center of vectors
+            pos_vectors = pos_vectors_px * pixelsize
+            offset_vectors = np.stack((np.sin(sarcomere_orientation_vectors) * center_offsets,
+                                      np.cos(sarcomere_orientation_vectors) * center_offsets), axis=-1)
+            pos_vectors -= offset_vectors
+
+            # remove NaNs
+            nan_mask = np.isnan(sarcomere_length_vectors)
+            pos_vectors_px = pos_vectors_px[~nan_mask]
+            pos_vectors = pos_vectors[~nan_mask]
+            midline_id_vectors = midline_id_vectors[~nan_mask]
+            sarcomere_orientation_vectors = sarcomere_orientation_vectors[~nan_mask]
+            sarcomere_length_vectors = sarcomere_length_vectors[~nan_mask]
+
+
+        else:
+            sarcomere_length_vectors, _z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
+
+        return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
+                sarcomere_orientation_vectors, n_mbands)
+
+    @staticmethod
+    def cluster_sarcomeres(pos_vectors: np.ndarray,
+                           sarcomere_length_vectors: np.ndarray,
+                           sarcomere_orientation_vectors: np.ndarray,
+                           pixelsize: float,
+                           size: Tuple[int, int],
+                           d_max: float = 3,
+                           cosine_min: float = 0.65,
+                           leiden_resolution: float = 0.06,
+                           random_seed: int = 42,
+                           area_min: float = 20,
+                           dilation_radius: float = 0.3) -> Tuple[int, List, List, List, List, List, np.ndarray]:
+        """
+        This function clusters sarcomeres into domains based on their spatial and orientational properties
+        using the Leiden method for community detection in igraph. It considers sarcomere lengths, orientations,
+        and positions along mbands to form networks of connected sarcomeres. Domains are then identified
+        as communities within these networks, with additional criteria for minimum domain area
+        and connectivity thresholds. Finally, this function quantifies the mean and std of sarcomere lengths,
+        and the orientational order parameter and mean orientation of each domain.
+
+        Parameters
+        ----------
+        pos_vectors : np.ndarray
+            Array of sarcomere midline point positions in µm.
+        sarcomere_length_vectors : np.ndarray
+            List of midline point sarcomere lengths
+        sarcomere_orientation_vectors : np.ndarray
+            List of midline point sarcomere orientations, in radians
+        pixelsize : float
+            Pixel size in µm
+        size : tuple(int, int)
+            Shape of the image in pixels
+        d_max : float
+            Max. distance threshold for creating a network edge between vector ends
+        cosine_min : float
+            Minimal absolute cosine between vector angles for creating a network edge between vector ends
+        leiden_resolution : float
+            Resolution parameter for the Leiden algorithm
+        random_seed : int
+            Random seed for reproducibility
+        area_min : float
+            Minimal area (in µm²) for a domain to be kept
+        dilation_radius : float
+            Dilation radius for refining domain area masks (in µm)
+
+        Returns
+        -------
+        n_domains : int
+            Number of domains
+        domains : list
+            List of domain sets with point indices
+        area_domains : list
+            List with domain areas
+        sarcomere_length_mean_domains : list
+            Mean sarcomere length within each domain
+        sarcomere_length_std_domains : list
+            Standard deviation of sarcomere length within each domain
+        sarcomere_oop_domains : list
+            Orientational order parameter of sarcomeres in each domain
+        sarcomere_orientation_domains : list
+            Main orientation of domains
+        mask_domains : ndarray
+            Masks of domains with value representing domain label
+        """
+
+        if len(pos_vectors) < 10:
+            return 0, [], [], [], [], [], [], []
+
+        n_vectors = sarcomere_length_vectors.shape[0]
+
+        # Calculate orientation vectors using trigonometry
+        orientation_vectors = np.column_stack([np.sin(sarcomere_orientation_vectors),
+                                               np.cos(sarcomere_orientation_vectors)])
+
+        # Calculate end points of the vectors
+        ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors[:, None] / 2
+        ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors[:, None] / 2
+
+        # Interleave ends_0 and ends_1
+        ends = np.empty((2 * n_vectors, 2), dtype=np.float64)
+        ends[0::2] = ends_0
+        ends[1::2] = ends_1
+
+        # Interleave orientation vectors
+        orientation_ends = np.empty((2 * n_vectors, 2), dtype=np.float64)
+        orientation_ends[0::2] = orientation_vectors
+        orientation_ends[1::2] = -orientation_vectors
+
+        # Use cKDTree to find pairs within the distance threshold
+        tree = cKDTree(ends)
+        pairs = tree.query_pairs(d_max, output_type='ndarray')
+
+        # Compute cosine similarity for all pairs at once
+        dot_products = np.sum(orientation_ends[pairs[:, 0]] * orientation_ends[pairs[:, 1]], axis=1)
+        norms = np.linalg.norm(orientation_ends[pairs[:, 0]], axis=1) * np.linalg.norm(
+            orientation_ends[pairs[:, 1]], axis=1)
+        cosine_similarities = np.abs(dot_products / norms)
+
+        # Filter pairs based on cosine similarity
+        valid_pairs = cosine_similarities > cosine_min
+        filtered_pairs = pairs[valid_pairs]
+
+        # Calculate distances for valid pairs
+        distances = (np.sqrt(np.sum((ends[filtered_pairs[:, 0]] - ends[filtered_pairs[:, 1]]) ** 2, axis=1))
+                     / cosine_similarities[valid_pairs])
+
+        # Create edges list
+        edges = filtered_pairs.tolist()
+
+        # Add zero-cost connections between the two ends of each vector
+        zero_cost_edges = [(2 * i, 2 * i + 1) for i in range(n_vectors)]
+        edges.extend(zero_cost_edges)
+
+        # Create weights list
+        weights = distances.tolist()
+        weights.extend([0] * n_vectors)
+
+        # Create the graph
+        graph = ig.Graph(2 * n_vectors)
+        graph.add_edges(edges)
+        graph.es['weight'] = weights
+
+        # Create a mapping to contract pairs of vertices
+        mapping = [i // 2 for i in range(graph.vcount())]
+
+        # Contract the vertices
+        graph.contract_vertices(mapping)
+
+        # Set random seed
+        random.seed(random_seed)
+
+        # Run Leiden
+        # CommunityLeiden returns a VertexClustering, from which we can get memberships
+        clusters = graph.community_leiden(
+            weights="weight",
+            resolution_parameter=leiden_resolution,
+            n_iterations=-1,
+            objective_function="modularity"
+        )
+
+        # Build domain sets
+        membership = clusters.membership
+        domains_dict = {}
+        for idx, c_id in enumerate(membership):
+            domains_dict.setdefault(c_id, []).append(idx)
+        domains = list(domains_dict.values())
+
+        # Shuffle domains for random ordering
+        random.shuffle(domains)
+
+        (mask_domains, area_domains, sarcomere_length_mean_domains,
+         sarcomere_length_std_domains, sarcomere_oop_domains,
+         sarcomere_orientation_domains) = Structure._analyze_domains(domains, pos_vectors,
+                                                                     sarcomere_orientation_vectors,
+                                                                     sarcomere_length_vectors, size=size,
+                                                                     pixelsize=pixelsize,
+                                                                     dilation_radius=dilation_radius, area_min=area_min)
+
+        area_domains = np.asarray(area_domains)
+        sarcomere_length_mean_domains = np.asarray(sarcomere_length_mean_domains)
+        sarcomere_length_std_domains = np.asarray(sarcomere_length_std_domains)
+        sarcomere_oop_domains = np.asarray(sarcomere_oop_domains)
+        sarcomere_orientation_domains = np.asarray(sarcomere_orientation_domains)
+        n_domains = len(area_domains)
+
+        return (n_domains,
+                domains,
+                area_domains,
+                sarcomere_length_mean_domains,
+                sarcomere_length_std_domains,
+                sarcomere_oop_domains,
+                sarcomere_orientation_domains,
+                mask_domains)
+
+    @staticmethod
+    def _grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs,
+                   threshold_distance, pixelsize, persistence):
+        line_i = deque([seed])
+        stop_right = stop_left = False
+
+        sarcomere_orientation_vectors_t = sarcomere_orientation_vectors_t + np.pi / 2
+
+        threshold_distance_pixels = threshold_distance / pixelsize
+
+        def angle_diff(alpha, beta):
+            """Return the signed difference between angles alpha and beta.
+            The result is in the range [-pi, pi]."""
+            return np.arctan2(np.sin(beta - alpha), np.cos(beta - alpha))
+
+        def calculate_mean_orientation(orientations):
+            # Convert orientations to complex numbers on the unit circle
+            complex_orientations = np.exp(2j * np.array(orientations))
+            # Calculate the mean of the complex numbers
+            mean_complex = np.mean(complex_orientations)
+            # Convert back to angle and halve it to get the original range
+            return np.angle(mean_complex) / 2
+
+        def adjust_orientation(current_orientation, previous_orientation):
+            diff = angle_diff(current_orientation, previous_orientation)
+            if diff > np.pi / 2:
+                return current_orientation - np.pi
+            elif diff < -np.pi / 2:
+                return current_orientation + np.pi
+            return current_orientation
+
+        # Initialize orientations
+        orientation_left = orientation_right = sarcomere_orientation_vectors_t[seed]
+
+        points_t = points_t.T
+
+        while not stop_left or not stop_right:
+            line_i_list = list(line_i)
+
+            if not stop_left:
+                end_left = points_t[:, line_i_list[0]]
+                length_left = np.mean(sarcomere_length_vectors_t[line_i_list[:persistence]]) / pixelsize
+                new_orientation_left = calculate_mean_orientation(
+                    sarcomere_orientation_vectors_t[line_i_list[:persistence]]) if persistence > 1 else sarcomere_orientation_vectors_t[line_i_list[0]]
+                orientation_left = adjust_orientation(new_orientation_left, orientation_left)
+
+            if not stop_right:
+                end_right = points_t[:, line_i_list[-1]]
+                length_right = np.mean(sarcomere_length_vectors_t[line_i_list[-persistence:]]) / pixelsize
+                new_orientation_right = calculate_mean_orientation(
+                    sarcomere_orientation_vectors_t[line_i_list[-persistence:]]) if persistence > 1 else sarcomere_orientation_vectors_t[line_i_list[-1]]
+                orientation_right = adjust_orientation(new_orientation_right, orientation_right)
+
+            # grow left
+            if not stop_left:
+                prior_left = [end_left[0] + np.cos(orientation_left) * length_left,
+                              end_left[1] - np.sin(orientation_left) * length_left]
+                distance_left, index_left = nbrs.kneighbors([prior_left], return_distance=True)
+                if distance_left[0][0] < threshold_distance_pixels:
+                    line_i.appendleft(index_left[0][0].astype('int'))
+                else:
+                    stop_left = True
+
+            # grow right
+            if not stop_right:
+                prior_right = [end_right[0] - np.cos(orientation_right) * length_right,
+                               end_right[1] + np.sin(orientation_right) * length_right]
+                distance_right, index_right = nbrs.kneighbors([prior_right], return_distance=True)
+                if distance_right[0][0] < threshold_distance_pixels:
+                    line_i.append(index_right[0][0].astype('int'))
+                else:
+                    stop_right = True
+
+        return np.asarray(line_i)
+
+    @staticmethod
+    def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
+                    sarcomere_orientation_vectors_t: np.ndarray,
+                    midline_length_vectors_t: np.ndarray, pixelsize: float, ratio_seeds: float = 0.1,
+                    persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5,
+                    random_seed: Union[None, int] = None):
+        """
+        Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
+
+        Parameters
+        ----------
+        points_t : np.ndarray
+            List of midline point positions
+        sarcomere_length_vectors_t : list
+            Sarcomere length at midline points
+        sarcomere_orientation_vectors_t : list
+            Sarcomere orientation angle at midline points, in radians
+        midline_length_vectors_t : list
+            Length of sarcomere mbands of midline points
+        pixelsize : float
+            Pixel size in µm
+        ratio_seeds : float
+            Ratio of sarcomere vectors to be takes as seeds for line growth
+        persistence : int
+            Number of points to consider for averaging length and orientation.
+        random_seed : int, optional
+            Random seed for reproducibility. Defaults to None.
+
+        Returns
+        -------
+        line_data : dict
+            Dictionary with LOI data keys = (lines, line_features)
+        """
+        # select random origins for line growth
+        points_t = np.asarray(points_t)
+        if points_t.shape[0] == 2:
+            points_t = points_t.T
+
+        if len(points_t) == 0:
+            print('No sarcomeres in image (len(points) = 0), could not grow lines.')
+            return {'lines': [], 'line_features': {}}
+
+        if random_seed:
+            random.seed(random_seed)
+        n_vectors = len(points_t)
+        seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))
+
+        # Precompute Nearest Neighbors
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t)
+
+        # Prepare arguments for parallel processing
+        args = [
+            (seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs, threshold_distance,
+             pixelsize, persistence) for seed in seed_idx]
+
+        # grow lines
+        lines = [Structure._grow_line(*arg) for arg in args]
+
+        # remove short lines (< n_min)
+        lines = [l for l in lines if len(l) >= n_min]
+
+        # calculate features of lines
+        n_vectors_lines = np.asarray([len(l) for l in lines])  # number of sarcomeres in line
+        length_line_segments = [sarcomere_length_vectors_t[l] for l in lines]
+        length_lines = [np.sum(lengths) for lengths in length_line_segments]
+
+        # sarcomere lengths
+        sarcomere_mean_length_lines = [np.mean(sarcomere_length_vectors_t[l]) for l in lines]
+        sarcomere_std_length_lines = [np.std(sarcomere_length_vectors_t[l]) for l in lines]
+
+        # midline lengths
+        midline_mean_length_lines = [np.nanmean(midline_length_vectors_t[l]) for l in lines]
+        midline_std_length_lines = [np.nanstd(midline_length_vectors_t[l]) for l in lines]
+        midline_min_length_lines = [np.nanmin(midline_length_vectors_t[l]) for l in lines]
+
+        # Straightness
+        def frechet_straightness(points):
+            """
+            Compute a Fréchet-inspired straightness measure:
+            1 - (max perpendicular deviation from chord / chord length)
+
+            Parameters
+            ----------
+            points : np.ndarray
+                Array of shape (n_points, 2) representing polyline vertices
+
+            Returns
+            -------
+            float
+                Straightness measure (1 = perfectly straight)
+            """
+
+            if len(points) < 2:
+                return 1.0  # Single point is trivially straight
+
+            # Calculate chord vector between first and last points
+            chord_vector = points[-1] - points[0]
+            chord_length = np.linalg.norm(chord_vector)
+
+            if chord_length < 1e-9:  # Handle degenerate chord
+                return 0.0
+
+            # Unit vector along chord direction
+            unit_chord = chord_vector / chord_length
+
+            # Vectors from first point to each polyline vertex
+            displacement_vectors = points - points[0]
+
+            # Scalar projections onto chord (dot product with unit vector)
+            chord_projections = np.sum(displacement_vectors * unit_chord, axis=1)
+
+            # Ideal points along chord line
+            projected_points = points[0] + chord_projections[:, np.newaxis] * unit_chord
+
+            # Perpendicular deviations from actual path
+            deviation_vectors = points - projected_points
+            perpendicular_deviations = np.linalg.norm(deviation_vectors, axis=1)
+
+            max_deviation = np.max(perpendicular_deviations)
+
+            return 1.0 - (max_deviation / chord_length)
+
+        straightness_lines = [
+            frechet_straightness(points_t[line])
+            for line in lines
+        ]
+
+        # Bending: mean squared angular change
+        tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
+        tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
+                                          tangential_vector_line_segments]
+        bending_lines = [
+            np.mean(np.arctan2(np.sin(np.diff(angles)), np.cos(np.diff(angles))) ** 2) if len(angles) > 1 else 0.0
+            for angles in tangential_angle_line_segments
+        ]
+
+        # create dictionary
+        line_features = {'n_vectors_lines': n_vectors_lines, 'length_lines': length_lines,
+                         'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
+                         'sarcomere_std_length_lines': sarcomere_std_length_lines,
+                         'bending_lines': bending_lines,
+                         'straightness_lines': straightness_lines,
+                         'midline_mean_length_lines': midline_mean_length_lines,
+                         'midline_std_length_lines': midline_std_length_lines,
+                         'midline_min_length_lines': midline_min_length_lines}
+        line_features = Utils.convert_lists_to_arrays_in_dict(line_features)
+        line_data = {'lines': lines, 'line_features': line_features}
+        return line_data
+
+    @staticmethod
+    def kymograph_movie(movie: np.ndarray, line: np.ndarray, linewidth: int = 10, order: int = 0):
+        """
+        Generate a kymograph using multiprocessing.
+
+        Parameters
+        --------
+        movie : np.ndarray, shape (N, H, W)
+            The movie.
+        line : np.ndarray, shape (N, 2)
+            The coordinates of the segmented line (N>1)
+        linewidth : int, optional
+            Width of the scan in pixels, perpendicular to the line
+        order : int in {0, 1, 2, 3, 4, 5}, optional
+            The order of the spline interpolation, default is 0 if
+            image.dtype is bool and 1 otherwise. The order has to be in
+            the range 0-5. See `skimage.transform.warp` for detail.
+
+        Return
+        ---------
+        return_value : ndarray
+            Kymograph along segmented line
+
+        Notes
+        -------
+        Adapted from scikit-image
+        (https://scikit-image.org/docs/0.22.x/api/skimage.measure.html#skimage.measure.profile_line).
+        """
+        # prepare coordinates of segmented line
+        perp_lines = Structure.__curved_line_profile_coordinates(points=line, linewidth=linewidth)
+
+        # Prepare arguments for each frame
+        args = [(movie[frame], perp_lines, linewidth, order) for frame in range(movie.shape[0])]
+
+        # Create a Pool and map process_frame to each frame
+        with Pool() as pool:
+            results = pool.map(Structure.process_frame, args)
+
+        # Convert list of results to a numpy array
+        kymograph = np.array(results)
+
+        return kymograph
+
+    @staticmethod
+    def process_frame(args):
+        frame, perp_lines, linewidth, order = args
+        pixels = ndimage.map_coordinates(frame, perp_lines, prefilter=order > 1,
+                                         order=order, mode='reflect', cval=0.0)
+        pixels = np.flip(pixels, axis=1)
+        intensities = np.mean(pixels, axis=1)
+        return intensities
+
+    @staticmethod
+    def __curved_line_profile_coordinates(points: np.ndarray, linewidth: int = 10):
+        """
+        Calculate the coordinates of a curved line profile composed of multiple segments with specified linewidth.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            A list of points (y, x) defining the segments of the curved line.
+        linewidth : int, optional
+            The width of the line in pixels.
+
+        Returns
+        -------
+        coords : ndarray
+            The coordinates of the curved line profile. Shape is (2, N, linewidth),
+            where N is the total number of points in the line.
+        """
+        all_perp_rows = []
+        all_perp_cols = []
+
+        for i in range(len(points) - 1):
+            src, dst = np.asarray(points[i], dtype=float), np.asarray(points[i + 1], dtype=float)
+            d_row, d_col = dst - src
+            theta = np.arctan2(d_row, d_col)
+            length = int(np.ceil(np.hypot(d_row, d_col) + 1))
+            line_col = np.linspace(src[1], dst[1], length)
+            line_row = np.linspace(src[0], dst[0], length)
+            col_width, row_width = (linewidth - 1) * np.sin(-theta) / 2, (linewidth - 1) * np.cos(theta) / 2
+            perp_rows = np.stack([np.linspace(row - row_width, row + row_width, linewidth) for row in line_row])
+            perp_cols = np.stack([np.linspace(col - col_width, col + col_width, linewidth) for col in line_col])
+
+            all_perp_rows.append(perp_rows)
+            all_perp_cols.append(perp_cols)
+
+        # Concatenate all segments
+        final_perp_rows = np.concatenate(all_perp_rows, axis=0)
+        final_perp_cols = np.concatenate(all_perp_cols, axis=0)
+
+        return np.stack([final_perp_rows, final_perp_cols])
+
+    @staticmethod
+    def sarcomere_mask(points: np.ndarray,
+                       sarcomere_orientation_vectors: np.ndarray,
+                       sarcomere_length_vectors: np.ndarray,
+                       shape: Tuple[int, int],
+                       pixelsize: float,
+                       dilation_radius: float = 0.3) -> np.ndarray:
+        """
+        Calculates a binary mask of areas with sarcomeres.
+
+        Parameters
+        ----------
+        points : ndarray
+            Positions of sarcomere vectors in µm. (n_vectors, 2)
+        sarcomere_orientation_vectors : ndarray
+            Orientations of sarcomere vectors.
+        sarcomere_length_vectors : ndarray
+            Lengths of sarcomere vectors in µm.
+        shape : tuple
+            Shape of the image, in pixels.
+        pixelsize : float
+            Pixel size in µm.
+        dilation_radius : float, optional
+            Dilation radius to close small holes in mask, in µm (default is 0.3).
+
+        Returns
+        -------
+        mask : ndarray
+            Binary mask of sarcomeres.
+        """
+        # Calculate orientation vectors using trigonometry
+        sarcomere_orientation_vectors += np.pi / 2
+
+        orientation_vectors = np.asarray([np.cos(sarcomere_orientation_vectors),
+                                          -np.sin(sarcomere_orientation_vectors)])
+        # Calculate the ends of the vectors based on their orientation and length
+        ends_0 = points.T + orientation_vectors * sarcomere_length_vectors / 2  # End point 1 of each vector
+        ends_1 = points.T - orientation_vectors * sarcomere_length_vectors / 2  # End point 2 of each vector
+        ends_0, ends_1 = ends_0 / pixelsize, ends_1 / pixelsize
+        mask = np.zeros(shape, dtype='bool')
+        for e0, e1 in zip(ends_0.T.astype('int'), ends_1.T.astype('int')):
+            rr, cc = line(*e0, *e1)
+            try:
+                mask[rr, cc] = True
+            except:
+                pass
+        dilation_radius_pixels = int(round(dilation_radius / pixelsize, 0))
+        mask = binary_dilation(mask, disk(dilation_radius_pixels))
+        return mask
+
+    @staticmethod
+    def _analyze_domains(domains: List, pos_vectors: np.ndarray,
+                         sarcomere_orientation_vectors: np.ndarray,
+                         sarcomere_length_vectors: np.ndarray,
+                         size: Tuple[int, int],
+                         pixelsize: float,
+                         dilation_radius: float,
+                         area_min: float):
+        """
+        Creates a domain mask, where each domain has a distinct label, and analyzes the individual domains.
+
+        Parameters
+        __________
+        domains : list
+            List with domain labels for each vector. Each domain is labeled with a unique integer.
+        pos_vectors : ndarray
+            Position vectors in micrometers.
+        sarcomere_orientation_vectors : ndarray
+            Orientation angles in radians.
+        sarcomere_length_vectors : ndarray
+            Sarcomere lengths in micrometers.
+        size : tuple of int
+            Output map dimensions (height, width) in pixels.
+        pixelsize : float
+            Physical size of one pixel in micrometers.
+        dilation_radius : float, optional
+            Dilation radius for refining domain masks, in µm.
+        area_min : float, optional
+            Minimal area of a domain in µm^2, smaller domains are discarded.
+        """
+        # calculate domain properties and remove small domains
+        (area_domains, sarcomere_orientation_domains, sarcomere_oop_domains, sarcomere_length_mean_domains,
+         sarcomere_length_std_domains) = [], [], [], [], []
+
+        mask_domains = np.zeros(size, dtype='uint8')
+
+        j = 1
+        for i, domain_i in enumerate(domains):
+            pos_vectors_i = pos_vectors[domain_i]
+            orientations_i = sarcomere_orientation_vectors[domain_i]
+            lengths_i = sarcomere_length_vectors[domain_i]
+            if pos_vectors_i.shape[0] > 10:
+                # bounding box
+                min_i = (
+                    max(int((pos_vectors_i[:, 0].min() - 3) // pixelsize), 0),
+                    max(int((pos_vectors_i[:, 1].min() - 3) // pixelsize), 0))
+                max_i = (min(int((pos_vectors_i[:, 0].max() + 3) // pixelsize), size[0]),
+                         min(int((pos_vectors_i[:, 1].max() + 3) // pixelsize), size[1]))
+                size_i = (max_i[0] - min_i[0], max_i[1] - min_i[1])
+
+                _pos_vectors_i = pos_vectors_i.copy()
+                _pos_vectors_i[:, 0] -= min_i[0] * pixelsize
+                _pos_vectors_i[:, 1] -= min_i[1] * pixelsize
+
+                mask_i = Structure.sarcomere_mask(_pos_vectors_i, orientations_i, lengths_i, size_i,
+                                                  pixelsize=pixelsize,
+                                                  dilation_radius=dilation_radius)
+                area_i = np.sum(mask_i) * pixelsize ** 2
+                if area_i >= area_min:
+                    ind_i = np.where(mask_i)
+                    ind_i = (ind_i[0] + min_i[0], ind_i[1] + min_i[1])
+                    mask_domains[ind_i] = j
+                    area_i = np.sum(mask_i) * pixelsize ** 2
+                    area_domains.append(area_i)
+                    sarcomere_length_mean_domains.append(np.mean(lengths_i))
+                    sarcomere_length_std_domains.append(np.std(lengths_i))
+                    oop, angle = Utils.analyze_orientations(orientations_i)
+                    sarcomere_oop_domains.append(oop)
+                    sarcomere_orientation_domains.append(angle)
+                    j += 1
+
+        return (mask_domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
+                sarcomere_oop_domains, sarcomere_orientation_domains)
+
+    @staticmethod
+    def create_myofibril_length_map(
+            myof_lines: np.ndarray,
+            myof_length: np.ndarray,
+            pos_vectors: np.ndarray,
+            sarcomere_orientation_vectors: np.ndarray,
+            sarcomere_length_vectors: np.ndarray,
+            size: tuple,
+            pixelsize: float,
+            median_filter_radius: float = 0.6,
+    ) -> np.ndarray:
+        """
+        The `create_myofibril_length_map` function generates a **2D spatial map** of myofibril lengths represented
+        as pixel values. It achieves this by rasterizing myofibril line segments, assigning their corresponding lengths
+        to the pixels they occupy, and averaging these values at overlapping pixels. The resulting map is optionally
+        smoothed using a median filter to reduce noise and provide a more coherent spatial representation.
+
+        Parameters
+        ----------
+        myof_lines : ndarray
+            Line indices for myofibril structures.
+        myof_length : ndarray
+            Length values for each myofibril line.
+        pos_vectors : ndarray
+            Position vectors in micrometers.
+        sarcomere_orientation_vectors : ndarray
+            Orientation angles in radians.
+        sarcomere_length_vectors : ndarray
+            Sarcomere lengths in micrometers.
+        size : tuple of int
+            Output map dimensions (height, width) in pixels.
+        pixelsize : float
+            Physical size of one pixel in micrometers.
+        median_filter_radius : float, optional
+            Filter radius in micrometers, by default 0.6.
+
+        Returns
+        -------
+        ndarray
+            2D array of calculated myofibril lengths with NaN for empty regions.
+        """
+        # Convert median filter radius to pixels
+        median_radius_px = int(round(median_filter_radius / pixelsize))
+
+        # Initialize accumulation maps
+        length_sum_map = np.zeros(size, dtype=np.float32)
+        weight_map = np.zeros(size, dtype=np.float32)
+
+        # Process each myofibril segment
+        for line_idx, line_length in zip(myof_lines, myof_length):
+            # Extract vector data for current line
+            points = pos_vectors[line_idx]
+            orientations = sarcomere_orientation_vectors[line_idx] + np.pi / 2
+            lengths = sarcomere_length_vectors[line_idx]
+
+            # Calculate direction vectors
+            dir_x = np.cos(orientations)
+            dir_y = -np.sin(orientations)
+            directions = np.vstack([dir_x, dir_y])
+
+            # Calculate endpoints in pixel coordinates
+            end_offset = directions * lengths / 2
+            end_points = np.stack([
+                (points.T + end_offset) / pixelsize,
+                (points.T - end_offset) / pixelsize
+            ]).astype(np.int32)
+
+            # Rasterize lines
+            for (x0, y0), (x1, y1) in zip(end_points[0].T, end_points[1].T):
+                rr, cc = line(x0, y0, x1, y1)
+                # Apply boundary constraints
+                valid = (rr >= 0) & (rr < size[0]) & (cc >= 0) & (cc < size[1])
+                np.add.at(length_sum_map, (rr[valid], cc[valid]), line_length)
+                np.add.at(weight_map, (rr[valid], cc[valid]), 1)
+
+        # Calculate weighted average
+        myof_map = np.divide(length_sum_map, weight_map,
+                             out=np.full_like(length_sum_map, np.nan),
+                             where=weight_map > 0)
+
+        # Apply median filtering if required
+        if median_radius_px > 0:
+            window_size = 2 * median_radius_px + 1
+            myof_map = Utils.nanmedian_filter_numba(myof_map, window_size)
+
+        return myof_map
+
+
+
+if __name__ == "__main__":
+    print('Testing Structure class')
+
+    test_file = '../test_data/antibody_staining_2D_hiPSC_CM/stained hiPSC d60 a-actinin 488 63x 5.tif'
+
+    sarc = Structure(test_file, pixelsize=0.114)
+
+    # detect sarcomeres
+    sarc.detect_sarcomeres()
+
+    # analyze Z-bands
+    sarc.analyze_z_bands()
+
+    # analyze sarcomere vectors
+    sarc.analyze_sarcomere_vectors()
+
+    # analyze myofibrils
+    sarc.analyze_myofibrils()
+
+    # analyze sarcomere domains
+    sarc.analyze_sarcomere_domains()

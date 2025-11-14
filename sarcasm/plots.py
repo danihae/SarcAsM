@@ -1551,7 +1551,7 @@ class Plots:
         else:
             tlim, idxlim = (None, None), (None, None)
         for i, (vel_i, delta_i) in enumerate(zip(vel, delta_slen)):
-            ax.plot(vel_i[idxlim[0]:idxlim[1]], delta_i[idxlim[0]:idxlim[1]], c='r', alpha=0.35, lw=0.2, zorder=1)
+            ax.plot(vel_i[idxlim[0]:idxlim[1]], delta_i[idxlim[0]:idxlim[1]], c='r', alpha=0.35, lw=0.36, zorder=1)
             if isinstance(frame, numbers.Integral):
                 ax.scatter(vel_i[frame], delta_i[frame], c=cm[i], s=10,
                            zorder=2)

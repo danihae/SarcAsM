@@ -13,6 +13,7 @@
 
 
 import json
+import logging
 import os
 import shutil
 import xml.etree.ElementTree as ET
@@ -26,6 +27,8 @@ import torch
 from sarcasm.exceptions import MetaDataError
 from sarcasm.meta_data_handler import ImageMetadata
 from sarcasm.utils import Utils
+
+logger = logging.getLogger(__name__)
 
 
 class SarcAsM:
@@ -325,8 +328,19 @@ class SarcAsM:
         if tif.ome_metadata:
             try:
                 root = ET.fromstring(tif.ome_metadata)
-                return root.find('.//{*}Image').attrib['DimensionOrder'].upper()
-            except Exception:
+                detected = root.find('.//{*}Image').attrib['DimensionOrder'].upper()
+                logger.debug(f"Detected axes from OME: '{detected}'")
+                
+                # Validate that detected axes match actual data dimensions
+                if len(detected) != len(series.shape):
+                    logger.warning(f"OME axes '{detected}' has {len(detected)} chars but data has {len(series.shape)} dims")
+                    # OME metadata is usually reliable, but verify
+                    # Fall through to next strategy if mismatch
+                    raise ValueError("OME axes length mismatch")
+                
+                return detected
+            except Exception as e:
+                logger.debug(f"OME detection failed: {e}")
                 pass  # fall through to next strategy
 
         # ImageJ hyper-stack
@@ -337,9 +351,48 @@ class SarcAsM:
             if ij.get('slices', 1) > 1: order += 'Z'
             if ij.get('channels', 1) > 1: order += 'C'
             order += 'YX'
-            return order
+            
+            # BUG FIX: ImageJ metadata might say channels=1 or slices=1, but the actual
+            # data could still have singleton dimensions for these axes.
+            # We need to verify the axes match the actual data shape.
+            expected_ndim = len(order)
+            actual_ndim = len(series.shape)
+            
+            if actual_ndim > expected_ndim:
+                # Data has more dimensions than expected from metadata
+                # This often means there's a singleton channel or Z dimension
+                missing_dims = actual_ndim - expected_ndim
+                logger.debug(f"ImageJ axes '{order}' has {expected_ndim} dims, but data has {actual_ndim} dims")
+                logger.debug(f"Adding {missing_dims} missing dimension(s)")
+                
+                # Add missing dimensions in standard order: T, Z, C before YX
+                if 'C' not in order and missing_dims > 0:
+                    # Insert C before YX
+                    order = order.replace('YX', 'CYX')
+                    missing_dims -= 1
+                    logger.debug("Added 'C' dimension")
+                
+                if 'Z' not in order and missing_dims > 0:
+                    # Insert Z before YX (but after T if present)
+                    if 'T' in order:
+                        order = order.replace('YX', 'ZYX')
+                    else:
+                        order = 'Z' + order
+                    missing_dims -= 1
+                    logger.debug("Added 'Z' dimension")
+                
+                if missing_dims > 0:
+                    # Still have extra dims - this is unusual
+                    logger.warning(f"Still have {missing_dims} unaccounted dimensions!")
+                    logger.debug("Falling through to next detection method")
+                    # Don't return, fall through to tifffile's guess
+                else:
+                    logger.debug(f"Final ImageJ axes: '{order}'")
+                    return order
+            else:
+                return order
 
-        # tifffile’s own guess
+        # tifffile's own guess
         if series.axes:
             axes = series.axes.upper().replace('S', 'C')  # S → C (samples)
             if 'Q' not in axes:  # ignore unknown axis
@@ -396,10 +449,10 @@ class SarcAsM:
                 chan_idx = 0  # trivial
             else:
                 if self.metadata.channel is None:
-                    print(
+                    logger.info(
                         f"Multi-channel image detected (n={n_chan}). "
-                        f"Using channel 0 by default.  "
-                        f"Pass   Structure(..., channel=<int>)   to override."
+                        f"Using channel 0 by default. "
+                        f"Pass Structure(..., channel=<int>) to override."
                     )
                     chan_idx = 0
                 else:
@@ -421,7 +474,7 @@ class SarcAsM:
             if not self.use_gui:
                 raise ValueError(message)
             else:
-                print('Warning: ' + message)
+                logger.warning(message)
 
         else:
             self.metadata.channel = None
@@ -527,10 +580,10 @@ class SarcAsM:
             if not self.use_gui:
                 raise MetaDataError(message)
             else:
-                print('Warning: ' + message)
+                logger.warning(message)
 
         if self.metadata.frametime is None and stack_len > 1:
-            print('Warning: frametime could not be extracted from tif file. '
+            logger.warning('Frametime could not be extracted from tif file. '
                   'Please enter manually if needed (e.g., Structure(file, frametime=0.1)).')
 
         # Update the existing metadata object with extracted values
@@ -605,6 +658,17 @@ class SarcAsM:
 
         # Build the permutation list
         perm = [source_axes.index(ax) for ax in target_axes]
+        
+        # Validate permutation matches array dimensions
+        if perm and len(perm) != data.ndim:
+            raise ValueError(
+                f"Permutation mismatch: data has {data.ndim} dimensions (shape={data.shape}), "
+                f"but permutation list has {len(perm)} elements (perm={perm}).\n"
+                f"Source axes: '{source_axes}', Target axes: {target_axes}\n"
+                f"This typically occurs when the axes string doesn't match the actual data shape. "
+                f"Please verify the image file format or specify axes explicitly."
+            )
+        
         if perm:
             data = data.transpose(perm)
 

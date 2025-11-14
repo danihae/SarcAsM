@@ -143,10 +143,15 @@ class Motion(SarcAsM):
         elif ".json" in self.loi_file:
             data = IOUtils.json_deserialize(self.loi_file)
             if 'length' not in data.keys():
-                data['length'] = np.sqrt((data['line_start_x'] - data['line_end_x']) ** 2 +
-                                         (data['line_start_y'] - data['line_end_y']) ** 2) * self.metadata.pixelsize
+                # Convert to numpy arrays to ensure proper type handling
+                line_start_x = np.float64(data['line_start_x'])
+                line_end_x = np.float64(data['line_end_x'])
+                line_start_y = np.float64(data['line_start_y'])
+                line_end_y = np.float64(data['line_end_y'])
+                data['length'] = np.sqrt((line_start_x - line_end_x) ** 2 +
+                                         (line_start_y - line_end_y) ** 2) * self.metadata.pixelsize
                 data['line'] = np.asarray(
-                    [[data['line_start_x'], data['line_start_y']], [data['line_end_x'], data['line_end_y']]])
+                    [[line_start_x, line_start_y], [line_end_x, line_end_y]])
             # x_pos is 0 until line length(included)
             x_pos = np.linspace(0, data['length'], data['profiles'].shape[1])
             no_frames = len(data['profiles'])

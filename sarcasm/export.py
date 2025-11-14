@@ -178,7 +178,7 @@ class MultiLOIAnalysis:
         self.folder = folder
         self.lois = list_lois
         self.conditions = conditions
-        self.data = None
+        self.data = pd.DataFrame()
 
         if load_data:
             self.load_data()
@@ -219,9 +219,14 @@ class MultiLOIAnalysis:
         """
         self.data.to_pickle(self.folder + 'data_motion.pd')
 
-    def load_data(self):
+    def load_data(self, path: 'Optional[str]' = None) -> pd.DataFrame:
         """
         Load the DataFrame from the data folder.
+
+        Parameters
+        ----------
+        path : str, optional
+            Path of pickle file with motion data. If None, fallback to data_motion.pd in self.folder.
 
         Returns
         -------
@@ -232,8 +237,10 @@ class MultiLOIAnalysis:
         FileExistsError
             If the data file does not exist in the specified folder.
         """
-        if os.path.exists(self.folder + 'data_motion.pd'):
-            self.data = pd.read_pickle(self.folder + 'data_motion.pd')
+        if path is None:
+            path = self.folder + 'data_motion.pd'
+        if path is not None and os.path.exists(path):
+            self.data = pd.read_pickle(path)
         else:
             raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                   'Set load_data=False.')
