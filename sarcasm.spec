@@ -64,6 +64,10 @@ napari_data += collect_data_files('napari_builtins', include_py_files=False)
 vispy_data = collect_data_files('vispy', include_py_files=False)
 model_data = [('sarcasm/models', 'sarcasm/models')]
 
+# Collect data for missing dependencies
+rfc3987_syntax_data = collect_data_files('rfc3987_syntax')  # macOS: missing .lark grammar files
+numpy_data = collect_data_files('numpy')  # Windows: ensure all DLLs/libs are collected
+
 # Only exclude things that are definitely NOT needed
 excludes = [
     # Exclude test frameworks and dev tools (but NOT unittest - torch needs it!)
@@ -86,7 +90,7 @@ a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
     binaries=[],
-    datas=napari_data + vispy_data + model_data,
+    datas=napari_data + vispy_data + model_data + rfc3987_syntax_data + numpy_data,
     hiddenimports=[
         'napari',
         'napari._qt',
@@ -100,6 +104,13 @@ a = Analysis(
         'PyQt5.QtOpenGL',
         'freetype',
         'PyQt5.sip',
+        # Fix Windows numpy DLL issue
+        'numpy.core._multiarray_umath',
+        'numpy._core._multiarray_umath',
+        # Fix macOS rfc3987 missing module
+        'rfc3987',
+        'rfc3987_syntax',
+        'rfc3987_syntax.syntax_helpers',
     ] + collect_submodules('sarcasm_app') + collect_submodules('vispy'),
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
