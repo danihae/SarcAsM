@@ -392,15 +392,6 @@ refactor: Refactor sarcomere detection
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
-## License Compliance
-
-This software is licensed under a custom license (see `LICENSE`) and is patent pending (DE 10 2024 112 939.5).
-
-* **Non-commercial use** is free for academic and educational purposes
-* **Commercial use** requires a separate license from MBM ScienceBridge GmbH
-
-All contributions must comply with this license structure. By contributing, you agree that your contributions will be licensed under the same terms.
-
 ## Contact
 
 For questions about development or contributing:
