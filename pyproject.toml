@@ -54,6 +54,7 @@ Changelog = "https://github.com/danihae/SarcAsM/releases"
 sarcasm = "sarcasm_app.__main__:main"
 
 [project.optional-dependencies]
+app = ["pyinstaller>=6.0.0"]
 dev = ["notebook>=7.0.0,<8.0.0", "ruff>=0.6.0"]
 test = ["pytest>=8.4.1", "pytest-cov>=4.0.0", "pytest-xdist>=3.0.0"]
 docs = [
