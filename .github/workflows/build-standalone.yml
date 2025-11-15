@@ -26,8 +26,7 @@ jobs:
       
       - name: Build standalone app
         run: |
-          source .venv/bin/activate
-          pyinstaller sarcasm.spec
+          source .venv/bin/activate && pyinstaller sarcasm.spec
       
       - name: Create DMG (optional)
         run: |
@@ -65,8 +64,7 @@ jobs:
       
       - name: Build standalone app
         run: |
-          .venv\Scripts\activate
-          pyinstaller sarcasm.spec
+          .venv\Scripts\activate && pyinstaller sarcasm.spec
       
       - name: Create ZIP
         run: |
