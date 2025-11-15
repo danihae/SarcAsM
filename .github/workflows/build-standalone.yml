@@ -74,39 +74,6 @@ jobs:
         run: |
           .venv\Scripts\Activate.ps1
           pyinstaller --noconfirm sarcasm.spec 2>&1 | Tee-Object build-log.txt
-
-      - name: Show spec DLL collection output
-        shell: pwsh
-        run: |
-          if (Test-Path "build-log.txt") {
-            Get-Content "build-log.txt" | Select-String "\[SPEC\]"
-          }
-
-      - name: DEBUG - Show what hook actually collected
-        shell: pwsh
-        run: |
-          Write-Host "=== Build warnings (hook output) ==="
-          if (Test-Path "build\sarcasm\warn-sarcasm.txt") {
-            Get-Content "build\sarcasm\warn-sarcasm.txt" | Select-String "hook-numpy"
-          }
-          Write-Host "`n=== What's actually in dist folder ==="
-          Get-ChildItem "dist\SarcAsM-*\_internal" -Recurse -Filter "*.libs" -Directory | ForEach-Object {
-            Write-Host "Found folder: $($_.FullName)"
-            Get-ChildItem $_.FullName -Filter "*.dll" | Select-Object Name, Length
-          }
-          Write-Host "`n=== Searching for any DLL with 'blas' in name ==="
-          Get-ChildItem "dist\SarcAsM-*\_internal" -Recurse -Filter "*blas*.dll" | Select-Object FullName
-
-      - name: Verify build contains DLLs
-        shell: pwsh
-        run: |
-          if (Test-Path "dist\SarcAsM-*\_internal\numpy.libs") {
-            $dllCount = (Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs\*.dll").Count
-            Write-Host "SUCCESS: Found $dllCount DLLs in build"
-          } else {
-            Write-Error "FAILED: numpy.libs missing from build"
-            exit 1
-          }
       
       - name: Create ZIP
         run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
