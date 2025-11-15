@@ -67,10 +67,27 @@ jobs:
         run: |
           uv venv
           uv pip install -e ".[app,dev]"
+          # Force reinstall numpy from binary wheel to ensure .libs directory is present
+          .venv\Scripts\pip.exe uninstall -y numpy
+          .venv\Scripts\pip.exe install --no-cache-dir --only-binary :all: numpy>=2.2.5
+      
+      - name: Verify NumPy installation
+        run: |
+          .venv\Scripts\python.exe -c "import os, numpy, glob; libs_dir = os.path.join(os.path.dirname(numpy.__file__), '.libs'); print(f'NumPy version: {numpy.__version__}'); print(f'.libs exists: {os.path.exists(libs_dir)}'); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if os.path.exists(libs_dir) else 0; print(f'DLL count: {dll_count}'); exit(0 if dll_count > 0 else 1)"
       
       - name: Build standalone app
         run: |
           .venv\Scripts\activate && pyinstaller --noconfirm sarcasm.spec
+      
+      - name: Verify NumPy DLLs in build
+        run: |
+          if (Test-Path "dist\SarcAsM-*\_internal\numpy.libs") {
+            Write-Host "SUCCESS: numpy.libs folder found in build"
+            Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs" | Select-Object Name
+          } else {
+            Write-Error "ERROR: numpy.libs folder missing from build!"
+            exit 1
+          }
       
       - name: Create ZIP
         run: |
