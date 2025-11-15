@@ -71,6 +71,7 @@ jobs:
           .venv\Scripts\Activate.ps1
           pip uninstall -y numpy
           pip install --no-cache-dir --only-binary :all: numpy>=2.2.5
+
       - name: Verify NumPy installation (detailed)
         shell: pwsh
         run: |
