@@ -30,6 +30,12 @@ excludes = [
     'PIL.ImageQt',
 ]
 
+# Platform-specific excludes for Windows to avoid torch import issues during analysis
+if sys.platform == 'win32':
+    # Don't let PyInstaller try to import torch during analysis - causes access violations
+    # The hook will collect it properly instead
+    pass  # We'll handle torch via hook, not via excludes
+
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
