@@ -170,24 +170,47 @@ excludes = [
 ]
 
 # ---------------------------------------------------------------------------
+# Windows DLL Collection - MUST happen during Analysis, not at spec parse time
+# ---------------------------------------------------------------------------
+def get_numpy_binaries():
+    """Collect NumPy/SciPy/Pandas DLLs - called during Analysis"""
+    binaries = []
+    if sys.platform == 'win32':
+        import glob
+        import site
+        
+        # Try multiple methods to find site-packages
+        search_paths = []
+        search_paths.append(os.path.join(sys.prefix, 'Lib', 'site-packages'))
+        try:
+            search_paths.extend(site.getsitepackages())
+        except:
+            pass
+        
+        for site_pkg in search_paths:
+            for lib_folder in ['numpy.libs', 'scipy.libs', 'pandas.libs']:
+                libs_path = os.path.join(site_pkg, lib_folder)
+                if os.path.exists(libs_path):
+                    dll_files = glob.glob(os.path.join(libs_path, '*.dll'))
+                    for dll in dll_files:
+                        binaries.append((dll, lib_folder))
+                    if dll_files:
+                        print(f"[SPEC] Collected {len(dll_files)} DLLs from {libs_path}")
+                        break  # Found this lib_folder, move to next
+    
+    if not binaries and sys.platform == 'win32':
+        print("[SPEC] WARNING: No DLLs found!")
+    
+    return binaries
+
+# ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
-# Manual DLL collection as fallback
-numpy_binaries_manual = []
-if sys.platform == 'win32':
-    import glob
-    venv_site_packages = os.path.join(sys.prefix, 'Lib', 'site-packages')
-    for lib_folder in ['numpy.libs', 'scipy.libs', 'pandas.libs']:
-        libs_path = os.path.join(venv_site_packages, lib_folder)
-        if os.path.exists(libs_path):
-            for dll in glob.glob(os.path.join(libs_path, '*.dll')):
-                numpy_binaries_manual.append((dll, lib_folder))
-            print(f"[SPEC] Manually collected {len(glob.glob(os.path.join(libs_path, '*.dll')))} DLLs from {lib_folder}")
 
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
-    binaries=numpy_binaries_manual,  # Use manual collection
+    binaries=get_numpy_binaries(),
     datas=all_datas,    hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},

@@ -73,7 +73,14 @@ jobs:
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          pyinstaller --noconfirm sarcasm.spec
+          pyinstaller --noconfirm sarcasm.spec 2>&1 | Tee-Object build-log.txt
+
+      - name: Show spec DLL collection output
+        shell: pwsh
+        run: |
+          if (Test-Path "build-log.txt") {
+            Get-Content "build-log.txt" | Select-String "\[SPEC\]"
+          }
 
       - name: DEBUG - Show what hook actually collected
         shell: pwsh
