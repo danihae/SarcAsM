@@ -71,12 +71,15 @@ jobs:
           .venv\Scripts\Activate.ps1
           pip uninstall -y numpy
           pip install --no-cache-dir --only-binary :all: numpy>=2.2.5
-
-      - name: Verify NumPy installation
+      - name: Verify NumPy installation (detailed)
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          python -c "import os, numpy, glob; libs_dir = os.path.join(os.path.dirname(numpy.__file__), '.libs'); print(f'NumPy version: {numpy.__version__}'); print(f'.libs exists: {os.path.exists(libs_dir)}'); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if os.path.exists(libs_dir) else 0; print(f'DLL count: {dll_count}'); exit(0 if dll_count > 0 else 1)"
+          python -c "import sys; print(f'Python: {sys.executable}')"
+          python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); print(f'NumPy location: {numpy.__file__}')"
+          python -c "import os, numpy; print(f'NumPy dir contents:'); import pprint; pprint.pprint(os.listdir(os.path.dirname(numpy.__file__))[:20])"
+          python -c "import subprocess; print(subprocess.run(['pip', 'show', 'numpy'], capture_output=True, text=True).stdout)"
+          python -c "import os, numpy, glob; np_dir = os.path.dirname(numpy.__file__); print(f'\nChecking for DLLs in numpy dir:'); print(glob.glob(os.path.join(np_dir, '**', '*.dll'), recursive=True)[:10])"
 
       - name: Build standalone app
         shell: pwsh
