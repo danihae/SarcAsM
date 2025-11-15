@@ -3,6 +3,52 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 import sys
 import os
 
+# ---------------------------------------------------------------------------
+# Windows-only PyTorch workaround
+# ---------------------------------------------------------------------------
+# The default PyInstaller build flow performs many hook operations inside
+# isolated child Python processes. Importing torch inside those workers causes
+# an immediate crash on GitHub's Windows runners when torch tries to load its
+# DLL stack (see `_load_dll_libraries`). PyInstaller 6.16 does not yet expose a
+# `--no-isolate` switch, so we inline that behaviour here by monkey-patching the
+# isolation helpers before Analysis starts. This keeps macOS/Linux builds
+# unchanged while letting Windows finish Analysis without firing up child
+# interpreters.
+if sys.platform == 'win32':
+    from PyInstaller import isolated as _isolated
+    from PyInstaller.isolated import _parent as _isolated_parent
+
+    def _noisolate_call(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    # Existing decorated hook helpers capture the original function object, so
+    # mutate it in-place to avoid touching every decorator.
+    _isolated_parent.call.__code__ = _noisolate_call.__code__
+    _isolated_parent.call.__defaults__ = _noisolate_call.__defaults__
+    _isolated_parent.call.__kwdefaults__ = _noisolate_call.__kwdefaults__
+
+    class _NoIsolatePython:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def call(self, function, *args, **kwargs):
+            return function(*args, **kwargs)
+
+    _isolated_parent.Python = _NoIsolatePython
+    _isolated.Python = _NoIsolatePython
+    _isolated.call = _isolated_parent.call
+
+    def _noisolate_decorate(function):
+        return function
+
+    _isolated.decorate = _noisolate_decorate
+
 # Get SarcAsM version
 try:
     from sarcasm import __version__ as version

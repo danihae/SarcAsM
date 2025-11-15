@@ -24,7 +24,7 @@ The easiest and most reliable way to use SarcAsM on Windows is through Python:
 
 ## Experimental standalone ZIP build
 
-Every tagged release now ships a Windows ZIP archive (e.g. `SarcAsM-vX.Y.Z-windows.zip`) that contains a frozen `.exe`. To work around PyTorch's DLL loader crash we package the app with PyInstaller's `--no-isolate` mode, which keeps the analysis inside a single Python process during the build.
+Every tagged release now ships a Windows ZIP archive (e.g. `SarcAsM-vX.Y.Z-windows.zip`) that contains a frozen `.exe`. The build uses a custom spec-time patch to keep PyInstaller's hook analysis inside the main Python process, which prevents PyTorch from crashing while it loads its DLL stack on GitHub's runners.
 
 ### How to use the ZIP build
 1. Download the latest ZIP from the [GitHub Releases page](https://github.com/danihae/SarcAsM/releases).
