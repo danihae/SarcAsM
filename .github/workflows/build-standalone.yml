@@ -60,53 +60,49 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Install uv
-        run: pip install uv
+      - name: Create virtual environment
+        run: python -m venv .venv
       
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          uv venv
-          uv pip install -e ".[app,dev]"
-          .venv\Scripts\Activate.ps1
-          pip uninstall -y numpy
-          pip install --no-cache-dir --only-binary :all: numpy>=2.2.5
-
-      - name: Verify NumPy installation (detailed)
+      - name: Install dependencies with standard pip
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          python -c "import sys; print(f'Python: {sys.executable}')"
-          python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); print(f'NumPy location: {numpy.__file__}')"
-          python -c "import os, numpy; print(f'NumPy dir contents:'); import pprint; pprint.pprint(os.listdir(os.path.dirname(numpy.__file__))[:20])"
-          python -c "import subprocess; print(subprocess.run(['pip', 'show', 'numpy'], capture_output=True, text=True).stdout)"
-          python -c "import os, numpy, glob; np_dir = os.path.dirname(numpy.__file__); print(f'\nChecking for DLLs in numpy dir:'); print(glob.glob(os.path.join(np_dir, '**', '*.dll'), recursive=True)[:10])"
-
+          python -m pip install --upgrade pip setuptools wheel
+          # Install project dependencies EXCEPT numpy
+          pip install -e ".[app,dev]" --no-deps
+          pip install pyinstaller torch bio-image-unet matplotlib matplotlib-scalebar PyQt5 pandas trackpy scikit-learn scikit-image PyWavelets igraph numba qtutils networkx openpyxl tifffile orjson napari
+          # Now install numpy explicitly from wheel ONLY
+          pip install --only-binary :all: --force-reinstall numpy==2.2.6
+      
+      - name: Verify NumPy has .libs
+        shell: pwsh
+        run: |
+          .venv\Scripts\Activate.ps1
+          python -c "import os, numpy, glob; libs_dir = os.path.join(os.path.dirname(numpy.__file__), '.libs'); exists = os.path.exists(libs_dir); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if exists else 0; print(f'NumPy: {numpy.__version__}'); print(f'.libs exists: {exists}'); print(f'DLLs: {dll_count}'); exit(0 if dll_count > 5 else 1)"
+      
       - name: Build standalone app
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
           pyinstaller --noconfirm sarcasm.spec
       
-      - name: Verify NumPy DLLs in build
+      - name: Verify build contains numpy.libs
         shell: pwsh
         run: |
           if (Test-Path "dist\SarcAsM-*\_internal\numpy.libs") {
-            Write-Host "SUCCESS: numpy.libs folder found in build"
-            Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs" | Select-Object Name
+            Write-Host "SUCCESS: numpy.libs in build"
+            Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs\*.dll"
           } else {
-            Write-Error "ERROR: numpy.libs folder missing from build!"
+            Write-Error "FAILED: numpy.libs missing"
             exit 1
           }
       
       - name: Create ZIP
-        run: |
-          Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
+        run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            dist/SarcAsM-*.zip
+          files: dist/SarcAsM-*.zip
           draft: false
           prerelease: ${{ contains(github.ref_name, '-test') }}
