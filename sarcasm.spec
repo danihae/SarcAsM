@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 import sys
 import os
 
@@ -58,7 +58,33 @@ except ImportError:
 # Dynamic platform-aware naming
 appname = f"SarcAsM-v{version}"
 
-# Collect data files - be comprehensive, not selective
+# ---------------------------------------------------------------------------
+# Windows NumPy DLL fix - collect numpy.libs manually
+# ---------------------------------------------------------------------------
+# NumPy 2.x on Windows uses delvewheel packaging which places dependency DLLs
+# (OpenBLAS, etc.) in a .libs directory that PyInstaller may not detect
+numpy_binaries = []
+if sys.platform == 'win32':
+    import glob
+    try:
+        import numpy
+        numpy_dir = os.path.dirname(numpy.__file__)
+        libs_dir = os.path.join(numpy_dir, '.libs')
+        
+        if os.path.exists(libs_dir):
+            dll_files = glob.glob(os.path.join(libs_dir, '*.dll'))
+            for dll in dll_files:
+                numpy_binaries.append((dll, 'numpy.libs'))
+            print(f"✓ Collected {len(dll_files)} NumPy DLLs from {libs_dir}")
+        else:
+            print(f"⚠ Warning: numpy.libs directory not found at {libs_dir}")
+    except Exception as e:
+        print(f"⚠ Warning: Could not collect NumPy DLLs: {e}")
+
+# ---------------------------------------------------------------------------
+# Collect data files
+# ---------------------------------------------------------------------------
+print("Collecting data files...")
 napari_data = collect_data_files('napari', include_py_files=False)
 napari_data += collect_data_files('napari_builtins', include_py_files=False)
 vispy_data = collect_data_files('vispy', include_py_files=False)
@@ -66,52 +92,115 @@ model_data = [('sarcasm/models', 'sarcasm/models')]
 
 # Collect data for missing dependencies
 rfc3987_syntax_data = collect_data_files('rfc3987_syntax')  # macOS: missing .lark grammar files
-numpy_data = collect_data_files('numpy')  # Windows: ensure all DLLs/libs are collected
+numpy_data = collect_data_files('numpy', include_py_files=False)  # NumPy data files
 
-# Only exclude things that are definitely NOT needed
+# Combine all data
+all_datas = napari_data + vispy_data + model_data + rfc3987_syntax_data + numpy_data
+
+# ---------------------------------------------------------------------------
+# Hidden imports - comprehensive list
+# ---------------------------------------------------------------------------
+hiddenimports = [
+    # Napari
+    'napari',
+    'napari._qt',
+    'napari._qt.qt_main_window',
+    'napari._qt.qt_viewer',
+    'napari.plugins',
+    'napari_builtins',
+    'napari.layers',
+    'napari.layers.image',
+    'napari.layers.points',
+    'napari.layers.shapes',
+    'napari.layers.labels',
+    'napari.components',
+    'napari._vispy',
+    
+    # VisPy
+    'vispy',
+    'vispy.glsl',
+    'vispy.glsl.math',
+    'vispy.app',
+    'vispy.app.backends',
+    'vispy.app.backends._pyqt5',
+    'vispy.gloo',
+    'vispy.gloo.gl',
+    'vispy.scene',
+    'vispy.visuals',
+    'vispy.color',
+    
+    # PyQt5
+    'PyQt5',
+    'PyQt5.QtCore',
+    'PyQt5.QtGui',
+    'PyQt5.QtWidgets',
+    'PyQt5.QtOpenGL',
+    'PyQt5.sip',
+    'PyQt5._QOpenGLFunctions_2_0',
+    
+    # NumPy - CRITICAL for Windows DLL loading
+    'numpy.core._multiarray_umath',
+    'numpy._core._multiarray_umath',
+    'numpy.core._methods',
+    'numpy._core._methods',
+    'numpy.random._common',
+    'numpy.random._bounded_integers',
+    'numpy.random._mt19937',
+    'numpy.random._philox',
+    'numpy.random._pcg64',
+    'numpy.random._sfc64',
+    'numpy.random._generator',
+    
+    # SciPy internals (if used)
+    'scipy.special._ufuncs_cxx',
+    'scipy.linalg.cython_blas',
+    'scipy.linalg.cython_lapack',
+    
+    # Image I/O
+    'imageio',
+    'imageio.plugins',
+    'tifffile',
+    'PIL._imaging',
+    
+    # Config/syntax
+    'rfc3987',
+    'rfc3987_syntax',
+    'rfc3987_syntax.syntax_helpers',
+    
+    # FreeType
+    'freetype',
+    
+] + collect_submodules('sarcasm_app', filter=lambda name: 'test' not in name) \
+  + collect_submodules('vispy', filter=lambda name: 'test' not in name)
+
+# Remove duplicates
+hiddenimports = list(dict.fromkeys(hiddenimports))
+
+print(f"Total hidden imports: {len(hiddenimports)}")
+
+# ---------------------------------------------------------------------------
+# Excludes
+# ---------------------------------------------------------------------------
 excludes = [
     # Exclude test frameworks and dev tools (but NOT unittest - torch needs it!)
     'pytest', '_pytest', 'nose', 'hypothesis',
     'IPython', 'jupyter', 'notebook', 'nbconvert', 'nbformat',
-    'tkinter', 'tcl', 'tk', '_tkinter',
+    'tkinter', '_tkinter',
     # Exclude test submodules (but NOT numpy.testing - scipy needs it!)
     'scipy.tests',
     'matplotlib.tests',
     'PIL.ImageQt',
 ]
 
-# Platform-specific excludes for Windows to avoid torch import issues during analysis
-if sys.platform == 'win32':
-    # Don't let PyInstaller try to import torch during analysis - causes access violations
-    # The hook will collect it properly instead
-    pass  # We'll handle torch via hook, not via excludes
-
+# ---------------------------------------------------------------------------
+# Analysis
+# ---------------------------------------------------------------------------
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
-    binaries=[],
-    datas=napari_data + vispy_data + model_data + rfc3987_syntax_data + numpy_data,
-    hiddenimports=[
-        'napari',
-        'napari._qt',
-        'napari.plugins',
-        'napari_builtins',
-        'vispy',
-        'vispy.glsl',
-        'vispy.app',
-        'vispy.app.backends',
-        'vispy.app.backends._pyqt5',
-        'PyQt5.QtOpenGL',
-        'freetype',
-        'PyQt5.sip',
-        # Fix Windows numpy DLL issue
-        'numpy.core._multiarray_umath',
-        'numpy._core._multiarray_umath',
-        # Fix macOS rfc3987 missing module
-        'rfc3987',
-        'rfc3987_syntax',
-        'rfc3987_syntax.syntax_helpers',
-    ] + collect_submodules('sarcasm_app') + collect_submodules('vispy'),
+    binaries=numpy_binaries,  # Add NumPy DLLs here
+    datas=all_datas,
+    hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
     runtime_hooks=['sarcasm_app/hooks/runtime_hook_matplotlib.py'],
@@ -134,7 +223,7 @@ exe = EXE(
     strip=False,
     upx=False,  # Faster startup without compression
     upx_exclude=[],
-    console=False,
+    console=True,  # TEMPORARILY ENABLED for debugging - set to False after fix verified
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -159,5 +248,3 @@ if sys.platform == 'darwin':
             'NSRequiresAquaSystemAppearance': 'False',
         }
     )
-else:
-    pass
