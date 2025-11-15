@@ -25,9 +25,7 @@ jobs:
           uv pip install -e ".[app,dev]"
       
       - name: Build standalone app
-        run: |
-          source .venv/bin/activate
-          pyinstaller sarcasm.spec
+        run: uv run pyinstaller sarcasm.spec
       
       - name: Create DMG (optional)
         run: |
@@ -64,9 +62,7 @@ jobs:
           uv pip install -e ".[app,dev]"
       
       - name: Build standalone app
-        run: |
-          .venv\Scripts\activate
-          pyinstaller sarcasm.spec
+        run: uv run pyinstaller sarcasm.spec
       
       - name: Create ZIP
         run: |
