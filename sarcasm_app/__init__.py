@@ -34,7 +34,12 @@ from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
 from sarcasm import __version__ as version
 
-QApplication.setAttribute(Qt.AA_Use96Dpi)  # disables automatic rescaling
+# IMPORTANT: Qt attributes must be set BEFORE QApplication is created
+# This fixes high-DPI scaling issues on Windows (Qt 5.6+)
+if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
 class Application:
 

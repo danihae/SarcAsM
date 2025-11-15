@@ -20,6 +20,7 @@ from functools import partial
 
 from sarcasm import Utils, Structure
 from sarcasm.type_utils import TypeUtils
+from sarcasm.structure_modules.domain_clustering import analyze_domains
 
 import napari
 import numpy as np
@@ -466,7 +467,7 @@ class ApplicationControl:
             sarcomere_orientation_vectors = cell.data['sarcomere_orientation_vectors'][frame]
             sarcomere_length_vectors = cell.data['sarcomere_length_vectors'][frame]
 
-            domain_mask = cell._analyze_domains(
+            domain_mask = analyze_domains(
                 domains,
                 pos_vectors=pos_vectors,
                 sarcomere_length_vectors=sarcomere_length_vectors,

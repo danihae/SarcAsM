@@ -11,6 +11,9 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+# Configure matplotlib before any imports to speed up startup
+import os
+os.environ['MPLCONFIGDIR'] = os.path.join(os.path.expanduser('~'), '.sarcasm_mpl')
 
 from sarcasm_app import Application
 
