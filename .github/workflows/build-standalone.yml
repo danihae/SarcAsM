@@ -68,34 +68,27 @@ jobs:
         run: |
           .venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip setuptools wheel
-          # Install project dependencies EXCEPT numpy
           pip install -e ".[app,dev]" --no-deps
           pip install pyinstaller torch bio-image-unet matplotlib matplotlib-scalebar PyQt5 pandas trackpy scikit-learn scikit-image PyWavelets igraph numba qtutils networkx openpyxl tifffile orjson napari
-          # Now install numpy explicitly from wheel ONLY
           pip install --only-binary :all: --force-reinstall numpy==2.2.6
+      
+      # ADD THIS DIAGNOSTIC STEP HERE:
+      - name: DEBUG - Find where NumPy stores DLLs
+        shell: pwsh
+        run: |
+          .venv\Scripts\Activate.ps1
+          Write-Host "=== NumPy Directory Structure ==="
+          python -c "import os, numpy; np_dir = os.path.dirname(numpy.__file__); print('NumPy location:', np_dir); print('\nSubfolders:'); [print(f'  {d}') for d in os.listdir(np_dir) if os.path.isdir(os.path.join(np_dir, d))][:15]"
+          Write-Host "`n=== Searching for ALL DLLs in NumPy package ==="
+          python -c "import os, numpy, glob; np_dir = os.path.dirname(numpy.__file__); dlls = glob.glob(os.path.join(np_dir, '**', '*.dll'), recursive=True); print(f'Found {len(dlls)} DLLs:'); [print(f'  {os.path.relpath(f, np_dir)}') for f in dlls[:20]]"
+          Write-Host "`n=== Checking parent directory for .libs ==="
+          python -c "import os, numpy; parent = os.path.dirname(os.path.dirname(numpy.__file__)); print(f'Parent dir: {parent}'); import glob; libs = glob.glob(os.path.join(parent, '**', '*.libs'), recursive=True); print(f'Found .libs folders: {libs}')"
       
       - name: Verify NumPy has .libs
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
           python -c "import os, numpy, glob; libs_dir = os.path.join(os.path.dirname(numpy.__file__), '.libs'); exists = os.path.exists(libs_dir); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if exists else 0; print(f'NumPy: {numpy.__version__}'); print(f'.libs exists: {exists}'); print(f'DLLs: {dll_count}'); exit(0 if dll_count > 5 else 1)"
-      
-      - name: Build standalone app
-        shell: pwsh
-        run: |
-          .venv\Scripts\Activate.ps1
-          pyinstaller --noconfirm sarcasm.spec
-      
-      - name: Verify build contains numpy.libs
-        shell: pwsh
-        run: |
-          if (Test-Path "dist\SarcAsM-*\_internal\numpy.libs") {
-            Write-Host "SUCCESS: numpy.libs in build"
-            Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs\*.dll"
-          } else {
-            Write-Error "FAILED: numpy.libs missing"
-            exit 1
-          }
       
       - name: Create ZIP
         run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
