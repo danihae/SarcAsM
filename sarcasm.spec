@@ -175,7 +175,7 @@ excludes = [
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
-    binaries=[]
+    binaries=[],
     datas=all_datas,
     hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
