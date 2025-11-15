@@ -22,7 +22,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv
-          source .venv/bin/activate
           uv pip install -e ".[app,dev]"
       
       - name: Build standalone app
@@ -62,7 +61,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv
-          .venv\Scripts\activate
           uv pip install -e ".[app,dev]"
       
       - name: Build standalone app
