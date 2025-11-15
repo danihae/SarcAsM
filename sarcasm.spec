@@ -172,12 +172,23 @@ excludes = [
 # ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
+# Manual DLL collection as fallback
+numpy_binaries_manual = []
+if sys.platform == 'win32':
+    import glob
+    venv_site_packages = os.path.join(sys.prefix, 'Lib', 'site-packages')
+    for lib_folder in ['numpy.libs', 'scipy.libs', 'pandas.libs']:
+        libs_path = os.path.join(venv_site_packages, lib_folder)
+        if os.path.exists(libs_path):
+            for dll in glob.glob(os.path.join(libs_path, '*.dll')):
+                numpy_binaries_manual.append((dll, lib_folder))
+            print(f"[SPEC] Manually collected {len(glob.glob(os.path.join(libs_path, '*.dll')))} DLLs from {lib_folder}")
+
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
-    binaries=[],
-    datas=all_datas,
-    hiddenimports=hiddenimports,
+    binaries=numpy_binaries_manual,  # Use manual collection
+    datas=all_datas,    hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
     runtime_hooks=['sarcasm_app/hooks/runtime_hook_matplotlib.py'],
