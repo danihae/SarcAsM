@@ -48,6 +48,10 @@ a = Analysis(
         'PyQt5.QtOpenGL',
         'freetype',
         'PyQt5.sip',
+        # Torch imports for Windows compatibility
+        'torch',
+        'torch._C',
+        'torch._VF',
     ] + collect_submodules('sarcasm_app') + collect_submodules('vispy'),
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},

@@ -28,11 +28,17 @@ jobs:
         run: |
           source .venv/bin/activate && pyinstaller sarcasm.spec
       
-      - name: Create DMG (optional)
+      - name: Prepare DMG contents
         run: |
-          # Create a DMG for easier distribution
+          mkdir -p dmg_contents
+          cp -r dist/SarcAsM-*.app dmg_contents/
+          cp INSTALL.txt dmg_contents/"📖 READ ME FIRST.txt"
+          ln -s /Applications dmg_contents/Applications
+      
+      - name: Create DMG
+        run: |
           hdiutil create -volname "SarcAsM-${{ github.ref_name }}" \
-            -srcfolder dist/SarcAsM-*.app \
+            -srcfolder dmg_contents \
             -ov -format UDZO \
             dist/SarcAsM-${{ github.ref_name }}-macos.dmg
       

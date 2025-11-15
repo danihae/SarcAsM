@@ -340,6 +340,19 @@ pyinstaller sarcasm.spec
 # The app bundle will be in dist/SarcAsM-vX.Y.Z.app
 ```
 
+**Note for macOS users**: The built app is not code-signed. Users will need to bypass the security warning on first launch by right-clicking the app and selecting "Open". See [INSTALLATION_MACOS.md](../INSTALLATION_MACOS.md) for detailed user instructions.
+
+To test the built app locally:
+```bash
+# Remove quarantine attribute to bypass security warning
+xattr -cr dist/SarcAsM-v*.app
+
+# Run the app
+open dist/SarcAsM-v*.app
+```
+
+**Note**: Code signing requires an Apple Developer account ($99/year), which is not feasible for academic/scientific software.
+
 The build configuration is defined in `sarcasm.spec`.
 
 ## Project Structure
