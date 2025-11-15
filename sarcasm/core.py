@@ -231,15 +231,15 @@ class SarcAsM:
     def __str__(self):
         """Returns a pretty, concise string representation of the SarcAsM object."""
         summary = [
-            f"╔══════════════════════════════════════════════════════",
+            "╔══════════════════════════════════════════════════════",
             f"║ SarcAsM Analysis v{self.metadata.version}",
-            f"║ ─────────────────────────────────────────────────────",
+            "║ ─────────────────────────────────────────────────────",
             f"║ File path: {os.path.basename(self.file_path)}",
             f"║ Base directory: {os.path.dirname(self.base_dir)}",
             f"║ Device: {self.device}",
             f"║ Pixel size: {round(self.metadata.pixelsize, 5)} µm",
             f"║ Analysis timestamp: {self.metadata.timestamp_analysis}",
-            f"╚══════════════════════════════════════════════════════"
+            "╚══════════════════════════════════════════════════════"
         ]
 
         return "\n".join(summary)
@@ -347,9 +347,12 @@ class SarcAsM:
         if tif.imagej_metadata:
             ij = tif.imagej_metadata
             order = ''
-            if ij.get('frames', 1) > 1: order += 'T'
-            if ij.get('slices', 1) > 1: order += 'Z'
-            if ij.get('channels', 1) > 1: order += 'C'
+            if ij.get('frames', 1) > 1:
+                order += 'T'
+            if ij.get('slices', 1) > 1:
+                order += 'Z'
+            if ij.get('channels', 1) > 1:
+                order += 'C'
             order += 'YX'
             
             # BUG FIX: ImageJ metadata might say channels=1 or slices=1, but the actual

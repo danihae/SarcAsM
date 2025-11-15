@@ -13,7 +13,7 @@
 
 """Myofibril line detection and analysis module."""
 
-from typing import Union, Tuple
+from typing import Union
 from collections import deque
 import random
 import numpy as np

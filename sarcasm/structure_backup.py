@@ -16,7 +16,6 @@ import glob
 import os
 import random
 import shutil
-import warnings
 from collections import deque
 from multiprocessing import Pool
 from typing import Optional, Tuple, Union, List, Literal, Any

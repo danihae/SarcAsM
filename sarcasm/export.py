@@ -13,7 +13,7 @@
 
 
 import os.path
-from typing import Union, List
+from typing import Union, List, Optional
 
 import types
 import numpy as np
@@ -219,7 +219,7 @@ class MultiLOIAnalysis:
         """
         self.data.to_pickle(self.folder + 'data_motion.pd')
 
-    def load_data(self, path: 'Optional[str]' = None) -> pd.DataFrame:
+    def load_data(self, path: Optional[str] = None) -> pd.DataFrame:
         """
         Load the DataFrame from the data folder.
 

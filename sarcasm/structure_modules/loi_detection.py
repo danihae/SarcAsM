@@ -18,7 +18,7 @@ select_random_lois : Select random LOIs without clustering
 
 import numpy as np
 import pandas as pd
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict
 from scipy.spatial.distance import directed_hausdorff
 from scipy.optimize import curve_fit
 from sklearn.cluster import AgglomerativeClustering

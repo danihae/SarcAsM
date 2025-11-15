@@ -13,13 +13,13 @@
 
 """Z-band segmentation and analysis module."""
 
-from typing import Tuple, Union, List
+from typing import Tuple
 import numpy as np
 import networkx as nx
-from scipy import ndimage, stats
+from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import squareform, pdist
-from skimage import segmentation, morphology, measure
+from skimage import segmentation, morphology
 from skimage.measure import label, regionprops_table
 from skimage.morphology import skeletonize
 

@@ -1,7 +1,7 @@
 import glob
 import os
 from multiprocessing import Pool
-from sarcasm import *
+from sarcasm import Structure, Motion, Utils
 
 folder = 'D:/SarcAsM_drugs/'
 

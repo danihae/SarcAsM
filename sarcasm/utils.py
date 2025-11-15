@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Tuple, Any, List, Union
 os.environ["KMP_WARNINGS"] = "False"
 warnings.filterwarnings("ignore")
-
 import numpy as np
 import tifffile
 import torch
+import igraph as ig
 from numba import njit, prange
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata, Akima1DInterpolator
@@ -35,7 +35,6 @@ from scipy.stats import stats
 from skimage.draw import line
 from skimage.morphology import disk
 from skimage.transform import resize
-import igraph as ig
 
 
 
