@@ -60,36 +60,32 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Create virtual environment
-        run: python -m venv .venv
+      - name: Install uv
+        run: pip install uv
       
-      - name: Install dependencies with standard pip
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          uv venv
+          uv pip install -e ".[app,dev]"
+      
+      - name: Build standalone app
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[app,dev]" --no-deps
-          pip install pyinstaller torch bio-image-unet matplotlib matplotlib-scalebar PyQt5 pandas trackpy scikit-learn scikit-image PyWavelets igraph numba qtutils networkx openpyxl tifffile orjson napari
-          pip install --only-binary :all: --force-reinstall numpy==2.2.6
+          pyinstaller --noconfirm sarcasm.spec
       
-      # ADD THIS DIAGNOSTIC STEP HERE:
-      - name: DEBUG - Find where NumPy stores DLLs
+      - name: Verify build contains DLLs
         shell: pwsh
         run: |
-          .venv\Scripts\Activate.ps1
-          Write-Host "=== NumPy Directory Structure ==="
-          python -c "import os, numpy; np_dir = os.path.dirname(numpy.__file__); print('NumPy location:', np_dir); print('\nSubfolders:'); [print(f'  {d}') for d in os.listdir(np_dir) if os.path.isdir(os.path.join(np_dir, d))][:15]"
-          Write-Host "`n=== Searching for ALL DLLs in NumPy package ==="
-          python -c "import os, numpy, glob; np_dir = os.path.dirname(numpy.__file__); dlls = glob.glob(os.path.join(np_dir, '**', '*.dll'), recursive=True); print(f'Found {len(dlls)} DLLs:'); [print(f'  {os.path.relpath(f, np_dir)}') for f in dlls[:20]]"
-          Write-Host "`n=== Checking parent directory for .libs ==="
-          python -c "import os, numpy; parent = os.path.dirname(os.path.dirname(numpy.__file__)); print(f'Parent dir: {parent}'); import glob; libs = glob.glob(os.path.join(parent, '**', '*.libs'), recursive=True); print(f'Found .libs folders: {libs}')"
+          if (Test-Path "dist\SarcAsM-*\_internal\numpy.libs") {
+            $dllCount = (Get-ChildItem "dist\SarcAsM-*\_internal\numpy.libs\*.dll").Count
+            Write-Host "SUCCESS: Found $dllCount DLLs in build"
+          } else {
+            Write-Error "FAILED: numpy.libs missing from build"
+            exit 1
+          }
       
-      - name: Verify NumPy has .libs
-        shell: pwsh
-        run: |
-          .venv\Scripts\Activate.ps1
-          python -c "import os, site, glob; site_pkg = site.getsitepackages()[0]; libs_dir = os.path.join(site_pkg, 'numpy.libs'); exists = os.path.exists(libs_dir); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if exists else 0; print(f'numpy.libs location: {libs_dir}'); print(f'Exists: {exists}'); print(f'DLL count: {dll_count}'); exit(0 if dll_count > 5 else 1)"
-          
       - name: Create ZIP
         run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
       
