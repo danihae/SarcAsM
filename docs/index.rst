@@ -71,6 +71,12 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
 
 .. toctree::
    :maxdepth: 2
+   :caption: Developer Guide:
+
+   development
+
+.. toctree::
+   :maxdepth: 2
    :caption: Tutorials:
 
    ./notebooks/tutorial_structure_analysis

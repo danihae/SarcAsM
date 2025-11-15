@@ -28,7 +28,8 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.autosummary',
-    'nbsphinx'
+    'nbsphinx',
+    'myst_parser'
 ]
 
 autoapi_type = 'python'
@@ -51,7 +52,10 @@ def run_feature_dict_script():
 def setup(app):
     app.connect('builder-inited', lambda app: run_feature_dict_script())
 
-source_suffix = '.rst'
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 master_doc = 'index'
 language = 'en'
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']

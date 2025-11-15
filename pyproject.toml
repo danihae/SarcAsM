@@ -73,7 +73,8 @@ exclude = [
     "__pycache__",
     "build",
     "dist",
-    "docs"
+    "docs",
+    "private"
 ]
 target-version = "py310"
 
@@ -93,6 +94,8 @@ ignore = [
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "test_*.py" = ["F401"]   # Allow unused imports in tests
 "docs/*" = ["E402"]      # Allow import violations in docs
+"*.ipynb" = ["F403", "F405"]  # Allow star imports in notebooks
+"scripts/*.py" = ["T201"]  # Allow print statements in scripts
 
 [tool.hatch.build.targets.sdist]
 include = [
