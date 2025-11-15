@@ -30,6 +30,7 @@ Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tibur
 - [Installation](#installation)
 - [Usage](#usage)
 - [Documentation](#documentation)
+- [Contributing](#contributing)
 - [Support](#support)
 - [Citation](#citation)
 - [License](#license)
@@ -152,6 +153,21 @@ Detailed documentation, including tutorials, API reference, and usage examples, 
 Additional resources:
 - Example notebooks located in the `docs/notebooks` directory within the repository.
 - Sample data for testing purposes is available at [https://doi.org/10.5281/zenodo.8232838](https://doi.org/10.5281/zenodo.8232838).
+
+## Contributing
+
+We welcome contributions from the community! If you'd like to contribute to SarcAsM:
+
+- **Development Guide:** See [docs/development.md](docs/development.md) for detailed instructions on setting up your development environment, running tests, code quality standards, and publishing releases.
+- **Quick Start for Developers:**
+  ```bash
+  git clone https://github.com/danihae/SarcAsM.git
+  cd SarcAsM
+  pip install -e ".[dev,test]"
+  pytest
+  ```
+- Please follow the contribution workflow outlined in the development guide
+- Ensure all tests pass and code quality checks are met before submitting pull requests
 
 ## Support
 
