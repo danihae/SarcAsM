@@ -22,11 +22,17 @@ The easiest and most reliable way to use SarcAsM on Windows is through Python:
 
 ---
 
-## Why No Standalone Executable for Windows?
+## Experimental standalone ZIP build
 
-Unfortunately, PyTorch (a core dependency) has fundamental incompatibilities with PyInstaller on Windows that cause DLL loading crashes. This is a known issue in the PyInstaller/PyTorch ecosystem and affects many projects.
+Every tagged release now ships a Windows ZIP archive (e.g. `SarcAsM-vX.Y.Z-windows.zip`) that contains a frozen `.exe`. To work around PyTorch's DLL loader crash we package the app with PyInstaller's `--no-isolate` mode, which keeps the analysis inside a single Python process during the build.
 
-**The pip installation method works perfectly on Windows** and is actually faster to start up than a bundled executable would be.
+### How to use the ZIP build
+1. Download the latest ZIP from the [GitHub Releases page](https://github.com/danihae/SarcAsM/releases).
+2. Right-click the ZIP in Explorer, open **Properties**, and check **Unblock** if it exists.
+3. Extract the archive and double-click the `SarcAsM-*.exe` inside `dist`.
+4. If SmartScreen warns about an unrecognized app, choose *More info* → *Run anyway*.
+
+> ⚠️ The standalone is still considered experimental. If Windows Defender or driver policies prevent the app from launching, fall back to the pip installation above, which remains the most reliable option.
 
 ---
 

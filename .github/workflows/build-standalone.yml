@@ -70,7 +70,7 @@ jobs:
       
       - name: Build standalone app
         run: |
-          .venv\Scripts\activate && pyinstaller --noconfirm sarcasm.spec
+          .venv\Scripts\activate && pyinstaller --no-isolate --noconfirm sarcasm.spec
       
       - name: Create ZIP
         run: |
