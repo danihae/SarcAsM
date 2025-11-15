@@ -75,11 +75,11 @@ if sys.platform == 'win32':
             dll_files = glob.glob(os.path.join(libs_dir, '*.dll'))
             for dll in dll_files:
                 numpy_binaries.append((dll, 'numpy.libs'))
-            print(f"✓ Collected {len(dll_files)} NumPy DLLs from {libs_dir}")
+            print(f"[OK] Collected {len(dll_files)} NumPy DLLs from {libs_dir}")
         else:
-            print(f"⚠ Warning: numpy.libs directory not found at {libs_dir}")
+            print(f"[WARNING] numpy.libs directory not found at {libs_dir}")
     except Exception as e:
-        print(f"⚠ Warning: Could not collect NumPy DLLs: {e}")
+        print(f"[WARNING] Could not collect NumPy DLLs: {e}")
 
 # ---------------------------------------------------------------------------
 # Collect data files
