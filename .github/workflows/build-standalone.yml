@@ -88,8 +88,8 @@ jobs:
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          python -c "import os, numpy, glob; libs_dir = os.path.join(os.path.dirname(numpy.__file__), '.libs'); exists = os.path.exists(libs_dir); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if exists else 0; print(f'NumPy: {numpy.__version__}'); print(f'.libs exists: {exists}'); print(f'DLLs: {dll_count}'); exit(0 if dll_count > 5 else 1)"
-      
+          python -c "import os, site, glob; site_pkg = site.getsitepackages()[0]; libs_dir = os.path.join(site_pkg, 'numpy.libs'); exists = os.path.exists(libs_dir); dll_count = len(glob.glob(os.path.join(libs_dir, '*.dll'))) if exists else 0; print(f'numpy.libs location: {libs_dir}'); print(f'Exists: {exists}'); print(f'DLL count: {dll_count}'); exit(0 if dll_count > 5 else 1)"
+          
       - name: Create ZIP
         run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
       

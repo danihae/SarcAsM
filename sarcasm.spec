@@ -59,29 +59,6 @@ except ImportError:
 appname = f"SarcAsM-v{version}"
 
 # ---------------------------------------------------------------------------
-# Windows NumPy DLL fix - collect numpy.libs manually
-# ---------------------------------------------------------------------------
-# NumPy 2.x on Windows uses delvewheel packaging which places dependency DLLs
-# (OpenBLAS, etc.) in a .libs directory that PyInstaller may not detect
-numpy_binaries = []
-if sys.platform == 'win32':
-    import glob
-    try:
-        import numpy
-        numpy_dir = os.path.dirname(numpy.__file__)
-        libs_dir = os.path.join(numpy_dir, '.libs')
-        
-        if os.path.exists(libs_dir):
-            dll_files = glob.glob(os.path.join(libs_dir, '*.dll'))
-            for dll in dll_files:
-                numpy_binaries.append((dll, 'numpy.libs'))
-            print(f"[OK] Collected {len(dll_files)} NumPy DLLs from {libs_dir}")
-        else:
-            print(f"[WARNING] numpy.libs directory not found at {libs_dir}")
-    except Exception as e:
-        print(f"[WARNING] Could not collect NumPy DLLs: {e}")
-
-# ---------------------------------------------------------------------------
 # Collect data files
 # ---------------------------------------------------------------------------
 print("Collecting data files...")
