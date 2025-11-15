@@ -66,11 +66,12 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          uv venv
-          uv pip install -e ".[app,dev]"
+          python -m venv .venv
           .venv\Scripts\Activate.ps1
+          pip install --upgrade pip
+          pip install -e ".[app,dev]"
           pip uninstall -y numpy
-          pip install --no-cache-dir --only-binary :all: numpy>=2.2.5
+          pip install --no-cache-dir --force-reinstall --only-binary :all: numpy==2.2.6
 
       - name: Verify NumPy installation
         shell: pwsh
