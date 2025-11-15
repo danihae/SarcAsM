@@ -1,0 +1,83 @@
+name: Build Standalone Apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  build-macos:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install uv
+        run: pip install uv
+      
+      - name: Install dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[app,dev]"
+      
+      - name: Build standalone app
+        run: |
+          source .venv/bin/activate
+          pyinstaller sarcasm.spec
+      
+      - name: Create DMG (optional)
+        run: |
+          # Create a DMG for easier distribution
+          hdiutil create -volname "SarcAsM-${{ github.ref_name }}" \
+            -srcfolder dist/SarcAsM-*.app \
+            -ov -format UDZO \
+            dist/SarcAsM-${{ github.ref_name }}-macos.dmg
+      
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/SarcAsM-*.dmg
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-test') }}
+
+  build-windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install uv
+        run: pip install uv
+      
+      - name: Install dependencies
+        run: |
+          uv venv
+          .venv\Scripts\activate
+          uv pip install -e ".[app,dev]"
+      
+      - name: Build standalone app
+        run: |
+          .venv\Scripts\activate
+          pyinstaller sarcasm.spec
+      
+      - name: Create ZIP
+        run: |
+          Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
+      
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/SarcAsM-*.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-test') }}
