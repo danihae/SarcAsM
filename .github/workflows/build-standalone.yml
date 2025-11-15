@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p dmg_contents
           cp -r dist/SarcAsM-*.app dmg_contents/
-          cp INSTALL.txt dmg_contents/"📖 READ ME FIRST.txt"
+          cp docs/INSTALL.txt dmg_contents/"📖 READ ME FIRST.txt"
           ln -s /Applications dmg_contents/Applications
       
       - name: Create DMG
