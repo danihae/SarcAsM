@@ -3,8 +3,6 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 import sys
 import os
 
-# At the top of your spec file, after imports
-_current_dir = os.path.dirname(os.path.abspath(SPECPATH))
 
 # ---------------------------------------------------------------------------
 # Windows-only PyTorch workaround
@@ -223,6 +221,22 @@ def get_binaries():
 # Analysis
 # ---------------------------------------------------------------------------
 
+
+def get_runtime_hooks():
+    """Get runtime hooks with proper path handling"""
+    hooks = []
+    hook_dir = os.path.join(SPECPATH, 'sarcasm_app', 'hooks')
+    
+    for hook_name in ['runtime_hook_matplotlib.py', 'runtime_hook_pytorch.py']:
+        hook_path = os.path.join(hook_dir, hook_name)
+        if os.path.exists(hook_path):
+            hooks.append(hook_path)
+            print(f"[SPEC] Found runtime hook: {hook_path}")
+        else:
+            print(f"[SPEC] WARNING: Runtime hook not found: {hook_path}")
+    
+    return hooks
+
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
@@ -231,10 +245,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
-    runtime_hooks=[
-        os.path.join(_current_dir, 'sarcasm_app', 'hooks', 'runtime_hook_matplotlib.py'),
-        os.path.join(_current_dir, 'sarcasm_app', 'hooks', 'runtime_hook_pytorch.py'),
-    ],
+    runtime_hooks=get_runtime_hooks(),
     excludes=excludes,
     noarchive=False,
     optimize=1,
