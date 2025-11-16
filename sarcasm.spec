@@ -172,8 +172,8 @@ excludes = [
 # ---------------------------------------------------------------------------
 # Windows DLL Collection - MUST happen during Analysis, not at spec parse time
 # ---------------------------------------------------------------------------
-def get_numpy_binaries():
-    """Collect NumPy/SciPy/Pandas DLLs - called during Analysis"""
+def get_binaries():
+    """Collect NumPy/SciPy/Pandas/PyTorch DLLs - called during Analysis"""
     binaries = []
     if sys.platform == 'win32':
         import glob
@@ -188,6 +188,7 @@ def get_numpy_binaries():
             pass
         
         for site_pkg in search_paths:
+            # Collect *.libs folders (NumPy, SciPy, Pandas)
             for lib_folder in ['numpy.libs', 'scipy.libs', 'pandas.libs']:
                 libs_path = os.path.join(site_pkg, lib_folder)
                 if os.path.exists(libs_path):
@@ -197,9 +198,21 @@ def get_numpy_binaries():
                     if dll_files:
                         print(f"[SPEC] Collected {len(dll_files)} DLLs from {libs_path}")
                         break  # Found this lib_folder, move to next
+            
+            # Collect PyTorch DLLs from torch/lib (CRITICAL for Windows)
+            torch_lib_path = os.path.join(site_pkg, 'torch', 'lib')
+            if os.path.exists(torch_lib_path):
+                torch_dlls = glob.glob(os.path.join(torch_lib_path, '*.dll'))
+                for dll in torch_dlls:
+                    binaries.append((dll, 'torch/lib'))
+                if torch_dlls:
+                    print(f"[SPEC] Collected {len(torch_dlls)} PyTorch DLLs from {torch_lib_path}")
+                    break  # Found torch, done
     
     if not binaries and sys.platform == 'win32':
         print("[SPEC] WARNING: No DLLs found!")
+    else:
+        print(f"[SPEC] Total binaries collected: {len(binaries)}")
     
     return binaries
 
@@ -210,8 +223,9 @@ def get_numpy_binaries():
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
-    binaries=get_numpy_binaries(),
-    datas=all_datas,    hiddenimports=hiddenimports,
+    binaries=get_binaries(),
+    datas=all_datas,    
+    hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
     runtime_hooks=['sarcasm_app/hooks/runtime_hook_matplotlib.py'],
