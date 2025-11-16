@@ -241,14 +241,15 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],                    # ← REMOVE: a.binaries, a.datas
+    a.binaries,
+    a.datas,
+    [],
     name=appname,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    console=True,          # Set to False when debugging done
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -257,18 +258,19 @@ exe = EXE(
     icon='sarcasm_app/icons/sarcasm.ico',
 )
 
-# ADD THIS SECTION (creates ONEDIR bundle on Windows)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=False,
-    name=appname,
-)
+# Windows: COLLECT creates ONEDIR (overrides EXE bundling)
+if sys.platform == 'win32':
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        name=appname,
+    )
 
-# macOS bundle (unchanged)
+# macOS: BUNDLE ignores EXE bundling
 if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
