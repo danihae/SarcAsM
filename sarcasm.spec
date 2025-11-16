@@ -3,6 +3,9 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 import sys
 import os
 
+# At the top of your spec file, after imports
+_current_dir = os.path.dirname(os.path.abspath(SPECPATH))
+
 # ---------------------------------------------------------------------------
 # Windows-only PyTorch workaround
 # ---------------------------------------------------------------------------
@@ -228,13 +231,14 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=['sarcasm_app/hooks'],
     hooksconfig={},
-    runtime_hooks=['sarcasm_app/hooks/runtime_hook_matplotlib.py', 
-                   'sarcasm_app/hooks/runtime_hook_pytorch.py'],
+    runtime_hooks=[
+        os.path.join(_current_dir, 'sarcasm_app', 'hooks', 'runtime_hook_matplotlib.py'),
+        os.path.join(_current_dir, 'sarcasm_app', 'hooks', 'runtime_hook_pytorch.py'),
+    ],
     excludes=excludes,
     noarchive=False,
     optimize=1,
 )
-
 
 pyz = PYZ(a.pure)
 
