@@ -3,7 +3,7 @@ name: Build Standalone Apps
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:  # Allow manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   build-macos:
@@ -45,8 +45,7 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            dist/SarcAsM-*.dmg
+          files: dist/SarcAsM-*.dmg
           draft: false
           prerelease: ${{ contains(github.ref_name, '-test') }}
 
@@ -73,10 +72,20 @@ jobs:
         shell: pwsh
         run: |
           .venv\Scripts\Activate.ps1
-          pyinstaller --noconfirm sarcasm.spec 2>&1 | Tee-Object build-log.txt
+          pyinstaller --noconfirm sarcasm.spec
       
-      - name: Create ZIP
-        run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
+      - name: Create ZIP from folder
+        shell: pwsh
+        run: |
+          # ONEDIR creates a folder, not a single .exe
+          $folder = Get-ChildItem "dist" -Filter "SarcAsM-v*" -Directory | Select-Object -First 1
+          if ($folder) {
+            Compress-Archive -Path $folder.FullName -DestinationPath "dist\SarcAsM-${{ github.ref_name }}-windows.zip"
+            Write-Host "Created ZIP from folder: $($folder.Name)"
+          } else {
+            Write-Error "No SarcAsM folder found in dist/"
+            exit 1
+          }
       
       - name: Upload to Release
         uses: softprops/action-gh-release@v1

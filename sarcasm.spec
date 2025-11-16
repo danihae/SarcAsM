@@ -235,21 +235,20 @@ a = Analysis(
     optimize=1,
 )
 
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
-    [],
+    [],                    # ← REMOVE: a.binaries, a.datas
     name=appname,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,  # Faster startup without compression
+    upx=False,
     upx_exclude=[],
-    console=True,  # TEMPORARILY ENABLED for debugging - set to False after fix verified
+    console=True,          # Set to False when debugging done
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -258,6 +257,18 @@ exe = EXE(
     icon='sarcasm_app/icons/sarcasm.ico',
 )
 
+# ADD THIS SECTION (creates ONEDIR bundle on Windows)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name=appname,
+)
+
+# macOS bundle (unchanged)
 if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
