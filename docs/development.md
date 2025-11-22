@@ -21,19 +21,20 @@ This guide is intended for developers who want to contribute to SarcAsM or publi
    cd SarcAsM
    ```
 
-3. **Create a development environment**:
+3. **Create a development environment and install**:
    ```bash
    uv venv --python 3.10
    source .venv/bin/activate  # On macOS/Linux
    # Or: .venv\Scripts\activate  # On Windows
+   
+   # Install with all development dependencies and documentation extras
+   uv sync --extra docs
    ```
 
-4. **Install in development mode with all extras**:
-   ```bash
-   uv pip install -e ".[dev,test,docs]"
-   ```
-
-   This installs the package in editable mode with development, testing, and documentation dependencies. Changes to the code are immediately reflected.
+   This installs the package in editable mode with:
+   - Core dependencies
+   - Development dependencies (from `[dependency-groups]`: pytest, ruff, notebook)
+   - Documentation dependencies (from `[project.optional-dependencies]`: sphinx, etc.)
 
 ### Using conda (Alternative)
 
@@ -49,19 +50,21 @@ This guide is intended for developers who want to contribute to SarcAsM or publi
    conda activate sarcasm-dev
    ```
 
-3. **Install in development mode with all extras**:
+3. **Install in development mode**:
    ```bash
-   pip install -e ".[dev,test,docs]"
+   # With pip 25.1+ (supports dependency groups)
+   pip install -e . --group dev --extra docs
+   
+   # With older pip (fallback - requires manual dependency install)
+   pip install -e .
+   pip install pytest pytest-cov pytest-xdist ruff notebook sphinx sphinx-rtd-theme sphinx-autoapi nbsphinx myst-parser
    ```
 
 ## Running Tests
 
-SarcAsM uses pytest for testing. To run tests:
+SarcAsM uses pytest for testing. Development dependencies (including pytest) are automatically installed with `uv sync`.
 
 ```bash
-# Install test dependencies (if not already installed)
-uv pip install -e ".[test]"
-
 # Run all tests
 pytest
 
@@ -104,7 +107,7 @@ pytest -vv
 
 **Common Workflows:**
 
-```bash
+```python
 # Debug a single failing test with full output
 pytest tests/test_structure.py::test_failing_function -vv -l
 
@@ -124,26 +127,16 @@ Test data should be placed in the `test_data/` directory. If test data is missin
 
 The project uses several tools for code quality:
 
-* **mypy** for type checking (configuration in `mypy.ini`)
-* **ruff** for linting (configuration in `pyproject.toml`)
+* **ruff** for linting and formatting (configuration in `pyproject.toml`)
 * **pytest** for testing (configuration in `pytest.ini`)
 
-Install development tools:
-
-```bash
-# With uv (recommended)
-uv pip install -e ".[dev]"
-
-# With pip
-pip install -e ".[dev]"
-```
+Development tools are automatically installed with `uv sync` [web:20].
 
 Run linting before committing:
 
 ```bash
 # Check for issues
 ruff check sarcasm/
-mypy sarcasm/
 
 # Auto-fix many issues (safe fixes only)
 ruff check --fix sarcasm/
@@ -161,11 +154,8 @@ Documentation is built using Sphinx. To build locally:
 
 1. **Install documentation dependencies**:
    ```bash
-   # With uv (recommended)
-   uv pip install -e ".[docs]"
-   
-   # With pip
-   pip install -e ".[docs]"
+   # With uv (recommended) - includes dev dependencies + docs
+   uv sync --extra docs
    ```
 
 2. **Build the docs**:
@@ -182,7 +172,7 @@ Documentation is built using Sphinx. To build locally:
 
 The documentation is automatically built and deployed to ReadTheDocs on each commit to the main branch.
 
-**Note:** The `pyproject.toml` defines all documentation dependencies in the `[project.optional-dependencies.docs]` section.
+**Note:** The `pyproject.toml` defines documentation dependencies in the `[project.optional-dependencies.docs]` section [web:20].
 
 ## Publishing to PyPI
 
@@ -191,7 +181,7 @@ SarcAsM uses GitHub Actions for automated publishing to PyPI. The workflow is tr
 ### Automated Publishing via Git Tags (Recommended)
 
 1. **Update version number** in `pyproject.toml`:
-   ```toml
+   ```
    [project]
    name = "sarc-asm"
    version = "X.Y.Z"  # Update this
@@ -250,9 +240,8 @@ git show vX.Y.Z
 If you need to publish manually:
 
 ```bash
-# Install build tools
-# With uv (recommended)
-uv pip install build twine
+# Install build tools (if not already installed)
+uv sync --extra app
 
 # Build the package
 uv build
@@ -310,11 +299,7 @@ On a Windows machine:
 
 ```bash
 # Install PyInstaller
-# With uv (recommended)
-uv pip install pyinstaller
-
-# With pip
-pip install pyinstaller
+uv sync --extra app
 
 # Build the executable
 pyinstaller sarcasm.spec
@@ -328,11 +313,7 @@ On a macOS machine:
 
 ```bash
 # Install PyInstaller
-# With uv (recommended)
-uv pip install pyinstaller
-
-# With pip
-pip install pyinstaller
+uv sync --extra app
 
 # Build the application
 pyinstaller sarcasm.spec
