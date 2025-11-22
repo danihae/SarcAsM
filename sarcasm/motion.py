@@ -12,8 +12,6 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-import contextlib
-import io
 import os
 from typing import List, Tuple, Union
 
@@ -23,8 +21,8 @@ import pandas as pd
 from pywt import cwt
 from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
 from scipy.stats import kstest, geom
+from scipy.optimize import linear_sum_assignment
 from skimage.segmentation import clear_border
-from trackpy import link_iter
 
 from contraction_net.prediction import predict_contractions
 from sarcasm.core import SarcAsM
@@ -123,7 +121,6 @@ class Motion(SarcAsM):
     def store_loi_data(self):
         """Save LOI data"""
         IOUtils.json_serialize(self.loi_data, self.__get_loi_data_file_name())
-        print('LOI data saved!')
 
     def commit(self):
         if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
@@ -192,66 +189,59 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def track_z_bands(self, search_range: float = 2, memory_tracking: int = 10, memory_interpol: int = 3,
+    def track_z_bands(self, search_range: float = 1, memory_tracking: int = 10, memory_interpol: int = 3,
                       t_range: Union[Tuple[int, int], None] = None, z_range: Union[Tuple[int, int], None] = None,
-                      min_length: float = 1, filter_params: Tuple[int, int] = (13, 7)):
+                      min_length: float = 1, filter_params: Tuple[int, int] = (13, 7),
+                      equilibrium_weight: float = 0.3, use_lap_tracker: bool = True):
         """
-        Track peaks of intensity profile over time with Crocker-Grier algorithm from TrackPy package
+        Track peaks of intensity profile over time using LAP-based 1D tracking optimized for periodic motion
 
         Parameters
         ----------
         search_range : float
-            Search range for tracking algorithm (see documentation of trackpy package)
+            Maximum allowed distance for peak matching between frames (in µm)
         memory_tracking : int
-            Memory for tracking algorithm, in frames (see documentation of trackpy package)
+            Number of frames to keep track of missing peaks before starting a new trajectory
         memory_interpol : int
-            Memory (max interval) to interpolate gaps in trajectories, in frames (see documentation of trackpy package)
-        t_range : float[int, int]
+            Maximum gap size (in frames) to interpolate missing detections in trajectories
+        t_range : Tuple[int, int] or None
             If not None, select time-interval of data, in frames
-        z_range : float[int, int]
-            If not None, select range of z-bands
+        z_range : Tuple[int, int] or None
+            If not None, select range of z-bands by index
         min_length : float
-            Minimal length of z-band trajectory in seconds. Shorter trajectories will not be deleted but set to np.nan.
-        filter_params : tuple(float, float)
-            Parameters window length and poly order of Savitzky-Golay filter to smooth z position
+            Minimal length of z-band trajectory in seconds. Shorter trajectories are removed.
+        filter_params : Tuple[int, int]
+            Window length and polynomial order for Savitzky-Golay filter to smooth z positions
+        equilibrium_weight : float
+            Weight factor (0-1) for equilibrium position prediction. Higher values make tracking 
+            more stable by pulling peaks toward their expected equilibrium positions.
+        use_lap_tracker : bool
+            If True, use LAP-based tracker optimized for periodic 1D motion. If False, use basic nearest-neighbor.
         """
         params_dict = {'params.track_z_bands.search_range': search_range,
                        'params.track_z_bands.memory_tracking': memory_tracking,
                        'params.track_z_bands.memory_interpol': memory_interpol,
                        'params.track_z_bands.t_range': t_range,
-                       'params.track_z_bands.z_range': z_range}
+                       'params.track_z_bands.z_range': z_range,
+                       'params.track_z_bands.equilibrium_weight': equilibrium_weight,
+                       'params.track_z_bands.use_lap_tracker': use_lap_tracker}
 
         self.loi_data.update(params_dict)
         peaks = self.loi_data['peaks'].copy()
-        # make x,y array
-        peaks = [np.asarray([p, np.zeros_like(p)]).T for p in peaks]
 
-        # track positions with Crocker-Grier algorithm
-        with contextlib.redirect_stdout(io.StringIO()):
-            trajs_idx = pd.DataFrame(
-                link_iter(peaks,
-                          search_range=search_range,
-                          memory=memory_tracking,
-                          neighbor_strategy='KDTree',
-                          link_strategy='auto',
-                          adaptive_stop=1,
-                          adaptive_step=0.8)
-            )[1].to_numpy()
+        # Track z-bands using LAP-based algorithm optimized for periodic 1D motion
+        if use_lap_tracker:
+            z_pos = self._track_z_bands_lap(peaks, search_range, memory_tracking, equilibrium_weight)
+        else:
+            z_pos = self._track_z_bands_simple(peaks, search_range, memory_tracking)
 
-        # sort array into z-band trajectories
-        z_pos = np.zeros((len(trajs_idx[0]), len(self.loi_data['time']))) * np.nan
-        for t, idx in enumerate(trajs_idx):
-            for n, j in enumerate(idx):
-                if j < len(trajs_idx[0]):
-                    z_pos[j][t] = self.loi_data['peaks'][t][n]
-
-        # interpolate gaps in trajectories (interpolate with pandas)
+        # interpolate gaps in trajectories
         z_pos = pd.DataFrame(z_pos)
         z_pos = z_pos.interpolate(limit=memory_interpol, axis=1, method='cubic', limit_area='inside',
                                   limit_direction='both')
         z_pos = z_pos.to_numpy()
 
-        # set short trajectories (len<min_length) to np.nan
+        # set short trajectories (len<min_length) to np.nan and remove them
         len_z_pos = np.count_nonzero(~np.isnan(z_pos), axis=1)
         z_pos = z_pos[len_z_pos > int(min_length / self.metadata.frametime)]
 
@@ -282,6 +272,239 @@ class Motion(SarcAsM):
         self.loi_data.update(dict_temp)
         if self.auto_save:
             self.store_loi_data()
+
+    def _track_z_bands_lap(self, peaks: List[np.ndarray], search_range: float, memory: int, 
+                           equilibrium_weight: float = 0.3) -> np.ndarray:
+        """
+        Track z-bands using simple frame-to-frame nearest neighbor matching with equilibrium anchoring.
+        
+        SIMPLE APPROACH: No new tracks after initialization. Z-bands are fixed structures that don't
+        appear/disappear during imaging - only the initial frame matters for track count.
+        
+        Parameters
+        ----------
+        peaks : List[np.ndarray]
+            List of peak positions for each frame
+        search_range : float
+            Maximum allowed distance for matching (in µm)
+        memory : int
+            Number of frames to remember missing peaks
+        equilibrium_weight : float
+            Weight for equilibrium position in cost calculation (0 = pure spatial, 1 = pure equilibrium)
+            
+        Returns
+        -------
+        z_pos : np.ndarray
+            2D array of z-band trajectories (n_bands x n_frames)
+        """
+        if len(peaks) == 0:
+            return np.array([])
+        
+        n_frames = len(peaks)
+        
+        # Initialize tracks from first frame ONLY - z-bands don't appear mid-video
+        initial_peaks = peaks[0][~np.isnan(peaks[0])]
+        n_tracks = len(initial_peaks)
+        
+        if n_tracks == 0:
+            return np.array([])
+        
+        # Initialize trajectory matrix
+        z_pos = np.full((n_tracks, n_frames), np.nan)
+        z_pos[:, 0] = initial_peaks
+        
+        # Track equilibrium positions (initially set to first frame positions)
+        equilibria = initial_peaks.copy()
+        
+        # Track each frame
+        for frame_idx in range(1, n_frames):
+            current_peaks = peaks[frame_idx]
+            current_peaks = current_peaks[~np.isnan(current_peaks)]
+            
+            if len(current_peaks) == 0:
+                # No detections this frame - all tracks get NaN
+                continue
+            
+            # Get last known positions for prediction
+            last_positions = z_pos[:, frame_idx - 1].copy()
+            
+            # For missing positions, look back up to 'memory' frames
+            for i in range(n_tracks):
+                if np.isnan(last_positions[i]):
+                    for lookback in range(2, min(memory + 1, frame_idx + 1)):
+                        if not np.isnan(z_pos[i, frame_idx - lookback]):
+                            last_positions[i] = z_pos[i, frame_idx - lookback]
+                            break
+            
+            # Predict positions (blend last position with equilibrium)
+            predicted_positions = np.zeros(n_tracks)
+            for i in range(n_tracks):
+                if not np.isnan(last_positions[i]):
+                    # Blend last position with equilibrium
+                    predicted_positions[i] = (1 - equilibrium_weight) * last_positions[i] + equilibrium_weight * equilibria[i]
+                else:
+                    # No recent position, use equilibrium
+                    predicted_positions[i] = equilibria[i]
+            
+            # Build cost matrix (tracks x detections)
+            cost_matrix = np.full((n_tracks, len(current_peaks)), np.inf)
+            for i in range(n_tracks):
+                for j, detection in enumerate(current_peaks):
+                    distance = abs(detection - predicted_positions[i])
+                    if distance <= search_range:
+                        cost_matrix[i, j] = distance
+            
+            # Solve assignment
+            if not np.all(np.isinf(cost_matrix)):
+                try:
+                    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                except ValueError:
+                    row_ind, col_ind = self._greedy_assignment(cost_matrix)
+                
+                # Update tracks with assignments
+                for track_idx, detection_idx in zip(row_ind, col_ind):
+                    if cost_matrix[track_idx, detection_idx] < np.inf:
+                        z_pos[track_idx, frame_idx] = current_peaks[detection_idx]
+            
+            # Update equilibria using running median of valid positions
+            for i in range(n_tracks):
+                valid_pos = z_pos[i, :frame_idx+1][~np.isnan(z_pos[i, :frame_idx+1])]
+                if len(valid_pos) > 3:
+                    equilibria[i] = np.median(valid_pos)
+        
+        return z_pos
+
+    @staticmethod
+    def _greedy_assignment(cost_matrix: np.ndarray) -> Tuple[List[int], List[int]]:
+        """
+        Greedy assignment fallback when Hungarian algorithm fails.
+        Assigns tracks to detections by iteratively choosing the minimum cost pairing.
+        
+        Parameters
+        ----------
+        cost_matrix : np.ndarray
+            Cost matrix (n_tracks x n_detections)
+            
+        Returns
+        -------
+        row_ind, col_ind : Tuple[List[int], List[int]]
+            Lists of matched track and detection indices
+        """
+        row_ind = []
+        col_ind = []
+        
+        # Create a copy to modify
+        costs = cost_matrix.copy()
+        
+        while True:
+            # Find minimum cost that's finite
+            finite_mask = ~np.isinf(costs)
+            if not np.any(finite_mask):
+                break
+            
+            # Find min cost position
+            min_idx = np.argmin(np.where(finite_mask, costs, np.inf))
+            track_idx = min_idx // costs.shape[1]
+            det_idx = min_idx % costs.shape[1]
+            
+            if np.isinf(costs[track_idx, det_idx]):
+                break
+            
+            # Add to assignment
+            row_ind.append(track_idx)
+            col_ind.append(det_idx)
+            
+            # Remove this track and detection from further consideration
+            costs[track_idx, :] = np.inf
+            costs[:, det_idx] = np.inf
+        
+        return row_ind, col_ind
+
+    def _track_z_bands_simple(self, peaks: List[np.ndarray], search_range: float, memory: int) -> np.ndarray:
+        """
+        Simple nearest-neighbor tracking as fallback.
+        
+        Parameters
+        ----------
+        peaks : List[np.ndarray]
+            List of peak positions for each frame
+        search_range : float
+            Maximum allowed distance for matching
+        memory : int
+            Number of frames to remember missing peaks
+            
+        Returns
+        -------
+        z_pos : np.ndarray
+            2D array of z-band trajectories
+        """
+        if len(peaks) == 0:
+            return np.array([])
+        
+        n_frames = len(peaks)
+        trajectories = []
+        
+        # Initialize with first frame
+        for peak in peaks[0]:
+            if not np.isnan(peak):
+                trajectories.append([peak])
+        
+        # Track through subsequent frames
+        for frame_idx in range(1, n_frames):
+            current_peaks = peaks[frame_idx]
+            current_peaks = current_peaks[~np.isnan(current_peaks)]
+            
+            # Extend all trajectories with NaN initially
+            for traj in trajectories:
+                traj.append(np.nan)
+            
+            if len(current_peaks) == 0:
+                continue
+            
+            # Match peaks to trajectories using nearest neighbor
+            available_peaks = list(current_peaks)
+            
+            for traj_idx, traj in enumerate(trajectories):
+                # Get last known position
+                last_pos = None
+                for pos in reversed(traj[:-1]):
+                    if not np.isnan(pos):
+                        last_pos = pos
+                        break
+                
+                if last_pos is None:
+                    continue
+                
+                # Find nearest peak
+                if len(available_peaks) > 0:
+                    distances = np.abs(np.array(available_peaks) - last_pos)
+                    min_idx = np.argmin(distances)
+                    
+                    if distances[min_idx] <= search_range:
+                        traj[-1] = available_peaks[min_idx]
+                        available_peaks.pop(min_idx)
+            
+            # Start new trajectories for unmatched peaks
+            for peak in available_peaks:
+                new_traj = [np.nan] * (frame_idx) + [peak]
+                trajectories.append(new_traj)
+        
+        # Convert to array
+        if len(trajectories) == 0:
+            return np.array([])
+        
+        max_len = max(len(traj) for traj in trajectories)
+        z_pos = np.full((len(trajectories), max_len), np.nan)
+        
+        for i, traj in enumerate(trajectories):
+            z_pos[i, :len(traj)] = traj
+        
+        # Sort by spatial position
+        mean_positions = np.nanmean(z_pos, axis=1)
+        sort_idx = np.argsort(mean_positions)
+        z_pos = z_pos[sort_idx, :]
+        
+        return z_pos
 
     def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
@@ -420,8 +643,10 @@ class Motion(SarcAsM):
         else:
             raise ValueError(f'Parameter dilate_contr={dilate_contr} not valid!')
 
-        equ = np.asarray([np.nanmedian(s[contr_dilated == 0]) for s in slen])
-        equ[(equ < equ_lims[0]) | (equ > equ_lims[1])] = np.nan
+        equ = np.asarray([
+            np.nanmedian(s[contr_dilated == 0]) if np.any(~np.isnan(s[contr_dilated == 0])) else np.nan
+            for s in slen
+        ])
         delta_slen = np.asarray([slen[i] - equ[i] for i in range(len(equ))])
         delta_slen_avg = np.nanmean(delta_slen, axis=0)
         if np.count_nonzero(delta_slen) > 0:
@@ -489,10 +714,10 @@ class Motion(SarcAsM):
                 delta_i = delta_j[labels_contr == i + 1]
                 vel_i = vel_j[labels_contr == i + 1]
                 # find extrema
-                contr_max[j][i] = np.nanmin(delta_i)
-                elong_max[j][i] = np.nanmax(delta_i)
-                vel_contr_max[j][i] = np.nanmin(vel_i)
-                vel_elong_max[j][i] = np.nanmax(vel_i)
+                contr_max[j][i] = np.nanmin(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
+                elong_max[j][i] = np.nanmax(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
+                vel_contr_max[j][i] = np.nanmin(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
+                vel_elong_max[j][i] = np.nanmax(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
                 # time to peak
                 if np.count_nonzero(np.isnan(delta_i)) == 0:
                     time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata.frametime
@@ -531,10 +756,10 @@ class Motion(SarcAsM):
             delta_i = self.loi_data['delta_slen_avg'][labels_contr == i + 1]
             vel_i = self.loi_data['vel_avg'][labels_contr == i + 1]
             # find extrema
-            contr_max_avg[i] = np.nanmin(delta_i)
-            elong_max_avg[i] = np.nanmax(delta_i)
-            vel_contr_max_avg[i] = np.nanmin(vel_i)
-            vel_elong_max_avg[i] = np.nanmax(vel_i)
+            contr_max_avg[i] = np.nanmin(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
+            elong_max_avg[i] = np.nanmax(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
+            vel_contr_max_avg[i] = np.nanmin(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
+            vel_elong_max_avg[i] = np.nanmax(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
             # time to peak
             if np.count_nonzero(np.isnan(delta_i)) == 0:
                 time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata.frametime
