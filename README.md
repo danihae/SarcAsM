@@ -163,7 +163,14 @@ We welcome contributions from the community! If you'd like to contribute to Sarc
   ```bash
   git clone https://github.com/danihae/SarcAsM.git
   cd SarcAsM
-  pip install -e ".[dev,test]"
+
+  # Using uv (recommended)
+  uv sync --all-groups
+
+  # Or using pip 25.1+ with dependency groups
+  pip install -e . --group dev
+
+  # Run tests
   pytest
   ```
 - Please follow the contribution workflow outlined in the development guide
