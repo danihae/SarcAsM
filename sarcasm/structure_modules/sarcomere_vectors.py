@@ -18,7 +18,6 @@ import numpy as np
 from scipy import ndimage
 from skimage import measure
 from skimage.morphology import skeletonize
-from joblib import Parallel, delayed
 
 from sarcasm.utils import Utils
 
@@ -32,7 +31,7 @@ def get_sarcomere_vectors(
         slen_lims: Tuple[float, float] = (1, 3),
         interp_factor: int = 4,
         linewidth: float = 0.3,
-        backend: str = 'loky',
+        interpolation_method: str = 'linear',
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """
@@ -56,6 +55,8 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         Interpolation factor for profiles to calculate sarcomere length. Defaults to 4.
     linewidth : float, optional
         Line width of profiles to calculate sarcomere length. Defaults to 0.3 µm.
+    interpolation_method : str, optional
+        Interpolation method: 'linear' (fast) or 'akima' (smooth). Defaults to 'linear'.
 
     Returns
     -------
@@ -79,7 +80,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
 
     # label mbands
     midline_labels, n_mbands = ndimage.label(mbands_skel,
-                                               ndimage.generate_binary_structure(2, 2))
+                                             ndimage.generate_binary_structure(2, 2))
 
     # iterate mbands and create an additional list with labels and midline length (approx. by max. Feret diameter)
     props = measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
@@ -88,37 +89,43 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
 
     pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
     if n_mbands > 0:
-        for i, (label_i, coords_i, length_midline_i) in enumerate(
-                zip(list_labels, coords_mbands, length_mbands)):
-            pos_vectors_px.append(coords_i)
-            midline_length_vectors.append(np.ones(coords_i.shape[0]) * length_midline_i)
-            midline_id_vectors.append(np.ones(coords_i.shape[0]) * label_i)
-
-        pos_vectors_px = np.concatenate(pos_vectors_px, axis=0)
-        midline_id_vectors = np.concatenate(midline_id_vectors)
-        midline_length_vectors = np.concatenate(midline_length_vectors)
+        # Pre-calculate total number of points for efficient pre-allocation
+        total_points = sum(coords.shape[0] for coords in coords_mbands)
+        
+        # Pre-allocate arrays (much faster than appending and concatenating)
+        pos_vectors_px = np.empty((total_points, 2), dtype=coords_mbands[0].dtype)
+        midline_id_vectors = np.empty(total_points, dtype=np.float64)
+        midline_length_vectors = np.empty(total_points, dtype=np.float64)
+        
+        # Fill arrays with vectorized operations
+        idx = 0
+        for label_i, coords_i, length_midline_i in zip(list_labels, coords_mbands, length_mbands):
+            n_coords = coords_i.shape[0]
+            pos_vectors_px[idx:idx + n_coords] = coords_i
+            midline_id_vectors[idx:idx + n_coords] = label_i
+            midline_length_vectors[idx:idx + n_coords] = length_midline_i
+            idx += n_coords
 
         sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
 
-        ends1 = pos_vectors_px.T + (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
-            (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
-        )
-        ends2 = pos_vectors_px.T - (slen_lims[1] * 1.3) / 2 / pixelsize * np.array(
-            (np.sin(sarcomere_orientation_vectors), np.cos(sarcomere_orientation_vectors))
-        )
+        # Pre-compute trigonometric values and scaling factor
+        half_length_scale = (slen_lims[1] * 1.3) / 2 / pixelsize
+        sin_vals = np.sin(sarcomere_orientation_vectors) * half_length_scale
+        cos_vals = np.cos(sarcomere_orientation_vectors) * half_length_scale
+        
+        # Vectorized endpoint calculation
+        direction_vectors = np.stack((sin_vals, cos_vals), axis=0)
+        ends1 = pos_vectors_px.T + direction_vectors
+        ends2 = pos_vectors_px.T - direction_vectors
 
         # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
         profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
-        # Use parallel processing for faster execution
-        results = Parallel(n_jobs=-1, backend=backend)(
-            delayed(Utils.process_profile)(
-                profile, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor
-            ) for profile in profiles
+        # Use batch processing for better performance (avoids parallel processing overhead)
+        sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
+            profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
+            interpolation_method=interpolation_method
         )
-
-        # Convert results to array
-        sarcomere_length_vectors, center_offsets = np.array(results).T
 
         # get vector positions in µm and correct center of vectors
         pos_vectors = pos_vectors_px * pixelsize
