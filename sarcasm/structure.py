@@ -593,7 +593,8 @@ class Structure(SarcAsM):
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
-                                  slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1, backend='loky',
+                                  slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
+                                  interpolation_method: str = 'linear',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -615,8 +616,8 @@ class Structure(SarcAsM):
             Sarcomere size limits in µm (default is (1, 3) µm).
         threshold_sarcomere_mask : float
             Threshold to binarize sarcomere masks. Defaults to 0.1.
-        backend : str, optional
-            Backend for parallelization of profile processing. Defaults to 'loky'.
+        interpolation_method : str, optional
+            Interpolation method for profile analysis: 'linear' (fast) or 'akima' (smooth). Defaults to 'linear'.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -698,7 +699,7 @@ class Structure(SarcAsM):
                                                          slen_lims=slen_lims,
                                                          interp_factor=interp_factor,
                                                          linewidth=linewidth,
-                                                         backend=backend)
+                                                         interpolation_method=interpolation_method)
 
             # write in list
             n_vectors[frame_i] = len(sarcomere_length_vectors_i)
