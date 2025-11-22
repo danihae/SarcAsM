@@ -26,7 +26,7 @@ import numpy as np
 import tifffile
 import torch
 import igraph as ig
-from numba import njit, prange
+from numba import njit, prange, jit
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata, Akima1DInterpolator
 from scipy.ndimage import label, map_coordinates
@@ -584,13 +584,14 @@ class Utils:
             thres: float = 0.25,
             min_dist: float = 1,
             width: float = 0.5,
-            interp_factor: int = 4
+            interp_factor: int = 4,
+            interpolation_method: str = 'linear'
     ) -> Tuple[float, float]:
         """
         Find peak distance in a 1D intensity profile using interpolation and center of mass (COM).
 
         This function detects peaks in a normalized 1D intensity profile, optionally interpolates
-        the profile using Akima interpolation, and refines the peak positions using the center of mass
+        the profile using linear or Akima interpolation, and refines the peak positions using the center of mass
         within a local window.
 
         Parameters
@@ -609,6 +610,8 @@ class Utils:
             Half-width of COM window in µm, by default 0.5.
         interp_factor : int, optional
             Interpolation upsampling factor, by default 4. If ≤ 1, no interpolation is performed.
+        interpolation_method : str, optional
+            Interpolation method: 'linear' (fast) or 'akima' (smooth), by default 'linear'.
 
         Returns
         -------
@@ -620,7 +623,7 @@ class Utils:
         Notes
         -----
         - For `interp_factor` ≤ 1, no interpolation is performed and the original profile is used.
-        - The function uses Akima1DInterpolator for smooth interpolation when requested.
+        - The function uses linear interpolation by default for speed, or Akima for smoother results.
         - Center of mass calculation is performed in a window around each detected peak for sub-pixel accuracy.
         - If less than two peaks are detected, or the separation is outside `slen_lims`, returns (np.nan, np.nan).
         """
@@ -629,64 +632,214 @@ class Utils:
         width_pixels = int(np.round(width / pixelsize, 0))
 
         # Normalize profile to [0,1] range
-        profile = (profile - profile.min()) / (profile.max() - profile.min())
+        pmin = profile.min()
+        pmax = profile.max()
+        if pmax == pmin:
+            return np.nan, np.nan
+        profile = (profile - pmin) / (pmax - pmin)
 
         # Create position array
         pos_array = np.arange(len(profile)) * pixelsize
 
         if interp_factor >= 1:
-            # Create interpolation function with padded data
-            interp_func = Akima1DInterpolator(pos_array[np.isfinite(profile)],
-                                              profile[np.isfinite(profile)], method='akima')
+            # Use selected interpolation method
             x_interp = np.linspace(pos_array[0], pos_array[-1],
                                    num=len(profile) * interp_factor)
-            y_interp = interp_func(x_interp)
+            if interpolation_method == 'akima':
+                # Akima interpolation for smoother profiles (slower)
+                interp_func = Akima1DInterpolator(pos_array, profile)
+                y_interp = interp_func(x_interp)
+            else:
+                # Linear interpolation (faster, default)
+                y_interp = np.interp(x_interp, pos_array, profile)
+            actual_interp_factor = interp_factor
         else:
             y_interp = profile
             x_interp = pos_array
-            interp_factor = 1
+            actual_interp_factor = 1
 
-        # Find peaks with prominence to avoid noise
+        # Find peaks with prominence to avoid noise (ensure distance >= 1)
+        peak_distance = max(1, min_dist_pixel * actual_interp_factor)
         peaks_idx, properties = find_peaks(y_interp,
                                            height=thres,
-                                           distance=min_dist_pixel * interp_factor,
+                                           distance=peak_distance,
                                            prominence=0.2)
 
         if len(peaks_idx) < 2:
             return np.nan, np.nan
 
-        # Calculate refined peak positions using center of mass
-        peaks = []
-        for idx in peaks_idx:
-            start = max(0, idx - width_pixels * interp_factor)
-            end = min(len(x_interp), idx + width_pixels * interp_factor + 1)
+        # Pre-compute window size
+        window_size = width_pixels * actual_interp_factor
+        
+        # Calculate refined peak positions using center of mass (vectorized where possible)
+        peaks = np.empty(len(peaks_idx), dtype=np.float64)
+        for i, idx in enumerate(peaks_idx):
+            start = max(0, idx - window_size)
+            end = min(len(x_interp), idx + window_size + 1)
             x_window = x_interp[start:end]
             y_window = y_interp[start:end]
             # Subtract baseline to improve COM calculation
             y_window = y_window - y_window.min()
-            peak_pos = np.sum(x_window * y_window) / np.sum(y_window)
-            peaks.append(peak_pos)
+            y_sum = y_window.sum()
+            if y_sum > 0:
+                peaks[i] = np.dot(x_window, y_window) / y_sum
+            else:
+                peaks[i] = x_interp[idx]
 
-        peaks = np.array(peaks)
-        center = (pos_array[-1] + pos_array[0]) / 2
+        center = (pos_array[-1] + pos_array[0]) * 0.5
 
         # Split peaks into left and right of center
-        left_peaks = peaks[peaks < center]
-        right_peaks = peaks[peaks > center]
-
-        if len(left_peaks) == 0 or len(right_peaks) == 0:
+        left_mask = peaks < center
+        right_mask = peaks >= center
+        
+        if not (left_mask.any() and right_mask.any()):
             return np.nan, np.nan
 
         # Take rightmost peak from left side and leftmost peak from right side
-        left_peak = left_peaks[-1]  # rightmost peak from left side
-        right_peak = right_peaks[0]  # leftmost peak from right side
-        slen_profile = np.abs(right_peak - left_peak)
-        center_offsets = (left_peak + right_peak) / 2 - center  # position of center for correction of pos_vectors
+        left_peak = peaks[left_mask][-1]
+        right_peak = peaks[right_mask][0]
+        slen_profile = right_peak - left_peak
+        center_offsets = (left_peak + right_peak) * 0.5 - center
 
         if slen_lims[0] <= slen_profile <= slen_lims[1]:
             return slen_profile, center_offsets
 
         return np.nan, np.nan
+
+    @staticmethod
+    def process_profiles_batch(
+            profiles: List[np.ndarray],
+            pixelsize: float,
+            slen_lims: tuple = (1, 3),
+            thres: float = 0.25,
+            min_dist: float = 1,
+            width: float = 0.5,
+            interp_factor: int = 4,
+            interpolation_method: str = 'linear'
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Batch process multiple profiles for better performance.
+        
+        This function processes multiple profiles at once, reducing function call overhead
+        compared to processing them individually.
+        
+        Parameters
+        ----------
+        profiles : List[np.ndarray]
+            List of 1D intensity profiles.
+        pixelsize : float
+            Physical size per pixel.
+        slen_lims : tuple of float, optional
+            (min, max) valid peak separation range, by default (1, 3).
+        thres : float, optional
+            Peak detection height threshold (0-1), by default 0.25.
+        min_dist : float, optional
+            Minimum peak separation in µm, by default 1.
+        width : float, optional
+            Half-width of COM window in µm, by default 0.5.
+        interp_factor : int, optional
+            Interpolation upsampling factor, by default 4.
+        interpolation_method : str, optional
+            Interpolation method: 'linear' (fast) or 'akima' (smooth), by default 'linear'.
+            
+        Returns
+        -------
+        sarcomere_lengths : np.ndarray
+            Array of sarcomere lengths for each profile.
+        center_offsets : np.ndarray
+            Array of center offsets for each profile.
+        """
+        n_profiles = len(profiles)
+        sarcomere_lengths = np.empty(n_profiles, dtype=np.float64)
+        center_offsets = np.empty(n_profiles, dtype=np.float64)
+        
+        # Pre-compute constants
+        min_dist_pixel = int(np.round(min_dist / pixelsize, 0))
+        width_pixels = int(np.round(width / pixelsize, 0))
+        window_size = width_pixels * max(interp_factor, 1)
+        
+        for i, profile in enumerate(profiles):
+            # Normalize profile to [0,1] range
+            pmin = profile.min()
+            pmax = profile.max()
+            if pmax == pmin:
+                sarcomere_lengths[i] = np.nan
+                center_offsets[i] = np.nan
+                continue
+                
+            profile_norm = (profile - pmin) / (pmax - pmin)
+            
+            # Create position array
+            pos_array = np.arange(len(profile)) * pixelsize
+            
+            if interp_factor >= 1:
+                # Use selected interpolation method
+                x_interp = np.linspace(pos_array[0], pos_array[-1],
+                                       num=len(profile) * interp_factor)
+                if interpolation_method == 'akima':
+                    # Akima interpolation for smoother profiles (slower)
+                    interp_func = Akima1DInterpolator(pos_array, profile_norm)
+                    y_interp = interp_func(x_interp)
+                else:
+                    # Linear interpolation (faster, default)
+                    y_interp = np.interp(x_interp, pos_array, profile_norm)
+                actual_interp_factor = interp_factor
+            else:
+                y_interp = profile_norm
+                x_interp = pos_array
+                actual_interp_factor = 1
+            
+            # Find peaks (ensure distance >= 1)
+            peak_distance = max(1, min_dist_pixel * actual_interp_factor)
+            peaks_idx, _ = find_peaks(y_interp,
+                                     height=thres,
+                                     distance=peak_distance,
+                                     prominence=0.2)
+            
+            if len(peaks_idx) < 2:
+                sarcomere_lengths[i] = np.nan
+                center_offsets[i] = np.nan
+                continue
+            
+            # Calculate refined peak positions using center of mass
+            peaks = np.empty(len(peaks_idx), dtype=np.float64)
+            for j, idx in enumerate(peaks_idx):
+                start = max(0, idx - window_size)
+                end = min(len(x_interp), idx + window_size + 1)
+                x_window = x_interp[start:end]
+                y_window = y_interp[start:end]
+                y_window = y_window - y_window.min()
+                y_sum = y_window.sum()
+                if y_sum > 0:
+                    peaks[j] = np.dot(x_window, y_window) / y_sum
+                else:
+                    peaks[j] = x_interp[idx]
+            
+            center = (pos_array[-1] + pos_array[0]) * 0.5
+            
+            # Split peaks into left and right of center
+            left_mask = peaks < center
+            right_mask = peaks >= center
+            
+            if not (left_mask.any() and right_mask.any()):
+                sarcomere_lengths[i] = np.nan
+                center_offsets[i] = np.nan
+                continue
+            
+            # Take rightmost peak from left side and leftmost peak from right side
+            left_peak = peaks[left_mask][-1]
+            right_peak = peaks[right_mask][0]
+            slen_profile = right_peak - left_peak
+            center_offset = (left_peak + right_peak) * 0.5 - center
+            
+            if slen_lims[0] <= slen_profile <= slen_lims[1]:
+                sarcomere_lengths[i] = slen_profile
+                center_offsets[i] = center_offset
+            else:
+                sarcomere_lengths[i] = np.nan
+                center_offsets[i] = np.nan
+        
+        return sarcomere_lengths, center_offsets
 
     @staticmethod
     def peakdetekt(x_pos, y, thres=0.2, thres_abs=False, min_dist=10, width=6, interp_factor=6):
@@ -1138,32 +1291,40 @@ class Utils:
         # Calculate pixel coordinates along each line
         vectors = end_points - start_points
         lengths = np.ceil(np.sqrt(np.sum(vectors ** 2, axis=1)) + 1).astype(int)
+        max_length = lengths.max()
 
-        # Create coordinates matrix for each line
-        coords_list = []
-
-        for i in range(len(start_points)):
-            t = np.linspace(0, 1, lengths[i])[:, np.newaxis]
-            line_coords = start_points[i] + t * vectors[i]
-
-            if linewidth > 1:
-                # Calculate perpendicular vector
-                perp = np.array([-vectors[i, 1], vectors[i, 0]])
-                perp = perp / np.sqrt(np.sum(perp ** 2))
-
-                # Create parallel lines
-                offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
+        # Pre-allocate arrays for better performance
+        n_lines = len(start_points)
+        
+        if linewidth > 1:
+            # Pre-compute perpendicular vectors for all lines
+            perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
+            perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))
+            perp_vectors = perp_vectors / perp_norms
+            
+            # Pre-compute offsets
+            offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
+            
+            # Vectorized coordinate generation
+            coords_list = []
+            for i in range(n_lines):
+                t = np.linspace(0, 1, lengths[i])[:, np.newaxis]
+                line_coords = start_points[i] + t * vectors[i]
+                
+                # Apply perpendicular offsets
                 line_coords = (line_coords[:, np.newaxis, :] +
-                               perp[np.newaxis, np.newaxis, :] * offsets[:, np.newaxis])
-
+                               perp_vectors[i][np.newaxis, np.newaxis, :] * offsets[:, np.newaxis])
+                
                 # Reshape to separate rows and columns
-                rows = line_coords[..., 0].reshape(-1)
-                cols = line_coords[..., 1].reshape(-1)
-                line_coords = np.stack([rows, cols])
-            else:
-                line_coords = np.stack([line_coords[:, 0], line_coords[:, 1]])
-
-            coords_list.append(line_coords)
+                rows = line_coords[..., 0].ravel()
+                cols = line_coords[..., 1].ravel()
+                coords_list.append(np.stack([rows, cols]))
+        else:
+            coords_list = []
+            for i in range(n_lines):
+                t = np.linspace(0, 1, lengths[i])
+                line_coords = start_points[i] + t[:, np.newaxis] * vectors[i]
+                coords_list.append(np.stack([line_coords[:, 0], line_coords[:, 1]]))
 
         # Sample all points in one call to map_coordinates
         all_coords = np.hstack(coords_list)
@@ -1172,9 +1333,10 @@ class Utils:
         # Split and average profiles
         result = []
         start_idx = 0
-        for i in range(len(start_points)):
+        for i in range(n_lines):
             if linewidth > 1:
-                profile = profiles[start_idx:start_idx + lengths[i] * linewidth]
+                n_pixels = lengths[i] * linewidth
+                profile = profiles[start_idx:start_idx + n_pixels]
                 profile = profile.reshape(lengths[i], linewidth).mean(axis=1)
             else:
                 profile = profiles[start_idx:start_idx + lengths[i]]
