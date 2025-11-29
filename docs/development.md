@@ -336,6 +336,65 @@ open dist/SarcAsM-v*.app
 
 The build configuration is defined in `sarcasm.spec`.
 
+## Logging
+
+SarcAsM uses Python's standard `logging` module throughout the codebase. Each module has its own logger:
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+### Log Levels Used
+
+| Level | Usage |
+|-------|-------|
+| `DEBUG` | Diagnostic info, fallback attempts, internal state |
+| `INFO` | Major processing steps, analysis progress |
+| `WARNING` | Non-critical issues, suboptimal parameters |
+| `ERROR` | Failures that prevent operation |
+
+### Controlling Log Level
+
+Users can set the log level when initializing `Structure` or `Motion` objects:
+
+```python
+from sarcasm import Structure
+
+sarc = Structure('file.tif', log_level='DEBUG')  # Verbose
+sarc = Structure('file.tif', log_level='WARNING')  # Quiet
+```
+
+### GUI Integration
+
+The GUI application automatically displays log messages in the message area at the bottom of the window. Log messages are color-coded:
+
+- **Gray**: DEBUG
+- **White**: INFO  
+- **Yellow**: WARNING
+- **Red**: ERROR
+
+The GUI handler is in `sarcasm_app/control/logging_handler.py`.
+
+### Adding Logging to New Code
+
+When adding new functionality:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def my_function():
+    logger.info("Starting process...")
+    try:
+        # ... code ...
+        logger.debug(f"Intermediate value: {value}")
+    except Exception as e:
+        logger.error(f"Operation failed: {e}")
+        raise
+```
+
 ## Project Structure
 
 Key directories and files:
