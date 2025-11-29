@@ -12,6 +12,8 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
+
 from PyQt5.QtWidgets import QFileDialog
 
 from sarcasm import Plots
@@ -21,6 +23,8 @@ from sarcasm_app.control.popup_export import ExportPopup
 from sarcasm_app.view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
 from sarcasm.motion import Motion
 from sarcasm.type_utils import TypeUtils
+
+logger = logging.getLogger(__name__)
 
 
 class MotionAnalysisControl:
@@ -39,25 +43,25 @@ class MotionAnalysisControl:
 
     def __chk_loi_file_selected(self):
         if self.__main_control.model.sarcomere is None:
-            self.__main_control.debug('no loi is selected')
+            logger.warning('No LOI is selected')
             return False
         return True
         pass
 
     def __chk_initialized(self):
         if not self.__main_control.model.is_initialized():
-            self.__main_control.debug('file is not correctly initialized (or viewer was closed)')
+            logger.warning('File is not correctly initialized (or viewer was closed)')
             return False
         return True
 
     def __chk_contraction_weights(self):
         if self.__main_control.model.parameters.get_parameter('motion.systoles.weights').get_value() == '':
-            self.__main_control.debug('no file was chosen for systoles weights')
+            logger.warning('No file was chosen for systoles weights')
             return False
         return True
 
     def __on_loi_selection_changed(self, txt):
-        print(txt)
+        logger.debug(f'LOI selection changed: {txt}')
         if txt is None or txt == '':  # exit method on empty selection
             return
         # linedict [filename][line_as_txt] = line_object
@@ -69,7 +73,7 @@ class MotionAnalysisControl:
         if self.__main_control.model.sarcomere is None or \
                 self.__main_control.model.sarcomere.loi_name != Motion.get_loi_name_from_file_name(file_name):
             self.__main_control.model.init_sarcomere(file_name)
-            print('sarcomere reloaded:' + txt)
+            logger.debug(f'Sarcomere reloaded: {txt}')
             pass
         # get selection and change color of selected sarcomere-loi
 

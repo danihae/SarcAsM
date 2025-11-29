@@ -13,6 +13,7 @@
 
 
 import json
+import logging
 import os
 import platform
 import subprocess
@@ -23,6 +24,8 @@ from sarcasm import SarcAsM
 from sarcasm.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
+
+logger = logging.getLogger(__name__)
 
 
 class FileSelectionControl:
@@ -116,9 +119,9 @@ class FileSelectionControl:
 
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 self.__main_control.model.parameters.load(file_path)
-                self.__main_control.debug('Parameters imported')
+                logger.info('Parameters imported')
             else:
-                self.__main_control.debug('Parameters not imported, file does not exist')
+                logger.warning('Parameters not imported, file does not exist')
         pass
 
     def on_btn_export_parameters(self):
@@ -126,9 +129,9 @@ class FileSelectionControl:
             file_path = self.__file_selection_widget.le_parameters_path.text()
             if not os.path.isdir(file_path):
                 self.__main_control.model.parameters.store(file_path)
-                self.__main_control.debug('Parameters exported to:' + file_path)
+                logger.info(f'Parameters exported to: {file_path}')
             else:
-                self.__main_control.debug('Parameters NOT exported.')
+                logger.warning('Parameters NOT exported.')
             pass
         pass
 
@@ -141,10 +144,10 @@ class FileSelectionControl:
 
     def on_return_pressed_cell_file(self, event=None):
         if len(self.__file_selection_widget.le_cell_file.text()) == 0:
-            self.__main_control.debug('Empty File-Path')
+            logger.warning('Empty File-Path')
             return
         if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
-            self.__main_control.debug("The file doesn't exist")
+            logger.warning("The file doesn't exist")
             return
         self._init_file(self.__file_selection_widget.le_cell_file.text())
 
@@ -159,7 +162,7 @@ class FileSelectionControl:
                     self.__main_control.model.cell.metadata.pixelsize = d_pixel_size
                     self.__file_selection_widget.le_pixel_size.setStyleSheet("")  # reset style (red background)
             except ValueError:
-                self.__main_control.debug('the value in pixel size is not a number')
+                logger.warning('The value in pixel size is not a number')
 
         frame_rate = self.__file_selection_widget.le_frame_time.text()
         if frame_rate is not None and frame_rate != '':
@@ -169,7 +172,7 @@ class FileSelectionControl:
                     self.__main_control.model.cell.metadata.frametime = d_frame_rate
                     self.__file_selection_widget.le_frame_time.setStyleSheet("")  # QLineEdit{background : lightgreen;}
             except ValueError:
-                self.__main_control.debug('the value in frame rate is not a number')
+                logger.warning('The value in frame rate is not a number')
 
         self.__main_control.init_scale_bar()
 
@@ -178,7 +181,7 @@ class FileSelectionControl:
         # todo: maybe switch to threaded execution (run_async_new)
 
         if self.__main_control.model.currentlyProcessing.get_value():
-            self.__main_control.debug('still processing something')
+            logger.warning('Still processing something')
             return
 
         self.__main_control.clean_up_on_new_image()
@@ -209,7 +212,7 @@ class FileSelectionControl:
 
         self._init_meta_data()
         self._init_loi_from_file()
-        self.__main_control.debug('Initialized: ' + file)
+        logger.info(f'Initialized: {file}')
         self.__main_control.update_progress(100)
         self.__main_control.model.currentlyProcessing.set_value(False)
 
@@ -225,10 +228,10 @@ class FileSelectionControl:
 
     def on_open_cell_folder(self):
         if len(self.__file_selection_widget.le_cell_file.text()) == 0:
-            self.__main_control.debug('Empty File-Path')
+            logger.warning('Empty File-Path')
             return
         if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
-            self.__main_control.debug("The path doesn't exist")
+            logger.warning("The path doesn't exist")
             return
 
         cell = TypeUtils.unbox(self.__main_control.model.cell)
@@ -266,9 +269,9 @@ class FileSelectionControl:
             invalid = set(seq) - allowed
             dup = {c for c in seq if seq.count(c) > 1}
             if invalid:
-                self.__main_control.debug(f"Warning: invalid character(s): {''.join(sorted(invalid))}")
+                logger.warning(f"Invalid character(s): {''.join(sorted(invalid))}")
             if dup:
-                self.__main_control.debug(f"Warning: duplicate character(s): {''.join(sorted(dup))}")
+                logger.warning(f"Duplicate character(s): {''.join(sorted(dup))}")
             return not (invalid or dup)
 
         axes_valid = validate_letters_warn(axes)
@@ -289,8 +292,8 @@ class FileSelectionControl:
             pixel_size = cell.metadata.pixelsize
             self.__file_selection_widget.le_pixel_size.setText(str(round(pixel_size, 5)))
             if not 0.5 >= pixel_size >= 0.01:
-                self.__main_control.debug(f"Warning: Pixel size of {round(pixel_size, 5)} µm not in reasonable range "
-                                          f"between 0.01–0.5 µm. Please enter correct pixel size. ")
+                logger.warning(f"Pixel size of {round(pixel_size, 5)} µm not in reasonable range "
+                               f"between 0.01–0.5 µm. Please enter correct pixel size.")
                 self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
 
         else:

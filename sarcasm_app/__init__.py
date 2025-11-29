@@ -12,6 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
 import sys
 import requests
 from PyQt5.QtCore import Qt, QLocale
@@ -20,6 +21,7 @@ from PyQt5.QtWidgets import QApplication, QDesktopWidget, QStyleFactory, QAbstra
 from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QToolBox, QScrollArea, QProgressBar, QTextEdit
 
 from .control.application_control import ApplicationControl
+from .control.logging_handler import setup_gui_logging
 from .control.file_selection_control import FileSelectionControl
 from .control.motion_analysis_control import MotionAnalysisControl
 from .control.loi_analysis_control import LOIAnalysisControl
@@ -77,6 +79,10 @@ class Application:
         self.__progress_bar = QProgressBar()
         self.__text_debug = QTextEdit()
         self.__text_debug.setObjectName("messageArea")
+        
+        # Setup GUI logging to display sarcasm package log messages in the message area
+        self.__log_handler = setup_gui_logging(self.__text_debug, level=logging.INFO)
+        
         self.__label_gpu = QLabel("GPU")
         self.__label_busy = QLabel("IDLE")
         self.__status_bar = QWidget()

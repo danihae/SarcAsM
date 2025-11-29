@@ -12,12 +12,15 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
 import os
 
 from sarcasm import TypeUtils, Structure
 from .application_control import ApplicationControl
 from ..view.parameters_loi_analysis import Ui_Form as LoiAnalysisWidget
 from ..model import ApplicationModel, Parameters
+
+logger = logging.getLogger(__name__)
 
 
 class LOIAnalysisControl:
@@ -33,13 +36,13 @@ class LOIAnalysisControl:
 
     def __chk_initialized(self):
         if not self.__main_control.model.is_initialized():
-            self.__main_control.debug('file is not correctly initialized (or viewer was closed)')
+            logger.warning('File is not correctly initialized (or viewer was closed)')
             return False
         return True
 
     @staticmethod
     def __call_detect_lois(w, m: ApplicationModel):
-        print('start detect lois')
+        logger.info('Starting LOI detection')
         cell: Structure = TypeUtils.unbox(m.cell)
 
         cell.detect_lois(frame=m.parameters.get_parameter(name='loi.detect.frame').get_value(),
@@ -83,7 +86,7 @@ class LOIAnalysisControl:
 
     def _finished_detect_lois(self):
         # get loi's from cell and add them to napari
-        print('finished loi detection...')
+        logger.info('Finished LOI detection')
         # before adding line to napari, check if the line is already in napari's 'loi' layer
         if self.__main_control.model.cell is None:  # exit method
             return

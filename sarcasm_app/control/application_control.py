@@ -12,6 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
 import os
 import traceback
 from typing import Tuple, Optional
@@ -32,6 +33,8 @@ from bio_image_unet.progress import ProgressNotifier
 from napari.layers import Shapes
 
 from ..model import ApplicationModel
+
+logger = logging.getLogger(__name__)
 
 
 class ApplicationControl:
@@ -169,18 +172,18 @@ class ApplicationControl:
                 start = [line[0][0], line[0][1]]
                 end = [line[-1][0], line[-1][1]]
                 self.on_update_loi_list(line_start=start, line_end=end,line=line, line_thickness=line_width)
-                print(start, end)
+                logger.debug(f"LOI: {start} -> {end}")
                 pass
             pass
         else:
-            self.debug("no LOI's found for current image")
+            logger.info("No LOI's found for current image")
             pass
         pass
 
     def on_update_loi_list(self,line_start,line_end,line,line_thickness):
         if self.model.cell is None or line_start is None or line_end is None or len(line_start) != 2 or len(
                 line_end) != 2 or line_thickness is None or line is None:
-            print('info: line updated but wrong data-type')
+            logger.warning('Line updated but wrong data-type')
             return
 
         line_key_points = (line_start, line_end, line_thickness,line) # add line data to key points entry
@@ -506,13 +509,12 @@ class ApplicationControl:
 
         this method should work (tested roughly :D)
         """
-        # todo: add exception handling and print exception with print() and also print it to text area
         if self.model.currentlyProcessing.get_value():
-            self.debug('still processing something')
+            logger.warning('Still processing something')
             return
 
         self.model.currentlyProcessing.set_value(True)
-        self.debug(start_message)
+        logger.info(start_message)
 
         class Worker(QObject):
             finished = pyqtSignal()
@@ -534,11 +536,10 @@ class ApplicationControl:
                     self.finished_successful.emit()
                     self.succeeded = True
                 except Exception:
-                    # todo: improve exception display, type of exception, message etc.
                     tb = traceback.format_exc()
-                    print(tb)
+                    logger.error(f"Worker exception:\n{tb}")
                     self.succeeded = False
-                    self.exception.emit(tb)  # todo: this does not work?
+                    self.exception.emit(tb)
                 self.progress.emit(100)
                 self.finished.emit()
 
@@ -576,5 +577,5 @@ class ApplicationControl:
             self.__worker_thread.finished.connect(on_finished)
 
     def __finished_task(self, finished_message=None):
-        self.debug(finished_message)
+        logger.info(finished_message)
         self.model.currentlyProcessing.set_value(False)

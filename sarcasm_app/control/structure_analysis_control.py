@@ -12,6 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
 from typing import Any, Union, Tuple
 
 import qtutils
@@ -25,6 +26,8 @@ from .popup_export import ExportPopup
 from ..view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
 from sarcasm.type_utils import TypeUtils
+
+logger = logging.getLogger(__name__)
 
 
 class StructureAnalysisControl:
@@ -101,13 +104,13 @@ class StructureAnalysisControl:
     def __chk_prediction_network_fast_movie(self):
         if self.__main_control.model.parameters.get_parameter(
                 'structure.predict_fast_movie.network_path').get_value() == '':
-            self.__main_control.debug('no network file was chosen for fast movie prediction')
+            logger.warning('No network file was chosen for fast movie prediction')
             return False
         return True
 
     def __chk_prediction_network(self):  # todo rename to zband_prediction or similar
         if self.__main_control.model.parameters.get_parameter('structure.predict.network_path').get_value() == '':
-            self.__main_control.debug('no network file was chosen for prediction')
+            logger.warning('No network file was chosen for prediction')
             return False
         return True
 
@@ -115,14 +118,14 @@ class StructureAnalysisControl:
         frames = self.__main_control.model.parameters.get_parameter('structure.frames').get_value()
         if frames is None or frames == '':
             self.__check_frame_syntax()
-            self.__main_control.debug(
-                'no frames selected, please select the frame(s) in the specified format')
+            logger.warning(
+                'No frames selected, please select the frame(s) in the specified format')
             return False
         return True
 
     def __chk_initialized(self):
         if not self.__main_control.model.is_initialized():
-            self.__main_control.debug('file is not correctly initialized (or viewer was closed)')
+            logger.warning('File is not correctly initialized (or viewer was closed)')
             return False
         return True
 

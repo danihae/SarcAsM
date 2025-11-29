@@ -12,6 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+import logging
 import traceback
 
 import numpy as np
@@ -20,6 +21,8 @@ from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheck
 
 from sarcasm.export import Export
 from sarcasm.type_utils import TypeUtils
+
+logger = logging.getLogger(__name__)
 
 
 class ExportPopup(QDialog):
@@ -133,10 +136,10 @@ class ExportPopup(QDialog):
 
         """
         if export_type not in ['csv','xlsx']:
-            self.__control.debug('type has to be csv or xlsx')
+            logger.error('Export type has to be csv or xlsx')
             return
         if self.__le_file_path.text() is None or self.__le_file_path.text() == '' or self.__le_file_name.text() is None or self.__le_file_name.text() == '':
-            self.__control.debug('Please select a directory for exporting the data.')
+            logger.warning('Please select a directory for exporting the data.')
             return
 
         if self.__le_file_name.text().find('%') == -1:
@@ -151,17 +154,13 @@ class ExportPopup(QDialog):
                 to_export_structure = Export.get_structure_dict(sarc_obj=self.__model.cell,
                                                                 structure_keys=self.__from_checkboxes_to_str_list(
                                                                     self.__group_structure, self.__group_structure_old))
-                print(to_export_structure)
-                self.__control.debug('exported following structure keys')
-                self.__control.debug(to_export_structure.__str__())
+                logger.debug(f'Exported structure keys: {to_export_structure}')
 
             if len(self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
                 to_export_motion = Export.get_motion_dict(motion_obj=self.__model.sarcomere,
                                                                            loi_keys=self.__from_checkboxes_to_str_list(
                                                                                self.__group_motion))
-                print(to_export_motion)
-                self.__control.debug('exported following motion keys')
-                self.__control.debug(to_export_motion.__str__())
+                logger.debug(f'Exported motion keys: {to_export_motion}')
 
             file_path_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure').replace('$ext',export_type)
             file_path_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion').replace('$ext',export_type)
@@ -179,9 +178,7 @@ class ExportPopup(QDialog):
 
         except Exception:
             tb = traceback.format_exc()
-            self.__control.debug(tb)
-            print('Exception occurred on export')
-            print(tb)
+            logger.exception('Exception occurred on export')
             pass
         pass
 

@@ -13,6 +13,7 @@
 
 
 import glob
+import logging
 import traceback
 from pathlib import Path
 from typing import Union, Tuple
@@ -25,6 +26,8 @@ from bio_image_unet.progress import ProgressNotifier
 from sarcasm import Utils, Motion, Structure, MultiStructureAnalysis
 from .application_control import ApplicationControl
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
+
+logger = logging.getLogger(__name__)
 
 
 class BatchProcessingControl:
@@ -105,9 +108,9 @@ class BatchProcessingControl:
 
         n_tif_files = len(tif_files)
         if n_tif_files == 0:
-            self.__main_control.debug(f"No TIFF files found in {root}")
+            logger.warning(f"No TIFF files found in {root}")
         else:
-            self.__main_control.debug(f"Found {n_tif_files} TIFF files to process")
+            logger.info(f"Found {n_tif_files} TIFF files to process")
 
         return tif_files
 
@@ -176,7 +179,7 @@ class BatchProcessingControl:
         folder = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
 
         if not tif_files:                                              # nothing to do
-            self.__main_control.debug("No processable TIFF files were found in the selected directory.")
+            logger.warning("No processable TIFF files were found in the selected directory.")
             return
 
         # let the user pick / create the Excel workbook
@@ -214,8 +217,7 @@ class BatchProcessingControl:
             msa.export_data(file_export)
         except Exception as e:
             # marshal the error back to the GUI
-            qtutils.inmain(self.__main_control.debug,
-                           message=f"Export failed: {repr(e)}")
+            logger.error(f"Export failed: {repr(e)}")
             traceback.print_exception(e)
 
     def on_btn_batch_processing_motion(self):
