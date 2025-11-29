@@ -117,6 +117,15 @@ sarc.analyze_sarcomere_domains()
 Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc_obj)
 ```
 
+**Tip:** Control logging verbosity with the `log_level` parameter:
+```python
+# Verbose output for troubleshooting
+sarc = Structure("file.tif", log_level='DEBUG')
+
+# Quiet mode - only warnings and errors  
+sarc = Structure("file.tif", log_level='WARNING')
+```
+
 Check out `quickstart_demo.ipynb` in the repository root or our [documentation](https://sarcasm.readthedocs.io/)
  for a practical introduction to SarcAsM's functionalities.
 

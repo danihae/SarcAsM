@@ -13,6 +13,7 @@
 
 
 import os
+import logging
 from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -28,6 +29,8 @@ from contraction_net.prediction import predict_contractions
 from sarcasm.core import SarcAsM
 from sarcasm.ioutils import IOUtils
 from sarcasm.utils import Utils
+
+logger = logging.getLogger(__name__)
 
 
 class Motion(SarcAsM):
@@ -70,7 +73,7 @@ class Motion(SarcAsM):
         if os.path.exists(self.__get_loi_data_file_name(is_temp_file=False)) and not restart:
             self.load_loi_data()
         else:
-            print('LOI not yet analyzed.')
+            logger.info('LOI not yet analyzed.')
             # return if the file does not exist
             if not os.path.exists(self.loi_file):
                 return
@@ -100,9 +103,19 @@ class Motion(SarcAsM):
             # persistent file exists, try using it
             try:
                 self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name())
-            except:
+                logger.debug(f"Successfully loaded LOI data from {self.__get_loi_data_file_name()}")
+            except Exception as e:
+                logger.warning(f"Failed to load persistent LOI data file: {e}. Attempting to load temporary file...")
                 if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
-                    self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name(is_temp_file=True))
+                    try:
+                        self.loi_data = IOUtils.json_deserialize(self.__get_loi_data_file_name(is_temp_file=True))
+                        logger.debug(f"Successfully loaded LOI data from temporary file")
+                    except Exception as temp_e:
+                        logger.error(f"Failed to load temporary LOI data file: {temp_e}")
+                        raise
+                else:
+                    logger.error("Neither persistent nor temporary LOI data file exists")
+                    raise
         else:
             # no persistent file exists, look if a temp-file exists
             if os.path.exists(self.__get_loi_data_file_name(is_temp_file=True)):
@@ -358,7 +371,8 @@ class Motion(SarcAsM):
             if not np.all(np.isinf(cost_matrix)):
                 try:
                     row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                except ValueError:
+                except ValueError as e:
+                    logger.debug(f"Linear sum assignment failed: {e}. Using greedy assignment fallback.")
                     row_ind, col_ind = self._greedy_assignment(cost_matrix)
                 
                 # Update tracks with assignments

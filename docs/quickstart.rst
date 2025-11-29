@@ -70,3 +70,22 @@ More detailed instruction see :doc:`../notebooks/tutorial_motion_analysis`.
 
     # analyze individual and average sarcomere trajectories
     mot_obj.analyze_trajectories()
+
+Controlling Log Output
+======================
+
+SarcAsM provides detailed logging to help track analysis progress and troubleshoot issues.
+You can control the verbosity when initializing objects:
+
+.. code-block:: python
+
+    from sarcasm import Structure
+
+    # Default: INFO level - shows analysis progress
+    sarc_obj = Structure('file.tif')
+
+    # Verbose: DEBUG level - see all diagnostic details
+    sarc_obj = Structure('file.tif', log_level='DEBUG')
+
+    # Quiet: WARNING level - only show warnings and errors
+    sarc_obj = Structure('file.tif', log_level='WARNING')

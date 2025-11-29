@@ -16,6 +16,7 @@ select_random_from_cluster : Select a random LOI from each cluster
 select_random_lois : Select random LOIs without clustering
 """
 
+import logging
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
@@ -23,6 +24,8 @@ from scipy.spatial.distance import directed_hausdorff
 from scipy.optimize import curve_fit
 from sklearn.cluster import AgglomerativeClustering
 import random
+
+logger = logging.getLogger(__name__)
 
 
 def filter_lois(
@@ -322,7 +325,7 @@ def select_longest_in_cluster(
     # Sort by length and select top n
     sorted_by_length = sorted(longest_lines, key=lambda x: len(x), reverse=True)
     if len(longest_lines) < n_lois:
-        print(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
+        logger.warning(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
 
     loi_lines = sorted_by_length[:n_lois]
     len_loi_lines = [len(line_i) for line_i in loi_lines]

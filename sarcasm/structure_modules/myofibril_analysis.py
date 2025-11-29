@@ -13,6 +13,7 @@
 
 """Myofibril line detection and analysis module."""
 
+import logging
 from typing import Union
 from collections import deque
 import random
@@ -20,6 +21,8 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
 from sarcasm.utils import Utils
+
+logger = logging.getLogger(__name__)
 
 
 def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs,
@@ -162,7 +165,7 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
         points_t = points_t.T
 
     if len(points_t) == 0:
-        print('No sarcomeres in image (len(points) = 0), could not grow lines.')
+        logger.warning('No sarcomeres in image (len(points) = 0), could not grow lines.')
         return {'lines': [], 'line_features': {}}
 
     if random_seed:

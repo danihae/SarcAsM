@@ -13,12 +13,15 @@
 
 """Domain clustering and analysis module."""
 
+import logging
 from typing import Tuple, List
 import random
 import numpy as np
 import igraph as ig
 from scipy.spatial import cKDTree
 from skimage.draw import line
+
+logger = logging.getLogger(__name__)
 from skimage.morphology import binary_dilation, disk
 
 from sarcasm.utils import Utils
@@ -241,8 +244,8 @@ def sarcomere_mask(points: np.ndarray,
         rr, cc = line(*e0, *e1)
         try:
             mask[rr, cc] = True
-        except:
-            pass
+        except IndexError as e:
+            logger.debug(f"Line drawing index error (likely outside mask bounds): {e}. Skipping this line segment.")
     dilation_radius_pixels = int(round(dilation_radius / pixelsize, 0))
     mask = binary_dilation(mask, disk(dilation_radius_pixels))
     return mask

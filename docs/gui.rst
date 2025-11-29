@@ -55,6 +55,16 @@ Proceed through the collapsible sections in the control panel:
 *   **Motion Analysis:** Analyze sarcomere motion in LOIs.
 *   **Batch Processing:** Process multiple files automatically.
 
+**Message Area:**
+
+The message area at the bottom of the window displays:
+
+*   Analysis progress and status updates
+*   Warnings (shown in yellow) for non-critical issues
+*   Errors (shown in red) when operations fail
+
+This provides real-time feedback during analysis without needing to check the console.
+
 **Using Parameters:**
 
 *   **Tooltips:** Hover over parameter names/fields for descriptions.

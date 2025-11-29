@@ -14,6 +14,7 @@
 
 import datetime
 import glob
+import logging
 import os
 import platform
 import subprocess
@@ -29,6 +30,8 @@ import igraph as ig
 from numba import njit, prange, jit
 from numpy import ndarray, dtype
 from scipy.interpolate import griddata, Akima1DInterpolator
+
+logger = logging.getLogger(__name__)
 from scipy.ndimage import label, map_coordinates
 from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
 from scipy.stats import stats
@@ -42,13 +45,9 @@ class Utils:
     """ Miscellaneous utility functions """
 
     @staticmethod
-    def get_device(print_device=False, no_cuda_warning=False):
+    def get_device():
         """
         Determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
-
-        Parameters:
-        - print_device (bool): If True, prints the device being used.
-        - no_cuda_warning (bool): If True, prints a warning if neither CUDA nor MPS is available.
 
         Returns:
         - torch.device: The selected device for PyTorch operations.
@@ -61,11 +60,8 @@ class Utils:
             device = torch.device('mps')
         else:
             device = torch.device('cpu')
-            if no_cuda_warning:
-                print("Warning: No CUDA or MPS device found. Calculations will run on the CPU, which might be slower.")
-
-        if print_device:
-            print(f"Using device: {device}")
+            logger.warning("No CUDA or MPS device found. Calculations will run on the CPU, which might be slower.")
+        logger.info(f"Using device: {device}")
 
         return device
 
@@ -108,7 +104,7 @@ class Utils:
             List of file paths to the .tif files.
         """
         files = glob.glob(folder + '*.tif')
-        print(f'{len(files)} files founds')
+        logger.info(f'{len(files)} files found')
         return files
 
     @staticmethod
@@ -156,7 +152,7 @@ class Utils:
         for dim in max_patch_size:
             if dim % 8 != 0:
                 rounded_dim = ((dim // 16) + 1) * 16
-                print(f"Warning: {dim} is not divisible by 16, rounding up to {rounded_dim}.")
+                logger.warning(f"Dimension {dim} is not divisible by 16, rounding up to {rounded_dim}.")
                 rounded_patch_size.append(rounded_dim)
             else:
                 rounded_patch_size.append(dim)
@@ -507,7 +503,7 @@ class Utils:
             try:
                 img = tifffile.imread(path)
             except Exception as e:
-                print(f"Error reading {path}: {e}")
+                logger.error(f"Error reading {path}: {e}")
                 continue
 
             ndim = img.ndim
@@ -561,7 +557,7 @@ class Utils:
                                 anti_aliasing=False,
                             ).astype(img.dtype)
             else:
-                print(f"Skipping {path}: Unsupported image dimensionality {ndim}. Supports 2D, 3D, 4D.")
+                logger.warning(f"Skipping {path}: Unsupported image dimensionality {ndim}. Supports 2D, 3D, 4D.")
                 continue
 
             # Save the restored image
@@ -574,7 +570,7 @@ class Utils:
                     resized_image,
                 )
             except Exception as e:
-                print(f"Error saving {out_path}: {e}")
+                logger.error(f"Error saving {out_path}: {e}")
 
     @staticmethod
     def process_profile(
@@ -969,7 +965,7 @@ class Utils:
         corr_window = corr[int(corr.shape[0] / 2 - shift_max): int(corr.shape[0] / 2 + shift_max)]
         x_window = np.arange(corr_window.shape[0]) - corr_window.shape[0] / 2
         shift = int(x_window[np.argmax(corr_window)])
-        print(f'Phase shift = {shift} pixel')
+        logger.info(f'Phase shift = {shift} pixel')
 
         # correct data
         data_correct = np.copy(data)
@@ -1202,7 +1198,8 @@ class Utils:
             # Assign values to output arrays
             try:
                 distance[rr, cc] = dist
-            except:
+            except IndexError as e:
+                logger.debug(f"Index out of bounds when assigning distance: {e}. Skipping this assignment.")
                 pass
 
         return distance

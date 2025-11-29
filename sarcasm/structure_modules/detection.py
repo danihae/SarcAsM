@@ -13,6 +13,7 @@
 
 """Neural network-based detection module for sarcomeres and Z-bands."""
 
+import logging
 import os
 from typing import Tuple, Union, List
 import numpy as np
@@ -24,6 +25,8 @@ from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm.utils import Utils
+
+logger = logging.getLogger(__name__)
 
 
 def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, model_dir: str,
@@ -88,7 +91,7 @@ def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, m
         else:
             raise ValueError(f"Unsupported image dimensionality for rescaling: {current_ndim}D. Expected 2D or 3D.")
 
-        print(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
+        logger.info(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
         images = rescale(
             images,
             scale_vector,
@@ -97,20 +100,20 @@ def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, m
             preserve_range=True,
             channel_axis=None
         ).astype(images.dtype)
-        print(f"Rescaled image shape: {images.shape}")
+        logger.info(f"Rescaled image shape: {images.shape}")
 
-    print('\nPredicting sarcomeres ...')
+    logger.info('Predicting sarcomeres ...')
     if model_path is None or model_path == 'generalist':
         model_path = os.path.join(model_dir, 'model_sarcomeres_generalist.pt')
         if pixelsize is not None and pixelsize < 0.1:
-            print(
-                f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(pixelsize, 3)} µm) is smaller than the optimal range "
-                f"(0.1-0.35 µm). For using it pixelsize might be too small. Consider increasing rescale_factor for optimal results.")
+            logger.warning(
+                f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the optimal range "
+                f"(0.1-0.35 µm) for generalist model. Pixelsize might be too small. Consider increasing rescale_factor for optimal results.")
         elif pixelsize is not None and pixelsize > 0.35:
-            print(
-                f"\nWARNING FOR GENERALIST MODEL: Pixel size ({round(pixelsize, 3)} µm) is larger than the optimal range "
-                f"(0.1-0.35 µm). For using it pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
-        print(f"Using default model: {model_path}. ")
+            logger.warning(
+                f"Pixel size ({round(pixelsize, 3)} µm) is larger than the optimal range "
+                f"(0.1-0.35 µm) for generalist model. Pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
+        logger.info(f"Using default model: {model_path}")
     _ = Predict_UNet(images, model_params=model_path, result_path=base_dir,
                      max_patch_size=max_patch_size, normalization_mode=normalization_mode,
                      network=MultiOutputNestedUNet_3Levels,
@@ -177,7 +180,7 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, base_dir
     -------
     None
     """
-    print('\nPredicting sarcomere z-bands ...')
+    logger.info('Predicting sarcomere z-bands ...')
 
     if model_path is None:
         model_path = os.path.join(model_dir, 'model_z_bands_unet3d.pt')

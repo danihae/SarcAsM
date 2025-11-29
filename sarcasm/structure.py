@@ -13,6 +13,7 @@
 
 
 import glob
+import logging
 import os
 import shutil
 from typing import Optional, Tuple, Union, List, Literal, Any
@@ -27,6 +28,8 @@ from sarcasm.core import SarcAsM
 from sarcasm.ioutils import IOUtils
 from sarcasm.utils import Utils
 
+logger = logging.getLogger(__name__)
+
 # Import structure modules
 from sarcasm.structure_modules import (
     z_band_analysis,
@@ -35,7 +38,8 @@ from sarcasm.structure_modules import (
     domain_clustering,
     kymograph,
     detection,
-    loi_detection
+    loi_detection,
+    # sarcomere_tracking
 )
 
 
@@ -169,9 +173,14 @@ class Structure(SarcAsM):
                 self.data = IOUtils.json_deserialize(self.__get_structure_data_file(is_temp_file=False))
             elif os.path.exists(self.__get_structure_data_file(is_temp_file=True)):
                 self.data = IOUtils.json_deserialize(self.__get_structure_data_file(is_temp_file=True))
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to load persistent structure data file: {e}. Attempting to load temporary file...")
             if os.path.exists(self.__get_structure_data_file(is_temp_file=True)):
-                self.data = IOUtils.json_deserialize(self.__get_structure_data_file(is_temp_file=True))
+                try:
+                    self.data = IOUtils.json_deserialize(self.__get_structure_data_file(is_temp_file=True))
+                    logger.debug("Successfully loaded structure data from temporary file")
+                except Exception as temp_e:
+                    logger.error(f"Failed to load temporary structure data file: {temp_e}")
 
         # ensure compatibility with data from early version
         keys_old = {'points': 'pos_vectors', 'sarcomere_length_points': 'sarcomere_length_vectors',
@@ -262,7 +271,7 @@ class Structure(SarcAsM):
             else:
                 raise ValueError(f"Unsupported image dimensionality for rescaling: {current_ndim}D. Expected 2D or 3D.")
 
-            print(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
+            logger.info(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
             images = rescale(
                 images,
                 scale_vector,
@@ -271,7 +280,7 @@ class Structure(SarcAsM):
                 preserve_range=True,
                 channel_axis=None
             ).astype(images.dtype)
-            print(f"Rescaled image shape: {images.shape}")
+            logger.info(f"Rescaled image shape: {images.shape}")
 
         # Check pixelsize is not None
         if self.metadata.pixelsize is None:
@@ -496,7 +505,7 @@ class Structure(SarcAsM):
         z_lat_alignment_groups_mean, z_lat_alignment_groups_std = (nan_arrays() for _ in range(2))
 
         # iterate images
-        print('\nStarting Z-band analysis...')
+        logger.info('Starting Z-band analysis...')
         for i, (frame_i, zbands_i, image_i, orientation_field_i) in enumerate(
                 progress_notifier.iterator(zip(list_frames, zbands, images, orientation_field), total=n_imgs)):
 
@@ -683,7 +692,7 @@ class Structure(SarcAsM):
             raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
 
         # iterate images
-        print('\nStarting sarcomere length and orientation analysis...')
+        logger.info('Starting sarcomere length and orientation analysis...')
         for i, (frame_i, zbands_i, mbands_i, orientation_field_i, sarcomere_mask_i) in enumerate(
                 progress_notifier.iterator(zip(list_frames, z_bands, mbands, orientation_field, sarcomere_mask),
                                            total=n_frames)):
@@ -818,7 +827,7 @@ class Structure(SarcAsM):
         myof_lines, lengths, straightness, frechet_straightness, bending = (none_lists() for _ in range(5))
 
         # iterate frames
-        print('\nStarting myofibril line analysis...')
+        logger.info('Starting myofibril line analysis...')
         for i, (
                 frame_i, pos_vectors_px_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
                 midline_length_vectors_i) in enumerate(
@@ -965,7 +974,7 @@ class Structure(SarcAsM):
          domain_oop, domain_orientation) = (none_lists() for _ in range(6))
 
         # iterate frames
-        print('\nStarting sarcomere domain analysis...')
+        logger.info('Starting sarcomere domain analysis...')
         for i, (frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
                 midline_id_vectors_i) in enumerate(
             progress_notifier.iterator(
@@ -1399,8 +1408,191 @@ class Structure(SarcAsM):
                 if os.path.exists(directory):
                     shutil.rmtree(directory)
 
-            except Exception:
-                pass  # Silently continue if an error occurs
+            except Exception as e:
+                logger.debug(f"Error deleting LOI directory: {e}. Continuing anyway.")
+
+    # def track_sarcomere_vectors(
+    #     self,
+    #     frames: Union[str, int, List[int], np.ndarray] = 'all',
+    #     max_distance: float = 0.5,
+    #     memory: int = 5,
+    #     min_track_length: int = 10,
+    #     flow_blur_sigma: Optional[float] = None,
+    #     use_hungarian: bool = True,
+    #     length_weight: float = 2.0,
+    #     return_flow: bool = False,
+    #     progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()
+    # ) -> Optional[List[np.ndarray]]:
+    #     """
+    #     Track sarcomere vectors across frames using optical flow.
+
+    #     This method uses dense optical flow computed on Z-band and M-band masks
+    #     to predict vector motion between frames, then matches predicted positions
+    #     to detected vectors using greedy exclusive assignment.
+
+    #     Parameters
+    #     ----------
+    #     frames : {'all', int, list, np.ndarray}, optional
+    #         Frames for tracking ('all' for all frames, int for a single frame,
+    #         list or ndarray for selected frames). Defaults to 'all'.
+    #     max_distance : float, optional
+    #         Maximum matching distance in µm. Vectors predicted to be further
+    #         than this from any detection are considered lost. Default 0.5 µm.
+    #     memory : int, optional
+    #         Number of frames to keep tracks "sleeping" before termination.
+    #         Sleeping tracks can be re-linked if a matching vector reappears.
+    #         Default 5 frames.
+    #     min_track_length : int, optional
+    #         Minimum track length to keep. Shorter tracks are filtered out
+    #         and their vectors marked as untracked (track_id = -1). Default 10.
+    #     flow_blur_sigma : float, optional
+    #         Gaussian blur sigma (in pixels) to apply to masks before optical
+    #         flow computation. Can help with noisy masks. Default None (no blur).
+    #     use_hungarian : bool, optional
+    #         If True, use Hungarian algorithm for optimal matching. This gives
+    #         better results when vectors are densely packed. Default True.
+    #     length_weight : float, optional
+    #         Weight for sarcomere length difference in matching cost when using
+    #         Hungarian algorithm. Higher values favor matching vectors with
+    #         similar sarcomere lengths. Default 2.0.
+    #     return_flow : bool, optional
+    #         If True, also return the computed optical flow fields.
+    #         Default False.
+    #     progress_notifier : ProgressNotifier, optional
+    #         Progress notifier for tracking progress.
+
+    #     Returns
+    #     -------
+    #     flow_fields : list of np.ndarray, optional
+    #         Only returned if return_flow=True. List of flow fields,
+    #         each of shape (H, W, 2).
+
+    #     Notes
+    #     -----
+    #     Results are stored in `self.data` with the following keys:
+
+    #     - ``'track_ids'``: list of (N_t,) arrays with track ID for each vector
+    #       per frame. Track ID of -1 indicates untracked vectors.
+    #     - ``'n_tracks'``: total number of unique trajectories.
+    #     - ``'track_lengths'``: (n_tracks,) array with number of frames each
+    #       track spans.
+    #     - ``'params.track_sarcomere_vectors.*'``: tracking parameters used.
+
+    #     Requires :meth:`analyze_sarcomere_vectors` to be run first.
+
+    #     Examples
+    #     --------
+    #     >>> structure.analyze_sarcomere_vectors(frames='all')
+    #     >>> structure.track_sarcomere_vectors(max_distance=0.5, memory=5)
+    #     >>> track_ids = structure.data['track_ids']
+    #     >>> # track_ids[frame][vector_idx] gives the track ID for that vector
+    #     """
+    #     # Validate prerequisites
+    #     if 'pos_vectors_px' not in self.data:
+    #         raise ValueError(
+    #             "Sarcomere vectors not yet analyzed. Run analyze_sarcomere_vectors first."
+    #         )
+
+    #     if not os.path.exists(self.file_zbands) or not os.path.exists(self.file_mbands):
+    #         raise FileNotFoundError(
+    #             "Z-band or M-band mask not found. Please run detect_sarcomeres first."
+    #         )
+
+    #     # Determine frames to track
+    #     analyzed_frames = self.data.get('params.analyze_sarcomere_vectors.frames', [])
+    #     if isinstance(frames, str) and frames == 'all':
+    #         list_frames = list(range(self.metadata.n_stack))
+    #     elif np.issubdtype(type(frames), np.integer):
+    #         list_frames = [frames]
+    #     elif isinstance(frames, (list, np.ndarray)):
+    #         list_frames = [int(f) for f in frames]
+    #     else:
+    #         raise ValueError('frames argument not valid')
+
+    #     # Validate frames have been analyzed
+    #     if not set(list_frames).issubset(set(analyzed_frames)):
+    #         missing = set(list_frames) - set(analyzed_frames)
+    #         raise ValueError(
+    #             f"Frames {missing} have not been analyzed. "
+    #             f"Run analyze_sarcomere_vectors first for these frames."
+    #         )
+
+    #     logger.info(f"Starting sarcomere vector tracking for {len(list_frames)} frames...")
+
+    #     # Load masks
+    #     zbands_stack = tifffile.imread(self.file_zbands)
+    #     mbands_stack = tifffile.imread(self.file_mbands)
+
+    #     # Ensure 3D
+    #     if zbands_stack.ndim == 2:
+    #         zbands_stack = np.expand_dims(zbands_stack, axis=0)
+    #     if mbands_stack.ndim == 2:
+    #         mbands_stack = np.expand_dims(mbands_stack, axis=0)
+
+    #     # Select frames
+    #     zbands_stack = zbands_stack[list_frames]
+    #     mbands_stack = mbands_stack[list_frames]
+
+    #     # Prepare vector data for selected frames
+    #     positions_per_frame = [self.data['pos_vectors_px'][f] for f in list_frames]
+    #     lengths_per_frame = [self.data['sarcomere_length_vectors'][f] for f in list_frames]
+    #     orientations_per_frame = [self.data['sarcomere_orientation_vectors'][f] for f in list_frames]
+
+    #     # Run tracking
+    #     result = sarcomere_tracking.track_sarcomere_vectors(
+    #         zbands_stack=zbands_stack,
+    #         mbands_stack=mbands_stack,
+    #         positions_per_frame=positions_per_frame,
+    #         sarcomere_lengths_per_frame=lengths_per_frame,
+    #         orientations_per_frame=orientations_per_frame,
+    #         pixelsize=self.metadata.pixelsize,
+    #         max_distance=max_distance,
+    #         memory=memory,
+    #         min_track_length=min_track_length,
+    #         flow_blur_sigma=flow_blur_sigma,
+    #         use_hungarian=use_hungarian,
+    #         length_weight=length_weight,
+    #         return_flow=return_flow,
+    #         progress_notifier=progress_notifier
+    #     )
+
+    #     if return_flow:
+    #         tracking_result, flow_fields = result
+    #     else:
+    #         tracking_result = result
+    #         flow_fields = None
+
+    #     # Map track IDs back to full frame indices
+    #     full_track_ids = [None] * self.metadata.n_stack
+    #     for i, frame_idx in enumerate(list_frames):
+    #         full_track_ids[frame_idx] = tracking_result.track_ids[i]
+
+    #     # Store results in data dict
+    #     tracking_dict = {
+    #         'params.track_sarcomere_vectors.frames': list_frames,
+    #         'params.track_sarcomere_vectors.max_distance': max_distance,
+    #         'params.track_sarcomere_vectors.memory': memory,
+    #         'params.track_sarcomere_vectors.min_track_length': min_track_length,
+    #         'params.track_sarcomere_vectors.flow_blur_sigma': flow_blur_sigma,
+    #         'params.track_sarcomere_vectors.use_hungarian': use_hungarian,
+    #         'params.track_sarcomere_vectors.length_weight': length_weight,
+    #         'track_ids': full_track_ids,
+    #         'n_tracks': tracking_result.n_tracks,
+    #         'track_lengths': tracking_result.track_lengths,
+    #     }
+    #     self.data.update(tracking_dict)
+
+    #     if self.auto_save:
+    #         self.store_structure_data()
+
+    #     logger.info(
+    #         f"Tracking complete: {tracking_result.n_tracks} tracks, "
+    #         f"median length {np.median(tracking_result.track_lengths) if len(tracking_result.track_lengths) > 0 else 0:.0f} frames"
+    #     )
+
+    #     if return_flow:
+    #         return flow_fields
+    #     return None
 
     def full_analysis_structure(self, frames='all'):
         """

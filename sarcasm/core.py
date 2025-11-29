@@ -62,6 +62,10 @@ class SarcAsM:
     device : Union[torch.device, Literal['auto']], optional
         PyTorch computation device. ``'auto'`` selects CUDA/MPS if available
         (default: 'auto').
+    log_level : str or int, optional
+        Logging level for the sarcasm package. Can be a string ('DEBUG', 'INFO', 'WARNING', 
+        'ERROR', 'CRITICAL') or an integer (logging.DEBUG, logging.INFO, etc.).
+        Default is 'INFO'. Use 'DEBUG' for verbose output or 'WARNING' to suppress info messages.
     **info : Any
         Additional user-supplied metadata key-value pairs
         (e.g. ``cell_line='wt'``).
@@ -108,6 +112,7 @@ class SarcAsM:
             auto_save: bool = True,
             use_gui: bool = False,
             device: Union[torch.device, Literal['auto', 'mps', 'cuda', 'cpu']] = 'auto',
+            log_level: Union[str, int] = 'INFO',
             **info: Dict[str, Any]
     ):
         # Convert file_path to absolute path (as a string)
@@ -120,6 +125,9 @@ class SarcAsM:
         self.use_gui = use_gui
         self.restart = restart
         self.info = info
+        
+        # Configure logging for the sarcasm package
+        self._setup_logging(log_level)
 
         # Directory structure: use the filename without extension as the base directory
         base_name = os.path.splitext(self.file_path)[0]
@@ -159,11 +167,13 @@ class SarcAsM:
         if self.meta_file.exists() and not self.restart:
             try:
                 self.metadata = ImageMetadata.load_from_file(self.meta_file)
-            except:
+            except Exception as e:
+                logger.error(f"Loading metadata failed: {e}. This can happen when the metadata file was "
+                           "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
                 if not self.use_gui:
-                    MetaDataError(
+                    raise MetaDataError(
                         "Loading metadata failed. This can happen when the metadata file was "
-                        "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
+                        "created with an older version (<0.2.0). Restart the analysis by setting restart=True.") from e
                 else:
                     pass
         else:
@@ -176,12 +186,13 @@ class SarcAsM:
 
         # Device configuration: auto-detect or validate provided device
         if device == "auto":
-            self.device = Utils.get_device(print_device=False)
+            self.device = Utils.get_device()
         else:
             if isinstance(device, str):
                 try:
                     self.device = torch.device(device)
                 except RuntimeError as e:
+                    logger.error(f"Invalid device string: {device}")
                     raise ValueError(f"Invalid device string: {device}") from e
             elif isinstance(device, torch.device):
                 self.device = device
@@ -189,8 +200,58 @@ class SarcAsM:
                 raise ValueError(
                     f"Invalid device type {type(device)}. "
                     "Expected torch.device instance or valid device string "
-                    "(e.g., 'cuda', 'cpu', 'mps')"
+                    f"(e.g., 'cuda', 'cpu', 'mps')"
                 )
+
+    def _setup_logging(self, log_level: Union[str, int]) -> None:
+        """
+        Configure logging for the sarcasm package and all its submodules.
+        
+        This method sets up a console handler for the 'sarcasm' logger. If the GUI
+        has already attached a handler (e.g., QTextEditHandler), it will be preserved.
+        
+        Parameters
+        ----------
+        log_level : str or int
+            Logging level. Can be a string ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
+            or an integer (logging.DEBUG=10, logging.INFO=20, etc.).
+        
+        Examples
+        --------
+        >>> sarc = Structure(file_path, log_level='DEBUG')  # Verbose output
+        >>> sarc = Structure(file_path, log_level=logging.WARNING)  # Only warnings and errors
+        """
+        # Convert string to logging level if necessary
+        if isinstance(log_level, str):
+            log_level = getattr(logging, log_level.upper(), logging.INFO)
+        
+        # Configure root logger for sarcasm package
+        root_logger = logging.getLogger('sarcasm')
+        root_logger.setLevel(log_level)
+        
+        # Remove only StreamHandlers to avoid duplicates, but preserve other handlers (e.g., GUI handlers)
+        for handler in root_logger.handlers[:]:
+            if isinstance(handler, logging.StreamHandler) and not hasattr(handler, 'signal_emitter'):
+                root_logger.removeHandler(handler)
+        
+        # Only add console handler if not running in GUI mode (use_gui attribute)
+        if not getattr(self, 'use_gui', False):
+            # Create console handler with formatting
+            handler = logging.StreamHandler()
+            handler.setLevel(log_level)
+            
+            # Create formatter
+            formatter = logging.Formatter(
+                fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            handler.setFormatter(formatter)
+            
+            # Add handler to logger
+            root_logger.addHandler(handler)
+        
+        # Prevent propagation to root logger to avoid duplicate messages
+        root_logger.propagate = False
 
     def __getattr__(self, name: str) -> Any:
         """Dynamic loading of analysis result TIFFs"""
@@ -496,7 +557,8 @@ class SarcAsM:
                 if px_elem is not None:
                     px = px_elem.get('PhysicalSizeX')
                     px = float(px) if px else None
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to extract pixel size from OME metadata: {e}")
                 pass
 
         if px is None and tif.imagej_metadata:
@@ -504,7 +566,8 @@ class SarcAsM:
             px = ij.get('pixel_width') or ij.get('PixelWidth')
             try:
                 px = float(px) if px is not None else None
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                logger.debug(f"Failed to convert pixel size to float: {e}")
                 pass
 
         if px is None:
@@ -523,7 +586,8 @@ class SarcAsM:
                             px = 10_000 / dpi
                         else:
                             px = 1 / dpi
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to extract pixel size from TIFF resolution tags: {e}")
                     pass
 
         # frame time & timestamps
@@ -536,7 +600,8 @@ class SarcAsM:
                 if deltas:
                     ts = deltas
                     ft = float(np.diff(deltas).mean()) if len(deltas) > 1 else deltas[0]
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to extract frame time from OME metadata: {e}")
                 pass
 
         if ft is None and tif.imagej_metadata:
@@ -545,7 +610,8 @@ class SarcAsM:
             if ft is None and (fps := ij.get('fps')):
                 try:
                     ft = 1 / float(fps)
-                except (ValueError, ZeroDivisionError):
+                except (ValueError, ZeroDivisionError) as e:
+                    logger.debug(f"Failed to compute frame time from fps: {e}")
                     pass
 
             if ts is None:
@@ -553,7 +619,8 @@ class SarcAsM:
                 if isinstance(ts, str):
                     try:
                         ts = json.loads(ts)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Failed to parse timestamps from ImageJ metadata: {e}")
                         pass
 
         # Convert to proper types

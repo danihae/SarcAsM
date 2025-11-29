@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-
+import logging
 import os.path
 from typing import Union, List, Optional
 
@@ -23,6 +23,8 @@ from tqdm import tqdm as tqdm
 
 from sarcasm.structure import Structure
 from sarcasm.motion import Motion
+
+logger = logging.getLogger(__name__)
 
 
 class MultiStructureAnalysis:
@@ -88,8 +90,8 @@ class MultiStructureAnalysis:
                                                    **self.conditions)
                 self.data.append(dict_i)
             except Exception as e:
-                print(f'{tif_file} failed!')
-                print(repr(e))
+                logger.error(f'{tif_file} failed!')
+                logger.exception(f'Exception: {repr(e)}')
 
         self.data = pd.DataFrame.from_records(self.data)
         self.save_data()
@@ -203,8 +205,8 @@ class MultiLOIAnalysis:
                 dict_i = Export.get_motion_dict(motion_obj, loi_keys, **self.conditions)
                 self.data.append(dict_i)
             except Exception as e:
-                print(f'{tif_file}, {loi_name} failed!')
-                print(repr(e))
+                logger.error(f'{tif_file}, {loi_name} failed!')
+                logger.exception(f'Exception: {repr(e)}')
 
         self.data = pd.DataFrame.from_records(self.data)
         self.save_data()
@@ -331,7 +333,7 @@ class Export:
             structure_keys = Export.structure_keys_default
         missing_structure_keys = [key for key in structure_keys if key not in sarc_obj.data]
         if missing_structure_keys:
-            print('Missing structure keys: ', missing_structure_keys)
+            logger.warning(f'Missing structure keys: {missing_structure_keys}')
         dict_structure_select = {key: sarc_obj.data.get(key, np.nan) for key in structure_keys}
         dict_ = {**metadata_dict, **dict_structure_select}
         for condition, value in conditions.items():
@@ -425,7 +427,7 @@ class Export:
             loi_keys = Export.motion_keys_default
         missing_loi_keys = [key for key in loi_keys if key not in motion_obj.loi_data]
         if missing_loi_keys:
-            print('Missing loi keys: ', missing_loi_keys)
+            logger.warning(f'Missing loi keys: {missing_loi_keys}')
         dict_loi_select = {key: motion_obj.loi_data[key] if key in motion_obj.loi_data else np.nan for key in loi_keys}
         dict_ = {**metadata_dict, **dict_loi_select, 'loi_name': motion_obj.loi_name}
         for condition, value in conditions.items():

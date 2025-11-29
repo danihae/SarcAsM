@@ -14,10 +14,13 @@
 
 import copy
 import json
+import logging
 
 import numpy as np
 import orjson
 from scipy import sparse
+
+logger = logging.getLogger(__name__)
 
 
 class IOUtils:
@@ -69,26 +72,32 @@ class IOUtils:
                     cpy,
                     option=orjson.OPT_SORT_KEYS | orjson.OPT_INDENT_2
                 ))
+            logger.debug(f"Successfully serialized data to {file_path}")
         except Exception as e:
-            raise Exception(f"JSON serialization failed: {e}")
+            logger.error(f"JSON serialization failed for {file_path}: {e}")
+            raise Exception(f"JSON serialization failed: {e}") from e
 
     @staticmethod
     def json_deserialize(file_path):
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
+            logger.debug(f"Successfully deserialized data from {file_path}")
             return IOUtils.__deserialize_field(orjson.loads(content))
         except Exception as e:
+            logger.warning(f"orjson deserialization failed for {file_path}: {e}. Attempting fallback with standard json...")
             # Fallback using standard json (less strict about malformed JSON)
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                     content_text = f.read()
                 data = json.loads(content_text)
+                logger.info(f"Successfully recovered data from {file_path} using fallback json parser")
                 return IOUtils.__deserialize_field(data)
             except Exception as fallback_error:
+                logger.error(f"JSON deserialization failed for {file_path}. Primary error: {e}. Fallback error: {fallback_error}")
                 raise Exception(
                     f"JSON deserialization failed for {file_path}: {e}. Fallback failed: {fallback_error}"
-                )
+                ) from fallback_error
 
     @staticmethod
     def __sparse_to_json_serializable(sparse_matrix):
