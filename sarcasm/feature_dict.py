@@ -94,6 +94,135 @@ structure_feature_dict = {
         'function': 'Structure.analyze_sarcomere_domains',
         'name': 'Domain sarcomere length [µm]'
     },
+    'domain_slen_timeseries': {
+        'description': 'Time-series of mean sarcomere length within each sarcomere domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain sarcomere length time-series [µm]'
+    },
+    'domain_slen_median_timeseries': {
+        'description': 'Time-series of median sarcomere length within each sarcomere domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain sarcomere length median time-series [µm]'
+    },
+    'domain_slen_std_timeseries': {
+        'description': 'Time-series of standard deviation of sarcomere length within each domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain sarcomere length STD time-series [µm]'
+    },
+    'domain_slen_q25_timeseries': {
+        'description': 'Time-series of 25th percentile of sarcomere length within each domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain sarcomere length Q25 time-series [µm]'
+    },
+    'domain_slen_q75_timeseries': {
+        'description': 'Time-series of 75th percentile of sarcomere length within each domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain sarcomere length Q75 time-series [µm]'
+    },
+    'domain_n_vectors_timeseries': {
+        'description': 'Time-series of number of sarcomere vectors within each domain. '
+                       'np.ndarray with shape (n_domains, n_frames).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain vector count time-series'
+    },
+    'domain_contr': {
+        'description': 'Binary contraction state for each domain over time. '
+                       'np.ndarray with shape (n_domains, n_frames). True = contracting, False = quiescent.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain contraction state'
+    },
+    'domain_n_contr': {
+        'description': 'Number of contraction cycles detected for each domain. np.ndarray with shape (n_domains,).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain number of contractions'
+    },
+    'domain_labels_contr': {
+        'description': 'Contraction cycle labels for each domain over time. '
+                       'np.ndarray with shape (n_domains, n_frames). Values 1, 2, 3, ... label each contraction cycle.',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain contraction labels'
+    },
+    'domain_beating_rate': {
+        'description': 'Beating rate in Hz for each domain. np.ndarray with shape (n_domains,).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain beating rate [Hz]'
+    },
+    'domain_beating_rate_variability': {
+        'description': 'Standard deviation of inter-beat interval for each domain. np.ndarray with shape (n_domains,).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain beating rate variability [s]'
+    },
+    'domain_equ': {
+        'description': 'Equilibrium (resting) sarcomere length for each domain. np.ndarray with shape (n_domains,).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain equilibrium sarcomere length [µm]'
+    },
+    'domain_contr_max': {
+        'description': 'Maximum contraction (most negative sarcomere length change from equilibrium) '
+                       'for each domain and contraction cycle. np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain max contraction [µm]'
+    },
+    'domain_elong_max': {
+        'description': 'Maximum elongation (most positive sarcomere length change from equilibrium) '
+                       'for each domain and contraction cycle. np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain max elongation [µm]'
+    },
+    'domain_vel_contr_max': {
+        'description': 'Maximum shortening velocity for each domain and contraction cycle. '
+                       'np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain max shortening velocity [µm/s]'
+    },
+    'domain_vel_elong_max': {
+        'description': 'Maximum elongation velocity for each domain and contraction cycle. '
+                       'np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain max elongation velocity [µm/s]'
+    },
+    'domain_time_to_peak': {
+        'description': 'Time from contraction start to maximum contraction for each domain and cycle. '
+                       'np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain time to peak [s]'
+    },
+    'domain_time_to_relax': {
+        'description': 'Time from maximum contraction to relaxation for each domain and cycle. '
+                       'np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain time to relaxation [s]'
+    },
+    'domain_time_contr': {
+        'description': 'Duration of each contraction cycle for each domain. '
+                       'np.ndarray with shape (n_domains, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'Structure.analyze_domain_motion',
+        'name': 'Domain contraction duration [s]'
+    },
     'domains': {
         'description': 'Set of sarcomere vectors of each sarcomere domain. List with list of np.arrays for each frame, '
                        'storing the indices of sarcomere vectors for each domain.',

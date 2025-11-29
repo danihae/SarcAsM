@@ -323,3 +323,45 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
 
     return (mask_domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
             sarcomere_oop_domains, sarcomere_orientation_domains)
+
+
+def assign_vectors_to_domains(pos_vectors: np.ndarray,
+                              domain_mask: np.ndarray,
+                              pixelsize: float) -> np.ndarray:
+    """
+    Assign sarcomere vectors to domains based on their centroid positions.
+    
+    Uses the domain mask to look up which domain each vector belongs to based on
+    its position. Vectors that fall outside any domain (background) are assigned
+    domain ID 0.
+    
+    Parameters
+    ----------
+    pos_vectors : np.ndarray
+        Array of sarcomere vector positions in µm. Shape (n_vectors, 2).
+    domain_mask : np.ndarray
+        Integer-labeled domain mask where pixel values indicate domain IDs.
+        Background pixels have value 0, domains are labeled 1, 2, 3, etc.
+    pixelsize : float
+        Pixel size in µm for converting positions to pixel coordinates.
+    
+    Returns
+    -------
+    domain_ids : np.ndarray
+        Array of domain IDs for each vector. Shape (n_vectors,).
+        Vectors outside any domain have ID 0.
+    """
+    if len(pos_vectors) == 0:
+        return np.array([], dtype=np.int32)
+    
+    # Convert positions from µm to pixel coordinates
+    pos_px = (pos_vectors / pixelsize).astype(np.int32)
+    
+    # Clip to valid image bounds
+    pos_px[:, 0] = np.clip(pos_px[:, 0], 0, domain_mask.shape[0] - 1)
+    pos_px[:, 1] = np.clip(pos_px[:, 1], 0, domain_mask.shape[1] - 1)
+    
+    # Look up domain ID for each vector position
+    domain_ids = domain_mask[pos_px[:, 0], pos_px[:, 1]]
+    
+    return domain_ids.astype(np.int32)

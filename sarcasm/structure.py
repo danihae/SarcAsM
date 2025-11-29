@@ -36,12 +36,12 @@ from sarcasm.structure_modules import (
     sarcomere_vectors,
     myofibril_analysis,
     domain_clustering,
+    domain_motion,
     kymograph,
     detection,
     loi_detection,
     # sarcomere_tracking
 )
-
 
 class Structure(SarcAsM):
     """
@@ -603,7 +603,7 @@ class Structure(SarcAsM):
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
-                                  interpolation_method: str = 'linear',
+                                  interpolation_method: str = 'akima',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -626,7 +626,7 @@ class Structure(SarcAsM):
         threshold_sarcomere_mask : float
             Threshold to binarize sarcomere masks. Defaults to 0.1.
         interpolation_method : str, optional
-            Interpolation method for profile analysis: 'linear' (fast) or 'akima' (smooth). Defaults to 'linear'.
+            Interpolation method for profile analysis: 'linear' (fast) or 'akima' (smooth). Defaults to 'akima'.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -903,6 +903,7 @@ class Structure(SarcAsM):
     def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
                                   d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
                                   random_seed: int = 42, area_min: float = 20.0, dilation_radius: float = 0.3,
+                                  store_mask: bool = False,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Cluster sarcomeres into domains based on their spatial and orientational properties using the Leiden algorithm
@@ -926,6 +927,9 @@ class Structure(SarcAsM):
             Minimal area of domains/clusters (in µm^2). Defaults to 50.0.
         dilation_radius : float, optional
             Dilation radius for refining domain area masks, in µm. Defaults to 0.3.
+        store_mask : bool, optional
+            If True, store the domain mask (integer-labeled image with domain IDs) in self.data.
+            Can be memory-intensive for large time-series. Defaults to False.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
         """
@@ -972,6 +976,10 @@ class Structure(SarcAsM):
 
         (domains, domain_area, domain_slen, domain_slen_std,
          domain_oop, domain_orientation) = (none_lists() for _ in range(6))
+        
+        # optionally store domain masks
+        if store_mask:
+            domain_mask = none_lists()
 
         # iterate frames
         logger.info('Starting sarcomere domain analysis...')
@@ -991,6 +999,10 @@ class Structure(SarcAsM):
                                                      area_min=area_min, dilation_radius=dilation_radius)
             (n_domains[frame_i], domains[frame_i], domain_area[frame_i], domain_slen[frame_i], domain_slen_std[frame_i],
              domain_oop[frame_i], domain_orientation[frame_i], domain_mask_i) = cluster_data_t
+
+            # optionally store domain mask as sparse matrix
+            if store_mask:
+                domain_mask[frame_i] = sparse.coo_matrix(domain_mask_i)
 
             # calculate mean and std of domains
             domain_area_mean[frame_i], domain_area_std[frame_i] = np.mean(domain_area[frame_i]), np.std(
@@ -1014,9 +1026,201 @@ class Structure(SarcAsM):
                        'params.analyze_sarcomere_domains.cosine_min': cosine_min,
                        'params.analyze_sarcomere_domains.leiden_resolution': leiden_resolution,
                        'params.analyze_sarcomere_domains.area_min': area_min,
-                       'params.analyze_sarcomere_domains.dilation_radius': dilation_radius}
+                       'params.analyze_sarcomere_domains.dilation_radius': dilation_radius,
+                       'params.analyze_sarcomere_domains.store_mask': store_mask}
+        
+        # add domain mask if stored
+        if store_mask:
+            domain_data['domain_mask'] = domain_mask
 
         self.data.update(domain_data)
+        if self.auto_save:
+            self.store_structure_data()
+
+    def analyze_domain_motion(
+        self,
+        reference_frame: int = 0,
+        model: Optional[str] = None,
+        threshold: float = 0.3,
+        contr_time_min: float = 0.2,
+        merge_time_max: float = 0.05,
+        buffer_frames: int = 3,
+        min_valid_frames: float = 0.5,
+        filter_params: Tuple[int, int] = (13, 5),
+        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
+    ) -> None:
+        """
+        Analyze sarcomere contraction dynamics within sarcomere domains over time.
+        
+        Uses domain masks from a reference frame to track mean sarcomere length within
+        each domain across all frames. Then detects contraction cycles using ContractionNet
+        and computes per-domain contraction parameters.
+        
+        Prerequisites: Run `analyze_sarcomere_vectors` and `analyze_sarcomere_domains` first.
+        
+        Parameters
+        ----------
+        reference_frame : int, optional
+            Frame index to use as reference for domain masks. Must be a frame where domains
+            were analyzed. Defaults to 0.
+        model : str, optional
+            Path to ContractionNet model weights (.pt file). If None, uses default model.
+        threshold : float, optional
+            Binary threshold for contraction state prediction. Default 0.3.
+        contr_time_min : float, optional
+            Minimal time of contraction in seconds. Shorter contractions are removed. Default 0.2.
+        merge_time_max : float, optional
+            Maximal time between two contractions. Closer contractions are merged. Default 0.05.
+        buffer_frames : int, optional
+            Remove contraction cycles within this many frames of start/end of time-series. Default 3.
+        min_valid_frames : float, optional
+            Minimum fraction of valid (non-NaN) frames required for a domain to be analyzed. Default 0.5.
+        filter_params : Tuple[int, int], optional
+            Savitzky-Golay filter parameters (window_length, polyorder) for velocity calculation.
+            Default (13, 5).
+        progress_notifier : ProgressNotifier, optional
+            Progress notification wrapper. Default uses tqdm.
+        
+        Raises
+        ------
+        ValueError
+            If prerequisites are not met or if reference_frame is invalid.
+        """
+        # Validate prerequisites
+        if 'pos_vectors' not in self.data:
+            raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
+        if 'domains' not in self.data:
+            raise ValueError('Sarcomere domains not analyzed. Run analyze_sarcomere_domains first.')
+        if self.metadata.frametime is None:
+            raise ValueError('Frame time not defined in metadata. Required for motion analysis.')
+        
+        # Get frames where domains were analyzed
+        domain_frames = self.data.get('params.analyze_sarcomere_domains.frames', [])
+        if reference_frame not in domain_frames:
+            raise ValueError(
+                f'Reference frame {reference_frame} was not analyzed for domains. '
+                f'Available frames: {domain_frames}'
+            )
+        
+        # Get or regenerate domain mask for reference frame
+        if 'domain_mask' in self.data and self.data['domain_mask'][reference_frame] is not None:
+            domain_mask_ref = self.data['domain_mask'][reference_frame]
+            # Convert sparse matrix to dense if needed
+            if hasattr(domain_mask_ref, 'toarray'):
+                domain_mask_ref = domain_mask_ref.toarray()
+        else:
+            # Regenerate domain mask from stored domain data
+            logger.info(f'Regenerating domain mask for reference frame {reference_frame}...')
+            domains_ref = self.data['domains'][reference_frame]
+            pos_vectors_ref = np.asarray(self.data['pos_vectors'][reference_frame])
+            sarcomere_orientation_ref = np.asarray(self.data['sarcomere_orientation_vectors'][reference_frame])
+            sarcomere_length_ref = np.asarray(self.data['sarcomere_length_vectors'][reference_frame])
+            
+            dilation_radius = self.data.get('params.analyze_sarcomere_domains.dilation_radius', 0.3)
+            area_min = self.data.get('params.analyze_sarcomere_domains.area_min', 20.0)
+            
+            domain_mask_ref, *_ = domain_clustering.analyze_domains(
+                domains_ref, pos_vectors_ref, sarcomere_orientation_ref, sarcomere_length_ref,
+                size=self.metadata.size, pixelsize=self.metadata.pixelsize,
+                dilation_radius=dilation_radius, area_min=area_min
+            )
+        
+        # Get number of domains
+        n_domains = int(self.data['n_domains'][reference_frame])
+        if n_domains == 0:
+            logger.warning('No domains found in reference frame. Cannot analyze domain motion.')
+            return
+        
+        logger.info(f'Analyzing domain motion for {n_domains} domains...')
+        
+        # Get all frames where vectors were analyzed
+        vector_frames = self.data.get('params.analyze_sarcomere_vectors.frames', list(range(self.metadata.n_stack)))
+        
+        # Collect sarcomere vectors for all frames
+        pos_vectors_all = [
+            np.asarray(self.data['pos_vectors'][t]) if self.data['pos_vectors'][t] is not None else np.array([])
+            for t in vector_frames
+        ]
+        sarcomere_length_vectors_all = [
+            np.asarray(self.data['sarcomere_length_vectors'][t]) if self.data['sarcomere_length_vectors'][t] is not None else np.array([])
+            for t in vector_frames
+        ]
+        
+        # Compute per-domain time-series
+        logger.info('Computing per-domain sarcomere length time-series...')
+        timeseries_results = domain_motion.compute_domain_timeseries(
+            pos_vectors_all=pos_vectors_all,
+            sarcomere_length_vectors_all=sarcomere_length_vectors_all,
+            domain_mask=domain_mask_ref,
+            pixelsize=self.metadata.pixelsize,
+            n_domains=n_domains,
+        )
+        
+        # Select model for ContractionNet
+        if model is None or model == 'default':
+            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
+        
+        # Detect contractions using ContractionNet
+        logger.info('Detecting contraction cycles using ContractionNet...')
+        contraction_results = domain_motion.detect_domain_contractions(
+            domain_slen_timeseries=timeseries_results['domain_slen_timeseries'],
+            frametime=self.metadata.frametime,
+            model_path=model,
+            threshold=threshold,
+            contr_time_min=contr_time_min,
+            merge_time_max=merge_time_max,
+            buffer_frames=buffer_frames,
+            min_valid_frames=min_valid_frames,
+        )
+        
+        # Analyze contraction parameters
+        logger.info('Analyzing contraction parameters...')
+        param_results = domain_motion.analyze_domain_contraction_parameters(
+            domain_slen_timeseries=timeseries_results['domain_slen_timeseries'],
+            domain_labels_contr=contraction_results['domain_labels_contr'],
+            domain_n_contr=contraction_results['domain_n_contr'],
+            frametime=self.metadata.frametime,
+            filter_params=filter_params,
+        )
+        
+        # Store results in data dictionary
+        domain_motion_data = {
+            # Time-series data
+            'domain_slen_timeseries': timeseries_results['domain_slen_timeseries'],
+            'domain_slen_median_timeseries': timeseries_results['domain_slen_median_timeseries'],
+            'domain_slen_std_timeseries': timeseries_results['domain_slen_std_timeseries'],
+            'domain_slen_q25_timeseries': timeseries_results['domain_slen_q25_timeseries'],
+            'domain_slen_q75_timeseries': timeseries_results['domain_slen_q75_timeseries'],
+            'domain_n_vectors_timeseries': timeseries_results['domain_n_vectors_timeseries'],
+            # Contraction detection
+            'domain_contr': contraction_results['domain_contr'],
+            'domain_n_contr': contraction_results['domain_n_contr'],
+            'domain_labels_contr': contraction_results['domain_labels_contr'],
+            'domain_beating_rate': contraction_results['domain_beating_rate'],
+            'domain_beating_rate_variability': contraction_results['domain_beating_rate_variability'],
+            # Contraction parameters
+            'domain_equ': param_results['domain_equ'],
+            'domain_contr_max': param_results['domain_contr_max'],
+            'domain_elong_max': param_results['domain_elong_max'],
+            'domain_vel_contr_max': param_results['domain_vel_contr_max'],
+            'domain_vel_elong_max': param_results['domain_vel_elong_max'],
+            'domain_time_to_peak': param_results['domain_time_to_peak'],
+            'domain_time_to_relax': param_results['domain_time_to_relax'],
+            'domain_time_contr': param_results['domain_time_contr'],
+            # Parameters
+            'params.analyze_domain_motion.reference_frame': reference_frame,
+            'params.analyze_domain_motion.model': model,
+            'params.analyze_domain_motion.threshold': threshold,
+            'params.analyze_domain_motion.contr_time_min': contr_time_min,
+            'params.analyze_domain_motion.merge_time_max': merge_time_max,
+            'params.analyze_domain_motion.buffer_frames': buffer_frames,
+            'params.analyze_domain_motion.min_valid_frames': min_valid_frames,
+            'params.analyze_domain_motion.filter_params': filter_params,
+        }
+        
+        self.data.update(domain_motion_data)
+        logger.info(f'Domain motion analysis complete. Analyzed {n_domains} domains.')
+        
         if self.auto_save:
             self.store_structure_data()
 
