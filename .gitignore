@@ -16,3 +16,4 @@ __pycache__/
 sarcasm/.DS_Store
 scripts/.DS_Store
 uv.lock
+dev.ipynb
