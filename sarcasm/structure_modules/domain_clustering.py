@@ -161,7 +161,7 @@ def cluster_sarcomeres(pos_vectors: np.ndarray,
     # CommunityLeiden returns a VertexClustering, from which we can get memberships
     clusters = graph.community_leiden(
         weights="weight",
-        resolution_parameter=leiden_resolution,
+        resolution=leiden_resolution,
         n_iterations=-1,
         objective_function="modularity"
     )
