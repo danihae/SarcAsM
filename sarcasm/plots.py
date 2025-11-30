@@ -29,7 +29,7 @@ from sarcasm.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plot_utils import PlotUtils
 from sarcasm.structure import Structure
-from sarcasm.structure_modules import domain_clustering
+from sarcasm.structure_modules import domain_clustering, myofibril_analysis
 from sarcasm.utils import Utils
 
 
@@ -359,7 +359,8 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
         """
-        assert os.path.exists(sarc_obj.file_zbands), ('Z-band mask not found. Run predict_z_bands first.')
+        if not os.path.exists(sarc_obj.file_zbands):
+            raise FileNotFoundError(f"Z-bands file not found: {sarc_obj.file_zbands}")
 
         zbands = tifffile.imread(sarc_obj.file_zbands, key=frame)
         midlines = tifffile.imread(sarc_obj.file_mbands, key=frame)
@@ -1089,13 +1090,14 @@ class Plots:
         orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
         length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame]
         median_filter_radius = sarc_obj.data['params.analyze_myofibrils.median_filter_radius']
-        myof_length_map = sarc_obj.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
-                                                      pos_vectors=pos_vectors,
-                                                      sarcomere_orientation_vectors=orientation_vectors,
-                                                      sarcomere_length_vectors=length_vectors,
-                                                      size=sarc_obj.metadata.size,
-                                                      pixelsize=sarc_obj.metadata.pixelsize,
-                                                      median_filter_radius=median_filter_radius)
+        myof_length_map = myofibril_analysis.create_myofibril_length_map(
+            myof_lines=myof_lines, myof_length=myof_lengths,
+            pos_vectors=pos_vectors,
+            sarcomere_orientation_vectors=orientation_vectors,
+            sarcomere_length_vectors=length_vectors,
+            size=sarc_obj.metadata.size,
+            pixelsize=sarc_obj.metadata.pixelsize,
+            median_filter_radius=median_filter_radius)
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
