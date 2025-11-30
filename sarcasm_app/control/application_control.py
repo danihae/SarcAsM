@@ -246,9 +246,16 @@ class ApplicationControl:
             scale = (1, size, size)
         self.model.cell.scale = scale
 
-        # Apply to all layers and update viewer
+        # Apply to all layers, matching scale dimensionality to each layer's ndim
         for layer in self.viewer.layers:
-            layer.scale = scale
+            layer_ndim = layer.ndim
+            if layer_ndim == 2:
+                layer.scale = (size, size)
+            elif layer_ndim == 3:
+                layer.scale = (1, size, size)
+            else:
+                # For higher dimensions, prepend 1s as needed
+                layer.scale = (1,) * (layer_ndim - 2) + (size, size)
 
         self.viewer.scale_bar.visible = True
         self.viewer.scale_bar.unit = unit
@@ -274,10 +281,10 @@ class ApplicationControl:
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
             tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
-            tmp[tmp < 0.1] = np.nan
+            tmp[tmp < 0.3] = np.nan  # Higher threshold for crisper edges
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
-            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.8, colormap='copper', blending='translucent',
+            self.viewer.add_image(tmp, name='ZbandMask', opacity=0.7, colormap='yellow', blending='additive',
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_m_band_stack(self, visible=True):
@@ -289,7 +296,7 @@ class ApplicationControl:
             tmp[tmp < 0.1] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
-            self.viewer.add_image(tmp, name='MbandMask', opacity=0.8, colormap='cool', blending='translucent',
+            self.viewer.add_image(tmp, name='MbandMask', opacity=0.5, colormap='blue', blending='additive',
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_cell_mask_stack(self, visible=True):
@@ -301,8 +308,8 @@ class ApplicationControl:
             tmp[tmp < 0.5] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
-            self.viewer.add_image(tmp, name='CellMask', opacity=0.2, visible=visible,
-                                  scale=self.model.cell.scale)
+            self.viewer.add_image(tmp, name='CellMask', opacity=0.2, colormap='yellow', blending='additive',
+                                  visible=visible, scale=self.model.cell.scale)
 
     def init_z_lateral_connections(self, visible=True):
         if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
@@ -439,8 +446,8 @@ class ApplicationControl:
                 rgba_image[..., 2] = 0  # Blue channel
                 rgba_image[..., 3] = np.where(tmp > 0.5, 102, 0)  # Alpha channel (40% opacity)
 
-            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, visible=visible,
-                                  scale=self.model.cell.scale)
+            self.viewer.add_image(rgba_image, name='SarcomereMask', opacity=0.5, blending='translucent',
+                                  visible=visible, scale=self.model.cell.scale)
 
     def init_sarcomere_domain_stack(self, visible=True):
         if self.model.cell is None or 'domains' not in self.model.cell.data:

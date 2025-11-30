@@ -249,7 +249,7 @@ class StructureAnalysisControl:
                 median_filter_radius=m.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=m.parameters.get_parameter('structure.vectors.line_width').get_value(),
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
-                backend='threading', progress_notifier=progress_notifier
+                progress_notifier=progress_notifier
             )
             pass
 

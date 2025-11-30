@@ -282,7 +282,7 @@ class SarcAsM:
 
     def __dir__(self) -> list[str]:
         """Augment autocomplete with dynamic attributes"""
-        standard_attrs = super().__dir__()
+        standard_attrs = list(super().__dir__())
         dynamic_attrs = [
             'zbands', 'zbands_fast_movie', 'mbands',
             'orientation', 'cell_mask', 'sarcomere_mask'
@@ -298,7 +298,7 @@ class SarcAsM:
             f"║ File path: {os.path.basename(self.file_path)}",
             f"║ Base directory: {os.path.dirname(self.base_dir)}",
             f"║ Device: {self.device}",
-            f"║ Pixel size: {round(self.metadata.pixelsize, 5)} µm",
+            f"║ Pixel size: {round(self.metadata.pixelsize, 5) if self.metadata.pixelsize is not None else 'N/A'} µm",
             f"║ Analysis timestamp: {self.metadata.timestamp_analysis}",
             "╚══════════════════════════════════════════════════════"
         ]
