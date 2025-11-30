@@ -29,6 +29,7 @@ from sarcasm.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plot_utils import PlotUtils
 from sarcasm.structure import Structure
+from sarcasm.structure_modules import domain_clustering
 from sarcasm.utils import Utils
 
 
@@ -247,7 +248,8 @@ class Plots:
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.set_title(title, fontsize=PlotUtils.fontsize)
+        if title is not None:
+            ax.set_title(title, fontsize=PlotUtils.fontsize)
 
         # Add inset axis if zoom_region is specified
         if zoom_region:
@@ -326,6 +328,7 @@ class Plots:
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
+    @staticmethod
     def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union[Structure, Motion], frame=0, cmap='berlin',
                               alpha=1, scalebar=True, title=None, color_scalebar='w',
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
@@ -925,12 +928,10 @@ class Plots:
         sarcomere_length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame]
         area_min = sarc_obj.data['params.analyze_sarcomere_domains.area_min']
         dilation_radius = sarc_obj.data['params.analyze_sarcomere_domains.dilation_radius']
-        domain_mask = sarc_obj._analyze_domains(domains, pos_vectors=pos_vectors,
-                                                 sarcomere_length_vectors=sarcomere_length_vectors,
-                                                 sarcomere_orientation_vectors=sarcomere_orientation_vectors,
-                                                 size=sarc_obj.metadata.size,
-                                                 pixelsize=sarc_obj.metadata.pixelsize,
-                                                 dilation_radius=dilation_radius, area_min=area_min)[0]
+        domain_mask, *_ = domain_clustering.analyze_domains(
+            domains, pos_vectors, sarcomere_orientation_vectors, sarcomere_length_vectors,
+            size=sarc_obj.metadata.size, pixelsize=sarc_obj.metadata.pixelsize,
+            dilation_radius=dilation_radius, area_min=area_min)
 
         domain_mask_masked = np.ma.masked_where(domain_mask == 0, domain_mask)
         cmap = plt.get_cmap(cmap)
@@ -1516,6 +1517,193 @@ class Plots:
         ax.xaxis.set_major_locator(MultipleLocator(0.5))
         ax.xaxis.set_major_formatter(FormatStrFormatter('%g'))
         ax.xaxis.set_minor_locator(MultipleLocator(0.25))
+
+    @staticmethod
+    def plot_domain_timeseries(ax: Axes, sarc_obj: Structure, t_lim: Tuple[float, float] = (0, 12),
+                               y_lim: Tuple[float, float] = (1.6, 2.2), n_rows: Optional[int] = None,
+                               show_contr: bool = True, use_median: bool = False):
+        """
+        Plots domain sarcomere length time-series in a stacked multi-subplot layout.
+
+        Each domain's sarcomere length time-series is shown in a separate row, with optional
+        contraction period shading. Similar layout to plot_delta_slen for Motion objects.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : Structure
+            The Structure object with domain motion analysis results.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Defaults to (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for sarcomere length in µm. Defaults to (1.6, 2.2).
+        n_rows : int or None, optional
+            Number of domains to display. If None, shows all domains. Defaults to None.
+        show_contr : bool, optional
+            Whether to shade contraction periods. Defaults to True.
+        use_median : bool, optional
+            If True, use median sarcomere length instead of mean. Defaults to False.
+
+        Raises
+        ------
+        ValueError
+            If domain motion analysis has not been run.
+        """
+        # Validate prerequisites
+        if 'domain_slen_timeseries' not in sarc_obj.data:
+            raise ValueError("Domain motion analysis not run. Call analyze_domain_motion() first.")
+
+        # Get data
+        if use_median:
+            slen_timeseries = sarc_obj.data['domain_slen_median_timeseries']
+        else:
+            slen_timeseries = sarc_obj.data['domain_slen_timeseries']
+        n_domains, n_frames = slen_timeseries.shape
+        time = np.arange(n_frames) * sarc_obj.metadata.frametime
+
+        # Determine number of rows
+        if n_rows is None:
+            n_rows = n_domains
+        n_rows = min(n_rows, n_domains)
+
+        # Get contraction data if available
+        domain_contr = sarc_obj.data.get('domain_contr', None)
+        domain_labels_contr = sarc_obj.data.get('domain_labels_contr', None)
+
+        # Calculate y-ticks
+        y_range = y_lim[1] - y_lim[0]
+        y_step = y_range / 4
+        yticks = [y_lim[0] + y_step, y_lim[0] + 2 * y_step, y_lim[0] + 3 * y_step]
+
+        # Domain colormap
+        cm = plt.cm.gist_rainbow(np.linspace(0, 1, n_domains))
+
+        # Create inset axes for each domain
+        list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
+        for i, y in enumerate(list_y):
+            domain_idx = n_rows - 1 - i  # Reverse order so domain 1 is at bottom
+            if domain_idx >= n_domains:
+                continue
+
+            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - 0.02))
+            ax_i.plot(time, slen_timeseries[domain_idx], c=cm[domain_idx], lw=0.8)
+            ax_i.axhline(np.nanmean(slen_timeseries[domain_idx]), linewidth=0.5, linestyle=':', c='k')
+
+            # Shade contraction periods
+            if show_contr and domain_contr is not None:
+                contr = domain_contr[domain_idx]
+                ax_i.fill_between(time, y_lim[0], y_lim[1], where=contr, color='lavender', alpha=0.7)
+
+            # Configure axes
+            if i > 0:
+                ax_i.set_xticks([])
+            else:
+                PlotUtils.polish_xticks(ax_i, 2, 1)
+
+            ax_i.set_ylim(y_lim)
+            ax_i.set_xlim(t_lim)
+            ax_i.set_yticks(yticks)
+            ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
+
+            # Add domain label
+            ax_i.text(0.02, 0.85, f'D{domain_idx + 1}', transform=ax_i.transAxes,
+                      fontsize='x-small', fontweight='bold', color=cm[domain_idx])
+
+        # Configure main axes
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Sarcomere length [µm]')
+        ax.spines['bottom'].set_color('w')
+        ax.spines['top'].set_color('w')
+        ax.xaxis.label.set_color('k')
+        ax.tick_params(axis='x', colors='w')
+        ax.tick_params(axis='y', colors='w')
+
+    @staticmethod
+    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: Structure, t_lim: Tuple[float, float] = (0, 12),
+                                       y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True,
+                                       show_average: bool = True, use_median: bool = False,
+                                       domain_indices: Optional[list] = None):
+        """
+        Plots domain sarcomere length time-series as overlaid trajectories.
+
+        All domain time-series are plotted on the same axes with different colors,
+        optionally with an average line and contraction period shading.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : Structure
+            The Structure object with domain motion analysis results.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Defaults to (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for sarcomere length in µm. Defaults to (1.6, 2.2).
+        show_contr : bool, optional
+            Whether to shade contraction periods (uses union of all domain contractions).
+            Defaults to True.
+        show_average : bool, optional
+            Whether to show the average across all domains. Defaults to True.
+        use_median : bool, optional
+            If True, use median sarcomere length instead of mean. Defaults to False.
+        domain_indices : list or None, optional
+            List of domain indices (0-based) to plot. If None, plots all domains.
+            Defaults to None.
+
+        Raises
+        ------
+        ValueError
+            If domain motion analysis has not been run.
+        """
+        # Validate prerequisites
+        if 'domain_slen_timeseries' not in sarc_obj.data:
+            raise ValueError("Domain motion analysis not run. Call analyze_domain_motion() first.")
+
+        # Get data
+        if use_median:
+            slen_timeseries = sarc_obj.data['domain_slen_median_timeseries']
+        else:
+            slen_timeseries = sarc_obj.data['domain_slen_timeseries']
+        n_domains, n_frames = slen_timeseries.shape
+        time = np.arange(n_frames) * sarc_obj.metadata.frametime
+
+        # Select domains to plot
+        if domain_indices is None:
+            domain_indices = list(range(n_domains))
+        domain_indices = [i for i in domain_indices if 0 <= i < n_domains]
+
+        # Get contraction data if available
+        domain_contr = sarc_obj.data.get('domain_contr', None)
+
+        # Shade contraction periods (union across selected domains)
+        if show_contr and domain_contr is not None:
+            any_contr = np.any(domain_contr[domain_indices], axis=0)
+            ax.fill_between(time, y_lim[0], y_lim[1], where=any_contr, color='lavender', alpha=0.5)
+
+        # Domain colormap
+        cm = plt.cm.gist_rainbow(np.linspace(0, 1, n_domains))
+
+        # Plot individual domain trajectories
+        for domain_idx in domain_indices:
+            ax.plot(time, slen_timeseries[domain_idx], c=cm[domain_idx], lw=0.8,
+                    label=f'Domain {domain_idx + 1}', alpha=0.8)
+
+        # Plot average trajectory
+        if show_average and len(domain_indices) > 1:
+            avg_slen = np.nanmean(slen_timeseries[domain_indices], axis=0)
+            ax.plot(time, avg_slen, c='k', lw=2, linestyle='-', label='Average')
+
+        # Configure axes
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Sarcomere length [µm]')
+        ax.set_xlim(t_lim)
+        ax.set_ylim(y_lim)
+        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_yticks(ax, 0.2, 0.1)
+
+        # Add legend
+        ax.legend(loc='upper right', fontsize='x-small')
 
     @staticmethod
     def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, 4), number_contr=None, frame=None):

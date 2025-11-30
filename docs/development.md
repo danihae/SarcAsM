@@ -123,6 +123,68 @@ pytest --ff  # "failed first"
 
 Test data should be placed in the `test_data/` directory. If test data is missing, tests will be automatically skipped.
 
+### Plot Tests
+
+The test suite includes comprehensive tests for all plotting functions in `sarcasm/plots.py`. These tests verify that plots are generated correctly without errors.
+
+**Test Classes:**
+
+| Test Class | Location | Marker | Description |
+|------------|----------|--------|-------------|
+| `TestStructureMetadata` | `test_structure.py` | - | Fast metadata tests |
+| `TestStructureTimelapseAnalysis` | `test_structure.py` | `slow` | Time-lapse analysis |
+| `TestStructureSingleImageAnalysis` | `test_structure.py` | `slow` | Single image analysis |
+| `TestStructureErrors` | `test_structure.py` | - | Fast error handling |
+| `TestStructureIntegration` | `test_structure.py` | `slow`, `integration` | Full workflow tests |
+| `TestStructurePlots` | `test_structure.py` | `slow` | Structure plotting (13 tests) |
+| `TestDomainMotionPlots` | `test_structure.py` | `slow` | Domain motion plots (3 tests) |
+| `TestMotion` | `test_motion.py` | `slow` | LOI detection and analysis |
+| `TestMotionIntegration` | `test_motion.py` | `slow`, `integration` | Full motion workflow |
+| `TestMotionPlots` | `test_motion.py` | `slow` | Motion plotting (10 tests) |
+
+**Running Tests by Speed:**
+
+```bash
+# Run only fast tests (unit tests, error handling, metadata)
+pytest -m "not slow" -v
+
+# Run only slow tests (analysis, detection, plotting)
+pytest -m "slow" -v
+
+# Run integration tests only
+pytest -m "integration" -v
+
+# Skip both slow and integration tests
+pytest -m "not slow and not integration" -v
+```
+
+**Running Plot Tests:**
+
+```bash
+# Run all structure plot tests
+pytest tests/test_structure.py::TestStructurePlots -v
+
+# Run all motion plot tests
+pytest tests/test_motion.py::TestMotionPlots -v
+
+# Run domain motion plot tests (slow, uses 30kPa data)
+pytest tests/test_structure.py::TestDomainMotionPlots -v
+
+# Run all plot tests together
+pytest tests/test_structure.py::TestStructurePlots tests/test_structure.py::TestDomainMotionPlots tests/test_motion.py::TestMotionPlots -v
+```
+
+**Test Artifacts:**
+
+Plot tests generate `*_sarcasm/` folders containing analysis results. By default, these are automatically cleaned up after the test session completes.
+
+```bash
+# Keep generated folders for debugging
+pytest --keep-artifacts -v
+```
+
+**Note:** The test suite uses `matplotlib.use('Agg')` to prevent popup windows during testing.
+
 ## Code Quality
 
 The project uses several tools for code quality:
