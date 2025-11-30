@@ -177,8 +177,8 @@ class SarcAsM:
                 else:
                     pass
         else:
-            # Will be populated by read_imgs, then saved
-            _ = self.image
+            # Extract metadata without loading full image data (fast, even for large files on HDD)
+            self._extract_metadata_only()
             pass
 
         # Dictionary of models
@@ -317,6 +317,74 @@ class SarcAsM:
         """
         ImageMetadata.save_to_file(self.metadata, self.meta_file)
 
+    def _extract_metadata_only(self, axes: Union[str, None] = None) -> None:
+        """
+        Extract metadata from the TIFF file without loading the full image data.
+
+        This method is optimized for large files (e.g., 15+ GB) on slow storage (HDD),
+        as it only reads the file headers and metadata, not the pixel data.
+
+        Parameters
+        ----------
+        axes : str, optional
+            Dimension order override (e.g., 'TXYC'). Auto-detected if None.
+        """
+        with tifffile.TiffFile(self.file_path) as tif:
+            series = tif.series[0]
+
+            # Determine axes order from metadata only (no data loading)
+            if axes is None:
+                axes = self._determine_axes(series, tif)
+            else:
+                axes = axes.upper()
+
+            self._validate_axes(str(axes))
+
+            # Extract metadata using file headers only
+            self._harvest_metadata(series, tif, axes)
+
+            # Determine shape for internal format (after channel selection)
+            # We need to compute what the shape would be after processing
+            shape_orig = series.shape
+            processed_axes = axes
+
+            # Account for channel selection (removes C axis)
+            if 'C' in axes:
+                c_axis = axes.index('C')
+                n_chan = shape_orig[c_axis]
+                # Shape after channel selection
+                shape_after_channel = list(shape_orig)
+                del shape_after_channel[c_axis]
+                shape_after_channel = tuple(shape_after_channel)
+                processed_axes = axes.replace('C', '')
+            else:
+                shape_after_channel = shape_orig
+
+            # Compute final shape after permutation to internal format (Stack, Y, X) or (Y, X)
+            stack_axis = 'T' if 'T' in processed_axes else ('Z' if 'Z' in processed_axes else None)
+            target_axes = []
+            if stack_axis:
+                target_axes.append(stack_axis)
+            if 'Y' in processed_axes:
+                target_axes.append('Y')
+            if 'X' in processed_axes:
+                target_axes.append('X')
+
+            # Build the final shape
+            perm = [processed_axes.index(ax) for ax in target_axes]
+            final_shape = tuple(shape_after_channel[i] for i in perm)
+
+            # Squeeze singleton dimensions
+            final_shape = tuple(d for d in final_shape if d > 1) or final_shape
+
+            # Update metadata with computed shape
+            self.metadata.shape = final_shape
+            self.metadata.size = (final_shape[-2], final_shape[-1]) if len(final_shape) >= 2 else None
+
+            # Save metadata
+            if self.auto_save:
+                self.save_metadata()
+
     def read_imgs(self, frames=None, axes=None):
         """
         Load and process TIFF data with metadata extraction.
@@ -363,13 +431,13 @@ class SarcAsM:
                 frames = list(frames)
             if isinstance(frames, str) and frames != 'all':
                 raise ValueError("'frames' has to be list, ndarray, int or 'all'.")
-            if frames is not None and not frames == 'all' and meta.n_stack > 1:
+            if frames is not None and not frames == 'all' and meta.n_stack is not None and meta.n_stack > 1:
                 data = data[frames]
 
             # Final cleanup and metadata updates
             data = data.squeeze()
             self.metadata.shape = data.shape  # shape after all processing
-            self.metadata.size = data.shape[-2:]  # (height, width)
+            self.metadata.size = (data.shape[-2], data.shape[-1]) if data.ndim >= 2 else None  # (height, width)
             self.save_metadata()
 
             return data
@@ -389,7 +457,10 @@ class SarcAsM:
         if tif.ome_metadata:
             try:
                 root = ET.fromstring(tif.ome_metadata)
-                detected = root.find('.//{*}Image').attrib['DimensionOrder'].upper()
+                image_elem = root.find('.//{*}Image')
+                if image_elem is None:
+                    raise ValueError("OME Image element not found")
+                detected = image_elem.attrib['DimensionOrder'].upper()
                 logger.debug(f"Detected axes from OME: '{detected}'")
                 
                 # Validate that detected axes match actual data dimensions
