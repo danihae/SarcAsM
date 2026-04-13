@@ -45,22 +45,60 @@ except ImportError:
 # Dynamic platform-aware naming
 appname = f"SarcAsM-v{version}"
 
-# 1. Include Napari resources
+# ---------------------------------------------------------------------------
+# Data files required at runtime
+# ---------------------------------------------------------------------------
 napari_data = collect_data_files('napari')
-
-# 2. Include Vispy resources (critical for GLSL shaders)
+napari_builtins_data = collect_data_files('napari_builtins')
 vispy_data = collect_data_files('vispy')
+rfc3987_data = collect_data_files('rfc3987_syntax')
+lark_data = collect_data_files('lark')
 
-# 3. Include models directory (recursive)
 model_data = [
     ('sarcasm/models', 'sarcasm/models'),
+]
+
+# ---------------------------------------------------------------------------
+# Packages NOT used by the app — exclude to cut bundle size and startup time
+# ---------------------------------------------------------------------------
+excludes = [
+    # Documentation / dev tools (pulled transitively, not needed at runtime)
+    'sphinx', 'babel', 'docutils', 'alabaster', 'snowballstemmer',
+    'sphinxcontrib',
+    # Interactive console / autocompletion (napari console, not needed)
+    'jedi', 'parso',
+    # Plotly / kaleido (not used by the app)
+    'plotly', 'kaleido',
+    # HuggingFace ecosystem (transitive, not used)
+    'hf_xet', 'huggingface_hub',
+    # PyTorch extras not needed for inference
+    'pytorch_lightning', 'lightning',
+    # Optical flow / tracking (optional dep, not in standalone app)
+    'ptlflow',
+    # Jupyter / notebook (dev only)
+    'notebook', 'jupyterlab', 'jupyter_client', 'jupyter_core',
+    'jupyter_server', 'nbconvert', 'nbformat', 'nbclient',
+    'ipykernel', 'ipywidgets',
+    # Testing
+    'pytest', 'hypothesis',
+    # Other unused transitive deps
+    'tkinter', '_tkinter',
+    'timm',
+    'h5py',
 ]
 
 a = Analysis(
     ['sarcasm_app/__main__.py'],
     pathex=['.'],
     binaries=[],
-    datas=napari_data + vispy_data + model_data,
+    datas=(
+        napari_data
+        + napari_builtins_data
+        + vispy_data
+        + rfc3987_data
+        + lark_data
+        + model_data
+    ),
     hiddenimports=[
         'napari',
         'napari._qt',
@@ -73,7 +111,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
@@ -83,13 +121,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],                    # ← Empty - no binaries in exe
-    exclude_binaries=True, # ← Critical for ONEDIR
+    [],                    # Empty - no binaries in exe
+    exclude_binaries=True, # Critical for ONEDIR
     name=appname,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,             # ← Disabled for compatibility
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -101,10 +139,21 @@ exe = EXE(
     icon='sarcasm_app/icons/sarcasm.ico',
 )
 
-# Platform-specific configurations
+# COLLECT is needed on all platforms (gathers binaries + data alongside the EXE)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name=appname,
+)
+
+# macOS: wrap in a .app bundle
 if sys.platform == 'darwin':
     app = BUNDLE(
-        exe,
+        coll,
         name=f'{appname}.app',
         icon='sarcasm_app/icons/sarcasm.icns',
         bundle_identifier='de.example.sarcasm',
@@ -116,15 +165,4 @@ if sys.platform == 'darwin':
             'NSHighResolutionCapable': 'True',
             'LSUIElement': 'False',
         }
-    )
-else:
-    # Windows/Linux ONEDIR configuration
-    coll = COLLECT(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        strip=False,
-        upx=False,
-        name=appname,
     )
