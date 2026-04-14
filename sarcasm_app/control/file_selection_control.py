@@ -27,6 +27,13 @@ from ..view.file_selection import Ui_Form as FileSelectionWidget
 
 logger = logging.getLogger(__name__)
 
+# Input validation error styling — soft tint + border so text stays legible in
+# both light and dark palettes (old `background: red` made text unreadable).
+_INVALID_INPUT_QSS = (
+    "QLineEdit { border: 1px solid #e06060; "
+    "background-color: rgba(224,96,96,0.18); }"
+)
+
 
 class FileSelectionControl:
     """
@@ -97,7 +104,7 @@ class FileSelectionControl:
                         with open(file_path, 'w') as f:
                             f.write('{}')  # Create valid empty JSON
                     except Exception as e:
-                        QMessageBox.critical(None, "Error",
+                        QMessageBox.critical(self.__file_selection_widget.btn_search_parameters_file, "Error",
                                              f"Could not create file:\n{str(e)}")
                         return
 
@@ -107,10 +114,12 @@ class FileSelectionControl:
                         json.load(f)  # Verify JSON is parseable
                     self.__file_selection_widget.le_parameters_path.setText(file_path)
                 except json.JSONDecodeError:
-                    QMessageBox.warning(None, "Invalid JSON",
+                    QMessageBox.warning(self.__file_selection_widget.btn_search_parameters_file,
+                                        "Invalid JSON",
                                         "The selected file contains invalid JSON format")
                 except Exception as e:
-                    QMessageBox.critical(None, "Error",
+                    QMessageBox.critical(self.__file_selection_widget.btn_search_parameters_file,
+                                         "Error",
                                          f"Failed to read file:\n{str(e)}")
 
     def on_btn_import_parameters(self):
@@ -279,7 +288,7 @@ class FileSelectionControl:
             self.__main_control.model.cell.metadata.axes = axes
             self.__main_control.init_image_stack()
         else:
-            self.__file_selection_widget.le_axes.setStyleSheet("QLineEdit{background : red;}")
+            self.__file_selection_widget.le_axes.setStyleSheet(_INVALID_INPUT_QSS)
 
         cell.save_metadata()
 
@@ -294,11 +303,11 @@ class FileSelectionControl:
             if not 0.5 >= pixel_size >= 0.01:
                 logger.warning(f"Pixel size of {round(pixel_size, 5)} µm not in reasonable range "
                                f"between 0.01–0.5 µm. Please enter correct pixel size.")
-                self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
+                self.__file_selection_widget.le_pixel_size.setStyleSheet(_INVALID_INPUT_QSS)
 
         else:
             self.__file_selection_widget.le_pixel_size.setPlaceholderText('- enter metadata manually -')
-            self.__file_selection_widget.le_pixel_size.setStyleSheet("QLineEdit{background : red;}")
+            self.__file_selection_widget.le_pixel_size.setStyleSheet(_INVALID_INPUT_QSS)
 
         # frame time
         if cell.metadata.frametime is not None:

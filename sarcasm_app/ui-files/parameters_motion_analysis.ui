@@ -316,7 +316,7 @@
          <string>execute prediction and analysis of contractions, do not forget to select a contraction weights file</string>
         </property>
         <property name="text">
-         <string>3. Predict and Analyze contraction cycles</string>
+         <string>3. Predict and analyze contraction cycles</string>
         </property>
        </widget>
       </item>
@@ -335,7 +335,7 @@
         <item>
          <widget class="QPushButton" name="btn_systoles_search_weights">
           <property name="text">
-           <string>Search</string>
+           <string>Browse…</string>
           </property>
          </widget>
         </item>
@@ -592,7 +592,7 @@
       <string>execute all of the below functions(check the parameters before)</string>
      </property>
      <property name="text">
-      <string>Full tracking and analysis of sarcomere motion</string>
+      <string>Run full motion analysis</string>
      </property>
     </widget>
    </item>

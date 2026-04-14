@@ -36,7 +36,7 @@
    <item row="9" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_6">
      <property name="title">
-      <string>Detect LOIs for tracking and analysis of sarcomere motion</string>
+      <string>LOI detection</string>
      </property>
      <layout class="QFormLayout" name="formLayout_7">
       <item row="1" column="0">

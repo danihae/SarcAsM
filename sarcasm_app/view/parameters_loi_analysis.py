@@ -268,7 +268,7 @@ class Ui_Form(object):
         self.groupBox_5.setTitle(_translate("Form", "Create and store LOI data (all current LOIs)"))
         self.btn_store_lois.setToolTip(_translate("Form", "stores all current LOIs, only needed when using manual LOIs"))
         self.btn_store_lois.setText(_translate("Form", "Store LOI data"))
-        self.groupBox_6.setTitle(_translate("Form", "Detect LOIs for tracking and analysis of sarcomere motion"))
+        self.groupBox_6.setTitle(_translate("Form", "LOI detection"))
         self.label_36.setToolTip(_translate("Form", "The index of the frame to select for analysis."))
         self.label_36.setText(_translate("Form", "Frame [#]"))
         self.sb_detect_loi_frame.setToolTip(_translate("Form", "The index of the frame to select for analysis."))

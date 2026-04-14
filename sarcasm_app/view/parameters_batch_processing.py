@@ -133,7 +133,7 @@ class Ui_Form(object):
         self.label_6.setText(_translate("Form", "First, adjust the settings in \"Structure Analysis\" or \"Motion Analysis\" using a single, representative image/movie. The finalized parameters will be used to process the entire batch."))
         self.label.setText(_translate("Form", "Root directory"))
         self.le_root_directory.setPlaceholderText(_translate("Form", "Path of root directory of data to process"))
-        self.btn_search.setText(_translate("Form", "Search"))
+        self.btn_search.setText(_translate("Form", "Browse…"))
         self.label_5.setText(_translate("Form", "Thread Pool Size"))
         self.label_2.setToolTip(_translate("Form", "pixel size in [µm], this is used either if the image-to-process doesn\'t have this value set or force override is activated"))
         self.label_2.setText(_translate("Form", "Pixel size [µm]"))
@@ -155,9 +155,9 @@ class Ui_Form(object):
         self.chk_do_myofibrils.setText(_translate("Form", "Analyze Myofibrils"))
         self.chk_do_domains.setText(_translate("Form", "Analyze Domains"))
         self.btn_batch_processing_structure.setToolTip(_translate("Form", "Start batch processing structure"))
-        self.btn_batch_processing_structure.setText(_translate("Form", "Batch analysis structure"))
-        self.btn_batch_processing_motion.setToolTip(_translate("Form", "Start batch processing motion"))
-        self.btn_batch_processing_motion.setText(_translate("Form", "Batch Processing Motion (not yet available in app - use python script)"))
+        self.btn_batch_processing_structure.setText(_translate("Form", "Run batch structure analysis"))
+        self.btn_batch_processing_motion.setToolTip(_translate("Form", "Not yet available in the GUI — use the Python API for now."))
+        self.btn_batch_processing_motion.setText(_translate("Form", "Batch motion analysis"))
         self.btn_batch_export_structure.setText(_translate("Form", "Export structure data to .xlsx"))
 
 

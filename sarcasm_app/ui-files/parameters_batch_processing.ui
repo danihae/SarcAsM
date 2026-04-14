@@ -52,7 +52,7 @@
         <item>
          <widget class="QPushButton" name="btn_search">
           <property name="text">
-           <string>Search</string>
+           <string>Browse…</string>
           </property>
          </widget>
         </item>
@@ -237,7 +237,7 @@
          <string>Start batch processing structure</string>
         </property>
         <property name="text">
-         <string>Batch analysis structure</string>
+         <string>Run batch structure analysis</string>
         </property>
        </widget>
       </item>
@@ -247,10 +247,10 @@
          <bool>false</bool>
         </property>
         <property name="toolTip">
-         <string>Start batch processing motion</string>
+         <string>Not yet available in the GUI — use the Python API for now.</string>
         </property>
         <property name="text">
-         <string>Batch Processing Motion (not yet available in app - use python script)</string>
+         <string>Batch motion analysis</string>
         </property>
        </widget>
       </item>

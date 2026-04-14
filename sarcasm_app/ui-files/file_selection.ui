@@ -33,7 +33,7 @@
       <item>
        <widget class="QPushButton" name="btn_search">
         <property name="text">
-         <string>Search</string>
+         <string>Browse…</string>
         </property>
        </widget>
       </item>
@@ -130,7 +130,7 @@
          </size>
         </property>
         <property name="text">
-         <string>Apply and save</string>
+         <string>Save metadata</string>
         </property>
        </widget>
       </item>
@@ -140,7 +140,7 @@
    <item>
     <widget class="QGroupBox" name="groupBox_3">
      <property name="title">
-      <string>Parameter import/export</string>
+      <string>Parameters</string>
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout_5">
       <item>
@@ -162,7 +162,7 @@
       <item>
        <widget class="QPushButton" name="btn_search_parameters_file">
         <property name="text">
-         <string>Search</string>
+         <string>Browse…</string>
         </property>
        </widget>
       </item>

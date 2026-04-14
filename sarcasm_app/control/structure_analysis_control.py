@@ -22,12 +22,20 @@ from bio_image_unet.progress import ProgressNotifier
 from sarcasm import Structure
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
+from .file_selection_control import _INVALID_INPUT_QSS
 from .popup_export import ExportPopup
 from ..view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel
 from sarcasm.type_utils import TypeUtils
 
 logger = logging.getLogger(__name__)
+
+# Valid-input styling pairs with _INVALID_INPUT_QSS — soft green tint stays
+# legible in both light and dark palettes.
+_VALID_INPUT_QSS = (
+    "QLineEdit { border: 1px solid #4cae4c; "
+    "background-color: rgba(76,174,76,0.18); }"
+)
 
 
 class StructureAnalysisControl:
@@ -362,12 +370,9 @@ class StructureAnalysisControl:
         value = self.__parse_frames(text)
         if not text.isnumeric() and (value == 0 or value is None):
             # this is an error
-            self.__structure_parameters_widget.le_general_frames.setStyleSheet("QLineEdit{background : red;}")
-            pass
+            self.__structure_parameters_widget.le_general_frames.setStyleSheet(_INVALID_INPUT_QSS)
         else:
-            self.__structure_parameters_widget.le_general_frames.setStyleSheet(
-                "QLineEdit{background : lightgreen;}")
-        pass
+            self.__structure_parameters_widget.le_general_frames.setStyleSheet(_VALID_INPUT_QSS)
 
     def on_analyze_structure(self):
         if not self.__chk_initialized():
