@@ -16,11 +16,6 @@
   <layout class="QFormLayout" name="formLayout">
    <item row="0" column="0" colspan="2">
     <widget class="QPushButton" name="btn_analyze_structure">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="toolTip">
       <string>execute all of the below functions except cell mask prediction (check the parameters before)</string>
      </property>
@@ -31,11 +26,6 @@
    </item>
    <item row="2" column="0">
     <widget class="QLabel" name="label_4">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="toolTip">
       <string>possible values: all, single number or comma separated numbers, note that time starts with 0</string>
      </property>
@@ -46,11 +36,6 @@
    </item>
    <item row="2" column="1">
     <widget class="QLineEdit" name="le_general_frames">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="toolTip">
       <string>possible values: all, single number or comma separated numbers, note that time starts with 0</string>
      </property>
@@ -63,11 +48,6 @@
     <widget class="QGroupBox" name="groupBox">
      <property name="enabled">
       <bool>true</bool>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
      </property>
      <property name="title">
       <string>Detection of sarcomeres</string>
@@ -289,11 +269,6 @@
    </item>
    <item row="4" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_6">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Detection of Z-bands in high-speed movies</string>
      </property>
@@ -461,22 +436,12 @@
    </item>
    <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_7">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Cell-mask analysis</string>
      </property>
      <layout class="QFormLayout" name="formLayout_8">
       <item row="0" column="0">
        <widget class="QLabel" name="label_42">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>Threshold</string>
         </property>
@@ -484,11 +449,6 @@
       </item>
       <item row="0" column="1">
        <widget class="QDoubleSpinBox" name="dsb_cell_mask_threshold">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
-        </property>
         <property name="decimals">
          <number>3</number>
         </property>
@@ -509,11 +469,6 @@
    </item>
    <item row="7" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Z-band analysis</string>
      </property>
@@ -726,11 +681,6 @@
      <property name="enabled">
       <bool>true</bool>
      </property>
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Sarcomere length and orientation analysis</string>
      </property>
@@ -882,11 +832,6 @@
    </item>
    <item row="9" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_5">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Myofibril analysis</string>
      </property>
@@ -1021,11 +966,6 @@
    </item>
    <item row="10" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Domains analysis using clustering algorithm</string>
      </property>
@@ -1182,11 +1122,6 @@
    </item>
    <item row="11" column="0" colspan="2">
     <widget class="QPushButton" name="btn_export_structure_data">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="text">
       <string>Export Structure Data (.csv/.xlsx)</string>
      </property>

@@ -54,9 +54,6 @@ class ExportPopup(QDialog):
         self.__h_box = None
         self.__le_file_path: QLineEdit
         self.__le_file_name: QLineEdit
-        font=self.font()
-        font.setPointSize(11)
-        self.setFont(font)
         self.init_ui(popup_type=popup_type,filename_pattern=filename_pattern)
 
         pass
@@ -267,9 +264,6 @@ class ExportPopup(QDialog):
         row = 0
         col = 0
         all_checkbox = QCheckBox('all')
-        font=all_checkbox.font()
-        font.setPointSize(11)
-        all_checkbox.setFont(font)
         # todo: add event to all checkbox: which checks all other checkboxes in that group
         all_checkbox.clicked.connect(lambda value: self.__on_all_checkbox(container, value))
 
@@ -278,7 +272,6 @@ class ExportPopup(QDialog):
 
         for str_name in str_list:
             checkbox = QCheckBox(str_name)
-            checkbox.setFont(font)
             container.layout().addWidget(checkbox, col, row)
             col = col + 1
             if col >= self.__max_entries_per_row:

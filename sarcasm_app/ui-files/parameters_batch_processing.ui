@@ -16,11 +16,6 @@
   <layout class="QGridLayout" name="gridLayout">
    <item row="2" column="0">
     <widget class="QGroupBox" name="groupBox">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string/>
      </property>

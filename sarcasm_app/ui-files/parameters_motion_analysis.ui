@@ -16,11 +16,6 @@
   <layout class="QFormLayout" name="formLayout">
    <item row="2" column="0">
     <widget class="QLabel" name="label_10">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="text">
       <string>Select LOI file</string>
      </property>
@@ -35,12 +30,6 @@
    </item>
    <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-       <bold>false</bold>
-      </font>
-     </property>
      <property name="title">
       <string>Track Z-band motion</string>
      </property>
@@ -138,22 +127,12 @@
    </item>
    <item row="6" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_3">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Predict and analyze contraction cycles</string>
      </property>
      <layout class="QFormLayout" name="formLayout_4">
       <item row="0" column="0">
        <widget class="QLabel" name="label_3">
-        <property name="font">
-         <font>
-          <pointsize>11</pointsize>
-         </font>
-        </property>
         <property name="toolTip">
          <string>Neural network parameters (.pt file)</string>
         </property>
@@ -367,11 +346,6 @@
    </item>
    <item row="7" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_4">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Calculate and analyze sarcomere trajectories</string>
      </property>
@@ -600,11 +574,6 @@
    </item>
    <item row="9" column="0" colspan="2">
     <widget class="QPushButton" name="btn_plot_summary">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="text">
       <string>Plot Summary</string>
      </property>
@@ -612,11 +581,6 @@
    </item>
    <item row="8" column="0" colspan="2">
     <widget class="QPushButton" name="btn_export_motion_data">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="text">
       <string>Export Motion Data (.csv/.xlsx)</string>
      </property>
@@ -624,11 +588,6 @@
    </item>
    <item row="3" column="0" colspan="2">
     <widget class="QPushButton" name="btn_analyze_motion">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="toolTip">
       <string>execute all of the below functions(check the parameters before)</string>
      </property>
@@ -639,11 +598,6 @@
    </item>
    <item row="4" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Detect Z-band positions</string>
      </property>

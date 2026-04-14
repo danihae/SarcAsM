@@ -16,11 +16,6 @@
   <layout class="QFormLayout" name="formLayout">
    <item row="10" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_5">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Create and store LOI data (all current LOIs)</string>
      </property>
@@ -40,11 +35,6 @@
    </item>
    <item row="9" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_6">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Detect LOIs for tracking and analysis of sarcomere motion</string>
      </property>

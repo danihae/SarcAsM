@@ -16,11 +16,6 @@
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QGroupBox" name="groupBox">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>File Selection</string>
      </property>
@@ -65,11 +60,6 @@
        <width>2000</width>
        <height>16777215</height>
       </size>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
      </property>
      <property name="title">
       <string>Metadata</string>
@@ -149,11 +139,6 @@
    </item>
    <item>
     <widget class="QGroupBox" name="groupBox_3">
-     <property name="font">
-      <font>
-       <pointsize>11</pointsize>
-      </font>
-     </property>
      <property name="title">
       <string>Parameter import/export</string>
      </property>

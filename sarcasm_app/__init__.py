@@ -42,6 +42,14 @@ if hasattr(Qt, 'AA_EnableHighDpiScaling'):
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+# PassThrough keeps widget sizes consistent under fractional Windows scaling (125%, 150%)
+try:
+    from PyQt5.QtGui import QGuiApplication
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+except (AttributeError, ImportError):
+    pass
 
 class Application:
 
@@ -146,37 +154,38 @@ class Application:
     def debug(self, message):
         self.__text_debug.append(message)
 
+    # Stylesheets for status indicators (color + background in one rule — setStyleSheet
+    # replaces the whole stylesheet, so splitting across calls drops earlier properties)
+    __STATUS_OK_QSS = (
+        'padding: 2px 6px; border-radius: 3px; '
+        'color: rgba(255,255,255,0.9); background-color: rgba(0,160,60,0.6);'
+    )
+    __STATUS_BAD_QSS = (
+        'padding: 2px 6px; border-radius: 3px; '
+        'color: rgba(255,255,255,0.9); background-color: rgba(200,60,60,0.7);'
+    )
+
     def __update_busy_label(self, new_value):
         if new_value:
-            # currently processing is true -> busy
             self.__label_busy.setText('BUSY')
-            self.__label_busy.setStyleSheet('background-color:rgba(255,0,0,0.5);')
-            pass
+            self.__label_busy.setStyleSheet(self.__STATUS_BAD_QSS)
         else:
             self.__label_busy.setText('IDLE')
-            self.__label_busy.setStyleSheet('background-color:rgba(0,255,0,0.3);')
-            pass
-
-        pass
+            self.__label_busy.setStyleSheet(self.__STATUS_OK_QSS)
 
     def __init_status_bar(self):
         h_box = QHBoxLayout()
+        h_box.setContentsMargins(4, 2, 4, 2)
         h_box.addWidget(self.__label_gpu, 0)
         h_box.addWidget(self.__label_busy, 0)
         h_box.addWidget(self.__progress_bar, 1)
         self.__status_bar.setLayout(h_box)
 
-        # init busy label with IDLE&green bg
-        self.__label_busy.setStyleSheet('color:rgba(255,255,255,0.9);')
-        self.__label_busy.setStyleSheet('background-color:rgba(0,255,0,0.3);')
-
-        self.__label_gpu.setStyleSheet('color:rgba(255,255,255,0.9);')
+        self.__label_busy.setStyleSheet(self.__STATUS_OK_QSS)
         if self.__control.is_gpu_available():
-            self.__label_gpu.setStyleSheet('background-color:rgba(0,255,0,0.3);')
-            pass
+            self.__label_gpu.setStyleSheet(self.__STATUS_OK_QSS)
         else:
-            self.__label_gpu.setStyleSheet('background-color:rgba(255,0,0,0.5);')
-            pass
+            self.__label_gpu.setStyleSheet(self.__STATUS_BAD_QSS)
 
         # in case of idle -> the label should display IDLE with green background
         # in case of busy -> the label should display BUSY with red background
@@ -223,7 +232,13 @@ class Application:
 
     def init_gui(self):
         self.__window.setWindowTitle(f'SarcAsM - v{version}')
-        self.__window.setGeometry(0, 0, 800, 1000)
+        # Clamp initial size to available screen so the window never opens off-screen
+        # (e.g. Windows 1080p at 125% scaling where 1000px height overflows)
+        available = QDesktopWidget().availableGeometry()
+        default_w, default_h = 800, 1000
+        w = min(default_w, available.width() - 40)
+        h = min(default_h, available.height() - 80)
+        self.__window.resize(w, h)
         self.__center_ui()
 
         main_layout = QVBoxLayout()
