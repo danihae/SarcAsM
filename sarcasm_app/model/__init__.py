@@ -92,10 +92,16 @@ class ApplicationModel:
         return result
 
     def set_to_default(self):
-        # region file-load parameters
+        self._set_defaults_file_load()
+        self._set_defaults_structure()
+        self._set_defaults_loi()
+        self._set_defaults_motion()
+        self._set_defaults_batch()
+
+    def _set_defaults_file_load(self):
         self.__parameters.get_parameter(name='file.load.correct_phase').set_value(False)
-        # endregion
-        # region structure parameters
+
+    def _set_defaults_structure(self):
         self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict.rescale_factor').set_value(1.0)
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
@@ -147,9 +153,8 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.domain.analysis.random_seed').set_value(42)
         self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(20.0)
         self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(0.3)
-        # endregion
 
-        # region loi parameters
+    def _set_defaults_loi(self):
         self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
         self.__parameters.get_parameter(name='loi.detect.ratio_seeds').set_value(0.1)
@@ -175,9 +180,8 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='loi.detect.line_width').set_value(0.65)
         self.__parameters.get_parameter(name='loi.detect.order').set_value(0)
         self.__parameters.get_parameter(name='loi.detect.plot').set_value(False)
-        # endregion
 
-        # region motion parameters
+    def _set_defaults_motion(self):
         self.__parameters.get_parameter(name='motion.detect_peaks.threshold').set_value(0.2)
         self.__parameters.get_parameter(name='motion.detect_peaks.min_distance').set_value(1.4)
         self.__parameters.get_parameter(name='motion.detect_peaks.width').set_value(0.5)
@@ -205,11 +209,8 @@ class ApplicationModel:
             5)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower').set_value(1.5)
         self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper').set_value(2.3)
-        # endregion
 
-        # region batch processing parameters
-        # todo: currently set values here for testing (default values, matching the test data i'm using for batch processing ui tests)
-        # todo: remove those values when finished with testing
+    def _set_defaults_batch(self):
         self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.1)
         self.__parameters.get_parameter(name='batch.frame.time').set_value(0.1)
         self.__parameters.get_parameter(name='batch.channel').set_value(0)
@@ -223,9 +224,6 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.do_vectors').set_value(True)
         self.__parameters.get_parameter(name='batch.do_myofibrils').set_value(True)
         self.__parameters.get_parameter(name='batch.do_domains').set_value(True)
-        # endregion
-
-        pass
 
     def __create_parameters(self):
         # region file-load parameters

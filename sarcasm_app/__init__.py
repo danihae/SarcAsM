@@ -13,6 +13,7 @@
 
 
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -20,7 +21,8 @@ import requests
 from PyQt5.QtCore import Qt, QLocale
 from PyQt5.QtGui import QPalette, QColor, QIcon
 from PyQt5.QtWidgets import (QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox,
-                             QAction, QMenuBar, QMessageBox, QSplitter, QTabWidget)
+                             QAction, QMenuBar, QMessageBox, QSplitter, QTabWidget,
+                             QPushButton, QRadioButton, QButtonGroup, QFormLayout, QFrame)
 from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QProgressBar, QTextEdit
 
 _ICON_DIR = Path(__file__).parent / "icons"
@@ -55,6 +57,18 @@ QPushButton[accent="true"]:disabled {
     color: rgba(255,255,255,0.45);
     border-color: #2d3846;
 }
+QLabel[role="tabBanner"] {
+    color: rgba(255,255,255,0.75);
+    background-color: rgba(42,130,218,0.12);
+    border-left: 3px solid #2a82da;
+    padding: 6px 10px;
+    font-size: 11px;
+}
+QFrame[role="scopeRow"] {
+    background-color: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+}
 """
 
 
@@ -65,6 +79,46 @@ def _mark_accent(button):
     button.setProperty("accent", True)
     button.style().unpolish(button)
     button.style().polish(button)
+
+
+# Matches a unit expressed like "[µm]", "[s]", "[frames]" inside a label.
+_UNIT_PATTERN = re.compile(r'\s*\[([^\]]+)\]')
+
+
+def _apply_spinbox_unit_suffixes(root: QWidget) -> None:
+    """Walk every QFormLayout under `root` and, where the label text contains
+    a unit like "[µm]", move that unit onto the paired spinbox via setSuffix.
+    Keeps the label shorter and displays the unit next to the actual value."""
+    for form in root.findChildren(QFormLayout):
+        for row in range(form.rowCount()):
+            label_item = form.itemAt(row, QFormLayout.LabelRole)
+            field_item = form.itemAt(row, QFormLayout.FieldRole)
+            if label_item is None or field_item is None:
+                continue
+            label = label_item.widget()
+            if not isinstance(label, QLabel):
+                continue
+            match = _UNIT_PATTERN.search(label.text() or '')
+            if not match:
+                continue
+            unit = match.group(1)
+
+            spinboxes = []
+            field_widget = field_item.widget()
+            if isinstance(field_widget, QAbstractSpinBox):
+                spinboxes.append(field_widget)
+            elif field_item.layout() is not None:
+                layout = field_item.layout()
+                for i in range(layout.count()):
+                    w = layout.itemAt(i).widget()
+                    if isinstance(w, QAbstractSpinBox):
+                        spinboxes.append(w)
+            if not spinboxes:
+                continue
+            for sb in spinboxes:
+                sb.setSuffix(f' {unit}')
+            trimmed = _UNIT_PATTERN.sub('', label.text()).strip()
+            label.setText(trimmed)
 
 from .control.application_control import ApplicationControl
 from .control.logging_handler import setup_gui_logging
@@ -165,6 +219,156 @@ class Application:
         qt_rectangle.moveCenter(center_point)
         self.__window.move(qt_rectangle.topLeft())
 
+    def __wrap_tab(self, inner: QWidget, banner_text: str, reset_callback) -> QWidget:
+        """Wrap a parameter panel in a container with a help banner and a
+        "Reset tab defaults" button so each tab carries its own scope reset
+        instead of sharing a single global reset."""
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        banner = QLabel(banner_text)
+        banner.setWordWrap(True)
+        banner.setProperty("role", "tabBanner")
+        header.addWidget(banner, 1)
+        btn_reset = QPushButton("Reset tab defaults")
+        btn_reset.setToolTip("Restore default values for parameters on this tab")
+        btn_reset.clicked.connect(reset_callback)
+        header.addWidget(btn_reset, 0, Qt.AlignTop)
+        layout.addLayout(header)
+        layout.addWidget(inner, 1)
+        return container
+
+    def __build_analysis_scope_row(self) -> QWidget:
+        """Build a persistent "Frames to analyze" row above the parameter tabs.
+
+        Provides a two-mode toggle:
+          [All frames]  vs  [Selected frames: ___________]
+        When "All frames" is active the text entry is hidden and 'all' is written
+        to le_general_frames automatically.  When "Selected frames" is active the
+        entry is shown so the user can type a single number or comma-separated list.
+
+        le_general_frames stays reparented here so the existing parameter binding
+        in structure_analysis_control continues to read/write it without changes.
+        """
+        le = self.__structure_analysis_parameters.le_general_frames
+        # label_4 ("Frames") is no longer needed as a free-floating label;
+        # just hide it so it does not consume space in the old form layout.
+        self.__structure_analysis_parameters.label_4.setVisible(False)
+
+        scope = QFrame()
+        scope.setProperty("role", "scopeRow")
+        row = QHBoxLayout(scope)
+        row.setContentsMargins(8, 4, 8, 4)
+        row.setSpacing(10)
+
+        lbl = QLabel("Frames to analyze:")
+        lbl.setStyleSheet("font-weight: 600;")
+        row.addWidget(lbl)
+
+        radio_all = QRadioButton("All frames")
+        radio_sel = QRadioButton("Selected:")
+        radio_all.setToolTip("Run analysis on every frame in the file")
+        radio_sel.setToolTip(
+            "Run analysis on specific frames only. "
+            "Enter a single frame number or comma-separated list (frames start at 0)."
+        )
+        grp = QButtonGroup(scope)
+        grp.addButton(radio_all)
+        grp.addButton(radio_sel)
+        row.addWidget(radio_all)
+        row.addWidget(radio_sel)
+
+        # Re-parent the existing QLineEdit into this row.
+        le.setParent(scope)
+        le.setPlaceholderText("e.g. 0, 1, 5")
+        le.setMaximumWidth(220)
+        row.addWidget(le)
+        row.addStretch(1)
+
+        def _sync_from_toggle():
+            if radio_all.isChecked():
+                le.setText("all")
+                le.setVisible(False)
+            else:
+                if le.text().strip().lower() == "all":
+                    le.setText("")
+                le.setVisible(True)
+                le.setFocus()
+
+        def _sync_from_text():
+            """Keep the radio buttons in sync when the model writes 'all' back."""
+            val = le.text().strip().lower()
+            if val == "all":
+                radio_all.setChecked(True)
+                le.setVisible(False)
+            else:
+                radio_sel.setChecked(True)
+                le.setVisible(True)
+
+        radio_all.toggled.connect(lambda checked: _sync_from_toggle() if checked else None)
+        radio_sel.toggled.connect(lambda checked: _sync_from_toggle() if checked else None)
+        le.textChanged.connect(_sync_from_text)
+
+        # Set initial state from the current parameter value.
+        _sync_from_text()
+
+        # Keep references so they are not garbage-collected.
+        self.__scope_radio_all = radio_all
+        self.__scope_radio_sel = radio_sel
+        self.__scope_button_group = grp
+        return scope
+
+    def __install_override_radio(self) -> None:
+        """B3: Replace the plain "Force overwrite metadata" checkbox with a
+        two-option segmented control in the batch tab. The checkbox stays in
+        place (hidden) so existing parameter bindings keep working."""
+        chk = self.__batch_processing.chk_force_override
+        host = chk.parentWidget()
+        if host is None:
+            return
+        host_layout = host.layout()
+        if host_layout is None:
+            return
+
+        radio_use_meta = QRadioButton("Use file metadata")
+        radio_use_meta.setToolTip("Read pixel size and frame time from each image file")
+        radio_override = QRadioButton("Override for all files")
+        radio_override.setToolTip("Apply the pixel size and frame time entered above to every image in the batch")
+
+        group = QButtonGroup(host)
+        group.addButton(radio_use_meta)
+        group.addButton(radio_override)
+        radio_use_meta.setChecked(not chk.isChecked())
+        radio_override.setChecked(chk.isChecked())
+
+        radio_override.toggled.connect(chk.setChecked)
+        # Keep radio state in sync if something else flips the hidden checkbox
+        chk.toggled.connect(lambda checked: (radio_override.setChecked(checked)
+                                             if checked else radio_use_meta.setChecked(True)))
+
+        # Insert the radio group in place of the hidden checkbox.
+        container = QWidget()
+        hl = QHBoxLayout(container)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(12)
+        hl.addWidget(radio_use_meta)
+        hl.addWidget(radio_override)
+        hl.addStretch(1)
+
+        idx = host_layout.indexOf(chk)
+        if idx >= 0:
+            host_layout.insertWidget(idx, container)
+        else:
+            host_layout.addWidget(container)
+        chk.setVisible(False)
+        # Keep a reference so it isn't garbage-collected.
+        self.__override_button_group = group
+        self.__override_radio_container = container
+
     def __get_parameter_scroll_box(self):
         # QTabWidget (horizontal tabs) instead of QToolBox — reclaims ~100px of
         # vertical space that QToolBox's stacked section headers consumed.
@@ -187,11 +391,34 @@ class Application:
         widget_batch_processing = QWidget()
         self.__batch_processing.setupUi(widget_batch_processing)
         _mark_accent(self.__batch_processing.btn_batch_processing_structure)
+        self.__install_override_radio()
 
-        widget_parameter_tabs.addTab(widget_structure_parameters, 'Structure Analysis')
-        widget_parameter_tabs.addTab(widget_loi_analysis, 'LOI Detection')
-        widget_parameter_tabs.addTab(widget_motion_analysis, 'Motion Analysis')
-        widget_parameter_tabs.addTab(widget_batch_processing, 'Batch Processing')
+        # B5: unit suffixes (after setupUi so the labels exist).
+        for w in (widget_structure_parameters, widget_loi_analysis,
+                  widget_motion_analysis, widget_batch_processing):
+            _apply_spinbox_unit_suffixes(w)
+
+        model = self.__control.model
+        tabs = [
+            (widget_structure_parameters,
+             'Structure Analysis',
+             'Analyze sarcomere morphology: Z-bands, vectors, myofibrils, and domains.',
+             model._set_defaults_structure),
+            (widget_loi_analysis,
+             'LOI Detection',
+             'Detect lines of interest (LOIs) along myofibrils for motion tracking.',
+             model._set_defaults_loi),
+            (widget_motion_analysis,
+             'Motion Analysis',
+             'Analyze sarcomere contraction and motion along detected LOIs.',
+             model._set_defaults_motion),
+            (widget_batch_processing,
+             'Batch Processing',
+             'Run the configured structure analysis on every file in a directory tree.',
+             model._set_defaults_batch),
+        ]
+        for inner, label, banner, reset_cb in tabs:
+            widget_parameter_tabs.addTab(self.__wrap_tab(inner, banner, reset_cb), label)
 
         # QScrollArea must own the content via setWidget (not setLayout), otherwise
         # it never scrolls and tall parameter forms get clipped on small screens.
@@ -367,10 +594,15 @@ class Application:
 
         main_layout.addWidget(widget_file_selection, 0)
 
+        # The scroll box runs setupUi on the structure tab, so it must be
+        # built before __build_analysis_scope_row can reparent the Frames widgets.
+        parameter_scroll_box = self.__get_parameter_scroll_box()
+        main_layout.addWidget(self.__build_analysis_scope_row(), 0)
+
         widget_center = QWidget()
         center_layout = QHBoxLayout()
         center_layout.setContentsMargins(0, 0, 0, 0)
-        center_layout.addWidget(self.__get_parameter_scroll_box(), 3)
+        center_layout.addWidget(parameter_scroll_box, 3)
         widget_center.setLayout(center_layout)
 
         self.__text_debug.setReadOnly(True)
