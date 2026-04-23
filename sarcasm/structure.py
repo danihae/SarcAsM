@@ -311,6 +311,67 @@ class Structure(SarcAsM):
         if self.auto_save:
             self.store_structure_data()
 
+    def _remap_mask_key(self, list_frames: List[int], detected_frames: Any) -> Union[int, List[int]]:
+        """Translate movie-frame indices to page indices inside a sparsely-saved mask TIFF.
+
+        Masks are stored only for frames passed to detect_sarcomeres, in detection order.
+        When `detected_frames` covers every frame this is an identity mapping, so we just
+        return the original indices; otherwise we look up each requested frame's position.
+        """
+        if detected_frames == 'all' or detected_frames is None:
+            return list_frames[0] if len(list_frames) == 1 else list_frames
+        if isinstance(detected_frames, (int, np.integer)):
+            detected_list = [int(detected_frames)]
+        else:
+            detected_list = [int(f) for f in detected_frames]
+        if detected_list == list(range(self.metadata.n_stack)):
+            return list_frames[0] if len(list_frames) == 1 else list_frames
+        try:
+            keys = [detected_list.index(f) for f in list_frames]
+        except ValueError:
+            raise ValueError(
+                f"Requested frame(s) {list_frames} not present in detected frames "
+                f"{detected_list}. Run detect_sarcomeres on these frames first.")
+        return keys[0] if len(keys) == 1 else keys
+
+    def load_mask_full_stack(self, file_path: str) -> Optional[np.ndarray]:
+        """
+        Load a mask TIFF and expand it to full stack length in memory for display.
+
+        Masks are saved sparsely (only for detected frames) to save disk space. For napari
+        display alongside the raw movie, this returns an (n_stack, ...) array with computed
+        frames placed at their original frame indices and zeros elsewhere. Returns None if
+        the file does not exist.
+        """
+        if not os.path.exists(file_path):
+            return None
+        arr = tifffile.imread(file_path)
+        n_stack = self.metadata.n_stack
+        if n_stack <= 1:
+            return arr
+        detected = self.data.get('params.detect_sarcomeres.frames', 'all')
+        if detected == 'all' or detected is None:
+            return arr
+        if isinstance(detected, (int, np.integer)):
+            detected = [int(detected)]
+        else:
+            detected = [int(f) for f in detected]
+        if len(detected) == n_stack:
+            return arr
+        if arr.ndim >= 3 and arr.shape[0] == len(detected):
+            per_frame_shape = arr.shape[1:]
+            frames_iter = lambda i: arr[i]
+        elif len(detected) == 1:
+            per_frame_shape = arr.shape
+            frames_iter = lambda i: arr
+        else:
+            return arr  # unexpected shape, pass through
+        full = np.zeros((n_stack,) + per_frame_shape, dtype=arr.dtype)
+        for i, f in enumerate(detected):
+            if 0 <= f < n_stack:
+                full[f] = frames_iter(i)
+        return full
+
     def detect_z_bands_fast_movie(self, model_path: Optional[str] = None,
                                   max_patch_size: Tuple[int, int, int] = (32, 256, 256),
                                   normalization_mode: str = 'all',
@@ -378,17 +439,19 @@ class Structure(SarcAsM):
         """
         if not os.path.exists(self.file_cell_mask):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
+        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
         if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
             cell_mask = tifffile.imread(self.file_cell_mask)
             images = self.read_imgs()
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            cell_mask = tifffile.imread(self.file_cell_mask, key=frames)
-            images = self.read_imgs(frames=frames)
             if np.issubdtype(type(frames), np.integer):
-                list_frames = [frames]
+                list_frames = [int(frames)]
             else:
-                list_frames = list(frames)
+                list_frames = [int(f) for f in frames]
+            mask_key = self._remap_mask_key(list_frames, _detected_frames)
+            cell_mask = tifffile.imread(self.file_cell_mask, key=mask_key)
+            images = self.read_imgs(frames=frames)
         else:
             raise ValueError('frames argument not valid')
 
@@ -457,19 +520,21 @@ class Structure(SarcAsM):
         """
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0) or (len(self.data['params.detect_sarcomeres.frames']) == 1 and len(frames) == 1):
+        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
+        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
             zbands = tifffile.imread(self.file_zbands)
             orientation_field = tifffile.imread(self.file_orientation)
             images = self.read_imgs()
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            zbands = tifffile.imread(self.file_zbands, key=frames)
-            orientation_field = tifffile.imread(self.file_orientation)[frames]
-            images = self.read_imgs(frames=frames)
             if np.issubdtype(type(frames), np.integer):
-                list_frames = [frames]
+                list_frames = [int(frames)]
             else:
-                list_frames = list(frames)
+                list_frames = [int(f) for f in frames]
+            mask_key = self._remap_mask_key(list_frames, _detected_frames)
+            zbands = tifffile.imread(self.file_zbands, key=mask_key)
+            orientation_field = tifffile.imread(self.file_orientation)[mask_key]
+            images = self.read_imgs(frames=frames)
         else:
             raise ValueError('frames argument not valid')
 

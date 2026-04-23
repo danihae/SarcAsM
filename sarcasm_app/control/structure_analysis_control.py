@@ -383,6 +383,7 @@ class StructureAnalysisControl:
             return
         # if not self.__chk_cell_mask_prediction_network():
         #    return
+        self.__main_control.raise_viewer()
         # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_z_bands_predict)
@@ -399,8 +400,9 @@ class StructureAnalysisControl:
             return
 
         from pathlib import Path
-        name=Path(self.__main_control.model.cell.file_path).stem
-        self.__popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='structure',filename_pattern=f'%_{name}.$ext')
+        name = Path(self.__main_control.model.cell.file_path).stem
+        self.__popup = ExportPopup(self.__main_control.model, self.__main_control,
+                                   popup_type='structure', filename_stem=name)
         self.__popup.show_popup()
 
     def bind_events(self):

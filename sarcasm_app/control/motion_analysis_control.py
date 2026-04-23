@@ -227,6 +227,7 @@ class MotionAnalysisControl:
             return
         if not self.__chk_contraction_weights():
             return
+        self.__main_control.raise_viewer()
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_detect_peaks)
         chain.add_step(self.on_btn_track_z_bands)
@@ -249,7 +250,9 @@ class MotionAnalysisControl:
 
         from pathlib import Path
         name = Path(self.__main_control.model.cell.file_path).stem
-        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control, popup_type='motion',filename_pattern=f'%_{name}_{self.__main_control.model.sarcomere.loi_name}.$ext')
+        stem = f'{name}_{self.__main_control.model.sarcomere.loi_name}'
+        self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control,
+                                          popup_type='motion', filename_stem=stem)
         self.__export_popup.show_popup()
 
 

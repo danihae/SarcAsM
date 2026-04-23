@@ -28,7 +28,7 @@ import numpy as np
 import tifffile
 import torch
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
-from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit
+from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit, QApplication
 from bio_image_unet.progress import ProgressNotifier
 from napari.layers import Shapes
 
@@ -116,15 +116,92 @@ class ApplicationControl:
         pass
 
     def clean_up_on_new_image(self):
-        """Reset model to default state (when loading new image, data of old image should be removed)"""
-        if self._viewer is not None:
-            if napari.current_viewer() is not None:  # check if viewer was closed
-                self._viewer.close()
-            self._viewer = napari.Viewer(title='SarcAsM')  # the napari viewer object
+        """Reset model to default state. Reuse the existing napari viewer when
+        possible — clearing its layers preserves window position, zoom, and any
+        dock widgets the user arranged. Only spawn a new viewer if the previous
+        one was closed by the user."""
+        if self._viewer is not None and napari.current_viewer() is self._viewer:
+            self._viewer.layers.clear()
         else:
-            self._viewer = napari.Viewer(title='SarcAsM')  # the napari viewer object
+            self._viewer = napari.Viewer(title='SarcAsM')
+            self.__configure_viewer_window(self._viewer)
         self.model.reset_model()
-        pass
+
+    def __viewer_qt_window(self):
+        """Return the napari viewer's underlying QMainWindow, or None if napari
+        changed its private API. Guarded so a napari upgrade can't crash the app."""
+        if self._viewer is None:
+            return None
+        try:
+            return self._viewer.window._qt_window
+        except AttributeError:
+            return None
+
+    def __configure_viewer_window(self, viewer):
+        """Apply icon, paired placement, and close-coupling to a freshly created
+        napari viewer. Uses napari's private `_qt_window` attribute, so each access
+        is guarded — if napari renames it, we degrade silently rather than crash."""
+        qt_window = self.__viewer_qt_window()
+        if qt_window is None:
+            return
+
+        app = QApplication.instance()
+        if app is not None and not app.windowIcon().isNull():
+            qt_window.setWindowIcon(app.windowIcon())
+
+        # Place the viewer to the right of the main window so they appear paired
+        # rather than stacked. Clamp into the available screen area.
+        if self._window is not None and self._window.isVisible():
+            main_geom = self._window.frameGeometry()
+            screen = app.primaryScreen().availableGeometry() if app is not None else None
+            x = main_geom.right() + 10
+            y = main_geom.top()
+            if screen is not None:
+                vw = qt_window.width() or 800
+                if x + vw > screen.right():
+                    x = max(screen.left(), screen.right() - vw)
+                y = max(screen.top(), min(y, screen.bottom() - 100))
+            qt_window.move(x, y)
+
+        # When the user closes the napari window, also close the main window so
+        # the app exits cleanly instead of stranding a controller with no viewer.
+        qt_window.destroyed.connect(self.__on_viewer_destroyed)
+
+    def __on_viewer_destroyed(self, *_):
+        self._viewer = None
+        if self._window is not None and self._window.isVisible():
+            self._window.close()
+
+    def shutdown(self):
+        """Called from the main window's closeEvent so closing the SarcAsM window
+        also tears down the napari viewer instead of leaving an orphan window."""
+        if self._viewer is not None:
+            try:
+                if napari.current_viewer() is self._viewer:
+                    self._viewer.close()
+            except Exception:
+                pass
+            self._viewer = None
+
+    def set_viewer_title(self, file_path):
+        """Reflect the currently-loaded file in both the main window and the
+        napari viewer titles, so the two windows are obviously paired."""
+        name = os.path.basename(file_path) if file_path else ''
+        suffix = f' — {name}' if name else ''
+        if self._viewer is not None:
+            self._viewer.title = f'SarcAsM{suffix}'
+        if self._window is not None:
+            from sarcasm import __version__ as version
+            self._window.setWindowTitle(f'SarcAsM - v{version}{suffix}')
+
+    def raise_viewer(self):
+        """Bring the napari viewer to the front so analysis results aren't hidden
+        behind the main window."""
+        qt_window = self.__viewer_qt_window()
+        if qt_window is None:
+            return
+        qt_window.raise_()
+        qt_window.activateWindow()
 
     # def init_viewer(self, viewer):
     #    self._viewer = viewer
@@ -280,7 +357,8 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
-            tmp = tifffile.imread(self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
+            tmp = self.model.cell.load_mask_full_stack(
+                self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.3] = np.nan  # Higher threshold for crisper edges
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -292,7 +370,7 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('MbandMask'):
                 layer = self.viewer.layers.__getitem__('MbandMask')
                 self.viewer.layers.remove(layer)
-            tmp = tifffile.imread(self.model.cell.file_mbands)
+            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_mbands)
             tmp[tmp < 0.1] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -304,7 +382,7 @@ class ApplicationControl:
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
-            tmp = tifffile.imread(self.model.cell.file_cell_mask)
+            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -312,76 +390,90 @@ class ApplicationControl:
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_z_lateral_connections(self, visible=True):
-        if self.model.cell is not None and 'z_labels' in self.model.cell.data.keys():
-            if self.viewer.layers.__contains__('ZbandLatGroups'):
-                layer = self.viewer.layers.__getitem__('ZbandLatGroups')
-                self.viewer.layers.remove(layer)
-                pass
-            if self.viewer.layers.__contains__('ZbandLatConnections'):
-                layer = self.viewer.layers.__getitem__('ZbandLatConnections')
-                self.viewer.layers.remove(layer)
-                pass
-            if self.viewer.layers.__contains__('ZbandEnds'):
-                layer = self.viewer.layers.__getitem__('ZbandEnds')
-                self.viewer.layers.remove(layer)
-                pass
-            # create labels and connections for all frames and add as label and line layers
-            labels_groups = np.zeros((self.model.cell.metadata.n_stack, *self.model.cell.metadata.size), dtype='uint16')
-            ends = []
-            connections = []
-            for frame in range(self.model.cell.metadata.n_stack):
-                if 'params.analyze_z_bands.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_z_bands.frames'] and \
-                        self.model.cell.data['z_labels'][frame] is not None:
-                    labels_frame = self.model.cell.data['z_labels'][frame].toarray()
-                    groups_frame = self.model.cell.data['z_lat_groups'][frame]
-                    labels_groups_frame = np.zeros_like(labels_frame)
-                    for i, group in enumerate(groups_frame[1:]):
-                        mask = np.zeros_like(labels_frame, dtype=bool)
-                        for label in group:
-                            mask += (labels_frame == label + 1)
-                        labels_groups_frame[mask] = i + 1
-                    labels_groups_frame = Utils.shuffle_labels(labels_groups_frame)
-                    labels_groups[frame] = labels_groups_frame
+        cell = self.model.cell
+        if cell is None or 'z_labels' not in cell.data:
+            return
+        for name in ('ZbandLatGroups', 'ZbandLatConnections', 'ZbandEnds'):
+            if name in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers[name])
 
-                    z_ends_frame = np.array(self.model.cell.data['z_ends'][frame], dtype=float)
-                    z_ends_frame[z_ends_frame is None] = np.nan
-                    z_ends_frame = z_ends_frame / self.model.cell.metadata.pixelsize
+        n_stack = cell.metadata.n_stack
+        pixelsize = cell.metadata.pixelsize
+        multi_frame = n_stack > 1
+        analyzed_frames = cell.data.get('params.analyze_z_bands.frames', [])
 
-                    z_links_frame = self.model.cell.data['z_lat_links'][frame]
+        labels_groups = np.zeros((n_stack, *cell.metadata.size), dtype='uint16')
+        connections = []
+        for frame in range(n_stack):
+            if frame not in analyzed_frames or cell.data['z_labels'][frame] is None:
+                continue
+            labels_frame = cell.data['z_labels'][frame].toarray()
+            groups_frame = cell.data['z_lat_groups'][frame]
+            labels_groups_frame = np.zeros_like(labels_frame)
+            for i, group in enumerate(groups_frame[1:]):
+                mask = np.zeros_like(labels_frame, dtype=bool)
+                for label in group:
+                    mask |= (labels_frame == label + 1)
+                labels_groups_frame[mask] = i + 1
+            labels_groups[frame] = Utils.shuffle_labels(labels_groups_frame)
 
-                    # ends
-                    for z_ends_i in z_ends_frame:
-                        ends.append([frame, z_ends_i[0, 0], z_ends_i[0, 1]])
-                        ends.append([frame, z_ends_i[1, 0], z_ends_i[1, 1]])
+            z_ends_frame = np.asarray(cell.data['z_ends'][frame], dtype=float) / pixelsize
+            z_links_frame = cell.data['z_lat_links'][frame]
+            if z_links_frame is None or z_links_frame.size == 0:
+                continue
+            for (i, k, j, l) in z_links_frame.T:
+                p0 = z_ends_frame[i, k]
+                p1 = z_ends_frame[j, l]
+                if multi_frame:
+                    connections.append([[frame, p0[0], p0[1]], [frame, p1[0], p1[1]]])
+                else:
+                    connections.append([[p0[0], p0[1]], [p1[0], p1[1]]])
 
-                    # connections
-                    for (i, k, j, l) in z_links_frame.T:
-                        connections.append([[frame, z_ends_frame[i, k, 0], z_ends_frame[i, k, 1]],
-                                            [frame, z_ends_frame[j, l, 0], z_ends_frame[j, l, 1]]])
-
-            labels_groups = np.asarray(labels_groups)
-            self.viewer.add_labels(labels_groups, name='ZbandLatGroups', opacity=0.5, visible=visible,
-                                   scale=self.model.cell.scale)
-            self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path', edge_color='white',
-                              edge_width=1, opacity=0.15, visible=visible, scale=self.model.cell.scale)
+        labels_data = labels_groups if multi_frame else labels_groups[0]
+        labels_scale = (1, pixelsize, pixelsize) if multi_frame else (pixelsize, pixelsize)
+        self.viewer.add_labels(labels_data, name='ZbandLatGroups', opacity=0.5,
+                               visible=visible, scale=labels_scale)
+        ndim = 3 if multi_frame else 2
+        self.viewer.add_shapes(connections, name='ZbandLatConnections', shape_type='path',
+                               edge_color='white', edge_width=1, opacity=0.5,
+                               visible=visible, scale=labels_scale, ndim=ndim)
 
     def init_myofibril_lines_stack(self, visible=True):
-        if self.model.cell is not None and 'myof_lines' in self.model.cell.data.keys():
-            if self.viewer.layers.__contains__('MyofibrilLines'):
-                layer = self.viewer.layers.__getitem__('MyofibrilLines')
-                self.viewer.layers.remove(layer)
-            # load myofibril lines and as multi-segment paths
-            myof_lines = self.model.cell.data['myof_lines']
-            pos_vectors = self.model.cell.data['pos_vectors_px']
-            myof_lines_pos_vectors = [
-                [np.column_stack((np.full((len(line_j), 1), i), pos_vectors_i[line_j])) for line_j in lines_i]
-                if pos_vectors_i is not None and lines_i is not None else None
-                for i, (lines_i, pos_vectors_i) in enumerate(zip(myof_lines, pos_vectors))]
-            _myof_lines_vector_pos = [line for lines in myof_lines_pos_vectors if lines is not None for line in lines]
-            self.viewer.add_shapes(name='MyofibrilLines', data=_myof_lines_vector_pos, shape_type='path',
-                                   edge_color='red', edge_width=2, opacity=0.5, visible=visible,
-                                   scale=self.model.cell.scale)
+        cell = self.model.cell
+        if cell is None or 'myof_lines' not in cell.data:
+            return
+        if 'MyofibrilLines' in self.viewer.layers:
+            self.viewer.layers.remove(self.viewer.layers['MyofibrilLines'])
+
+        n_stack = cell.metadata.n_stack
+        pixelsize = cell.metadata.pixelsize
+        multi_frame = n_stack > 1
+
+        myof_lines = cell.data['myof_lines']
+        pos_vectors_px = cell.data['pos_vectors_px']
+        paths = []
+        for frame, (lines_i, pv_i) in enumerate(zip(myof_lines, pos_vectors_px)):
+            if lines_i is None or pv_i is None:
+                continue
+            pv_arr = np.asarray(pv_i, dtype=float)
+            if pv_arr.ndim != 2 or pv_arr.shape[1] < 2:
+                continue
+            for line_j in lines_i:
+                idx = np.asarray(line_j, dtype=int).ravel()
+                if idx.size == 0:
+                    continue
+                yx = pv_arr[idx, :2]
+                if multi_frame:
+                    path = np.column_stack((np.full(idx.size, frame, dtype=float), yx))
+                else:
+                    path = yx
+                paths.append(path)
+
+        scale = (1, pixelsize, pixelsize) if multi_frame else (pixelsize, pixelsize)
+        ndim = 3 if multi_frame else 2
+        self.viewer.add_shapes(name='MyofibrilLines', data=paths, shape_type='path',
+                               edge_color='red', edge_width=2, opacity=0.5,
+                               visible=visible, scale=scale, ndim=ndim)
 
     def init_sarcomere_vector_stack(self, visible=True):
         if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
@@ -429,7 +521,7 @@ class ApplicationControl:
                 layer = self.viewer.layers['SarcomereMask']
                 self.viewer.layers.remove(layer)
 
-            tmp = tifffile.imread(self.model.cell.file_sarcomere_mask)
+            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_sarcomere_mask)
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
 

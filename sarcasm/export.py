@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+import json
 import logging
 import os.path
 from typing import Union, List, Optional
@@ -19,12 +20,18 @@ import types
 import numpy as np
 
 import pandas as pd
+from scipy import sparse
 from tqdm import tqdm as tqdm
 
+from sarcasm.meta_data_handler import ImageMetadata
 from sarcasm.structure import Structure
 from sarcasm.motion import Motion
 
 logger = logging.getLogger(__name__)
+
+# ImageMetadata dataclass fields — dropped from tabular (xlsx/csv) exports so
+# the output contains only feature values. JSON exports retain metadata.
+_METADATA_KEYS = frozenset(ImageMetadata.__dataclass_fields__.keys())
 
 
 class MultiStructureAnalysis:
@@ -344,10 +351,17 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_structure_data(file_path, sarc_obj: Union[Structure, Motion], structure_keys=None, remove_arrays=True,
-                              fileformat='.xlsx'):
+    def export_structure_data(file_path, sarc_obj: Union[Structure, Motion], structure_keys=None,
+                              fileformat='.xlsx', raw: bool = False):
         """
         Export structure data to a file.
+
+        Summary mode (``raw=False``, default) writes one value per metric per
+        frame: multi-frame analyses become a single table with one column per
+        frame (``frame_0``, ``frame_1``, ...), single-frame analyses collapse
+        to a single ``value`` column. Full mode (``raw=True``) preserves
+        per-object distributions and requires ``fileformat='.json'``.
+        See :meth:`Export.write_dict` for the full layout.
 
         Parameters
         ----------
@@ -357,42 +371,15 @@ class Export:
             Object of SarcAsM class.
         structure_keys : list, optional
             List of structure keys (default is None).
-        remove_arrays : bool, optional
-            If True, removes columns with array data (default is True).
         fileformat : str, optional
-            Format of the output file (default is '.xlsx').
+            Format of the output file: ``'.xlsx'``, ``'.csv'``, or ``'.json'``
+            (default is ``'.xlsx'``).
+        raw : bool, optional
+            If True, export raw per-object distributions (JSON only).
+            Default False.
         """
         structure_dict = Export.get_structure_dict(sarc_obj, structure_keys=structure_keys)
-        structure_df = pd.DataFrame(structure_dict)
-        if remove_arrays:
-            structure_df = Export.remove_arrays_dataframe(structure_df)
-        if fileformat == '.xlsx':
-            structure_df.to_excel(file_path)
-        elif fileformat == '.csv':
-            structure_df.to_csv(file_path)
-        elif fileformat == '.xml':
-            structure_df.to_xml(file_path)
-
-    @staticmethod
-    def remove_arrays_dataframe(df):
-        """
-        Remove columns with array data from a DataFrame.
-
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            Input DataFrame.
-
-        Returns
-        -------
-        pandas.DataFrame
-            DataFrame with array columns removed.
-        """
-        df_reduced = df.copy()
-        for key in df.keys():
-            if isinstance(df[key][0], np.ndarray):
-                df_reduced.drop(key, axis=1, inplace=True)
-        return df_reduced
+        Export.write_dict(file_path, structure_dict, fileformat, raw=raw)
 
     @staticmethod
     def flatten_single(x):
@@ -444,9 +431,174 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_motion_data(mot_obj: Motion, file_path, motion_keys=None, remove_arrays=True, fileformat='.xlsx'):
+    def to_json_friendly(d: dict) -> dict:
+        """Recursively convert numpy / sparse types to JSON-serializable values."""
+        def _cast(x):
+            if isinstance(x, (np.integer,)):
+                return int(x)
+            if isinstance(x, (np.floating, float)):
+                v = float(x)
+                return v if np.isfinite(v) else None
+            if isinstance(x, np.ndarray):
+                return _cast(x.tolist())
+            if sparse.issparse(x):
+                return _cast(x.toarray().tolist())
+            if isinstance(x, (list, tuple)):
+                return [_cast(v) for v in x]
+            if isinstance(x, dict):
+                return {str(k): _cast(v) for k, v in x.items()}
+            return x
+        return {str(k): _cast(v) for k, v in d.items()}
+
+    @staticmethod
+    def _infer_n_frames(d: dict) -> Optional[int]:
+        """Infer the number of frames / z-sections from a features dict."""
+        for key in ('n_stack', 'n_frames'):
+            v = d.get(key)
+            if isinstance(v, (int, np.integer)) and v > 0:
+                return int(v)
+        lengths: List[int] = []
+        for v in d.values():
+            if isinstance(v, np.ndarray) and v.ndim == 1 and v.size > 0:
+                lengths.append(v.size)
+            elif isinstance(v, list) and v:
+                lengths.append(len(v))
+        if not lengths:
+            return None
+        from collections import Counter
+        return Counter(lengths).most_common(1)[0][0]
+
+    @staticmethod
+    def _classify_for_framewise(d: dict, n_frames: Optional[int]):
+        """Split dict into (scalars, per_frame, ragged, other) for tabular export.
+
+        - scalars: plain scalar / str / None, or ndarrays with only one entry.
+        - per_frame: 1D ndarray with length == n_frames (frame-indexed scalars).
+        - ragged: lists of length n_frames whose elements are arrays or None
+          (ragged per-object distributions per frame).
+        - other: multi-dim arrays, mismatched-length arrays, etc.
+        """
+        scalars, per_frame, ragged, other = {}, {}, {}, {}
+        for k, v in d.items():
+            if v is None or isinstance(v, (int, float, str, bool, np.integer, np.floating)):
+                scalars[k] = v
+            elif isinstance(v, np.ndarray):
+                if v.ndim == 1 and n_frames is not None and v.size == n_frames:
+                    per_frame[k] = v
+                elif v.size == 1:
+                    scalars[k] = v.ravel()[0]
+                else:
+                    other[k] = v
+            elif isinstance(v, list):
+                if (n_frames is not None and len(v) == n_frames and
+                        any(isinstance(x, np.ndarray) for x in v)):
+                    ragged[k] = v
+                else:
+                    other[k] = v
+            else:
+                other[k] = v
+        return scalars, per_frame, ragged, other
+
+    @staticmethod
+    def write_dict(file_path: str, d: dict, fileformat: str, raw: bool = False) -> None:
+        """Write a features dict to disk.
+
+        ``fileformat`` is one of ``'csv'``, ``'xlsx'``, ``'json'`` (leading dot optional).
+
+        Two modes:
+
+        * ``raw=False`` (default, *Summary*): one value per metric per frame.
+          For xlsx/csv, rows are metric names and columns are
+          ``frame_0, frame_1, ..., frame_{N-1}``; single-frame analyses
+          collapse to a single ``value`` column. Scalar metadata values are
+          broadcast across every frame column. Ragged per-object distributions
+          are collapsed to a per-frame ``nanmean``. JSON writes the same
+          content as scalars / per-frame lists (ragged collapsed).
+        * ``raw=True`` (*Full*): full nested structure including per-object
+          distributions. **JSON only** — per-object arrays can contain
+          thousands of values per frame and do not fit a single table; xlsx
+          and csv raise ``ValueError``.
+        """
+        fmt = fileformat.lower().lstrip('.')
+
+        if raw:
+            if fmt != 'json':
+                raise ValueError(
+                    f'Full (raw) export only supports JSON, got {fileformat!r}. '
+                    f'Per-object distributions do not fit a single table.'
+                )
+            with open(file_path, 'w') as f:
+                json.dump(Export.to_json_friendly(d), f, indent=2, allow_nan=False)
+            return
+
+        if fmt not in ('xlsx', 'csv', 'json'):
+            raise ValueError(f'Unsupported file format: {fileformat}')
+
+        n_frames = Export._infer_n_frames(d)
+        if fmt in ('xlsx', 'csv'):
+            d = {k: v for k, v in d.items() if k not in _METADATA_KEYS}
+        scalars, per_frame, ragged, other = Export._classify_for_framewise(d, n_frames)
+
+        # Collapse ragged per-object distributions to per-frame nanmean so
+        # they join the single-table layout as regular per-frame rows.
+        for k, v in ragged.items():
+            vals = np.full(n_frames, np.nan)
+            for i, arr in enumerate(v):
+                if isinstance(arr, np.ndarray) and arr.size > 0 and arr.dtype.kind in 'biufc':
+                    vals[i] = float(np.nanmean(arr.astype(float)))
+            per_frame[k] = vals
+
+        if fmt == 'json':
+            summary = {**scalars, **per_frame}
+            if other:
+                logger.debug('write_dict(summary, json): dropping non-summarizable keys %s',
+                             list(other))
+            with open(file_path, 'w') as f:
+                json.dump(Export.to_json_friendly(summary), f, indent=2, allow_nan=False)
+            return
+
+        if per_frame:
+            cols = [f'frame_{i}' for i in range(n_frames)]
+        else:
+            cols = ['value']
+        ncols = len(cols)
+
+        def _stringify_other(v):
+            if isinstance(v, np.ndarray):
+                return f'ndarray shape={v.shape} dtype={v.dtype}'
+            if isinstance(v, (list, tuple)):
+                return str(list(v))
+            return f'{type(v).__name__}'
+
+        rows = {}
+        for k in d:
+            if k in scalars:
+                rows[k] = [scalars[k]] * ncols
+            elif k in per_frame:
+                rows[k] = list(per_frame[k])
+            elif k in other:
+                rows[k] = [_stringify_other(other[k])] * ncols
+
+        df = pd.DataFrame.from_dict(rows, orient='index', columns=cols)
+        df.index.name = 'metric'
+
+        if fmt == 'xlsx':
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='data')
+            return
+        df.to_csv(file_path)
+
+    @staticmethod
+    def export_motion_data(mot_obj: Motion, file_path, motion_keys=None, fileformat='.xlsx',
+                           raw: bool = False):
         """
         Export motion data to a file.
+
+        Summary mode (``raw=False``, default) writes one value per metric per
+        frame as a single table with one column per frame (``frame_0``,
+        ``frame_1``, ...). Full mode (``raw=True``) preserves per-object
+        distributions and requires ``fileformat='.json'``. See
+        :meth:`Export.write_dict` for the full layout.
 
         Parameters
         ----------
@@ -456,18 +608,12 @@ class Export:
             Path to the output file.
         motion_keys : list, optional
             List of motion keys (default is None).
-        remove_arrays : bool, optional
-            If True, removes columns with array data (default is True).
         fileformat : str, optional
-            Format of the output file (default is '.xlsx').
+            Format of the output file: ``'.xlsx'``, ``'.csv'``, or ``'.json'``
+            (default is ``'.xlsx'``).
+        raw : bool, optional
+            If True, export raw per-object distributions (JSON only).
+            Default False.
         """
         motion_dict = Export.get_motion_dict(mot_obj, loi_keys=motion_keys)
-        motion_df = pd.DataFrame(motion_dict)
-        if remove_arrays:
-            motion_df = Export.remove_arrays_dataframe(motion_df)
-        if fileformat == '.xlsx':
-            motion_df.to_excel(file_path)
-        elif fileformat == '.csv':
-            motion_df.to_csv(file_path)
-        else:
-            raise ValueError('Unsupported file format')
+        Export.write_dict(file_path, motion_dict, fileformat, raw=raw)

@@ -1288,31 +1288,57 @@ class Utils:
         # Calculate pixel coordinates along each line
         vectors = end_points - start_points
         lengths = np.ceil(np.sqrt(np.sum(vectors ** 2, axis=1)) + 1).astype(int)
-        max_length = lengths.max()
-
-        # Pre-allocate arrays for better performance
         n_lines = len(start_points)
-        
+
+        # Fast path: when all profile lengths are identical (typical case in
+        # sarcomere vector analysis where endpoints are derived from a constant
+        # half-length scale), build coordinates fully vectorized instead of
+        # per-line Python loop.
+        if n_lines > 0 and int(lengths.min()) == int(lengths.max()):
+            L = int(lengths[0])
+            t = np.linspace(0.0, 1.0, L)  # (L,)
+            # (n_lines, L, 2): positions along each line
+            line_coords = (start_points[:, None, :]
+                           + t[None, :, None] * vectors[:, None, :])
+
+            if linewidth > 1:
+                perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
+                perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))
+                # Avoid divide-by-zero for degenerate lines (length 0).
+                perp_norms[perp_norms == 0] = 1.0
+                perp_vectors = perp_vectors / perp_norms  # (n_lines, 2)
+                offsets = np.linspace(-(linewidth - 1) / 2,
+                                       (linewidth - 1) / 2, linewidth)  # (lw,)
+                # (n_lines, L, lw, 2): coordinates with perpendicular offsets
+                offset_shift = (perp_vectors[:, None, None, :]
+                                * offsets[None, None, :, None])
+                full = line_coords[:, :, None, :] + offset_shift
+                flat_coords = full.reshape(-1, 2).T  # (2, n_lines * L * linewidth)
+            else:
+                flat_coords = line_coords.reshape(-1, 2).T  # (2, n_lines * L)
+
+            samples = map_coordinates(image, flat_coords, order=0, mode=mode, cval=cval)
+
+            if linewidth > 1:
+                profiles = samples.reshape(n_lines, L, linewidth).mean(axis=-1)
+            else:
+                profiles = samples.reshape(n_lines, L)
+            # Return as list of 1-D arrays to preserve caller API.
+            return [profiles[i] for i in range(n_lines)]
+
+        # Fallback: variable-length profiles (original path).
         if linewidth > 1:
-            # Pre-compute perpendicular vectors for all lines
             perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
             perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))
             perp_vectors = perp_vectors / perp_norms
-            
-            # Pre-compute offsets
             offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
-            
-            # Vectorized coordinate generation
+
             coords_list = []
             for i in range(n_lines):
                 t = np.linspace(0, 1, lengths[i])[:, np.newaxis]
                 line_coords = start_points[i] + t * vectors[i]
-                
-                # Apply perpendicular offsets
                 line_coords = (line_coords[:, np.newaxis, :] +
                                perp_vectors[i][np.newaxis, np.newaxis, :] * offsets[:, np.newaxis])
-                
-                # Reshape to separate rows and columns
                 rows = line_coords[..., 0].ravel()
                 cols = line_coords[..., 1].ravel()
                 coords_list.append(np.stack([rows, cols]))
@@ -1323,11 +1349,9 @@ class Utils:
                 line_coords = start_points[i] + t[:, np.newaxis] * vectors[i]
                 coords_list.append(np.stack([line_coords[:, 0], line_coords[:, 1]]))
 
-        # Sample all points in one call to map_coordinates
         all_coords = np.hstack(coords_list)
         profiles = map_coordinates(image, all_coords, order=0, mode=mode, cval=cval)
 
-        # Split and average profiles
         result = []
         start_idx = 0
         for i in range(n_lines):

@@ -52,5 +52,9 @@ test_data/**/orientation.tif
 test_data/**/cell_mask.tif
 test_data/**/sarcomere_mask.tif
 test_data/**/flow.tif
+test_data/**/zbands_fast_movie.tif
 test_data/**/data/
 test_data/**/analysis/
+
+# Benchmark run outputs (keep the README, ignore generated JSON results)
+tests/benchmark_results/*.json

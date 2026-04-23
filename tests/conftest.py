@@ -166,3 +166,11 @@ def setup_matplotlib():
     plt.ioff()
     yield
     plt.close('all')
+
+
+@pytest.fixture
+def benchmark_output_dir():
+    """Create output directory for benchmark results."""
+    output_dir = Path(__file__).parent / "benchmark_results"
+    output_dir.mkdir(exist_ok=True)
+    return output_dir

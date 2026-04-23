@@ -18,18 +18,18 @@ from typing import Union
 from collections import deque
 import random
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import cKDTree
 
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
 
 
-def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs,
+def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, tree,
               threshold_distance, pixelsize, persistence):
     """
     Grow a single line from a seed point.
-    
+
     Parameters
     ----------
     seed : int
@@ -40,15 +40,15 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
         Sarcomere lengths at each point.
     sarcomere_orientation_vectors_t : np.ndarray
         Sarcomere orientations at each point.
-    nbrs : NearestNeighbors
-        Fitted nearest neighbors model.
+    tree : scipy.spatial.cKDTree
+        Fitted cKDTree for nearest-neighbor queries.
     threshold_distance : float
         Maximum distance for neighbor search in pixels.
     pixelsize : float
         Pixel size in µm.
     persistence : int
         Number of points to consider for averaging.
-    
+
     Returns
     -------
     np.ndarray
@@ -106,21 +106,21 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
 
         # grow left
         if not stop_left:
-            prior_left = [end_left[0] + np.cos(orientation_left) * length_left,
-                          end_left[1] - np.sin(orientation_left) * length_left]
-            distance_left, index_left = nbrs.kneighbors([prior_left], return_distance=True)
-            if distance_left[0][0] < threshold_distance_pixels:
-                line_i.appendleft(index_left[0][0].astype('int'))
+            prior_left = (end_left[0] + np.cos(orientation_left) * length_left,
+                          end_left[1] - np.sin(orientation_left) * length_left)
+            distance_left, index_left = tree.query(prior_left, k=1)
+            if distance_left < threshold_distance_pixels:
+                line_i.appendleft(int(index_left))
             else:
                 stop_left = True
 
         # grow right
         if not stop_right:
-            prior_right = [end_right[0] - np.cos(orientation_right) * length_right,
-                           end_right[1] + np.sin(orientation_right) * length_right]
-            distance_right, index_right = nbrs.kneighbors([prior_right], return_distance=True)
-            if distance_right[0][0] < threshold_distance_pixels:
-                line_i.append(index_right[0][0].astype('int'))
+            prior_right = (end_right[0] - np.cos(orientation_right) * length_right,
+                           end_right[1] + np.sin(orientation_right) * length_right)
+            distance_right, index_right = tree.query(prior_right, k=1)
+            if distance_right < threshold_distance_pixels:
+                line_i.append(int(index_right))
             else:
                 stop_right = True
 
@@ -173,12 +173,12 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
     n_vectors = len(points_t)
     seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))
 
-    # Precompute Nearest Neighbors
-    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(points_t)
+    # Precompute nearest-neighbor tree (scipy cKDTree — faster single-query than sklearn BallTree)
+    tree = cKDTree(points_t)
 
     # Prepare arguments for parallel processing
     args = [
-        (seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, nbrs, threshold_distance,
+        (seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_vectors_t, tree, threshold_distance,
          pixelsize, persistence) for seed in seed_idx]
 
     # grow lines

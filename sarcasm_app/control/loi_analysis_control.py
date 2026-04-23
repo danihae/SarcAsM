@@ -92,7 +92,7 @@ class LOIAnalysisControl:
             return
 
         self.__main_control.init_lois()
-        pass
+        self.__main_control.raise_viewer()
 
 
     def on_btn_detect_lois(self):

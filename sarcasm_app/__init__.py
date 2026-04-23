@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 import requests
-from PyQt5.QtCore import Qt, QLocale
-from PyQt5.QtGui import QPalette, QColor, QIcon
+from PyQt5.QtCore import Qt, QLocale, QUrl
+from PyQt5.QtGui import QPalette, QColor, QIcon, QDesktopServices
 from PyQt5.QtWidgets import (QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox,
                              QAction, QMenuBar, QMessageBox, QSplitter, QTabWidget,
                              QPushButton, QRadioButton, QButtonGroup, QFormLayout, QFrame)
@@ -462,6 +462,19 @@ class Application:
         view_menu.addAction(self.__action_toggle_log)
 
         help_menu = menu_bar.addMenu("&Help")
+        action_docs = QAction("&Documentation", self.__window)
+        action_docs.setShortcut("F1")
+        action_docs.triggered.connect(lambda: QDesktopServices.openUrl(
+            QUrl("https://sarcasm.readthedocs.io/en/latest/index.html")))
+        help_menu.addAction(action_docs)
+
+        action_github = QAction("&GitHub Repository", self.__window)
+        action_github.triggered.connect(lambda: QDesktopServices.openUrl(
+            QUrl("https://github.com/danihae/SarcAsM")))
+        help_menu.addAction(action_github)
+
+        help_menu.addSeparator()
+
         action_about = QAction("&About SarcAsM", self.__window)
         action_about.setMenuRole(QAction.AboutRole)
         action_about.triggered.connect(self.__show_about)
@@ -479,7 +492,11 @@ class Application:
             f"<h3>SarcAsM v{version}</h3>"
             "<p>Sarcomere Analysis Multi-tool.</p>"
             "<p>University Medical Center Göttingen</p>"
-            "<p>Patent Pending: DE 10 2024 112 939.5</p>",
+            "<p>Patent Pending: DE 10 2024 112 939.5</p>"
+            "<p>"
+            "<a href='https://sarcasm.readthedocs.io/en/latest/index.html'>Documentation</a> &nbsp;·&nbsp; "
+            "<a href='https://github.com/danihae/SarcAsM'>GitHub</a>"
+            "</p>",
         )
 
     # Stylesheets for status indicators (color + background in one rule — setStyleSheet
@@ -624,6 +641,17 @@ class Application:
 
         self.__window.setLayout(main_layout)
         self.__disable_scroll_on_spinbox()
+
+        # Closing the main window must also tear down the napari viewer; otherwise
+        # napari stays open as an orphan and the Qt event loop keeps running.
+        # Monkey-patch is the lightest hook here — subclassing QWidget just to
+        # override closeEvent would require restructuring the constructor.
+        _original_close = self.__window.closeEvent
+        _control = self.__control
+        def _close_event(event):
+            _control.shutdown()
+            _original_close(event)
+        self.__window.closeEvent = _close_event
 
         self.__window.show()
 

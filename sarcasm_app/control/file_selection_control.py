@@ -221,6 +221,8 @@ class FileSelectionControl:
 
         self._init_meta_data()
         self._init_loi_from_file()
+        self.__main_control.set_viewer_title(file)
+        self.__main_control.raise_viewer()
         logger.info(f'Initialized: {file}')
         self.__main_control.update_progress(100)
         self.__main_control.model.currentlyProcessing.set_value(False)

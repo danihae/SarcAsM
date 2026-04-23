@@ -153,18 +153,20 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         z_orientation = np.zeros((n_z, 2)) * np.nan  # (z-band idx, upper/lower)
         pad_width = int(round(1 / pixelsize, 0))
 
+        # 3x3 neighbor kernel (excluding center) used for vectorized endpoint detection below
+        _nbr_kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], dtype=np.int8)
+
         for i, zbands_i in enumerate(props['image']):
             zbands_i = np.pad(zbands_i, (pad_width, pad_width))
 
             # skeletonize
             skel_i = skeletonize(zbands_i, method='lee')
 
-            # detect line ends
-            def line_end_filter(d):
-                return (d[4] == 1) and np.sum(d) == 2
-
-            z_ends_i = ndimage.generic_filter(skel_i, line_end_filter, (3, 3))
-            z_ends_i = np.asarray(np.where(z_ends_i == 1))
+            # detect line ends: skeleton pixels with exactly 1 foreground neighbor (degree 1).
+            # Equivalent to the prior ndimage.generic_filter(line_end_filter) but vectorized.
+            skel_bool = skel_i.astype(bool)
+            nbr_count = ndimage.convolve(skel_bool.astype(np.int8), _nbr_kernel, mode='constant')
+            z_ends_i = np.asarray(np.where(skel_bool & (nbr_count == 1)))
             z_ends_i[0] += props['bbox-0'][i] - pad_width
             z_ends_i[1] += props['bbox-1'][i] - pad_width
             centroid_i = (props['centroid-0'][i], props['centroid-1'][i])

@@ -13,272 +13,251 @@
 
 
 import logging
-import traceback
+import os
+from pathlib import Path
+from typing import Dict, List, Optional
 
-import numpy as np
-from PyQt5.QtWidgets import QDialog, QGroupBox, QVBoxLayout, QGridLayout, QCheckBox, QPushButton, QHBoxLayout, \
-    QLineEdit, QWidget, QFileDialog, QMessageBox
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QCheckBox, QDialog, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
+    QLabel, QMessageBox, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
+    QWidget,
+)
 
 from sarcasm.export import Export
-from sarcasm.type_utils import TypeUtils
+from sarcasm_app.control.feature_tiers import (
+    MOTION_TIERS, STRUCTURE_TIERS, TierSections, describe, pretty_name,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class ExportPopup(QDialog):
+    """Export popup with tiered, grouped feature selection.
+
+    Features are organised into two tiers (Primary / Advanced), each split
+    into analysis sections (Z-bands, Myofibrils, ...). Each checkbox carries
+    a tooltip with the full description from ``sarcasm.feature_dict``.
+
+    A detail-level toggle controls whether per-frame arrays and raw
+    distributions are exported in full or collapsed to temporal mean + std.
     """
-    Class that handles displaying export options for CSV export
-    For every option in export.py create a checkbox with corresponding label/or checkbox text set.
-    Create another checkbox "all" with an event when clicked, setting all other checkboxes to "true".
 
+    _COLS_PER_SECTION = 2
 
-    """
-    __max_entries_per_row = 5
-
-    def __init__(self, model, control,popup_type:str='structure',filename_pattern:str='export_%.$ext'):
+    def __init__(self, model, control, popup_type: str = 'structure',
+                 filename_stem: str = 'export'):
         super().__init__()
-        valid={'structure','motion'}
-        if popup_type not in valid:
-            raise ValueError("results: popup_type must be one of %r." % valid)
+        if popup_type not in ('structure', 'motion'):
+            raise ValueError(f"popup_type must be 'structure' or 'motion', got {popup_type!r}")
 
-        self.setWindowTitle('Export Popup')
-        self.__group_structure = None
-        self.__group_metadata = None
-        self.__group_motion = None
-        self.__group_metadata_old = None
-        self.__group_structure_old = None
-        self.__btn_export_as_csv = None
-        self.__btn_export_as_xlsx=None
-        self.__model = model
-        self.__control = control
-        self.__h_box = None
-        self.__le_file_path: QLineEdit
-        self.__le_file_name: QLineEdit
-        self.init_ui(popup_type=popup_type,filename_pattern=filename_pattern)
+        self._model = model
+        self._control = control
+        self._popup_type = popup_type
+        self._filename_stem = filename_stem
+        self._checkboxes: Dict[str, QCheckBox] = {}
+        self._advanced_group: Optional[QGroupBox] = None
 
-        pass
+        self.setWindowTitle(f'Export {popup_type} data')
+        self.setMinimumWidth(680)
+        self._build_ui()
 
-    # todo: to prevent type errors with layout this could be wrapped with a method mapping return type and nullcheck
-    # todo: need to adapt "export" since those are wrapped with a class now
+    # ------------------------------------------------------------------ UI
 
-    def init_ui(self,popup_type:str,filename_pattern:str):
-        self.setLayout(QVBoxLayout())
-        self.__group_structure = QGroupBox(title='Structure Columns')
-        self.__group_metadata = QGroupBox(title='Metadata Columns')
-        self.__group_motion = QGroupBox(title='Motion Columns')
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
 
-        self.__group_structure.setFont(self.font())
-        self.__group_metadata.setFont(self.font())
-        self.__group_motion.setFont(self.font())
+        intro = QLabel(
+            'Select metrics to export. Primary metrics are pre-checked and '
+            'cover the most common use cases. Advanced metrics expose the '
+            'full set, including raw per-object distributions.'
+        )
+        intro.setWordWrap(True)
+        root.addWidget(intro)
 
-        self.__group_structure.setLayout(QGridLayout())
-        self.__group_metadata.setLayout(QGridLayout())
-        self.__group_motion.setLayout(QGridLayout())
+        # Detail-level toggle
+        detail_box = QGroupBox('Detail level')
+        detail_layout = QHBoxLayout(detail_box)
+        self._rb_summary = QRadioButton('Summary — per-frame stats')
+        self._rb_summary.setToolTip(
+            'One value per metric per frame. For multi-frame data, one column '
+            'per frame; for single-frame data, a single value column. Ragged '
+            'per-object distributions are collapsed to per-frame mean. '
+            'Works with csv, xlsx, and json.'
+        )
+        self._rb_full = QRadioButton('Full — raw per-object distributions (JSON only)')
+        self._rb_full.setToolTip(
+            'Full nested structure including per-object arrays (often thousands '
+            'of values per frame). JSON only — does not fit a single table.'
+        )
+        self._rb_summary.setChecked(True)
+        detail_layout.addWidget(self._rb_summary)
+        detail_layout.addWidget(self._rb_full)
+        detail_layout.addStretch(1)
+        root.addWidget(detail_box)
 
-        if popup_type == 'structure':
-            TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_structure))
-        # TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_metadata))
-        elif popup_type=='motion':
-            TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__group_motion))
+        # Tiered feature groups inside a scroll area
+        tiers = STRUCTURE_TIERS if self._popup_type == 'structure' else MOTION_TIERS
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
 
-        self.__h_box = QWidget()
-        self.__h_box.setLayout(QHBoxLayout())
-        self.__le_file_path = QLineEdit()
-        self.__le_file_path.setToolTip('directory path where the files should be exported to')
-        self.__le_file_name = QLineEdit()
-        self.__le_file_name.setText(filename_pattern)
-        self.__le_file_name.setToolTip('File name pattern, the % is a must have, \n'
-                                       'it is a placeholder for "structure" or "motion", \n also the $ext is a placeholder for the corresponding file extension, like .csv or .xlsx')
+        primary_group = self._build_tier_group('Primary metrics', tiers['Primary'],
+                                               pre_checked=True, start_collapsed=False)
+        inner_layout.addWidget(primary_group)
 
-        self.__le_file_name.setFont(self.font())
-        self.__le_file_path.setFont(self.font())
+        self._advanced_group = self._build_tier_group(
+            'Advanced metrics (click to expand)', tiers['Advanced'],
+            pre_checked=False, start_collapsed=True,
+        )
+        inner_layout.addWidget(self._advanced_group)
+        inner_layout.addStretch(1)
 
-        btn_search = QPushButton(text='...')
-        btn_search.clicked.connect(self.__on_clicked_btn_search)
+        scroll.setWidget(inner)
+        root.addWidget(scroll, 1)
 
-        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_path, 5))
-        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(self.__le_file_name, 4))
-        TypeUtils.if_present(self.__h_box.layout(), lambda l: l.addWidget(btn_search, 1))
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__h_box))
+        # Bulk actions
+        bulk = QHBoxLayout()
+        btn_check_primary = QPushButton('Check all Primary')
+        btn_check_primary.clicked.connect(lambda: self._set_all_checked(tiers['Primary'], True))
+        btn_check_all = QPushButton('Check all')
+        btn_check_all.clicked.connect(lambda: self._set_checked(list(self._checkboxes), True))
+        btn_uncheck_all = QPushButton('Uncheck all')
+        btn_uncheck_all.clicked.connect(lambda: self._set_checked(list(self._checkboxes), False))
+        bulk.addWidget(btn_check_primary)
+        bulk.addWidget(btn_check_all)
+        bulk.addWidget(btn_uncheck_all)
+        bulk.addStretch(1)
+        root.addLayout(bulk)
 
-        self.__btn_export_as_csv = QPushButton(text='Export as .csv')
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_csv))
-        self.__btn_export_as_csv.clicked.connect(lambda :self.__on_clicked_btn_export('csv'))
+        # Format buttons — each opens a Save-As dialog. Full mode restricts
+        # to JSON (tabular formats cannot hold per-object distributions).
+        fmt_row = QHBoxLayout()
+        self._btn_csv = QPushButton('Export as .csv')
+        self._btn_csv.clicked.connect(lambda: self._on_export('csv'))
+        self._btn_xlsx = QPushButton('Export as .xlsx')
+        self._btn_xlsx.clicked.connect(lambda: self._on_export('xlsx'))
+        self._btn_json = QPushButton('Export as .json')
+        self._btn_json.clicked.connect(lambda: self._on_export('json'))
+        fmt_row.addWidget(self._btn_csv)
+        fmt_row.addWidget(self._btn_xlsx)
+        fmt_row.addWidget(self._btn_json)
+        root.addLayout(fmt_row)
 
-        self.__btn_export_as_xlsx = QPushButton(text='Export as .xlsx')
-        TypeUtils.if_present(self.layout(), lambda l: l.addWidget(self.__btn_export_as_xlsx))
-        self.__btn_export_as_xlsx.clicked.connect(lambda :self.__on_clicked_btn_export('xlsx'))
+        self._rb_full.toggled.connect(self._on_mode_toggled)
+        self._on_mode_toggled(self._rb_full.isChecked())
 
-        self.__btn_export_as_xlsx.setFont(self.font())
-        self.__btn_export_as_csv.setFont(self.font())
+    def _build_tier_group(self, title: str, sections: Dict[str, List[str]],
+                          pre_checked: bool, start_collapsed: bool) -> QGroupBox:
+        group = QGroupBox(title)
+        group.setCheckable(True)
+        group.setChecked(not start_collapsed)
+        outer = QVBoxLayout(group)
 
-        self.__create_checkbox_from_list(Export.structure_keys_default, self.__group_structure)
-        self.__create_checkbox_from_list(Export.motion_keys_default, self.__group_motion)
-        pass
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
-    def __on_clicked_btn_search(self):
-        folderpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
-        self.__le_file_path.setText(folderpath)
-        pass
+        for section_title, keys in sections.items():
+            if not keys:
+                continue
+            section_box = QGroupBox(section_title)
+            grid = QGridLayout(section_box)
+            grid.setHorizontalSpacing(16)
+            for i, key in enumerate(keys):
+                cb = QCheckBox(pretty_name(key, self._popup_type))
+                cb.setToolTip(describe(key, self._popup_type))
+                cb.setChecked(pre_checked)
+                self._checkboxes[key] = cb
+                grid.addWidget(cb, i // self._COLS_PER_SECTION, i % self._COLS_PER_SECTION)
+            content_layout.addWidget(section_box)
 
+        outer.addWidget(content)
+        # Collapse/expand by hiding content when the group is unchecked
+        group.toggled.connect(content.setVisible)
+        content.setVisible(not start_collapsed)
+        return group
 
-    def __on_clicked_btn_export(self,export_type:str='csv'):
-        """
-        Parameters
-        ----------
-        export_type str valid content {'csv','xlsx'}
+    # ------------------------------------------------------------- helpers
 
-        Returns
-        -------
+    def _selected_keys(self) -> List[str]:
+        return [k for k, cb in self._checkboxes.items() if cb.isChecked()]
 
-        """
-        if export_type not in ['csv','xlsx']:
-            logger.error('Export type has to be csv or xlsx')
+    def _set_checked(self, keys: List[str], value: bool) -> None:
+        for k in keys:
+            cb = self._checkboxes.get(k)
+            if cb is not None:
+                cb.setChecked(value)
+
+    def _set_all_checked(self, sections: Dict[str, List[str]], value: bool) -> None:
+        keys: List[str] = []
+        for section_keys in sections.values():
+            keys.extend(section_keys)
+        self._set_checked(keys, value)
+
+    def _on_mode_toggled(self, full_checked: bool) -> None:
+        tabular_enabled = not full_checked
+        self._btn_csv.setEnabled(tabular_enabled)
+        self._btn_xlsx.setEnabled(tabular_enabled)
+        tooltip = ('Disabled in Full mode — per-object distributions do not '
+                   'fit a table. Use JSON.') if full_checked else ''
+        self._btn_csv.setToolTip(tooltip)
+        self._btn_xlsx.setToolTip(tooltip)
+
+    def _default_save_dir(self) -> str:
+        try:
+            if self._popup_type == 'structure':
+                return self._model.cell.data_dir
+            return self._model.sarcomere.data_dir
+        except Exception:
+            return str(Path.home())
+
+    # ---------------------------------------------------------- export op
+
+    def _on_export(self, fmt: str) -> None:
+        keys = self._selected_keys()
+        if not keys:
+            QMessageBox.warning(self, 'No metrics selected',
+                                'Please select at least one metric to export.')
             return
-        if self.__le_file_path.text() is None or self.__le_file_path.text() == '' or self.__le_file_name.text() is None or self.__le_file_name.text() == '':
-            logger.warning('Please select a directory for exporting the data.')
-            return
 
-        if self.__le_file_name.text().find('%') == -1:
-            QMessageBox.about(self, "Error", "The File Name has to contain a % as placeholder")
+        default_name = f'{self._popup_type}_{self._filename_stem}.{fmt}'
+        default_path = os.path.join(self._default_save_dir(), default_name)
+        filter_map = {'csv': 'CSV (*.csv)', 'xlsx': 'Excel (*.xlsx)', 'json': 'JSON (*.json)'}
+        path, _ = QFileDialog.getSaveFileName(
+            self, 'Save export', default_path, filter_map[fmt]
+        )
+        if not path:
             return
 
         try:
-            to_export_structure = None
-            to_export_motion = None
+            data = self._build_export_dict(keys)
+        except Exception as exc:
+            logger.exception('Failed to assemble export dictionary')
+            QMessageBox.critical(self, 'Export failed',
+                                 f'Could not assemble data for export:\n{exc}')
+            return
 
-            if len(self.__from_checkboxes_to_str_list(self.__group_structure, self.__group_structure_old)) != 0:
-                to_export_structure = Export.get_structure_dict(sarc_obj=self.__model.cell,
-                                                                structure_keys=self.__from_checkboxes_to_str_list(
-                                                                    self.__group_structure, self.__group_structure_old))
-                logger.debug(f'Exported structure keys: {to_export_structure}')
+        try:
+            Export.write_dict(path, data, fmt, raw=self._rb_full.isChecked())
+        except Exception as exc:
+            logger.exception('Failed to write export file')
+            QMessageBox.critical(self, 'Export failed',
+                                 f'Could not write {path}:\n{exc}')
+            return
 
-            if len(self.__from_checkboxes_to_str_list(self.__group_motion)) != 0:
-                to_export_motion = Export.get_motion_dict(motion_obj=self.__model.sarcomere,
-                                                                           loi_keys=self.__from_checkboxes_to_str_list(
-                                                                               self.__group_motion))
-                logger.debug(f'Exported motion keys: {to_export_motion}')
+        QMessageBox.information(self, 'Export complete',
+                                f'Wrote {len(data)} entries to\n{path}')
 
-            file_path_structure = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'structure').replace('$ext',export_type)
-            file_path_motion = self.__le_file_path.text() + '/' + self.__le_file_name.text().replace('%', 'motion').replace('$ext',export_type)
+    def _build_export_dict(self, keys: List[str]) -> dict:
+        if self._popup_type == 'structure':
+            return Export.get_structure_dict(sarc_obj=self._model.cell,
+                                             structure_keys=keys)
+        return Export.get_motion_dict(motion_obj=self._model.sarcomere,
+                                      loi_keys=keys)
 
-            if to_export_structure is not None:
-                if export_type=='csv':
-                    self.__export_to_file(file_path_structure, to_export_structure)
-                elif export_type=='xlsx':
-                    self.__export_to_xlsx(file_path_structure, to_export_structure)
-            if to_export_motion is not None:
-                if export_type=='csv':
-                    self.__export_to_file(file_path_motion, to_export_motion)
-                elif export_type=='xlsx':
-                    self.__export_to_xlsx(file_path_motion, to_export_motion)
+    # -------------------------------------------------------- public API
 
-        except Exception:
-            tb = traceback.format_exc()
-            logger.exception('Exception occurred on export')
-            pass
-        pass
-
-    def __export_to_file(self, file, dictionary):
-        with open(file, 'w') as f:
-            for key in dictionary:
-                value = dictionary[key]
-                if isinstance(value, np.ndarray):
-                    f.write(key + ',')
-                    value.tofile(f, ',')
-                    f.write('\n')
-                    pass
-                else:
-                    f.write(key + ',' + str(value) + '\n')
-                    pass
-                pass
-            f.flush()
-            f.close()
-            pass
-        pass
-
-    def __export_to_xlsx(self,file,dictionary):
-        from openpyxl import Workbook
-        wb = Workbook()
-        # grab the active worksheet
-        ws = wb.active
-
-        for key in dictionary:
-            value = dictionary[key]
-            if isinstance(value, np.ndarray):
-                tmp= [key]
-                tmp.extend(value.tolist())
-                ws.append(tmp)
-                pass
-            else:
-                ws.append([key,value])
-                pass
-            pass
-        wb.save(file)
-        pass
-
-    def show_popup(self):
-        self.setGeometry(100, 200, 100, 100)
+    def show_popup(self) -> None:
         self.show()
-
-    def __from_checkboxes_to_str_list(self, container1, container2=None, container3=None) -> list:
-        result = self.__from_checkboxes_to_str_list_single(container1)
-        if container2 is not None:
-            result = result + self.__from_checkboxes_to_str_list_single(container2)
-            pass
-        if container3 is not None:
-            result = result + self.__from_checkboxes_to_str_list_single(container3)
-            pass
-        return result
-
-    @staticmethod
-    def __from_checkboxes_to_str_list_single(container) -> list:
-        result = []
-        index = container.layout().count()
-        while index >= 0:
-            obj = container.layout().itemAt(index)
-            if obj is not None:
-                checkbox = obj.widget()
-                if checkbox.text() != 'all' and checkbox.isChecked():
-                    result.append(checkbox.text())
-                    pass
-                pass
-            index -= 1
-        return result
-
-    @staticmethod
-    def __on_all_checkbox(container, value):
-        index = container.layout().count()
-        while index >= 0:
-            obj = container.layout().itemAt(index)
-            if obj is not None:
-                checkbox = obj.widget()
-                if checkbox.text() != 'all':
-                    checkbox.setChecked(value)
-                    pass
-                pass
-            index -= 1
-        pass
-
-    def __create_checkbox_from_list(self, str_list, container):
-        row = 0
-        col = 0
-        all_checkbox = QCheckBox('all')
-        # todo: add event to all checkbox: which checks all other checkboxes in that group
-        all_checkbox.clicked.connect(lambda value: self.__on_all_checkbox(container, value))
-
-        container.layout().addWidget(all_checkbox, col, row)
-        col = col + 1
-
-        for str_name in str_list:
-            checkbox = QCheckBox(str_name)
-            container.layout().addWidget(checkbox, col, row)
-            col = col + 1
-            if col >= self.__max_entries_per_row:
-                col = 0
-                row = row + 1
-                pass
-
-            # todo: create checkbox in container (only a fixed amount of checkboxes per line)
-            pass
-        pass
