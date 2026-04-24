@@ -50,7 +50,17 @@ class IOUtils:
             return [IOUtils.__deserialize_field(val) for val in field]
         elif isinstance(field, dict) and 'type' in field:
             if field['type'] == 'ndarray':
-                return np.array(field['values'])
+                arr = np.array(field['values'])
+                # orjson serialises float NaN as JSON null; those round-trip
+                # as Python None and force np.array into object dtype. If the
+                # remaining non-None elements are all numeric, coerce back to
+                # float with NaN in the None slots.
+                if arr.dtype == object:
+                    try:
+                        arr = np.where(arr == None, np.nan, arr).astype(np.float64)  # noqa: E711
+                    except (TypeError, ValueError):
+                        pass  # genuinely non-numeric object array — leave it
+                return arr
             elif field['type'] == 'sparse_matrix':
                 return IOUtils.__json_serializable_to_sparse(field['values'])
             else:

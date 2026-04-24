@@ -677,6 +677,7 @@ class Structure(SarcAsM):
                                   smooth_orientation_sigma: float = 0.0,
                                   peak_prominence: float = 0.5,
                                   peak_algorithm: str = 'default',
+                                  use_fast_movie_zbands: bool = True,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -726,6 +727,15 @@ class Structure(SarcAsM):
               6× Akima + COM-refinement pipeline used by the LOI analysis. Parameter
               presets match LOI; ``interp_factor`` + ``peak_prominence`` are ignored.
               Slightly slower but maximum per-frame slen accuracy.
+        use_fast_movie_zbands : bool, optional
+            If True (default) and ``zbands_fast_movie.tif`` exists on disk (produced by
+            :meth:`detect_z_bands_fast_movie`), read Z-bands from that 3D U-Net output
+            instead of the per-frame ``zbands.tif``. The 3D model uses a temporal window
+            and produces Z-band masks that are ~3× less noisy frame-to-frame at "active"
+            pixels, which directly propagates into smoother per-frame slen. Set to
+            False if the 3D model is unreliable on this movie (e.g. rejected by manual
+            QC) — the method will then fall back to the per-frame 2D masks. The active
+            choice is logged and stored in ``params.analyze_sarcomere_vectors.zbands_source``.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -739,16 +749,40 @@ class Structure(SarcAsM):
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
+        # Decide which Z-band stack to use (fast-movie 3D U-Net vs per-frame 2D).
+        if use_fast_movie_zbands and os.path.exists(self.file_zbands_fast_movie):
+            zbands_file = self.file_zbands_fast_movie
+            zbands_source = 'fast_movie_3d'
+            logger.info(
+                'analyze_sarcomere_vectors: using 3D U-Net Z-bands (zbands_fast_movie.tif) — '
+                'temporally consistent, recommended for smoother per-frame slen.'
+            )
+        else:
+            zbands_file = self.file_zbands
+            if use_fast_movie_zbands:
+                zbands_source = 'per_frame_2d'
+                logger.info(
+                    'analyze_sarcomere_vectors: using per-frame 2D U-Net Z-bands (zbands.tif). '
+                    'The 3D fast-movie output is not available; run detect_z_bands_fast_movie() '
+                    'to use it.'
+                )
+            else:
+                zbands_source = 'per_frame_2d_forced'
+                logger.info(
+                    'analyze_sarcomere_vectors: using per-frame 2D U-Net Z-bands '
+                    '(zbands.tif) — use_fast_movie_zbands=False.'
+                )
+
         _detected_frames = self.data['params.detect_sarcomeres.frames']
         if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata.n_stack))
-            z_bands = tifffile.imread(self.file_zbands)
+            z_bands = tifffile.imread(zbands_file)
             mbands = tifffile.imread(self.file_mbands)
             orientation_field = tifffile.imread(self.file_orientation)
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask)
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
-            z_bands = tifffile.imread(self.file_zbands, key=frames)
+            z_bands = tifffile.imread(zbands_file, key=frames)
             mbands = tifffile.imread(self.file_mbands, key=frames)
             orientation_field = tifffile.imread(self.file_orientation)[frames]
             sarcomere_mask = tifffile.imread(self.file_sarcomere_mask, key=frames)
@@ -858,6 +892,8 @@ class Structure(SarcAsM):
                         'params.analyze_sarcomere_vectors.smooth_orientation_sigma': smooth_orientation_sigma,
                         'params.analyze_sarcomere_vectors.peak_prominence': peak_prominence,
                         'params.analyze_sarcomere_vectors.peak_algorithm': peak_algorithm,
+                        'params.analyze_sarcomere_vectors.use_fast_movie_zbands': use_fast_movie_zbands,
+                        'params.analyze_sarcomere_vectors.zbands_source': zbands_source,
                         'n_vectors': n_vectors, 'n_mbands': n_mbands, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
