@@ -161,6 +161,7 @@ def get_sarcomere_vectors(
         interpolation_method: str = 'linear',
         peak_prominence: float = 0.5,
         peak_algorithm: str = 'default',
+        precomputed_angle_map: Union[np.ndarray, None] = None,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """
@@ -221,7 +222,10 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     mbands_skel = skeletonize(mbands, method='lee')
 
     # calculate and preprocess orientation map
-    orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
+    if precomputed_angle_map is not None:
+        orientation = precomputed_angle_map
+    else:
+        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
 
     # label mbands
     midline_labels, n_mbands = ndimage.label(mbands_skel,

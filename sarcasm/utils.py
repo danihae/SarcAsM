@@ -41,6 +41,27 @@ from skimage.transform import resize
 
 
 
+def _batched_linear_interp(
+    x: np.ndarray, y: np.ndarray, x_new: np.ndarray,
+) -> np.ndarray:
+    """Batched linear interpolation equivalent to calling ``np.interp`` once per
+    row of ``y``. ``x`` is 1-D (shared), ``y`` has shape ``(N, L)``, ``x_new``
+    is 1-D. Returns ``(N, len(x_new))``.
+
+    Uses ``searchsorted`` to compute indices once, then a vectorised two-tap
+    linear combination. Matches ``np.interp`` behaviour including constant
+    extrapolation at the boundaries.
+    """
+    L = x.shape[0]
+    idx = np.clip(np.searchsorted(x, x_new, side='right') - 1, 0, L - 2)
+    x0 = x[idx]
+    x1 = x[idx + 1]
+    w = (x_new - x0) / (x1 - x0)
+    # Clamp for exact endpoint / out-of-range behaviour to match np.interp.
+    w = np.clip(w, 0.0, 1.0)
+    return y[:, idx] * (1.0 - w) + y[:, idx + 1] * w
+
+
 class Utils:
     """ Miscellaneous utility functions """
 
@@ -753,56 +774,143 @@ class Utils:
         n_profiles = len(profiles)
         sarcomere_lengths = np.empty(n_profiles, dtype=np.float64)
         center_offsets = np.empty(n_profiles, dtype=np.float64)
-        
+
+        if n_profiles == 0:
+            return sarcomere_lengths, center_offsets
+
         # Pre-compute constants
         min_dist_pixel = int(np.round(min_dist / pixelsize, 0))
         width_pixels = int(np.round(width / pixelsize, 0))
         window_size = width_pixels * max(interp_factor, 1)
-        
+
+        # Fast path: all profiles share the same length (typical case when the
+        # caller uses ``fast_profile_lines`` with uniform endpoints). Build the
+        # interpolator **once** over the full (N, L) batch instead of once per
+        # profile — Akima construction was the dominant cost (~37% of
+        # ``analyze_sarcomere_vectors`` end-to-end on real movies).
+        lengths0 = len(profiles[0])
+        uniform_length = all(len(p) == lengths0 for p in profiles)
+
+        if uniform_length and lengths0 >= 2:
+            L = lengths0
+            # Preserve the caller's dtype through normalization so the batched
+            # path matches per-profile numerics bit-for-bit.
+            y_mat = np.stack(profiles, axis=0)
+            if y_mat.ndim != 2:
+                y_mat = y_mat.reshape(n_profiles, L)
+            pmin = y_mat.min(axis=1)
+            pmax = y_mat.max(axis=1)
+            flat_mask = pmax <= pmin
+            denom = np.where(flat_mask, y_mat.dtype.type(1.0), pmax - pmin)
+            y_norm = (y_mat - pmin[:, None]) / denom[:, None]
+
+            pos_array = np.arange(L) * pixelsize
+            if interp_factor >= 1:
+                L_up = L * interp_factor
+                x_interp = np.linspace(pos_array[0], pos_array[-1], num=L_up)
+                if interpolation_method == 'akima':
+                    # One construct on the whole batch (scipy supports axis=).
+                    itp = Akima1DInterpolator(pos_array, y_norm, axis=1)
+                    y_up = itp(x_interp)
+                else:
+                    # Batched linear interpolation — equivalent to per-row
+                    # ``np.interp`` but without the Python loop.
+                    y_up = _batched_linear_interp(pos_array, y_norm, x_interp)
+                actual_interp_factor = interp_factor
+            else:
+                L_up = L
+                y_up = y_norm
+                x_interp = pos_array
+                actual_interp_factor = 1
+
+            peak_distance = max(1, min_dist_pixel * actual_interp_factor)
+            center = (pos_array[-1] + pos_array[0]) * 0.5
+
+            for i in range(n_profiles):
+                if flat_mask[i]:
+                    sarcomere_lengths[i] = np.nan
+                    center_offsets[i] = np.nan
+                    continue
+
+                y_interp = y_up[i]
+                peaks_idx, _ = find_peaks(
+                    y_interp, height=thres, distance=peak_distance,
+                    prominence=prominence,
+                )
+                if len(peaks_idx) < 2:
+                    sarcomere_lengths[i] = np.nan
+                    center_offsets[i] = np.nan
+                    continue
+
+                peaks = np.empty(len(peaks_idx), dtype=np.float64)
+                for j, idx in enumerate(peaks_idx):
+                    start = max(0, idx - window_size)
+                    end = min(L_up, idx + window_size + 1)
+                    x_window = x_interp[start:end]
+                    y_window = y_interp[start:end] - y_interp[start:end].min()
+                    y_sum = y_window.sum()
+                    if y_sum > 0:
+                        peaks[j] = np.dot(x_window, y_window) / y_sum
+                    else:
+                        peaks[j] = x_interp[idx]
+
+                left_mask = peaks < center
+                right_mask = ~left_mask
+                if not (left_mask.any() and right_mask.any()):
+                    sarcomere_lengths[i] = np.nan
+                    center_offsets[i] = np.nan
+                    continue
+                left_peak = peaks[left_mask][-1]
+                right_peak = peaks[right_mask][0]
+                slen_profile = right_peak - left_peak
+                if slen_lims[0] <= slen_profile <= slen_lims[1]:
+                    sarcomere_lengths[i] = slen_profile
+                    center_offsets[i] = (left_peak + right_peak) * 0.5 - center
+                else:
+                    sarcomere_lengths[i] = np.nan
+                    center_offsets[i] = np.nan
+
+            return sarcomere_lengths, center_offsets
+
+        # Fallback: variable-length profiles — retain the original per-profile
+        # path. Rare in production since the common caller uses uniform
+        # endpoints, but needed for external callers that pass in ragged lists.
         for i, profile in enumerate(profiles):
-            # Normalize profile to [0,1] range
             pmin = profile.min()
             pmax = profile.max()
             if pmax == pmin:
                 sarcomere_lengths[i] = np.nan
                 center_offsets[i] = np.nan
                 continue
-                
+
             profile_norm = (profile - pmin) / (pmax - pmin)
-            
-            # Create position array
             pos_array = np.arange(len(profile)) * pixelsize
-            
+
             if interp_factor >= 1:
-                # Use selected interpolation method
                 x_interp = np.linspace(pos_array[0], pos_array[-1],
                                        num=len(profile) * interp_factor)
                 if interpolation_method == 'akima':
-                    # Akima interpolation for smoother profiles (slower)
                     interp_func = Akima1DInterpolator(pos_array, profile_norm)
                     y_interp = interp_func(x_interp)
                 else:
-                    # Linear interpolation (faster, default)
                     y_interp = np.interp(x_interp, pos_array, profile_norm)
                 actual_interp_factor = interp_factor
             else:
                 y_interp = profile_norm
                 x_interp = pos_array
                 actual_interp_factor = 1
-            
-            # Find peaks (ensure distance >= 1)
+
             peak_distance = max(1, min_dist_pixel * actual_interp_factor)
             peaks_idx, _ = find_peaks(y_interp,
                                      height=thres,
                                      distance=peak_distance,
                                      prominence=prominence)
-            
+
             if len(peaks_idx) < 2:
                 sarcomere_lengths[i] = np.nan
                 center_offsets[i] = np.nan
                 continue
-            
-            # Calculate refined peak positions using center of mass
+
             peaks = np.empty(len(peaks_idx), dtype=np.float64)
             for j, idx in enumerate(peaks_idx):
                 start = max(0, idx - window_size)
@@ -815,31 +923,27 @@ class Utils:
                     peaks[j] = np.dot(x_window, y_window) / y_sum
                 else:
                     peaks[j] = x_interp[idx]
-            
+
             center = (pos_array[-1] + pos_array[0]) * 0.5
-            
-            # Split peaks into left and right of center
             left_mask = peaks < center
             right_mask = peaks >= center
-            
             if not (left_mask.any() and right_mask.any()):
                 sarcomere_lengths[i] = np.nan
                 center_offsets[i] = np.nan
                 continue
-            
-            # Take rightmost peak from left side and leftmost peak from right side
+
             left_peak = peaks[left_mask][-1]
             right_peak = peaks[right_mask][0]
             slen_profile = right_peak - left_peak
             center_offset = (left_peak + right_peak) * 0.5 - center
-            
+
             if slen_lims[0] <= slen_profile <= slen_lims[1]:
                 sarcomere_lengths[i] = slen_profile
                 center_offsets[i] = center_offset
             else:
                 sarcomere_lengths[i] = np.nan
                 center_offsets[i] = np.nan
-        
+
         return sarcomere_lengths, center_offsets
 
     @staticmethod

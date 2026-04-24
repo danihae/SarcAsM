@@ -816,6 +816,24 @@ class Structure(SarcAsM):
         n_frames = len(z_bands)
         pixelsize = self.metadata.pixelsize
 
+        # Check pixelsize is not None
+        if pixelsize is None:
+            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
+
+        # Pre-compute the orientation angle map for the entire stack once.
+        # Inside ``get_sarcomere_vectors`` this call is the second-largest
+        # per-frame cost (median filter on a disk footprint); batching it here
+        # lets the filter run over the full (N, 2, H, W) tensor and avoids
+        # redundant work when ``precomputed_angle_map`` is passed below.
+        radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
+        angle_maps = Utils.get_orientation_angle_map(
+            orientation_field, use_median_filter=True, radius=radius_pixels,
+        )
+        # ``get_orientation_angle_map`` squeezes a single-frame stack down to
+        # (H, W); re-expand so ``angle_maps[i]`` is always valid.
+        if angle_maps.ndim == 2:
+            angle_maps = angle_maps[np.newaxis, ...]
+
         # create empty arrays
         def none_lists():
             return [None] * self.metadata.n_stack
@@ -828,10 +846,6 @@ class Structure(SarcAsM):
         (sarcomere_length_mean, sarcomere_length_std) = (nan_arrays() for _ in range(2))
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         n_vectors, n_mbands, oop, sarcomere_area, sarcomere_area_ratio, score_thresholds = (nan_arrays() for _ in range(6))
-
-        # Check pixelsize is not None
-        if pixelsize is None:
-            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
 
         # iterate images
         logger.info('Starting sarcomere length and orientation analysis...')
@@ -852,7 +866,8 @@ class Structure(SarcAsM):
                                                          linewidth=linewidth,
                                                          interpolation_method=interpolation_method,
                                                          peak_prominence=peak_prominence,
-                                                         peak_algorithm=peak_algorithm)
+                                                         peak_algorithm=peak_algorithm,
+                                                         precomputed_angle_map=angle_maps[i])
 
             # write in list
             n_vectors[frame_i] = len(sarcomere_length_vectors_i)
