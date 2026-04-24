@@ -40,6 +40,7 @@ from sarcasm.structure_modules import (
     kymograph,
     detection,
     loi_detection,
+    sarcomere_tracking,
 )
 
 class Structure(SarcAsM):
@@ -533,7 +534,12 @@ class Structure(SarcAsM):
                 list_frames = [int(f) for f in frames]
             mask_key = self._remap_mask_key(list_frames, _detected_frames)
             zbands = tifffile.imread(self.file_zbands, key=mask_key)
-            orientation_field = tifffile.imread(self.file_orientation)[mask_key]
+            # orientation.tif stores 2 pages (channels) per detected frame.
+            _ori_keys = ([int(mask_key)] if isinstance(mask_key, (int, np.integer))
+                         else [int(k) for k in mask_key])
+            _ori_pages = [p for k in _ori_keys for p in (k * 2, k * 2 + 1)]
+            orientation_field = tifffile.imread(self.file_orientation, key=_ori_pages)
+            orientation_field = orientation_field.reshape(-1, 2, *orientation_field.shape[-2:])
             images = self.read_imgs(frames=frames)
         else:
             raise ValueError('frames argument not valid')
@@ -899,6 +905,8 @@ class Structure(SarcAsM):
                 zip(list_frames, pos_vectors_px, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     midline_length_vectors),
                 total=len(pos_vectors_px))):
+            if pos_vectors_px_i is None:
+                continue
             if len(np.asarray(pos_vectors_px_i).T) > 0:
                 # Delegate to myofibril_analysis module
                 line_data_i = myofibril_analysis.line_growth(pos_vectors_px_i, sarcomere_length_vectors_i,
@@ -1053,6 +1061,8 @@ class Structure(SarcAsM):
                 zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
                     midline_id_vectors),
                 total=len(pos_vectors))):
+            if pos_vectors_i.ndim == 0:
+                continue
             # Delegate to domain_clustering module
             cluster_data_t = domain_clustering.cluster_sarcomeres(pos_vectors_i, sarcomere_length_vectors_i,
                                                      sarcomere_orientation_vectors_i,
@@ -1284,7 +1294,249 @@ class Structure(SarcAsM):
         
         self.data.update(domain_motion_data)
         logger.info(f'Domain motion analysis complete. Analyzed {n_domains} domains.')
-        
+
+        if self.auto_save:
+            self.store_structure_data()
+
+    def track_sarcomere_vectors(
+        self,
+        frames: Union[str, int, List[int], np.ndarray] = 'all',
+        threshold_mbands: float = 0.25,
+        threshold_zbands: float = 0.5,
+        dt_clip: float = 20.0,
+        max_disp_along_px: float = 15.0,
+        max_disp_perp_px: float = 2.0,
+        ori_tol_deg: float = 45.0,
+        memory: int = 5,
+        min_track_length: int = 5,
+        max_gap_interpolation: int = 5,
+        compute_motion_field: bool = True,
+        store_flow_fields: bool = False,
+    ) -> None:
+        """2D full-field sarcomere-vector tracking + motion field.
+
+        Complements :meth:`Motion.track_z_bands` (LOI / 1D). Each sarcomere
+        detection in the first analyzed frame seeds a **query point**; every
+        subsequent frame the query point is flow-advected (Lagrangian
+        prediction) and then *snapped* to the nearest sarcomere detection
+        consistent with its prediction under anisotropic (along-/perpendicular-
+        to-sarcomere) and orientation gates. No M-band identity is tracked;
+        anti-convergence is guaranteed by snapping to discrete detections.
+
+        Prerequisites: :meth:`analyze_sarcomere_vectors` must have been run.
+
+        Parameters
+        ----------
+        frames
+            Frame selection (``'all'`` or a list/int).
+        threshold_mbands, threshold_zbands
+            Thresholds used to binarize the probability masks before DT
+            computation.
+        dt_clip
+            Distance-transform clipping distance (pixels).
+        max_disp_along_px, max_disp_perp_px
+            Anisotropic tolerance for the snap gate, in pixels. Motion along
+            the sarcomere axis (contraction direction) can be large; motion
+            perpendicular should be small.
+        ori_tol_deg
+            Orientation tolerance for the snap gate, in degrees. Orientations
+            are compared modulo π.
+        memory
+            Frames a query point may go without snapping before it is closed.
+        min_track_length
+            Minimum number of *actual snaps* required to keep a track.
+        max_gap_interpolation
+            Maximum absence span that may be linearly interpolated downstream.
+        compute_motion_field
+            Sample flow at every detection position and decompose into
+            along-sarcomere / perpendicular components (independent of tracking
+            success).
+        store_flow_fields
+            If True, also return int16-quantized dense flow fields. Large
+            memory cost; off by default.
+        """
+        if 'pos_vectors_px' not in self.data:
+            raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
+
+        # Frame selection matches the pattern in analyze_sarcomere_vectors.
+        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
+        if ((isinstance(frames, str) and frames == 'all')
+                or (self.metadata.n_stack == 1 and frames == 0)
+                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
+            list_frames = list(range(self.metadata.n_stack))
+            z_bands = tifffile.imread(self.file_zbands)
+            mbands = tifffile.imread(self.file_mbands)
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
+            z_bands = tifffile.imread(self.file_zbands, key=frames)
+            mbands = tifffile.imread(self.file_mbands, key=frames)
+            if np.issubdtype(type(frames), np.integer):
+                list_frames = [int(frames)]
+            else:
+                list_frames = [int(f) for f in frames]
+        else:
+            raise ValueError('frames argument not valid')
+        if z_bands.ndim == 2:
+            z_bands = np.expand_dims(z_bands, axis=0)
+        if mbands.ndim == 2:
+            mbands = np.expand_dims(mbands, axis=0)
+
+        if len(list_frames) < 2:
+            raise ValueError('Need at least 2 frames for tracking.')
+
+        # Collect the per-frame vector data that analyze_sarcomere_vectors stored.
+        pos_px_all = [
+            np.asarray(self.data['pos_vectors_px'][t], dtype=np.int32)
+            if self.data['pos_vectors_px'][t] is not None
+            else np.zeros((0, 2), np.int32)
+            for t in list_frames
+        ]
+        mid_all = [
+            np.asarray(self.data['midline_id_vectors'][t], dtype=np.int64)
+            if self.data['midline_id_vectors'][t] is not None
+            else np.zeros(0, np.int64)
+            for t in list_frames
+        ]
+        slen_all = [
+            np.asarray(self.data['sarcomere_length_vectors'][t], dtype=np.float32)
+            if self.data['sarcomere_length_vectors'][t] is not None
+            else np.zeros(0, np.float32)
+            for t in list_frames
+        ]
+        ori_all = [
+            np.asarray(self.data['sarcomere_orientation_vectors'][t], dtype=np.float32)
+            if self.data['sarcomere_orientation_vectors'][t] is not None
+            else np.zeros(0, np.float32)
+            for t in list_frames
+        ]
+
+        logger.info(f'Tracking {len(list_frames)} frames...')
+        out = sarcomere_tracking.track_sarcomere_vectors(
+            z_bands, mbands,
+            pos_px_all, mid_all, slen_all, ori_all,
+            pixelsize=self.metadata.pixelsize,
+            frametime=self.metadata.frametime,
+            threshold_mbands=threshold_mbands,
+            threshold_zbands=threshold_zbands,
+            dt_clip=dt_clip,
+            max_disp_along_px=max_disp_along_px,
+            max_disp_perp_px=max_disp_perp_px,
+            ori_tol_deg=ori_tol_deg,
+            memory=memory,
+            min_track_length=min_track_length,
+            max_gap_interpolation=max_gap_interpolation,
+            compute_motion_field=compute_motion_field,
+            store_flow_fields=store_flow_fields,
+        )
+
+        tracking_data = {
+            'n_tracks': out['n_tracks'],
+            'track_ids': out['track_ids'],
+            'track_start_frame': out['track_start_frame'],
+            'track_lengths': out['track_lengths'],
+            'tracks_positions_um': out['tracks_positions_um'],
+            'tracks_positions_px': out['tracks_positions_px'],
+            'tracks_slen': out['tracks_slen'],
+            'tracks_orientations': out['tracks_orientations'],
+            'tracks_snapped': out['tracks_snapped'],
+            'params.track_sarcomere_vectors.frames': list_frames,
+            'params.track_sarcomere_vectors.threshold_mbands': threshold_mbands,
+            'params.track_sarcomere_vectors.threshold_zbands': threshold_zbands,
+            'params.track_sarcomere_vectors.dt_clip': dt_clip,
+            'params.track_sarcomere_vectors.max_disp_along_px': max_disp_along_px,
+            'params.track_sarcomere_vectors.max_disp_perp_px': max_disp_perp_px,
+            'params.track_sarcomere_vectors.ori_tol_deg': ori_tol_deg,
+            'params.track_sarcomere_vectors.memory': memory,
+            'params.track_sarcomere_vectors.min_track_length': min_track_length,
+            'params.track_sarcomere_vectors.max_gap_interpolation': max_gap_interpolation,
+            'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
+        }
+        if compute_motion_field:
+            tracking_data.update({
+                'flow_at_vectors': out['flow_at_vectors'],
+                'displacement_magnitude': out['displacement_magnitude'],
+                'displacement_along_sarcomere': out['displacement_along_sarcomere'],
+                'displacement_perpendicular': out['displacement_perpendicular'],
+                'velocity_magnitude': out['velocity_magnitude'],
+            })
+        if store_flow_fields:
+            tracking_data.update({
+                'flow_fields_int16': out['flow_fields_int16'],
+                'flow_fields_scales': out['flow_fields_scales'],
+            })
+
+        self.data.update(tracking_data)
+        logger.info(f'Tracked {out["n_tracks"]} sarcomere query points over {len(list_frames)} frames.')
+        if self.auto_save:
+            self.store_structure_data()
+
+    def compute_motion_field(
+        self,
+        frames: Union[str, int, List[int], np.ndarray] = 'all',
+        threshold: float = 0.5,
+        dt_clip: float = 20.0,
+    ) -> None:
+        """Compute optical flow + per-vector motion field without tracking.
+
+        Useful for quick motion assessment, strain maps, or as input to
+        downstream contraction detection. Prerequisites:
+        :meth:`analyze_sarcomere_vectors`.
+        """
+        if 'pos_vectors_px' not in self.data:
+            raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
+
+        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
+        if ((isinstance(frames, str) and frames == 'all')
+                or (self.metadata.n_stack == 1 and frames == 0)
+                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
+            list_frames = list(range(self.metadata.n_stack))
+            z_bands = tifffile.imread(self.file_zbands)
+            mbands = tifffile.imread(self.file_mbands)
+        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
+            z_bands = tifffile.imread(self.file_zbands, key=frames)
+            mbands = tifffile.imread(self.file_mbands, key=frames)
+            if np.issubdtype(type(frames), np.integer):
+                list_frames = [int(frames)]
+            else:
+                list_frames = [int(f) for f in frames]
+        else:
+            raise ValueError('frames argument not valid')
+        if z_bands.ndim == 2:
+            z_bands = np.expand_dims(z_bands, axis=0)
+        if mbands.ndim == 2:
+            mbands = np.expand_dims(mbands, axis=0)
+        if len(list_frames) < 2:
+            raise ValueError('Need at least 2 frames to compute motion field.')
+
+        pos_px_all = [
+            np.asarray(self.data['pos_vectors_px'][t], dtype=np.float32)
+            if self.data['pos_vectors_px'][t] is not None
+            else np.zeros((0, 2), np.float32)
+            for t in list_frames
+        ]
+        ori_all = [
+            np.asarray(self.data['sarcomere_orientation_vectors'][t], dtype=np.float32)
+            if self.data['sarcomere_orientation_vectors'][t] is not None
+            else np.zeros(0, np.float32)
+            for t in list_frames
+        ]
+
+        out = sarcomere_tracking.compute_motion_field(
+            z_bands, mbands, pos_px_all, ori_all,
+            pixelsize=self.metadata.pixelsize,
+            frametime=self.metadata.frametime,
+            threshold=threshold, dt_clip=dt_clip,
+        )
+
+        self.data.update({
+            'flow_at_vectors': out['flow_at_vectors'],
+            'displacement_magnitude': out['displacement_magnitude'],
+            'displacement_along_sarcomere': out['displacement_along_sarcomere'],
+            'displacement_perpendicular': out['displacement_perpendicular'],
+            'velocity_magnitude': out['velocity_magnitude'],
+            'params.compute_motion_field.frames': list_frames,
+            'params.compute_motion_field.threshold': threshold,
+            'params.compute_motion_field.dt_clip': dt_clip,
+        })
         if self.auto_save:
             self.store_structure_data()
 

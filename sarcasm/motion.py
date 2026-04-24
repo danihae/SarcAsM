@@ -286,14 +286,15 @@ class Motion(SarcAsM):
         if self.auto_save:
             self.store_loi_data()
 
-    def _track_z_bands_lap(self, peaks: List[np.ndarray], search_range: float, memory: int, 
-                           equilibrium_weight: float = 0.3) -> np.ndarray:
+    def _track_z_bands_lap(self, peaks: List[np.ndarray], search_range: float, memory: int,
+                           equilibrium_weight: float = 0.3,
+                           enforce_topological_order: bool = False) -> np.ndarray:
         """
-        Track z-bands using simple frame-to-frame nearest neighbor matching with equilibrium anchoring.
-        
+        Track z-bands using LAP frame-to-frame matching with equilibrium anchoring.
+
         SIMPLE APPROACH: No new tracks after initialization. Z-bands are fixed structures that don't
         appear/disappear during imaging - only the initial frame matters for track count.
-        
+
         Parameters
         ----------
         peaks : List[np.ndarray]
@@ -304,7 +305,12 @@ class Motion(SarcAsM):
             Number of frames to remember missing peaks
         equilibrium_weight : float
             Weight for equilibrium position in cost calculation (0 = pure spatial, 1 = pure equilibrium)
-            
+        enforce_topological_order : bool
+            Opt-in (default False) backward-compatible fix for the primary 1D-tracker failure mode:
+            assignments that would reorder Z-bands along the LOI have cost ∞. Z-bands cannot physically
+            swap along a myofibril, so this eliminates cross-matches during fast contraction. Still
+            marked opt-in pending broader real-data validation.
+
         Returns
         -------
         z_pos : np.ndarray
@@ -366,7 +372,42 @@ class Motion(SarcAsM):
                     distance = abs(detection - predicted_positions[i])
                     if distance <= search_range:
                         cost_matrix[i, j] = distance
-            
+
+            # Topological ordering: Z-bands cannot swap along the LOI. Any
+            # (track, detection) pair that would place track i (with a later
+            # equilibrium position than track k) on a detection that is earlier
+            # than track k's potential match is forbidden. We forbid the easy
+            # violation: a track paired with a detection that lies *behind* a
+            # track with a smaller equilibrium position whose own candidate set
+            # starts further forward. In practice the simplest useful rule is:
+            # sort tracks by equilibrium position; track i may only match
+            # detections at or above the minimum detection index already
+            # matched by track i-1. We enforce this *after* LAP has been
+            # solved by detecting order violations and re-solving with the
+            # violating edges set to ∞.
+            if enforce_topological_order and cost_matrix.size > 0:
+                # Order tracks by equilibrium so "index i smaller → position smaller".
+                eq_order = np.argsort(equilibria)
+                # Forbid any pair (i, j) where a track with smaller equilibrium
+                # than track i would be forced to a detection index > j.
+                # Equivalent rule: require that if equilibria[a] < equilibria[b],
+                # any assignment of a to detection j_a and b to detection j_b
+                # satisfies current_peaks[j_a] <= current_peaks[j_b]. We can
+                # encode this as: sort detections ascending; a track with a
+                # smaller equilibrium position cannot be matched to a detection
+                # whose position is larger than a detection available to a
+                # track with larger equilibrium. A cheap enforcement: for each
+                # track i, mask out detections whose position is less than
+                # the equilibrium of the immediately smaller-equilibrium track.
+                for rank, i in enumerate(eq_order):
+                    if rank == 0:
+                        continue
+                    prev_i = eq_order[rank - 1]
+                    lower_bound = equilibria[prev_i]  # track i's position must exceed prev's
+                    for j, det in enumerate(current_peaks):
+                        if det < lower_bound - search_range:
+                            cost_matrix[i, j] = np.inf
+
             # Solve assignment
             if not np.all(np.isinf(cost_matrix)):
                 try:

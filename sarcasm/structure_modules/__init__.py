@@ -22,7 +22,7 @@ from . import domain_motion
 from . import kymograph
 from . import detection
 from . import loi_detection
-#  from . import sarcomere_tracking
+from . import sarcomere_tracking
 
 __all__ = [
     'z_band_analysis',
@@ -33,5 +33,5 @@ __all__ = [
     'kymograph',
     'detection',
     'loi_detection',
-    #  'sarcomere_tracking',
+    'sarcomere_tracking',
 ]
