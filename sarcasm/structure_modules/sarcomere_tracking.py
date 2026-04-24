@@ -45,7 +45,6 @@ detection. Unclaimed detections spawn new query points (appearance).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import cv2
@@ -299,28 +298,6 @@ def compute_motion_field_stats(
 # Query-point tracker
 # ---------------------------------------------------------------------------
 
-@dataclass
-class QueryPoint:
-    """One sarcomere tracked across time via flow-predict + snap-to-detection.
-
-    Positions are recorded for every frame the query point is alive (snapped
-    or, during brief gaps, flow-predicted). ``sarcomere_lengths`` and
-    ``orientations`` are NaN in gap frames; ``snapped`` records which frames
-    had a real detection.
-    """
-    track_id: int
-    start_frame: int
-    positions_px: List[Tuple[float, float]] = field(default_factory=list)
-    positions_um: List[Tuple[float, float]] = field(default_factory=list)
-    sarcomere_lengths: List[float] = field(default_factory=list)
-    orientations: List[float] = field(default_factory=list)
-    snapped: List[bool] = field(default_factory=list)
-    last_pos_px: Tuple[float, float] = (0.0, 0.0)
-    last_orientation: float = 0.0
-    frames_since_snap: int = 0
-    alive: bool = True
-
-
 def _anisotropic_snap(
     query_pos: Tuple[float, float],
     query_ori: float,
@@ -361,6 +338,46 @@ def _anisotropic_snap(
     return best
 
 
+@njit(cache=True)
+def _greedy_claim(
+    qp_sorted: np.ndarray,
+    det_sorted: np.ndarray,
+    claimed_qp: np.ndarray,
+    claimed_det: np.ndarray,
+) -> np.ndarray:
+    """Greedy assignment on (qp_idx, det_idx) pairs pre-sorted by ascending
+    distance. Mutates ``claimed_qp`` / ``claimed_det`` in place and returns the
+    indices (into the sorted pair arrays) of the accepted pairs.
+    """
+    n = qp_sorted.shape[0]
+    out = np.empty(n, dtype=np.int64)
+    k = 0
+    for i in range(n):
+        qi = qp_sorted[i]
+        dj = det_sorted[i]
+        if claimed_qp[qi] or claimed_det[dj]:
+            continue
+        claimed_qp[qi] = True
+        claimed_det[dj] = True
+        out[k] = i
+        k += 1
+    return out[:k]
+
+
+def _as_arr_padded(x, n: int, dtype=np.float32, fill=np.nan) -> np.ndarray:
+    """Return an array of length ``n`` from ``x``, padding missing entries with
+    ``fill``. Used so per-detection attribute arrays always align with the
+    detections array even when the caller provides shorter lists."""
+    if x is None or len(x) == 0:
+        return np.full(n, fill, dtype=dtype)
+    a = np.asarray(x, dtype=dtype)
+    if len(a) >= n:
+        return a[:n].copy() if a.dtype != dtype else a[:n]
+    out = np.full(n, fill, dtype=dtype)
+    out[:len(a)] = a
+    return out
+
+
 def track_sarcomere_vectors(
     zbands_stack: np.ndarray,
     mbands_stack: np.ndarray,
@@ -394,6 +411,10 @@ def track_sarcomere_vectors(
         raise ValueError("Need at least 2 frames.")
     H, W = zbands_stack.shape[-2:]
     ori_tol_rad = float(np.deg2rad(ori_tol_deg))
+    ori_similarity_threshold = float(np.cos(2.0 * ori_tol_rad))
+    max_along2 = float(max_disp_along_px * max_disp_along_px)
+    max_perp2 = float(max_disp_perp_px * max_disp_perp_px)
+    max_radius = float(max_disp_along_px)
 
     logger.info("Computing optical flow sequence…")
     flows = compute_flow_sequence(
@@ -403,216 +424,277 @@ def track_sarcomere_vectors(
         farneback_kwargs=farneback_kwargs,
     )
 
-    def _as_arr(x, dtype):
-        if x is None or len(x) == 0:
-            return np.zeros(0 if dtype != np.float32 else 0, dtype)
-        return np.asarray(x, dtype=dtype)
+    # --- struct-of-arrays track state ---
+    # History arrays (grow in chunks when capacity exceeded). Live state
+    # (last_* / frames_since_snap / alive) mirrors only the tracks that are
+    # still alive, but is kept at the same size as the history arrays so that
+    # indexing by absolute slot is always valid.
+    pos0_raw = pos_vectors_px_all[0]
+    n0 = 0 if pos0_raw is None else len(pos0_raw)
+    capacity = max(256, n0 * 4)
+
+    positions_px = np.full((capacity, T, 2), np.nan, dtype=np.float32)
+    tracks_slen = np.full((capacity, T), np.nan, dtype=np.float32)
+    tracks_ori = np.full((capacity, T), np.nan, dtype=np.float32)
+    tracks_snapped = np.zeros((capacity, T), dtype=bool)
+    start_frame_arr = np.zeros(capacity, dtype=np.int32)
+    last_y = np.full(capacity, np.nan, dtype=np.float32)
+    last_x = np.full(capacity, np.nan, dtype=np.float32)
+    last_ori = np.zeros(capacity, dtype=np.float32)
+    frames_since_snap = np.zeros(capacity, dtype=np.int32)
+    alive = np.zeros(capacity, dtype=bool)
+
+    def _grow(needed: int):
+        """Double capacity until >= ``needed`` and resize all SoA arrays."""
+        nonlocal capacity, positions_px, tracks_slen, tracks_ori, tracks_snapped
+        nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_snap, alive
+        if needed <= capacity:
+            return
+        new_cap = capacity
+        while new_cap < needed:
+            new_cap *= 2
+
+        def _resize(arr, fill):
+            shape = (new_cap,) + arr.shape[1:]
+            out = np.full(shape, fill, dtype=arr.dtype) if fill is not None else np.empty(shape, dtype=arr.dtype)
+            out[:capacity] = arr
+            return out
+
+        positions_px = _resize(positions_px, np.nan)
+        tracks_slen = _resize(tracks_slen, np.nan)
+        tracks_ori = _resize(tracks_ori, np.nan)
+        tracks_snapped = _resize(tracks_snapped, False)
+        start_frame_arr = _resize(start_frame_arr, 0)
+        last_y = _resize(last_y, np.nan)
+        last_x = _resize(last_x, np.nan)
+        last_ori = _resize(last_ori, 0.0)
+        frames_since_snap = _resize(frames_since_snap, 0)
+        alive = _resize(alive, False)
+        capacity = new_cap
+
+    n_tracks = 0
 
     # --- seed query points from frame 0 ---
     logger.info("Seeding query points from frame 0…")
-    query_points: List[QueryPoint] = []
-    pos0 = np.asarray(pos_vectors_px_all[0] if pos_vectors_px_all[0] is not None else np.zeros((0, 2)),
-                      dtype=np.float32)
-    slen0 = _as_arr(sarcomere_lengths_all[0], np.float32)
-    ori0 = _as_arr(orientations_all[0], np.float32)
-    for i in range(len(pos0)):
-        y = float(pos0[i, 0]); x = float(pos0[i, 1])
-        o = float(ori0[i]) if i < len(ori0) and np.isfinite(ori0[i]) else 0.0
-        s = float(slen0[i]) if i < len(slen0) else float('nan')
-        qp = QueryPoint(track_id=len(query_points), start_frame=0)
-        qp.positions_px.append((y, x))
-        qp.positions_um.append((y * pixelsize, x * pixelsize))
-        qp.sarcomere_lengths.append(s)
-        qp.orientations.append(o)
-        qp.snapped.append(True)
-        qp.last_pos_px = (y, x)
-        qp.last_orientation = o
-        query_points.append(qp)
+    if n0 > 0:
+        pos0 = np.asarray(pos0_raw, dtype=np.float32)
+        slen0 = _as_arr_padded(sarcomere_lengths_all[0], n0, np.float32, np.nan)
+        ori0_raw = _as_arr_padded(orientations_all[0], n0, np.float32, np.nan)
+        # History/live orientation defaults to 0.0 for NaN/missing oris, matching
+        # the original per-track seeding behaviour.
+        ori0 = np.where(np.isfinite(ori0_raw), ori0_raw, 0.0).astype(np.float32)
+
+        _grow(n0)
+        sl = slice(0, n0)
+        positions_px[sl, 0, 0] = pos0[:, 0]
+        positions_px[sl, 0, 1] = pos0[:, 1]
+        tracks_slen[sl, 0] = slen0
+        tracks_ori[sl, 0] = ori0
+        tracks_snapped[sl, 0] = True
+        start_frame_arr[sl] = 0
+        last_y[sl] = pos0[:, 0]
+        last_x[sl] = pos0[:, 1]
+        last_ori[sl] = ori0
+        alive[sl] = True
+        n_tracks = n0
 
     # --- frame-to-frame: advect, snap, spawn, close ---
     logger.info("Tracking frames…")
-    max_radius = float(max_disp_along_px)  # kd-tree query radius — use the larger of the two
     for t in range(T - 1):
         flow = flows[t]
 
-        # 1. advect every live query point. Project the flow onto the track's
-        # sarcomere orientation — only the along-sarcomere component moves the
-        # query point. Motion perpendicular to the sarcomere axis can only
-        # come from the snap residual, which is hard-capped at
-        # max_disp_perp_px. This is the anti-perpendicular-jump guarantee:
-        # flow cannot drag a track sideways even if tissue translates.
-        live_idx = [i for i, qp in enumerate(query_points) if qp.alive]
-        if live_idx:
-            ys = np.array([query_points[i].last_pos_px[0] for i in live_idx], dtype=np.float32)
-            xs = np.array([query_points[i].last_pos_px[1] for i in live_idx], dtype=np.float32)
+        # 1. advect every live track along its sarcomere axis only. Motion
+        # perpendicular to the axis can only come from the snap residual,
+        # hard-capped at max_disp_perp_px (anti-perpendicular-jump guarantee).
+        live = np.flatnonzero(alive[:n_tracks])
+        if live.size > 0:
+            ys = last_y[live]
+            xs = last_x[live]
             disp = _sample_bilinear(flow, ys, xs)
-            for k, i in enumerate(live_idx):
-                qp = query_points[i]
-                dy = float(disp[k, 0]); dx = float(disp[k, 1])
-                # Project flow onto sarcomere axis = (sin θ, cos θ).
-                s = np.sin(qp.last_orientation)
-                c = np.cos(qp.last_orientation)
-                along = dy * s + dx * c
-                # Advect by the along component only; zero out perpendicular.
-                ny = float(ys[k] + along * s)
-                nx = float(xs[k] + along * c)
-                qp.last_pos_px = (ny, nx)
+            ori_live = last_ori[live]
+            s_live = np.sin(ori_live)
+            c_live = np.cos(ori_live)
+            along_live = disp[:, 0] * s_live + disp[:, 1] * c_live
+            last_y[live] = ys + along_live * s_live
+            last_x[live] = xs + along_live * c_live
 
-        # 2. build kd-tree on frame t+1 detections
-        dets = np.asarray(pos_vectors_px_all[t + 1] if pos_vectors_px_all[t + 1] is not None else np.zeros((0, 2)),
-                          dtype=np.float32)
-        det_oris = _as_arr(orientations_all[t + 1], np.float32)
-        det_slens = _as_arr(sarcomere_lengths_all[t + 1], np.float32)
-        if len(dets) == 0:
-            # no detections — every live qp goes into a gap frame
-            for i in live_idx:
-                qp = query_points[i]
-                qp.positions_px.append(qp.last_pos_px)
-                qp.positions_um.append((qp.last_pos_px[0] * pixelsize, qp.last_pos_px[1] * pixelsize))
-                qp.sarcomere_lengths.append(float('nan'))
-                qp.orientations.append(float('nan'))
-                qp.snapped.append(False)
-                qp.frames_since_snap += 1
-                if qp.frames_since_snap > memory:
-                    qp.alive = False
-            continue
-        tree = cKDTree(dets)
+        # 2. prepare detections for frame t+1
+        dets_raw = pos_vectors_px_all[t + 1]
+        dets = np.asarray(
+            dets_raw if dets_raw is not None else np.zeros((0, 2)),
+            dtype=np.float32,
+        )
+        n_det = len(dets)
+        det_oris = _as_arr_padded(orientations_all[t + 1], n_det, np.float32, np.nan)
+        det_slens = _as_arr_padded(sarcomere_lengths_all[t + 1], n_det, np.float32, np.nan)
 
-        # 3. collect all (qp_idx, det_idx, dist_sq) candidate pairs passing the
-        # anisotropic + orientation gates, then greedy-assign by ascending
-        # distance so each detection is claimed by at most one query point per
-        # frame. Hard assignment prevents query-point convergence — two qps
+        # Bool masks over the current track slots / detections so we can do
+        # claim bookkeeping in pure numpy without Python sets.
+        claimed_qp_mask = np.zeros(n_tracks, dtype=bool)
+        claimed_det_mask = np.zeros(n_det, dtype=bool)
+
+        # 3. build kd-tree and vectorized gate on all (qp, candidate) pairs.
+        # Hard greedy assignment prevents query-point convergence — two qps
         # cannot snap onto the same detection and collapse.
-        all_pairs: List[Tuple[float, int, int]] = []  # (dist², qp_i, det_j)
-        max_along2 = max_disp_along_px * max_disp_along_px
-        max_perp2 = max_disp_perp_px * max_disp_perp_px
-        ori_similarity_threshold = float(np.cos(2.0 * ori_tol_rad))
-        for i in live_idx:
-            qp = query_points[i]
-            neigh = tree.query_ball_point(qp.last_pos_px, r=max_radius)
-            if not neigh:
-                continue
-            qy, qx = qp.last_pos_px
-            for idx in neigh:
-                # Axial orientation gate: cos(2·Δφ) >= cos(2·ori_tol). This is
-                # the proper similarity measure for undirected axes (mod π).
-                det_ori_valid = idx < len(det_oris) and np.isfinite(det_oris[idx])
-                if det_ori_valid:
-                    sim = float(np.cos(2.0 * (float(det_oris[idx]) - qp.last_orientation)))
-                    if sim < ori_similarity_threshold:
-                        continue
-                # Anisotropic position gate. Decompose the residual using the
-                # axial average of query + detection orientation (more physical
-                # than the stale query orientation alone).
-                if det_ori_valid:
-                    # Axial average via double-angle arithmetic.
-                    s2 = (np.sin(2.0 * qp.last_orientation) +
-                          np.sin(2.0 * float(det_oris[idx])))
-                    c2 = (np.cos(2.0 * qp.last_orientation) +
-                          np.cos(2.0 * float(det_oris[idx])))
-                    ref_ori = 0.5 * np.arctan2(s2, c2)
-                else:
-                    ref_ori = qp.last_orientation
-                s = np.sin(ref_ori)
-                c = np.cos(ref_ori)
-                cy = dets[idx, 0]; cx = dets[idx, 1]
-                dy = cy - qy; dx = cx - qx
-                along = dy * s + dx * c
-                perp = -dy * c + dx * s
-                if along * along > max_along2 or perp * perp > max_perp2:
-                    continue
-                all_pairs.append((float(dy * dy + dx * dx), i, int(idx)))
+        if n_det > 0 and live.size > 0:
+            tree = cKDTree(dets)
+            live_pos = np.column_stack((last_y[live], last_x[live]))
+            neighbors = tree.query_ball_point(live_pos, r=max_radius)
 
-        all_pairs.sort(key=lambda p: p[0])
-        claimed_qp: set = set()
-        claimed_det: set = set()
-        for _, i, j in all_pairs:
-            if i in claimed_qp or j in claimed_det:
-                continue
-            qp = query_points[i]
-            cy, cx = float(dets[j, 0]), float(dets[j, 1])
-            qp.last_pos_px = (cy, cx)
-            if j < len(det_oris) and np.isfinite(det_oris[j]):
-                qp.last_orientation = float(det_oris[j])
-            qp.positions_px.append((cy, cx))
-            qp.positions_um.append((cy * pixelsize, cx * pixelsize))
-            qp.sarcomere_lengths.append(float(det_slens[j]) if j < len(det_slens) else float('nan'))
-            qp.orientations.append(float(det_oris[j]) if j < len(det_oris) else float('nan'))
-            qp.snapped.append(True)
-            qp.frames_since_snap = 0
-            claimed_qp.add(i)
-            claimed_det.add(j)
+            counts = np.fromiter(
+                (len(n) for n in neighbors),
+                dtype=np.int64,
+                count=len(neighbors),
+            )
+            total = int(counts.sum())
 
-        # Unmatched live qps go into a gap frame.
-        for i in live_idx:
-            if i in claimed_qp:
-                continue
-            qp = query_points[i]
-            qp.positions_px.append(qp.last_pos_px)
-            qp.positions_um.append((qp.last_pos_px[0] * pixelsize, qp.last_pos_px[1] * pixelsize))
-            qp.sarcomere_lengths.append(float('nan'))
-            qp.orientations.append(float('nan'))
-            qp.snapped.append(False)
-            qp.frames_since_snap += 1
-            if qp.frames_since_snap > memory:
-                qp.alive = False
-        claimed = claimed_det
+            if total > 0:
+                det_flat = np.empty(total, dtype=np.int64)
+                offset = 0
+                for n_list in neighbors:
+                    k = len(n_list)
+                    if k:
+                        det_flat[offset:offset + k] = n_list
+                        offset += k
+                qp_flat_rel = np.repeat(
+                    np.arange(live.size, dtype=np.int64), counts,
+                )
+                qp_abs = live[qp_flat_rel]
 
-        # 4. unclaimed detections → new query points (appearance)
-        for k in range(len(dets)):
-            if k in claimed:
-                continue
-            y = float(dets[k, 0]); x = float(dets[k, 1])
-            o = float(det_oris[k]) if k < len(det_oris) and np.isfinite(det_oris[k]) else 0.0
-            s = float(det_slens[k]) if k < len(det_slens) else float('nan')
-            qp = QueryPoint(track_id=len(query_points), start_frame=t + 1)
-            qp.positions_px.append((y, x))
-            qp.positions_um.append((y * pixelsize, x * pixelsize))
-            qp.sarcomere_lengths.append(s)
-            qp.orientations.append(o)
-            qp.snapped.append(True)
-            qp.last_pos_px = (y, x)
-            qp.last_orientation = o
-            query_points.append(qp)
+                qy = last_y[qp_abs]
+                qx = last_x[qp_abs]
+                qo = last_ori[qp_abs]
+                cy = dets[det_flat, 0]
+                cx = dets[det_flat, 1]
+                co = det_oris[det_flat]
+
+                finite_co = np.isfinite(co)
+                # Orientation gate (axial similarity). NaN det ori ⇒ pass.
+                sim = np.cos(2.0 * (co - qo))
+                pass_ori = (~finite_co) | (sim >= ori_similarity_threshold)
+
+                # Axial-average reference orientation via double-angle
+                # arithmetic; fall back to qo where co is NaN.
+                co_safe = np.where(finite_co, co, qo)
+                s2 = np.sin(2.0 * qo) + np.sin(2.0 * co_safe)
+                c2 = np.cos(2.0 * qo) + np.cos(2.0 * co_safe)
+                axial_avg = 0.5 * np.arctan2(s2, c2)
+                ref_ori = np.where(finite_co, axial_avg, qo)
+
+                sref = np.sin(ref_ori)
+                cref = np.cos(ref_ori)
+                dy = cy - qy
+                dx = cx - qx
+                along_p = dy * sref + dx * cref
+                perp_p = -dy * cref + dx * sref
+                pass_pos = (along_p * along_p <= max_along2) & (perp_p * perp_p <= max_perp2)
+                mask = pass_ori & pass_pos
+
+                keep_pairs = np.flatnonzero(mask)
+                if keep_pairs.size > 0:
+                    dy_k = dy[keep_pairs]
+                    dx_k = dx[keep_pairs]
+                    d2 = (dy_k * dy_k + dx_k * dx_k).astype(np.float32)
+                    qp_kept = qp_abs[keep_pairs].astype(np.int64)
+                    det_kept = det_flat[keep_pairs].astype(np.int64)
+
+                    order = np.argsort(d2, kind='stable')
+                    qp_sorted = np.ascontiguousarray(qp_kept[order])
+                    det_sorted = np.ascontiguousarray(det_kept[order])
+
+                    accepted_idx = _greedy_claim(
+                        qp_sorted, det_sorted,
+                        claimed_qp_mask, claimed_det_mask,
+                    )
+                    qp_acc = qp_sorted[accepted_idx]
+                    det_acc = det_sorted[accepted_idx]
+
+                    # 4. write claimed tracks in a single vectorized shot
+                    cy_acc = dets[det_acc, 0]
+                    cx_acc = dets[det_acc, 1]
+                    co_acc = det_oris[det_acc]
+                    sl_acc = det_slens[det_acc]
+
+                    positions_px[qp_acc, t + 1, 0] = cy_acc
+                    positions_px[qp_acc, t + 1, 1] = cx_acc
+                    tracks_slen[qp_acc, t + 1] = sl_acc
+                    tracks_ori[qp_acc, t + 1] = co_acc
+                    tracks_snapped[qp_acc, t + 1] = True
+                    last_y[qp_acc] = cy_acc
+                    last_x[qp_acc] = cx_acc
+                    # Only overwrite last_orientation when detection ori is finite.
+                    finite_det = np.isfinite(co_acc)
+                    if finite_det.any():
+                        last_ori[qp_acc[finite_det]] = co_acc[finite_det]
+                    frames_since_snap[qp_acc] = 0
+
+        # 5. unmatched live tracks → gap frame
+        if live.size > 0:
+            unclaimed_live_mask = ~claimed_qp_mask[live]
+            unclaimed_live = live[unclaimed_live_mask]
+            if unclaimed_live.size > 0:
+                positions_px[unclaimed_live, t + 1, 0] = last_y[unclaimed_live]
+                positions_px[unclaimed_live, t + 1, 1] = last_x[unclaimed_live]
+                # tracks_slen / tracks_ori already NaN; tracks_snapped already False.
+                frames_since_snap[unclaimed_live] += 1
+                died_local = frames_since_snap[unclaimed_live] > memory
+                if died_local.any():
+                    alive[unclaimed_live[died_local]] = False
+
+        # 6. unclaimed detections → new tracks (appearance)
+        if n_det > 0:
+            unclaimed_det = np.flatnonzero(~claimed_det_mask)
+            n_new = unclaimed_det.size
+            if n_new > 0:
+                _grow(n_tracks + n_new)
+                new_slots = np.arange(n_tracks, n_tracks + n_new, dtype=np.int64)
+                new_y = dets[unclaimed_det, 0]
+                new_x = dets[unclaimed_det, 1]
+                new_slen = det_slens[unclaimed_det]
+                new_ori_raw = det_oris[unclaimed_det]
+                new_ori = np.where(
+                    np.isfinite(new_ori_raw), new_ori_raw, 0.0,
+                ).astype(np.float32)
+
+                positions_px[new_slots, t + 1, 0] = new_y
+                positions_px[new_slots, t + 1, 1] = new_x
+                tracks_slen[new_slots, t + 1] = new_slen
+                tracks_ori[new_slots, t + 1] = new_ori
+                tracks_snapped[new_slots, t + 1] = True
+                start_frame_arr[new_slots] = t + 1
+                last_y[new_slots] = new_y
+                last_x[new_slots] = new_x
+                last_ori[new_slots] = new_ori
+                frames_since_snap[new_slots] = 0
+                alive[new_slots] = True
+                n_tracks += n_new
 
     # --- filter short tracks (count of actual snaps) ---
     logger.info("Filtering short tracks…")
-    keep = [qp for qp in query_points if sum(qp.snapped) >= min_track_length]
+    snapped_counts = tracks_snapped[:n_tracks].sum(axis=1)
+    keep_mask = snapped_counts >= int(min_track_length)
+    kept = np.flatnonzero(keep_mask)
+    n = int(kept.size)
 
-    # --- build dense outputs (n_tracks, T) with NaN padding before start_frame ---
-    n = len(keep)
-    positions_um = np.full((n, T, 2), np.nan, dtype=np.float32)
-    positions_px = np.full((n, T, 2), np.nan, dtype=np.float32)
-    tracks_slen = np.full((n, T), np.nan, dtype=np.float32)
-    tracks_ori = np.full((n, T), np.nan, dtype=np.float32)
-    tracks_snapped = np.zeros((n, T), dtype=bool)
-    track_lengths = np.zeros(n, dtype=np.int64)
-    for row, qp in enumerate(keep):
-        span = len(qp.positions_px)
-        s = qp.start_frame
-        for k in range(span):
-            f = s + k
-            if f >= T:
-                break
-            positions_px[row, f, 0] = qp.positions_px[k][0]
-            positions_px[row, f, 1] = qp.positions_px[k][1]
-            positions_um[row, f, 0] = qp.positions_um[k][0]
-            positions_um[row, f, 1] = qp.positions_um[k][1]
-            tracks_slen[row, f] = qp.sarcomere_lengths[k]
-            tracks_ori[row, f] = qp.orientations[k]
-            tracks_snapped[row, f] = qp.snapped[k]
-        track_lengths[row] = int(sum(qp.snapped))
+    out_positions_px = positions_px[kept].copy()
+    out_positions_um = (out_positions_px * pixelsize).astype(np.float32)
+    out_tracks_slen = tracks_slen[kept].copy()
+    out_tracks_ori = tracks_ori[kept].copy()
+    out_tracks_snapped = tracks_snapped[kept].copy()
+    out_start_frame = start_frame_arr[kept].astype(np.int64)
+    out_track_ids = kept.astype(np.int64)
+    out_track_lengths = snapped_counts[kept].astype(np.int64)
 
     result: Dict[str, object] = {
         'n_tracks': n,
-        'track_ids': np.array([qp.track_id for qp in keep], dtype=np.int64),
-        'track_start_frame': np.array([qp.start_frame for qp in keep], dtype=np.int64),
-        'track_lengths': track_lengths,
-        'tracks_positions_um': positions_um,
-        'tracks_positions_px': positions_px,
-        'tracks_slen': tracks_slen,
-        'tracks_orientations': tracks_ori,
-        'tracks_snapped': tracks_snapped,
+        'track_ids': out_track_ids,
+        'track_start_frame': out_start_frame,
+        'track_lengths': out_track_lengths,
+        'tracks_positions_um': out_positions_um,
+        'tracks_positions_px': out_positions_px,
+        'tracks_slen': out_tracks_slen,
+        'tracks_orientations': out_tracks_ori,
+        'tracks_snapped': out_tracks_snapped,
     }
 
     if compute_motion_field:
