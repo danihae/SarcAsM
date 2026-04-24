@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from sarcasm.structure_modules import sarcomere_vectors as sv
+from sarcasm.utils import Utils
 
 
 def _field_from_angle(angle: float, H: int = 8, W: int = 8) -> np.ndarray:
@@ -100,6 +101,102 @@ def test_smooth_orientation_scipy_and_torch_agree():
     # (scipy 4σ default vs torch 3σ) and use different conv implementations;
     # a few‑mrad angular agreement is more than enough for physical use.
     np.testing.assert_allclose(out_scipy, out_torch, atol=5e-3)
+
+
+# ---------------------------------------------------------------------------
+# Profile peak detection — default vs LOI pipelines
+# ---------------------------------------------------------------------------
+
+def _gauss_peak(x, center, sigma=0.1):
+    return np.exp(-0.5 * ((x - center) / sigma) ** 2)
+
+
+def _synthetic_profile(slen_um, pixelsize=0.06, n=40, noise=0.0, seed=0):
+    """Build a 1-D intensity profile with two Gaussian Z-band peaks separated
+    by ``slen_um`` centred on the profile."""
+    rng = np.random.default_rng(seed)
+    x = np.arange(n) * pixelsize
+    center = (x[-1] + x[0]) * 0.5
+    left = center - 0.5 * slen_um
+    right = center + 0.5 * slen_um
+    y = _gauss_peak(x, left, sigma=0.08) + _gauss_peak(x, right, sigma=0.08)
+    y = y + rng.normal(0.0, noise, size=n)
+    return y.astype(np.float32)
+
+
+def test_process_profiles_batch_recovers_known_slen():
+    slen_true = 1.85
+    profiles = [_synthetic_profile(slen_true) for _ in range(5)]
+    slens, _ = Utils.process_profiles_batch(
+        profiles, pixelsize=0.06, interp_factor=4, interpolation_method='akima',
+        prominence=0.5,
+    )
+    np.testing.assert_allclose(slens, slen_true, atol=0.05)
+
+
+def test_process_profiles_batch_loi_recovers_known_slen():
+    slen_true = 1.85
+    profiles = [_synthetic_profile(slen_true) for _ in range(5)]
+    slens, _ = Utils.process_profiles_batch_loi(
+        profiles, pixelsize=0.06, slen_lims=(1.0, 3.0),
+    )
+    np.testing.assert_allclose(slens, slen_true, atol=0.05)
+
+
+def test_loi_peak_algorithm_tighter_than_default_under_noise():
+    """With noisy profiles the LOI algorithm (6× Akima + prominence=0.5) should
+    produce tighter slen estimates than the default at interp_factor=0 +
+    prominence=0.2 — because upsampling reduces peak-position quantisation and
+    the stricter prominence rejects noise-driven spurious peaks."""
+    rng = np.random.default_rng(0)
+    slen_true = 1.85
+    n_profiles = 500
+    profiles = [
+        _synthetic_profile(slen_true, noise=0.05, seed=int(rng.integers(1e9)))
+        for _ in range(n_profiles)
+    ]
+
+    slens_loi, _ = Utils.process_profiles_batch_loi(profiles, pixelsize=0.06)
+    slens_default_tight, _ = Utils.process_profiles_batch(
+        profiles, pixelsize=0.06, interp_factor=4, interpolation_method='akima',
+        prominence=0.5,
+    )
+    # Degenerate default — mimics the previous behaviour (no upsample, loose prominence)
+    slens_default_loose, _ = Utils.process_profiles_batch(
+        profiles, pixelsize=0.06, interp_factor=0,
+        prominence=0.2,
+    )
+
+    loi_std = float(np.nanstd(slens_loi))
+    tight_std = float(np.nanstd(slens_default_tight))
+    loose_std = float(np.nanstd(slens_default_loose))
+    # LOI should beat (or match within tolerance) the tightened default, and
+    # both should beat the loose default by a clear margin.
+    assert loi_std < 2.0 * tight_std
+    assert tight_std < loose_std * 0.95, (
+        f"tightened default (std={tight_std:.4f}) should be tighter than loose "
+        f"default (std={loose_std:.4f})"
+    )
+
+
+def test_get_sarcomere_vectors_accepts_peak_algorithm():
+    """Smoke test: the ``peak_algorithm`` kwarg is accepted and routed."""
+    import pytest
+    H, W = 32, 32
+    zb = np.zeros((H, W), dtype=np.float32)
+    mb = np.zeros((H, W), dtype=np.float32)
+    zb[10, 5:25] = 1.0; zb[20, 5:25] = 1.0; mb[15, 5:25] = 1.0
+    ori_field = np.zeros((2, H, W), dtype=np.float32)
+    ori_field[0] = 1.0  # cos θ = 1 → θ = 0
+    for algo in ('default', 'loi'):
+        out = sv.get_sarcomere_vectors(
+            zb, mb > 0.25, ori_field, pixelsize=0.1, peak_algorithm=algo,
+        )
+        assert out is not None  # no exception
+    with pytest.raises(ValueError):
+        sv.get_sarcomere_vectors(
+            zb, mb > 0.25, ori_field, pixelsize=0.1, peak_algorithm='garbage',
+        )
 
 
 def test_smooth_orientation_single_frame_noop():

@@ -711,14 +711,15 @@ class Utils:
             min_dist: float = 1,
             width: float = 0.5,
             interp_factor: int = 4,
-            interpolation_method: str = 'linear'
+            interpolation_method: str = 'linear',
+            prominence: float = 0.5,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Batch process multiple profiles for better performance.
-        
+
         This function processes multiple profiles at once, reducing function call overhead
         compared to processing them individually.
-        
+
         Parameters
         ----------
         profiles : List[np.ndarray]
@@ -737,7 +738,11 @@ class Utils:
             Interpolation upsampling factor, by default 4.
         interpolation_method : str, optional
             Interpolation method: 'linear' (fast) or 'akima' (smooth), by default 'linear'.
-            
+        prominence : float, optional
+            ``scipy.signal.find_peaks`` prominence threshold, by default 0.5 (matches the
+            LOI :func:`Utils.peakdetekt` setting). Lower values accept weaker, noisier
+            peaks.
+
         Returns
         -------
         sarcomere_lengths : np.ndarray
@@ -790,7 +795,7 @@ class Utils:
             peaks_idx, _ = find_peaks(y_interp,
                                      height=thres,
                                      distance=peak_distance,
-                                     prominence=0.2)
+                                     prominence=prominence)
             
             if len(peaks_idx) < 2:
                 sarcomere_lengths[i] = np.nan
@@ -893,6 +898,77 @@ class Utils:
         # plt.show()
 
         return np.array(refined_peaks)
+
+    @staticmethod
+    def process_profiles_batch_loi(
+            profiles: List[np.ndarray],
+            pixelsize: float,
+            slen_lims: tuple = (1, 3),
+            thres: float = 0.2,
+            min_dist: float = 1.0,
+            width: float = 0.5,
+            interp_factor: int = 6,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """LOI-algorithm batch variant of :func:`process_profiles_batch`.
+
+        Routes every profile through :func:`Utils.peakdetekt` (the exact peak
+        detector used by :meth:`sarcasm.motion.Motion.detekt_peaks` for LOI
+        analysis) and returns one sarcomere length + center offset per
+        profile using the pair straddling the profile centre.
+
+        The difference versus ``process_profiles_batch`` is parameter presets:
+        ``interp_factor`` defaults to 6 (vs 4), the underlying Akima + COM
+        pipeline is identical, and :func:`peakdetekt` hard-codes
+        ``prominence=0.5`` matching LOI.
+
+        Parameters
+        ----------
+        profiles, pixelsize, slen_lims
+            As in :func:`process_profiles_batch`.
+        thres : float, optional
+            Relative height threshold (``thres * max(profile)``). Default 0.2.
+        min_dist : float, optional
+            Minimum peak separation in µm, by default 1.0.
+        width : float, optional
+            Half-width of COM window in µm, by default 0.5.
+        interp_factor : int, optional
+            Akima upsampling factor, by default 6 (matches LOI).
+
+        Returns
+        -------
+        sarcomere_lengths, center_offsets : np.ndarray
+            Same semantics as :func:`process_profiles_batch`.
+        """
+        n = len(profiles)
+        sarcomere_lengths = np.full(n, np.nan, dtype=np.float64)
+        center_offsets = np.full(n, np.nan, dtype=np.float64)
+        min_dist_pixels = max(1, int(round(min_dist / pixelsize)))
+        width_pixels = max(1, int(round(width / pixelsize)))
+        for i, profile in enumerate(profiles):
+            if len(profile) < 3:
+                continue
+            pmin = float(profile.min()); pmax = float(profile.max())
+            if pmax == pmin:
+                continue
+            x_pos = np.arange(len(profile)) * pixelsize
+            peaks = Utils.peakdetekt(
+                x_pos, profile.astype(np.float64),
+                thres=thres, thres_abs=False,
+                min_dist=min_dist_pixels, width=width_pixels,
+                interp_factor=interp_factor,
+            )
+            if peaks.size < 2:
+                continue
+            center = (x_pos[-1] + x_pos[0]) * 0.5
+            left = peaks[peaks < center]
+            right = peaks[peaks >= center]
+            if left.size == 0 or right.size == 0:
+                continue
+            slen = float(right[0] - left[-1])
+            if slen_lims[0] <= slen <= slen_lims[1]:
+                sarcomere_lengths[i] = slen
+                center_offsets[i] = float((left[-1] + right[0]) * 0.5 - center)
+        return sarcomere_lengths, center_offsets
 
     @staticmethod
     def peak_by_first_moment(x: np.ndarray, y: np.ndarray):

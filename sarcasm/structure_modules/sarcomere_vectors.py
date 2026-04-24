@@ -159,6 +159,8 @@ def get_sarcomere_vectors(
         interp_factor: int = 4,
         linewidth: float = 0.3,
         interpolation_method: str = 'linear',
+        peak_prominence: float = 0.5,
+        peak_algorithm: str = 'default',
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """
@@ -184,6 +186,20 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         Line width of profiles to calculate sarcomere length. Defaults to 0.3 µm.
     interpolation_method : str, optional
         Interpolation method: 'linear' (fast) or 'akima' (smooth). Defaults to 'linear'.
+    peak_prominence : float, optional
+        ``scipy.signal.find_peaks`` prominence threshold used inside
+        :func:`Utils.process_profiles_batch`. Default 0.5 (matches LOI). Only
+        used when ``peak_algorithm='default'``.
+    peak_algorithm : {'default', 'loi'}, optional
+        Which peak-detection routine to apply to each profile.
+
+        * ``'default'`` — :func:`Utils.process_profiles_batch` (fast, batched,
+          with ``peak_prominence`` + ``interp_factor`` + ``interpolation_method``
+          configurable).
+        * ``'loi'`` — route every profile through :func:`Utils.peakdetekt`, the
+          exact peak-detection + Akima-upsampling + COM-refinement pipeline used
+          by the LOI analysis. Parameter presets match LOI (``interp_factor=6``,
+          ``prominence=0.5``, Akima). Slightly slower.
 
     Returns
     -------
@@ -196,6 +212,8 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     sarcomere_mask : np.ndarray
         Mask indicating the presence of sarcomeres.
     """
+    if peak_algorithm not in ('default', 'loi'):
+        raise ValueError(f"peak_algorithm must be 'default' or 'loi'; got {peak_algorithm!r}")
     radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
     linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
@@ -249,10 +267,17 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
         # Use batch processing for better performance (avoids parallel processing overhead)
-        sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
-            profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
-            interpolation_method=interpolation_method
-        )
+        if peak_algorithm == 'loi':
+            # Route through Utils.peakdetekt — the exact pipeline the LOI
+            # analysis uses. Preset parameters match LOI.
+            sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch_loi(
+                profiles, pixelsize, slen_lims=slen_lims,
+            )
+        else:
+            sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
+                profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
+                interpolation_method=interpolation_method, prominence=peak_prominence,
+            )
 
         # get vector positions in µm and correct center of vectors
         pos_vectors = pos_vectors_px * pixelsize

@@ -671,10 +671,12 @@ class Structure(SarcAsM):
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
-                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
+                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
                                   smooth_orientation_sigma: float = 0.0,
+                                  peak_prominence: float = 0.5,
+                                  peak_algorithm: str = 'default',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -690,8 +692,12 @@ class Structure(SarcAsM):
             Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
         linewidth : float, optional
             Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).
+            LOI analysis, tuned for maximum accuracy, uses 0.65 µm — increasing ``linewidth``
+            toward that averages over more transverse pixels and smooths per-frame slen.
         interp_factor: int, optional
-            Interpolation factor for profiles to calculate sarcomere length. Default to 4.
+            Akima/linear upsampling factor applied to each profile before peak detection.
+            Default **4** (was 0). LOI analysis uses 6; raising from 0 → 4 was the single
+            largest driver of the accuracy gap (sub-pixel peak localisation).
         slen_lims : tuple of float, optional
             Sarcomere size limits in µm (default is (1, 3) µm).
         threshold_sarcomere_mask : float
@@ -706,6 +712,20 @@ class Structure(SarcAsM):
             trick) reduces this jitter. ``0`` disables smoothing (default). ``sigma ≈ 1``
             corresponds to a ~5-frame effective span. Only meaningful for multi-frame
             stacks.
+        peak_prominence : float, optional
+            ``scipy.signal.find_peaks`` prominence threshold for Z-band peak detection
+            inside each profile. Default 0.5 (matches LOI). Lower values accept weaker,
+            noisier peaks. Only used when ``peak_algorithm='default'``.
+        peak_algorithm : {'default', 'loi'}, optional
+            Peak detection routine.
+
+            * ``'default'`` — :func:`sarcasm.utils.Utils.process_profiles_batch` (fast,
+              batched, with ``interp_factor`` + ``peak_prominence`` configurable).
+            * ``'loi'`` — route every profile through
+              :func:`sarcasm.utils.Utils.peakdetekt`, the exact peak-detection +
+              6× Akima + COM-refinement pipeline used by the LOI analysis. Parameter
+              presets match LOI; ``interp_factor`` + ``peak_prominence`` are ignored.
+              Slightly slower but maximum per-frame slen accuracy.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -796,7 +816,9 @@ class Structure(SarcAsM):
                                                          slen_lims=slen_lims,
                                                          interp_factor=interp_factor,
                                                          linewidth=linewidth,
-                                                         interpolation_method=interpolation_method)
+                                                         interpolation_method=interpolation_method,
+                                                         peak_prominence=peak_prominence,
+                                                         peak_algorithm=peak_algorithm)
 
             # write in list
             n_vectors[frame_i] = len(sarcomere_length_vectors_i)
@@ -834,6 +856,8 @@ class Structure(SarcAsM):
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
                         'params.analyze_sarcomere_vectors.linewidth': linewidth,
                         'params.analyze_sarcomere_vectors.smooth_orientation_sigma': smooth_orientation_sigma,
+                        'params.analyze_sarcomere_vectors.peak_prominence': peak_prominence,
+                        'params.analyze_sarcomere_vectors.peak_algorithm': peak_algorithm,
                         'n_vectors': n_vectors, 'n_mbands': n_mbands, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,
