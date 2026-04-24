@@ -674,6 +674,7 @@ class Structure(SarcAsM):
                                   median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 0,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
+                                  smooth_orientation_sigma: float = 0.0,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors.
@@ -697,6 +698,14 @@ class Structure(SarcAsM):
             Threshold to binarize sarcomere masks. Defaults to 0.1.
         interpolation_method : str, optional
             Interpolation method for profile analysis: 'linear' (fast) or 'akima' (smooth). Defaults to 'akima'.
+        smooth_orientation_sigma : float, optional
+            Temporal Gaussian sigma (in frames) for smoothing the orientation field across
+            the time axis *before* per-frame vector extraction. The U-Net emits orientation
+            frame-by-frame with small jitter that propagates into vector positions and
+            downstream tracking; temporal smoothing (axially correct via the double-angle
+            trick) reduces this jitter. ``0`` disables smoothing (default). ``sigma ≈ 1``
+            corresponds to a ~5-frame effective span. Only meaningful for multi-frame
+            stacks.
         progress_notifier: ProgressNotifier
             Wraps progress notification, default is progress notification done with tqdm
 
@@ -737,6 +746,15 @@ class Structure(SarcAsM):
             sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, axis=0)
+
+        # Optional temporal smoothing of the orientation field.
+        if smooth_orientation_sigma > 0 and orientation_field.shape[0] > 1:
+            logger.info(
+                f'Temporally smoothing orientation field with sigma={smooth_orientation_sigma:.2f} frames...'
+            )
+            orientation_field = sarcomere_vectors.smooth_orientation_field_temporal(
+                orientation_field, sigma=smooth_orientation_sigma,
+            )
 
         # binarize M-bands
         mbands = mbands > threshold_mbands
@@ -815,6 +833,7 @@ class Structure(SarcAsM):
                         'params.analyze_sarcomere_vectors.slen_lims': slen_lims,
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
                         'params.analyze_sarcomere_vectors.linewidth': linewidth,
+                        'params.analyze_sarcomere_vectors.smooth_orientation_sigma': smooth_orientation_sigma,
                         'n_vectors': n_vectors, 'n_mbands': n_mbands, 'pos_vectors_px': pos_vectors_px,
                         'pos_vectors': pos_vectors, 'sarcomere_length_vectors': sarcomere_length_vectors,
                         'sarcomere_orientation_vectors': sarcomere_orientation_vectors,

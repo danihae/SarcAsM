@@ -22,6 +22,133 @@ from skimage.morphology import skeletonize
 from sarcasm.utils import Utils
 
 
+def _axial_double_angle_encoding(orientation_field: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Return ``(cos 2θ, sin 2θ)`` stacks from a ``(T, 2, H, W)`` vector field.
+
+    The raw field stores ``(x, y)`` components; the axial-correct smoothing
+    variable is the double-angle vector, which is unique per line axis.
+    """
+    x = orientation_field[:, 0].astype(np.float32)
+    y = orientation_field[:, 1].astype(np.float32)
+    angles = np.arctan2(y, x)
+    angles = (angles + 2 * np.pi) % (2 * np.pi)
+    angles = np.where(angles > np.pi, angles - np.pi, angles)
+    return np.cos(2 * angles), np.sin(2 * angles)
+
+
+def _axial_double_angle_decode(
+    cos2_sm: np.ndarray,
+    sin2_sm: np.ndarray,
+    dtype: np.dtype,
+) -> np.ndarray:
+    """Inverse of :func:`_axial_double_angle_encoding`. Re-emits ``(x, y)``
+    components as ``(cos θ, sin θ)`` so downstream consumers can keep using
+    ``arctan2`` as-is."""
+    doubled = np.arctan2(sin2_sm, cos2_sm)
+    smoothed = (doubled / 2.0 + np.pi) % np.pi
+    out = np.empty((cos2_sm.shape[0], 2, *cos2_sm.shape[1:]), dtype=dtype)
+    out[:, 0] = np.cos(smoothed).astype(dtype)
+    out[:, 1] = np.sin(smoothed).astype(dtype)
+    return out
+
+
+def smooth_orientation_field_temporal(
+    orientation_field: np.ndarray,
+    sigma: float,
+    mode: str = 'nearest',
+    backend: str = 'scipy',
+    device: str = 'auto',
+) -> np.ndarray:
+    """Temporally smooth a stack of orientation vector fields, axially correct.
+
+    The U-Net predicts sarcomere orientation frame-by-frame, producing small
+    per-frame jitter that propagates into vector positions, lengths, and
+    downstream tracking. Averaging the raw ``(x, y)`` channels naively would
+    destroy the signal because axial orientations can be encoded by either
+    ``(cos θ, sin θ)`` or its negative — both describe the same axis.
+
+    Implementation uses the double-angle trick:
+
+    1. Compute axial angles per frame from ``arctan2(field[:, 1], field[:, 0])``
+       and wrap to ``[0, π)``.
+    2. Encode as ``(cos 2θ, sin 2θ)`` — a unique vector per axis.
+    3. Gaussian-smooth both channels along the time axis (scipy or torch).
+    4. Recover a smoothed axial angle via ``arctan2(smoothed_sin2, smoothed_cos2) / 2``.
+    5. Re-emit the field as ``(cos θ, sin θ)`` so downstream consumers can keep
+       calling ``arctan2`` as before.
+
+    Parameters
+    ----------
+    orientation_field : np.ndarray
+        ``(T, 2, H, W)`` stack of orientation vector fields. Channel 0 is the
+        x-component, channel 1 is the y-component.
+    sigma : float
+        Gaussian sigma in frames. ``sigma ≈ 1`` corresponds to an effective
+        span of ~5 frames. ``0`` returns the input unchanged.
+    mode : str, optional
+        Boundary condition. ``'nearest'`` (default) extends the end values;
+        ``'reflect'`` and ``'mirror'`` are also accepted (mapped to the
+        backend's equivalent).
+    backend : str, optional
+        ``'scipy'`` (default, fastest on CPU for typical stacks) uses
+        ``scipy.ndimage.gaussian_filter1d``.  ``'torch'`` uses a depthwise 1D
+        convolution (useful for very large stacks on CUDA).
+    device : str, optional
+        When ``backend='torch'``: ``'auto'`` picks cuda / mps / cpu; can also
+        be ``'cpu'``, ``'cuda'``, ``'mps'``.
+
+    Returns
+    -------
+    np.ndarray
+        Smoothed orientation field, same shape and dtype as input.
+    """
+    if sigma <= 0:
+        return orientation_field
+    if orientation_field.ndim != 4 or orientation_field.shape[1] != 2:
+        raise ValueError(
+            f"orientation_field must have shape (T, 2, H, W); got {orientation_field.shape}"
+        )
+    if orientation_field.shape[0] < 2:
+        return orientation_field
+
+    cos2, sin2 = _axial_double_angle_encoding(orientation_field)
+
+    if backend == 'scipy':
+        cos2_sm = ndimage.gaussian_filter1d(cos2, sigma=sigma, axis=0, mode=mode)
+        sin2_sm = ndimage.gaussian_filter1d(sin2, sigma=sigma, axis=0, mode=mode)
+    elif backend == 'torch':
+        import torch
+        import torch.nn.functional as F
+        if device == 'auto':
+            if torch.cuda.is_available():
+                dev = torch.device('cuda')
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                dev = torch.device('mps')
+            else:
+                dev = torch.device('cpu')
+        else:
+            dev = torch.device(device)
+        T, _, H, W = orientation_field.shape
+        # Pack (cos2, sin2) into (H*W, 2, T) so a single depthwise conv1d
+        # smooths both double-angle components at once.
+        stacked = np.stack([cos2, sin2], axis=0).transpose(2, 3, 0, 1)
+        stacked = stacked.reshape(H * W, 2, T).astype(np.float32, copy=False)
+        t = torch.from_numpy(stacked).to(dev)
+        half = max(1, int(np.ceil(3.0 * sigma)))
+        ks = torch.arange(-half, half + 1, dtype=torch.float32, device=dev)
+        kernel = torch.exp(-0.5 * (ks / sigma) ** 2)
+        kernel = (kernel / kernel.sum()).view(1, 1, -1).expand(2, 1, -1).contiguous()
+        pad_mode = 'replicate' if mode == 'nearest' else mode
+        t_pad = F.pad(t, (half, half), mode=pad_mode)
+        t_sm = F.conv1d(t_pad, kernel, groups=2).cpu().numpy()
+        out_np = t_sm.reshape(H, W, 2, T).transpose(2, 3, 0, 1)
+        cos2_sm, sin2_sm = out_np[0], out_np[1]
+    else:
+        raise ValueError(f"backend must be 'scipy' or 'torch'; got {backend!r}")
+
+    return _axial_double_angle_decode(cos2_sm, sin2_sm, orientation_field.dtype)
+
+
 def get_sarcomere_vectors(
         zbands: np.ndarray,
         mbands: np.ndarray,
