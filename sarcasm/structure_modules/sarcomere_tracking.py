@@ -378,6 +378,241 @@ def _as_arr_padded(x, n: int, dtype=np.float32, fill=np.nan) -> np.ndarray:
     return out
 
 
+def _merge_short_tracks(
+    n_tracks: int,
+    positions_px: np.ndarray,
+    tracks_slen: np.ndarray,
+    tracks_ori: np.ndarray,
+    tracks_snapped: np.ndarray,
+    flows: np.ndarray,
+    pixelsize: float,
+    min_track_length: int,
+    max_gap_interpolation: int,
+    merge_max_disp_along_px: float,
+    merge_max_disp_perp_px: float,
+    merge_ori_tol_deg: float,
+    merge_slen_tol_um: float,
+    return_log: bool = False,
+) -> Tuple[int, Optional[List[Dict[str, float]]]]:
+    """Stitch fragmented trajectories produced by the per-frame snap loop.
+
+    Only tracks with ``snapped_count >= min_track_length`` participate.
+    Each eligible track A is greedily extended by chaining valid successors
+    B whose first-snap frame falls within ``[t_last(A)+1, t_last(A)+max_gap]``.
+
+    Gates use **merge-specific tolerances** that are intentionally more
+    permissive than the per-frame snap gates: a 1-frame snap and a 5-frame
+    bridge have very different position-uncertainty budgets (flow drift,
+    detection jitter, orientation noise all accumulate over the gap). Both
+    along² and perp² scale linearly with gap (random-walk model). Gates:
+
+    - position: ``along²`` ≤ ``merge_max_disp_along_px² * gap`` and
+      ``perp²`` ≤ ``merge_max_disp_perp_px² * gap`` against the
+      flow-predicted tail (NOT the snapshot at ``t_last(A)``).
+    - orientation: axial similarity vs ``merge_ori_tol_deg``.
+    - sarcomere length: ``|Δslen| <= merge_slen_tol_um`` (NaN passes).
+
+    Modifies the SoA arrays in place. Consumed B tracks have ``tracks_snapped``
+    zeroed and positions set to NaN, so the existing ``min_track_length``
+    filter at the call site naturally drops them. Returns
+    ``(n_merges, merge_log)`` where ``merge_log`` is ``None`` unless
+    ``return_log=True``.
+    """
+    T = positions_px.shape[1]
+    if T < 2 or n_tracks == 0 or max_gap_interpolation < 1:
+        return 0, ([] if return_log else None)
+
+    ori_tol_rad = float(np.deg2rad(merge_ori_tol_deg))
+    ori_sim_threshold = float(np.cos(2.0 * ori_tol_rad))
+    max_along2 = float(merge_max_disp_along_px * merge_max_disp_along_px)
+    max_perp2 = float(merge_max_disp_perp_px * merge_max_disp_perp_px)
+    # tracks_slen is in micrometers (same units as the upstream sarcomere length
+    # vectors); compare directly without a px conversion.
+    slen_tol_um = float(merge_slen_tol_um)
+    slen_tol2 = slen_tol_um * slen_tol_um
+
+    # Per-track terminal state (only for eligible tracks).
+    snap = tracks_snapped[:n_tracks]
+    snap_counts = snap.sum(axis=1)
+    eligible = snap_counts >= int(min_track_length)
+    t_first = np.full(n_tracks, -1, dtype=np.int32)
+    t_last = np.full(n_tracks, -1, dtype=np.int32)
+    for i in range(n_tracks):
+        if not eligible[i]:
+            continue
+        idx = np.flatnonzero(snap[i])
+        if idx.size == 0:
+            eligible[i] = False
+            continue
+        t_first[i] = int(idx[0])
+        t_last[i] = int(idx[-1])
+
+    # Bucket eligible heads by t_first so the candidate scan is bounded.
+    heads_by_frame: List[List[int]] = [[] for _ in range(T)]
+    for i in range(n_tracks):
+        if eligible[i] and t_first[i] >= 0:
+            heads_by_frame[t_first[i]].append(i)
+
+    consumed = np.zeros(n_tracks, dtype=bool)
+    n_merges = 0
+    merge_log: Optional[List[Dict[str, float]]] = [] if return_log else None
+
+    # Iterate As in ascending t_last so earliest-finishing tracks claim heads
+    # first; the inner while-loop chains A→B→C in one pass.
+    order = sorted(
+        (i for i in range(n_tracks) if eligible[i]),
+        key=lambda i: int(t_last[i]),
+    )
+    ys_buf = np.empty(1, dtype=np.float32)
+    xs_buf = np.empty(1, dtype=np.float32)
+
+    for A in order:
+        if consumed[A]:
+            continue
+        while True:
+            t_a = int(t_last[A])
+            if t_a >= T - 1:
+                break
+            ya = float(positions_px[A, t_a, 0])
+            xa = float(positions_px[A, t_a, 1])
+            oa_raw = float(tracks_ori[A, t_a])
+            sa = float(tracks_slen[A, t_a])
+            if not (np.isfinite(ya) and np.isfinite(xa)):
+                break
+            oa = oa_raw if np.isfinite(oa_raw) else 0.0
+            sin_o = float(np.sin(oa))
+            cos_o = float(np.cos(oa))
+
+            # Step the flow-predicted tail one frame at a time across gaps.
+            y_pred = ya
+            x_pred = xa
+            best_B = -1
+            best_cost = np.inf
+            best_meta: Optional[Tuple[int, float, float, float]] = None
+
+            for gap in range(1, int(max_gap_interpolation) + 1):
+                t_target = t_a + gap
+                if t_target >= T:
+                    break
+                # Advance through one flow field (frame t_target-1 → t_target).
+                ys_buf[0] = y_pred
+                xs_buf[0] = x_pred
+                disp = _sample_bilinear(flows[t_target - 1], ys_buf, xs_buf)[0]
+                along = float(disp[0]) * sin_o + float(disp[1]) * cos_o
+                y_pred = y_pred + along * sin_o
+                x_pred = x_pred + along * cos_o
+
+                # Both along and perp tolerances scale with gap (random-walk
+                # accumulation of position uncertainty across the bridged gap).
+                gate_along2 = max_along2 * gap
+                gate_perp2 = max_perp2 * gap
+
+                for B in heads_by_frame[t_target]:
+                    if consumed[B] or B == A:
+                        continue
+                    yb = float(positions_px[B, t_target, 0])
+                    xb = float(positions_px[B, t_target, 1])
+                    ob = float(tracks_ori[B, t_target])
+                    sb = float(tracks_slen[B, t_target])
+
+                    # Orientation gate (axial); NaN on B passes.
+                    if np.isfinite(ob):
+                        if float(np.cos(2.0 * (ob - oa))) < ori_sim_threshold:
+                            continue
+                        s2 = np.sin(2.0 * oa) + np.sin(2.0 * ob)
+                        c2 = np.cos(2.0 * oa) + np.cos(2.0 * ob)
+                        ref_ori = 0.5 * float(np.arctan2(s2, c2))
+                    else:
+                        ref_ori = oa
+
+                    sref = float(np.sin(ref_ori))
+                    cref = float(np.cos(ref_ori))
+                    dy = yb - y_pred
+                    dx = xb - x_pred
+                    along_resid = dy * sref + dx * cref
+                    perp_resid = -dy * cref + dx * sref
+
+                    if along_resid * along_resid > gate_along2:
+                        continue
+                    if perp_resid * perp_resid > gate_perp2:
+                        continue
+
+                    # Slen continuity gate (NaN on either side passes).
+                    if np.isfinite(sa) and np.isfinite(sb):
+                        dslen = sb - sa
+                        if dslen * dslen > slen_tol2:
+                            continue
+                    else:
+                        dslen = 0.0
+
+                    cost = (
+                        (along_resid * along_resid) / max_along2
+                        + (perp_resid * perp_resid) / max_perp2
+                        + (dslen * dslen) / slen_tol2
+                        + 0.25 * (gap - 1) / float(max_gap_interpolation)
+                    )
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_B = B
+                        best_meta = (gap, along_resid, perp_resid, dslen)
+
+            if best_B < 0:
+                break
+
+            # Accept the merge (A absorbs B).
+            B = best_B
+            t_b = int(t_first[B])
+            t_b_last = int(t_last[B])
+
+            # Linear-interpolate positions in the gap (t_a, t_b).
+            pos_ay = positions_px[A, t_a, 0]
+            pos_ax = positions_px[A, t_a, 1]
+            pos_by = positions_px[B, t_b, 0]
+            pos_bx = positions_px[B, t_b, 1]
+            span = t_b - t_a
+            for k in range(1, span):
+                w = k / float(span)
+                positions_px[A, t_a + k, 0] = (1.0 - w) * pos_ay + w * pos_by
+                positions_px[A, t_a + k, 1] = (1.0 - w) * pos_ax + w * pos_bx
+                tracks_slen[A, t_a + k] = np.nan
+                tracks_ori[A, t_a + k] = np.nan
+                tracks_snapped[A, t_a + k] = False
+
+            # Copy B's row into A from t_b onward.
+            positions_px[A, t_b:] = positions_px[B, t_b:]
+            tracks_slen[A, t_b:] = tracks_slen[B, t_b:]
+            tracks_ori[A, t_b:] = tracks_ori[B, t_b:]
+            tracks_snapped[A, t_b:] = tracks_snapped[B, t_b:]
+
+            # Mark B consumed: zero it so the downstream length filter drops it.
+            consumed[B] = True
+            tracks_snapped[B, :] = False
+            positions_px[B, :, 0] = np.nan
+            positions_px[B, :, 1] = np.nan
+            tracks_slen[B, :] = np.nan
+            tracks_ori[B, :] = np.nan
+
+            # Update A's terminal state so the inner while-loop can chain further.
+            t_last[A] = t_b_last
+
+            n_merges += 1
+            if merge_log is not None and best_meta is not None:
+                gap_used, along_r, perp_r, dslen_um = best_meta
+                merge_log.append({
+                    'track_a': float(A),
+                    'track_b': float(B),
+                    't_a': float(t_a),
+                    't_b': float(t_b),
+                    'gap': float(gap_used),
+                    'along_resid_px': float(along_r),
+                    'perp_resid_px': float(perp_r),
+                    'slen_diff_um': float(dslen_um),
+                    'cost': float(best_cost),
+                })
+
+    return n_merges, merge_log
+
+
 def track_sarcomere_vectors(
     zbands_stack: np.ndarray,
     mbands_stack: np.ndarray,
@@ -396,6 +631,12 @@ def track_sarcomere_vectors(
     memory: int = 5,
     min_track_length: int = 5,
     max_gap_interpolation: int = 5,
+    merge_tracks: bool = True,
+    merge_max_disp_along_px: float = 25.0,
+    merge_max_disp_perp_px: float = 4.0,
+    merge_ori_tol_deg: float = 45.0,
+    merge_slen_tol_um: float = 0.30,
+    return_merge_log: bool = False,
     compute_motion_field: bool = True,
     store_flow_fields: bool = False,
     farneback_kwargs: Optional[dict] = None,
@@ -405,6 +646,16 @@ def track_sarcomere_vectors(
     The tracker does not persist M-band identity. Instead every query point is
     a sarcomere-centre marker that flow-advects and snaps to a consistent
     detection each frame. Outputs are dense ``(n_tracks, T)`` arrays.
+
+    When ``merge_tracks`` is True (default), a final stitching pass joins
+    trajectories that died and respawned across short gaps (1..
+    ``max_gap_interpolation`` frames). The merge gates are intentionally
+    looser than the per-frame snap gates (``merge_max_disp_*_px`` >
+    ``max_disp_*_px``) and scale linearly with gap (random-walk position
+    uncertainty over the bridged interval). The flow-predicted tail of A
+    must match B's head within these gates and a sarcomere-length
+    continuity tolerance (``|Δslen| <= merge_slen_tol_um``). Gap frames
+    carry linearly interpolated positions and ``tracks_snapped=False``.
     """
     T = len(zbands_stack)
     if T < 2:
@@ -669,6 +920,29 @@ def track_sarcomere_vectors(
                 alive[new_slots] = True
                 n_tracks += n_new
 
+    # --- merge fragmented trajectories ---
+    n_merges = 0
+    merge_log: Optional[List[Dict[str, float]]] = None
+    if merge_tracks and n_tracks > 0 and max_gap_interpolation >= 1:
+        logger.info("Merging short trajectory fragments…")
+        n_merges, merge_log = _merge_short_tracks(
+            n_tracks=n_tracks,
+            positions_px=positions_px,
+            tracks_slen=tracks_slen,
+            tracks_ori=tracks_ori,
+            tracks_snapped=tracks_snapped,
+            flows=flows,
+            pixelsize=pixelsize,
+            min_track_length=min_track_length,
+            max_gap_interpolation=max_gap_interpolation,
+            merge_max_disp_along_px=merge_max_disp_along_px,
+            merge_max_disp_perp_px=merge_max_disp_perp_px,
+            merge_ori_tol_deg=merge_ori_tol_deg,
+            merge_slen_tol_um=merge_slen_tol_um,
+            return_log=return_merge_log,
+        )
+        logger.info(f"Merged {n_merges} fragment pairs.")
+
     # --- filter short tracks (count of actual snaps) ---
     logger.info("Filtering short tracks…")
     snapped_counts = tracks_snapped[:n_tracks].sum(axis=1)
@@ -695,7 +969,10 @@ def track_sarcomere_vectors(
         'tracks_slen': out_tracks_slen,
         'tracks_orientations': out_tracks_ori,
         'tracks_snapped': out_tracks_snapped,
+        'n_merges': n_merges,
     }
+    if return_merge_log:
+        result['merge_log'] = merge_log if merge_log is not None else []
 
     if compute_motion_field:
         pos_px_lists: List[np.ndarray] = []

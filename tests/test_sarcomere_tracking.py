@@ -312,3 +312,207 @@ def test_gap_frame_records_nan_slen_but_keeps_position():
         np.isnan(slens[i, 1]) and np.isfinite(slens[i, 0]) and np.isfinite(slens[i, 2])
         for i in range(slens.shape[0])
     )
+
+
+# ---------------------------------------------------------------------------
+# Trajectory-merge step
+# ---------------------------------------------------------------------------
+
+def _identical_band_stack(T: int, H: int = 80, W: int = 80):
+    """Identical Z/M-band stack so synthetic flow is ~0 across frames.
+
+    Lets tests manipulate detections independently of the underlying flow
+    (which is computed from the masks, not from the detections).
+    """
+    z = np.zeros((H, W), dtype=np.float32)
+    m = np.zeros((H, W), dtype=np.float32)
+    z[20, 10:70] = 1.0
+    m[30, 10:70] = 1.0
+    return np.stack([z] * T), np.stack([m] * T)
+
+
+def test_merge_bridges_one_frame_gap():
+    """A respawned track separated by a 1-frame gap should be stitched back."""
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    # Detection present every frame except t=2.
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos, pos, empty, pos, pos, pos]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)  # sarcomere axis along cols
+    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
+                slen_one, slen_one, slen_one]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        max_gap_interpolation=5,
+        merge_tracks=True,
+    )
+    # Without merging this would yield 2 tracks (A snaps 0,1; B snaps 3,4,5).
+    assert out['n_tracks'] == 1
+    assert out['n_merges'] == 1
+    snapped = out['tracks_snapped'][0]
+    assert snapped.tolist() == [True, True, False, True, True, True]
+    slens = out['tracks_slen'][0]
+    assert np.isnan(slens[2])
+    np.testing.assert_allclose(slens[[0, 1, 3, 4, 5]], 1.8)
+    pos_out = out['tracks_positions_px'][0]
+    np.testing.assert_allclose(pos_out[:, 0], 25.0, atol=1.0)
+    np.testing.assert_allclose(pos_out[:, 1], 40.0, atol=1.0)
+
+
+def test_merge_off_preserves_legacy_behavior():
+    """With merge_tracks=False the gap should leave two separate tracks."""
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos, pos, empty, pos, pos, pos]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
+                slen_one, slen_one, slen_one]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        merge_tracks=False,
+    )
+    assert out['n_tracks'] == 2
+    assert out['n_merges'] == 0
+
+
+def test_merge_respects_perp_gate():
+    """A respawned track far enough transverse to the original must NOT merge.
+
+    With the default ``merge_max_disp_perp_px=4`` (gap-scaled to ``perp² ≤
+    16·gap``), an 8-px transverse offset across a 2-frame gap exceeds the
+    gate (perp²=64 vs 16·2=32) and the merge should be rejected.
+    """
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos_a = np.array([[25.0, 40.0]], dtype=np.float32)
+    pos_b = np.array([[33.0, 40.0]], dtype=np.float32)  # 8 px transverse
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos_a, pos_a, empty, pos_b, pos_b, pos_b]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)  # axis along cols → perp = rows
+    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
+                slen_one, slen_one, slen_one]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        merge_tracks=True,
+    )
+    assert out['n_tracks'] == 2
+    assert out['n_merges'] == 0
+
+
+def test_merge_respects_slen_gate():
+    """Two co-located fragments with very different slens should not merge."""
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos, pos, empty, pos, pos, pos]
+    slen_a = np.array([1.5], np.float32)
+    slen_b = np.array([2.4], np.float32)  # 0.9 μm difference >> 0.15 default
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [slen_a, slen_a, np.zeros(0, np.float32),
+                slen_b, slen_b, slen_b]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        merge_tracks=True,  # default merge_slen_tol_um=0.30 μm
+    )
+    assert out['n_tracks'] == 2
+    assert out['n_merges'] == 0
+
+
+def test_merge_chains_multi_hop():
+    """Three respawned fragments on the same trajectory should chain into one."""
+    T = 10
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    # Fragments: A=[0,1,2], gap, B=[5,6], gap, C=[8,9].
+    pos_px_all = [pos, pos, pos, empty, empty,
+                  pos, pos, empty, pos, pos]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [
+        slen_one if len(p) else np.zeros(0, np.float32)
+        for p in pos_px_all
+    ]
+    ori_all = [
+        ori_one if len(p) else np.zeros(0, np.float32)
+        for p in pos_px_all
+    ]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        max_gap_interpolation=5,
+        merge_tracks=True,
+    )
+    assert out['n_tracks'] == 1
+    assert out['n_merges'] == 2
+    snapped = out['tracks_snapped'][0]
+    expected = [True, True, True, False, False, True, True, False, True, True]
+    assert snapped.tolist() == expected
+
+
+def test_merge_log_records_each_merge():
+    """When return_merge_log=True the log should have one entry per merge."""
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos, pos, empty, pos, pos, pos]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
+                slen_one, slen_one, slen_one]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        merge_tracks=True,
+        return_merge_log=True,
+    )
+    assert out['n_merges'] == 1
+    log = out['merge_log']
+    assert len(log) == 1
+    entry = log[0]
+    assert int(entry['gap']) == 2
+    assert int(entry['t_a']) == 1
+    assert int(entry['t_b']) == 3
+    # Residuals on flat synthetic flow should be tiny.
+    assert abs(entry['perp_resid_px']) < 1.0
+    assert abs(entry['along_resid_px']) < 1.0

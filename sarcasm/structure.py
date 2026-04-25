@@ -1404,6 +1404,11 @@ class Structure(SarcAsM):
         memory: int = 5,
         min_track_length: int = 5,
         max_gap_interpolation: int = 5,
+        merge_tracks: bool = True,
+        merge_max_disp_along_px: float = 25.0,
+        merge_max_disp_perp_px: float = 4.0,
+        merge_ori_tol_deg: float = 45.0,
+        merge_slen_tol_um: float = 0.30,
         compute_motion_field: bool = True,
         store_flow_fields: bool = False,
     ) -> None:
@@ -1440,7 +1445,27 @@ class Structure(SarcAsM):
         min_track_length
             Minimum number of *actual snaps* required to keep a track.
         max_gap_interpolation
-            Maximum absence span that may be linearly interpolated downstream.
+            Maximum absence span (in frames) that may be bridged by the
+            post-loop merge step (and linearly interpolated in the gap).
+        merge_tracks
+            If True (default), run a final pass that stitches respawned
+            trajectory fragments back to their parent track when the flow-
+            predicted tail of one matches the head of another. Reduces
+            fragmentation caused by transient U-Net misses without per-
+            dataset tuning.
+        merge_max_disp_along_px, merge_max_disp_perp_px
+            Anisotropic position-residual tolerances for the merge step,
+            in pixels. Both scale linearly with the bridged gap (random-walk
+            position uncertainty). Defaults are intentionally looser than
+            the per-frame snap gates: a multi-frame bridge has a larger
+            uncertainty budget than a 1-frame snap.
+        merge_ori_tol_deg
+            Orientation tolerance for merging, in degrees (axial / mod π).
+        merge_slen_tol_um
+            Sarcomere-length continuity tolerance for merging, in micrometers.
+            Two fragments are only stitched if their seam-frame slens differ
+            by at most this much. Strongest single guard against same-
+            myofibril neighbour swaps.
         compute_motion_field
             Sample flow at every detection position and decompose into
             along-sarcomere / perpendicular components (independent of tracking
@@ -1518,6 +1543,11 @@ class Structure(SarcAsM):
             memory=memory,
             min_track_length=min_track_length,
             max_gap_interpolation=max_gap_interpolation,
+            merge_tracks=merge_tracks,
+            merge_max_disp_along_px=merge_max_disp_along_px,
+            merge_max_disp_perp_px=merge_max_disp_perp_px,
+            merge_ori_tol_deg=merge_ori_tol_deg,
+            merge_slen_tol_um=merge_slen_tol_um,
             compute_motion_field=compute_motion_field,
             store_flow_fields=store_flow_fields,
         )
@@ -1532,6 +1562,7 @@ class Structure(SarcAsM):
             'tracks_slen': out['tracks_slen'],
             'tracks_orientations': out['tracks_orientations'],
             'tracks_snapped': out['tracks_snapped'],
+            'n_merges': out['n_merges'],
             'params.track_sarcomere_vectors.frames': list_frames,
             'params.track_sarcomere_vectors.threshold_mbands': threshold_mbands,
             'params.track_sarcomere_vectors.threshold_zbands': threshold_zbands,
@@ -1542,6 +1573,11 @@ class Structure(SarcAsM):
             'params.track_sarcomere_vectors.memory': memory,
             'params.track_sarcomere_vectors.min_track_length': min_track_length,
             'params.track_sarcomere_vectors.max_gap_interpolation': max_gap_interpolation,
+            'params.track_sarcomere_vectors.merge_tracks': merge_tracks,
+            'params.track_sarcomere_vectors.merge_max_disp_along_px': merge_max_disp_along_px,
+            'params.track_sarcomere_vectors.merge_max_disp_perp_px': merge_max_disp_perp_px,
+            'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
+            'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
             'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
         }
         if compute_motion_field:
