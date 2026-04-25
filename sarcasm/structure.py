@@ -1409,6 +1409,7 @@ class Structure(SarcAsM):
         merge_max_disp_perp_px: float = 4.0,
         merge_ori_tol_deg: float = 45.0,
         merge_slen_tol_um: float = 0.30,
+        slen_lims: Tuple[float, float] = (1.0, 3.0),
         compute_motion_field: bool = True,
         store_flow_fields: bool = False,
     ) -> None:
@@ -1466,6 +1467,11 @@ class Structure(SarcAsM):
             Two fragments are only stitched if their seam-frame slens differ
             by at most this much. Strongest single guard against same-
             myofibril neighbour swaps.
+        slen_lims
+            Physiologically valid sarcomere-length range (μm). A merge is
+            rejected if either seam slen is finite and falls outside the
+            range. Same semantics as ``slen_lims`` in the LOI motion
+            analysis (see :class:`~sarcasm.motion.Motion`).
         compute_motion_field
             Sample flow at every detection position and decompose into
             along-sarcomere / perpendicular components (independent of tracking
@@ -1548,6 +1554,7 @@ class Structure(SarcAsM):
             merge_max_disp_perp_px=merge_max_disp_perp_px,
             merge_ori_tol_deg=merge_ori_tol_deg,
             merge_slen_tol_um=merge_slen_tol_um,
+            slen_lims=slen_lims,
             compute_motion_field=compute_motion_field,
             store_flow_fields=store_flow_fields,
         )
@@ -1578,6 +1585,7 @@ class Structure(SarcAsM):
             'params.track_sarcomere_vectors.merge_max_disp_perp_px': merge_max_disp_perp_px,
             'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
             'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
+            'params.track_sarcomere_vectors.slen_lims': list(slen_lims),
             'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
         }
         if compute_motion_field:

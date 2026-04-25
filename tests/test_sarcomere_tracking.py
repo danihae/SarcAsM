@@ -449,6 +449,41 @@ def test_merge_respects_slen_gate():
     assert out['n_merges'] == 0
 
 
+def test_merge_respects_slen_lims():
+    """A fragment whose seam slen falls outside slen_lims must NOT be stitched.
+
+    Fragments at the same position with slens of 1.7 μm (in range) and
+    3.5 μm (above the default ``slen_lims=(1.0, 3.0)``) should be left as
+    two separate tracks even though every other gate would pass.
+    """
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    pos_px_all = [pos, pos, empty, pos, pos, pos]
+    slen_in = np.array([1.7], np.float32)
+    slen_out = np.array([3.5], np.float32)  # > slen_lims[1]=3.0
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [slen_in, slen_in, np.zeros(0, np.float32),
+                slen_out, slen_out, slen_out]
+    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
+               ori_one, ori_one, ori_one]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=0, min_track_length=2,
+        # Loosen slen continuity so only slen_lims can reject; otherwise
+        # the |Δslen|=1.8 would also fail merge_slen_tol_um.
+        merge_slen_tol_um=5.0,
+        slen_lims=(1.0, 3.0),
+        merge_tracks=True,
+    )
+    assert out['n_tracks'] == 2
+    assert out['n_merges'] == 0
+
+
 def test_merge_chains_multi_hop():
     """Three respawned fragments on the same trajectory should chain into one."""
     T = 10

@@ -392,6 +392,7 @@ def _merge_short_tracks(
     merge_max_disp_perp_px: float,
     merge_ori_tol_deg: float,
     merge_slen_tol_um: float,
+    slen_lims: Tuple[float, float],
     return_log: bool = False,
 ) -> Tuple[int, Optional[List[Dict[str, float]]]]:
     """Stitch fragmented trajectories produced by the per-frame snap loop.
@@ -410,7 +411,9 @@ def _merge_short_tracks(
       ``perp²`` ≤ ``merge_max_disp_perp_px² * gap`` against the
       flow-predicted tail (NOT the snapshot at ``t_last(A)``).
     - orientation: axial similarity vs ``merge_ori_tol_deg``.
-    - sarcomere length: ``|Δslen| <= merge_slen_tol_um`` (NaN passes).
+    - sarcomere length: ``|Δslen| <= merge_slen_tol_um`` (NaN passes), and
+      both finite seam slens must lie inside ``slen_lims`` (μm) — same
+      sanity range used by the LOI motion analysis.
 
     Modifies the SoA arrays in place. Consumed B tracks have ``tracks_snapped``
     zeroed and positions set to NaN, so the existing ``min_track_length``
@@ -430,6 +433,8 @@ def _merge_short_tracks(
     # vectors); compare directly without a px conversion.
     slen_tol_um = float(merge_slen_tol_um)
     slen_tol2 = slen_tol_um * slen_tol_um
+    slen_lo = float(slen_lims[0])
+    slen_hi = float(slen_lims[1])
 
     # Per-track terminal state (only for eligible tracks).
     snap = tracks_snapped[:n_tracks]
@@ -537,6 +542,13 @@ def _merge_short_tracks(
                     if perp_resid * perp_resid > gate_perp2:
                         continue
 
+                    # Slen sanity gate: finite seam slens must lie inside
+                    # the physiological range (NaN passes — no evidence).
+                    if np.isfinite(sa) and not (slen_lo <= sa <= slen_hi):
+                        continue
+                    if np.isfinite(sb) and not (slen_lo <= sb <= slen_hi):
+                        continue
+
                     # Slen continuity gate (NaN on either side passes).
                     if np.isfinite(sa) and np.isfinite(sb):
                         dslen = sb - sa
@@ -636,6 +648,7 @@ def track_sarcomere_vectors(
     merge_max_disp_perp_px: float = 4.0,
     merge_ori_tol_deg: float = 45.0,
     merge_slen_tol_um: float = 0.30,
+    slen_lims: Tuple[float, float] = (1.0, 3.0),
     return_merge_log: bool = False,
     compute_motion_field: bool = True,
     store_flow_fields: bool = False,
@@ -939,6 +952,7 @@ def track_sarcomere_vectors(
             merge_max_disp_perp_px=merge_max_disp_perp_px,
             merge_ori_tol_deg=merge_ori_tol_deg,
             merge_slen_tol_um=merge_slen_tol_um,
+            slen_lims=slen_lims,
             return_log=return_merge_log,
         )
         logger.info(f"Merged {n_merges} fragment pairs.")
