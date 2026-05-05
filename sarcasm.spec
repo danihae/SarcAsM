@@ -56,6 +56,7 @@ lark_data = collect_data_files('lark')
 
 model_data = [
     ('sarcasm/models', 'sarcasm/models'),
+    ('sarcasm_app/icons', 'sarcasm_app/icons'),
 ]
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,48 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# ---------------------------------------------------------------------------
+# Replace bundled VC++ runtime DLLs with the System32 copies.
+#
+# PyInstaller pulls vcruntime140.dll / msvcp140.dll / vcruntime140_1.dll from
+# the uv-managed Python distribution (version 14.26, VS2019 era). PyTorch 2.x
+# is built against VS2022 (14.4x) and calls msvcp140 symbols that didn't exist
+# in 14.26, so c10.dll fails DllMain with WinError 1114
+# ("DLL initialization routine failed") when it loads.
+#
+# We can't just delete the bundled copies: scikit-learn's _distributor_init.py
+# does a hard ctypes.WinDLL on the exact path _internal/sklearn/.libs/msvcp140.dll,
+# and PyInstaller's bootloader adds `_internal/<pkg>/.libs/` directories to the
+# DLL search path, so that old copy was also being picked up by torch's c10
+# during its LoadLibraryEx call. Fix is to swap the source for each VC++
+# runtime entry in a.binaries to the System32 copy on the build machine — the
+# layout stays the same, just the file content is the newer (forward-compatible)
+# version that satisfies both torch and sklearn.
+#
+# This requires the build VM to have the VC++ 2022 redistributable installed,
+# which is true for the standard Microsoft Python install, GitHub Actions
+# windows-latest, and any system that can already import torch.
+# ---------------------------------------------------------------------------
+if sys.platform == 'win32':
+    _vcrt_names = {
+        'vcruntime140.dll', 'vcruntime140_1.dll',
+        'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll',
+        'concrt140.dll',
+    }
+    _system32 = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')
+
+    def _retarget_vcrt(entry):
+        dest, src, typ = entry
+        name = os.path.basename(dest).lower()
+        if name in _vcrt_names:
+            sys32_src = os.path.join(_system32, os.path.basename(dest))
+            if os.path.isfile(sys32_src):
+                return (dest, sys32_src, typ)
+        return entry
+
+    a.binaries = [_retarget_vcrt(b) for b in a.binaries]
+    a.datas = [_retarget_vcrt(d) for d in a.datas]
 
 pyz = PYZ(a.pure)
 
