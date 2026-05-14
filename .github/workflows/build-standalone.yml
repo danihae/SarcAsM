@@ -119,52 +119,55 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-test') }}
 
-  build-windows-cuda128:
-    name: Windows (CUDA 12.8)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Install dependencies (CUDA 12.8 torch)
-        shell: pwsh
-        run: |
-          uv venv --python 3.12
-          uv pip install `
-            --index-strategy unsafe-best-match `
-            --extra-index-url https://download.pytorch.org/whl/cu128 `
-            -e ".[app]"
-
-      - name: Sanity-check torch is the CUDA build
-        shell: pwsh
-        run: |
-          .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); assert '+cu' in torch.__version__, f'expected CUDA build, got {torch.__version__}'"
-
-      - name: Build standalone bundle
-        shell: pwsh
-        run: |
-          .\.venv\Scripts\Activate.ps1
-          pyinstaller sarcasm.spec --noconfirm
-
-      - name: Zip bundle directory
-        shell: pwsh
-        run: |
-          $dir = Get-ChildItem dist -Directory | Where-Object { $_.Name -match '^SarcAsM-v' } | Select-Object -First 1
-          $zip = "dist\$($dir.Name)-windows-cuda128.zip"
-          Compress-Archive -Path "$($dir.FullName)\*" -DestinationPath $zip -CompressionLevel Optimal
-          Write-Output "Created $zip"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sarcasm-windows-cuda128
-          path: dist/SarcAsM-v*-windows-cuda128.zip
-
-      - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/SarcAsM-v*-windows-cuda128.zip
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-test') }}
+  # CUDA build disabled: PyTorch + CUDA 12.8 produces a ~3 GB zip, which exceeds
+  # GitHub Releases' 2 GB per-asset limit. Re-enable once we pick a host (HF
+  # dataset repo, Zenodo) or prune CUDA DLLs in the PyInstaller spec.
+  # build-windows-cuda128:
+  #   name: Windows (CUDA 12.8)
+  #   runs-on: windows-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Install uv
+  #       uses: astral-sh/setup-uv@v3
+  #
+  #     - name: Install dependencies (CUDA 12.8 torch)
+  #       shell: pwsh
+  #       run: |
+  #         uv venv --python 3.12
+  #         uv pip install `
+  #           --index-strategy unsafe-best-match `
+  #           --extra-index-url https://download.pytorch.org/whl/cu128 `
+  #           -e ".[app]"
+  #
+  #     - name: Sanity-check torch is the CUDA build
+  #       shell: pwsh
+  #       run: |
+  #         .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); assert '+cu' in torch.__version__, f'expected CUDA build, got {torch.__version__}'"
+  #
+  #     - name: Build standalone bundle
+  #       shell: pwsh
+  #       run: |
+  #         .\.venv\Scripts\Activate.ps1
+  #         pyinstaller sarcasm.spec --noconfirm
+  #
+  #     - name: Zip bundle directory
+  #       shell: pwsh
+  #       run: |
+  #         $dir = Get-ChildItem dist -Directory | Where-Object { $_.Name -match '^SarcAsM-v' } | Select-Object -First 1
+  #         $zip = "dist\$($dir.Name)-windows-cuda128.zip"
+  #         Compress-Archive -Path "$($dir.FullName)\*" -DestinationPath $zip -CompressionLevel Optimal
+  #         Write-Output "Created $zip"
+  #
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: sarcasm-windows-cuda128
+  #         path: dist/SarcAsM-v*-windows-cuda128.zip
+  #
+  #     - name: Upload to GitHub Release
+  #       if: startsWith(github.ref, 'refs/tags/v')
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: dist/SarcAsM-v*-windows-cuda128.zip
+  #         draft: false
+  #         prerelease: ${{ contains(github.ref_name, '-test') }}
