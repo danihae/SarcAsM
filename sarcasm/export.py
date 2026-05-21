@@ -102,7 +102,7 @@ class MultiStructureAnalysis:
         -------
         None
         """
-        self.data.to_pickle(self.folder + 'data_structure.pd')
+        self.data.to_pickle(self.folder + 'data_structure.pk')
 
     def load_data(self):
         """
@@ -117,8 +117,8 @@ class MultiStructureAnalysis:
         FileExistsError
             If the data file does not exist in the specified folder.
         """
-        if os.path.exists(self.folder + 'data_structure.pd'):
-            self.data = pd.read_pickle(self.folder + 'data_structure.pd')
+        if os.path.exists(self.folder + 'data_structure.pk'):
+            self.data = pd.read_pickle(self.folder + 'data_structure.pk')
         else:
             raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                   'Set load_data=False.')
@@ -217,7 +217,7 @@ class MultiLOIAnalysis:
         -------
         None
         """
-        self.data.to_pickle(self.folder + 'data_motion.pd')
+        self.data.to_pickle(self.folder + 'data_motion.pk')
 
     def load_data(self):
         """
@@ -232,8 +232,8 @@ class MultiLOIAnalysis:
         FileExistsError
             If the data file does not exist in the specified folder.
         """
-        if os.path.exists(self.folder + 'data_motion.pd'):
-            self.data = pd.read_pickle(self.folder + 'data_motion.pd')
+        if os.path.exists(self.folder + 'data_motion.pk'):
+            self.data = pd.read_pickle(self.folder + 'data_motion.pk')
         else:
             raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                   'Set load_data=False.')
