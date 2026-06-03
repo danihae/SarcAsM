@@ -79,6 +79,49 @@ class Motion(SarcAsM):
                 return
             self.__create_loi_data()
 
+    @classmethod
+    def from_loi_data(cls, file_path: str, loi_name: str, loi_data: dict,
+                      auto_save: bool = False, frametime: Union[float, None] = None) -> "Motion":
+        """Build a :class:`Motion` from pre-computed ``loi_data`` without reading a
+        kymograph / LOI profile file.
+
+        Used to wrap a *synthesized* myofibril chain (an ordered ``z_pos`` / ``slen``
+        built from 2D tracks, see
+        :meth:`sarcasm.structure.Structure.get_track_motion`) so the full LOI
+        analysis and every existing LOI plot work unchanged. ``loi_data`` is marked
+        ``synthetic=True``. Nothing is written to disk unless ``auto_save=True``.
+
+        Parameters
+        ----------
+        file_path : str
+            Path of the cardiomyocyte tif-movie (for metadata).
+        loi_name : str
+            Logical name for this (virtual) LOI.
+        loi_data : dict
+            Must contain at least ``z_pos`` ``(n_z, T)``, ``slen`` ``(n_z-1, T)`` and
+            ``time`` ``(T,)``.
+        auto_save : bool, optional
+            If True, create the LOI folder and persist ``{loi_name}_loi_data.json``.
+            Default False (purely in-memory view).
+        frametime : float or None, optional
+            Frame time (s) override, forwarded to the metadata loader. Needed when
+            the movie has no embedded frametime (e.g. high-speed single-cell tifs).
+        """
+        obj = cls.__new__(cls)
+        SarcAsM.__init__(obj, file_path, frametime=frametime)
+        assert obj.metadata.frametime is not None, (
+            "frametime is not defined in metadata; pass frametime=... to from_loi_data")
+        obj.loi_data = dict(loi_data)
+        obj.loi_data.setdefault('synthetic', True)
+        obj.loi_name = Motion.get_loi_name_from_file_name(loi_name)
+        obj.loi_file = os.path.join(os.path.splitext(file_path)[0], loi_name)
+        obj.loi_folder = os.path.join(obj.base_dir, obj.loi_name)
+        obj.auto_save = auto_save
+        if auto_save:
+            os.makedirs(obj.loi_folder, exist_ok=True)
+            obj.store_loi_data()
+        return obj
+
     def __create_loi_data(self):
         # read file with profiles and get time array
         x_pos, y_int, y_int_raw, line, time, line_width = self.read_profile_data()

@@ -18,20 +18,22 @@ from . import z_band_analysis
 from . import sarcomere_vectors
 from . import myofibril_analysis
 from . import domain_clustering
-from . import domain_motion
+from . import contraction_analysis
 from . import kymograph
 from . import detection
 from . import loi_detection
 from . import sarcomere_tracking
+from . import grouped_motion
 
 __all__ = [
     'z_band_analysis',
     'sarcomere_vectors',
     'myofibril_analysis',
     'domain_clustering',
-    'domain_motion',
+    'contraction_analysis',
     'kymograph',
     'detection',
     'loi_detection',
     'sarcomere_tracking',
+    'grouped_motion',
 ]

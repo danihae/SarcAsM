@@ -11,11 +11,18 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Domain motion analysis module.
+"""Contraction-cycle analysis engine.
 
-This module provides functions for analyzing sarcomere contraction dynamics
-within sarcomere domains over time, computing per-domain summary statistics
-and contraction parameters.
+The grouping-agnostic core that turns an aggregated ``(n_groups, T)`` sarcomere-
+length matrix into contraction cycles (via ContractionNet) and per-group
+contraction parameters (beating rate, amplitude, velocity, time-to-peak, …).
+
+It operates on already-aggregated per-group signals, NOT on individual tracks
+(that aggregation is :mod:`sarcasm.structure_modules.grouped_motion`) and is not
+domain-specific — it is the shared engine behind every grouping kind (pool,
+m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`, as
+well as the deprecated mask-based :meth:`Structure.analyze_domain_motion`. The
+one genuinely domain-specific helper here is :func:`compute_domain_timeseries`.
 """
 
 import logging
@@ -119,7 +126,7 @@ def compute_domain_timeseries(
     }
 
 
-def detect_domain_contractions(
+def detect_contractions(
     domain_slen_timeseries: np.ndarray,
     frametime: float,
     model_path: str,
@@ -128,9 +135,17 @@ def detect_domain_contractions(
     merge_time_max: float = 0.05,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
+    group_label: str = "Domain",
+    id_offset: int = 0,
 ) -> Dict[str, np.ndarray]:
     """
     Detect contraction cycles from domain-averaged sarcomere length time-series using ContractionNet.
+
+    ``group_label`` / ``id_offset`` affect only log messages: each row ``i`` is
+    named ``f"{group_label} {i + id_offset}"`` so the shared engine matches the
+    numbering the caller uses (0-based group id for most kinds; 1-based mask
+    label for domains, where group id = mask label - 1). They do not affect any
+    computation.
     
     Uses the ContractionNet neural network to predict contraction states from the
     mean sarcomere length signal of each domain, then applies morphological operations
@@ -185,7 +200,7 @@ def detect_domain_contractions(
         # Check if domain has enough valid data
         valid_fraction = np.sum(~np.isnan(slen_timeseries)) / n_frames
         if valid_fraction < min_valid_frames:
-            logger.debug(f"Domain {domain_idx + 1} has insufficient valid data ({valid_fraction:.1%}), skipping.")
+            logger.debug(f"{group_label} {domain_idx + id_offset} has insufficient valid data ({valid_fraction:.1%}), skipping.")
             continue
         
         # Interpolate NaN values for prediction
@@ -199,7 +214,7 @@ def detect_domain_contractions(
             contr_pred = predict_contractions(slen_interp, model_path)
             contr = contr_pred[0] > threshold
         except Exception as e:
-            logger.warning(f"ContractionNet prediction failed for domain {domain_idx + 1}: {e}")
+            logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {domain_idx + id_offset}: {e}")
             continue
         
         # Apply morphological operations to clean up predictions
@@ -224,7 +239,7 @@ def detect_domain_contractions(
                 domain_beating_rate[domain_idx] = 1 / np.mean(inter_beat_intervals)
                 domain_beating_rate_var[domain_idx] = np.std(inter_beat_intervals)
         else:
-            logger.warning(f"Domain {domain_idx + 1}: Only {n_contr} contraction cycle(s) detected. "
+            logger.warning(f"{group_label} {domain_idx + id_offset}: Only {n_contr} contraction cycle(s) detected. "
                           f"Cannot compute beating rate (requires >= 2 cycles).")
     
     return {
@@ -236,7 +251,7 @@ def detect_domain_contractions(
     }
 
 
-def analyze_domain_contraction_parameters(
+def analyze_contraction_parameters(
     domain_slen_timeseries: np.ndarray,
     domain_labels_contr: np.ndarray,
     domain_n_contr: np.ndarray,

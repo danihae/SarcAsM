@@ -32,6 +32,12 @@ from sarcasm.structure import Structure
 from sarcasm.structure_modules import domain_clustering, myofibril_analysis
 from sarcasm.utils import Utils
 
+# Canonical axis labels (kept consistent with the symbols used across the
+# package and the feature dictionary: SL = sarcomere length, ΔSL = its change).
+_LABEL_TIME = 'Time [s]'
+_LABEL_SL = 'Sarcomere length SL [µm]'
+_LABEL_DELTA_SL = r'$\Delta$SL [µm]'
+
 
 class Plots:
     """
@@ -1331,8 +1337,8 @@ class Plots:
         PlotUtils.polish_xticks(ax, 2, 1)
 
     @staticmethod
-    def plot_delta_slen(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
-                        n_start=1, show_contr=True):
+    def _plot_delta_slen_loi(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
+                             n_start=1, show_contr=True):
         """
         Plots the change in sarcomere length over time for a motion object.
 
@@ -1359,7 +1365,7 @@ class Plots:
         delta_slen = motion_obj.loi_data['delta_slen']
         list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
         for i, y in enumerate(list_y):
-            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - 0.02))
+            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
             ax_i.plot(motion_obj.loi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
             ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
             if show_contr:
@@ -1588,7 +1594,7 @@ class Plots:
             if domain_idx >= n_domains:
                 continue
 
-            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - 0.02))
+            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
             ax_i.plot(time, slen_timeseries[domain_idx], c=cm[domain_idx], lw=0.8)
             ax_i.axhline(np.nanmean(slen_timeseries[domain_idx]), linewidth=0.5, linestyle=':', c='k')
 
@@ -1802,3 +1808,509 @@ class Plots:
 
         if save_name is not None:
             fig_events.savefig(save_name)
+
+    # ------------------------------------------------------------------
+    # 2D sarcomere tracking + grouped motion (track_sarcomere_vectors ->
+    # group_tracks -> analyze_track_motion). Additive; existing plots unchanged.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def plot_tracks(ax: Axes, sarc_obj: Structure, frame: int = 0, color_by: str = 'coverage',
+                    cmap: str = 'viridis', s: float = 4, only_snapped: bool = True,
+                    show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
+                    scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
+        """Scatter the tracked sarcomere centres at one frame, coloured per track.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes to draw on.
+        sarc_obj : Structure
+            Structure with :meth:`Structure.track_sarcomere_vectors` results.
+        frame : int, optional
+            Movie frame to draw. Default 0.
+        color_by : {'coverage', 'slen', 'group'}, optional
+            Per-track colour: snap coverage, sarcomere length at this frame, or
+            ``track_group_id`` (requires :meth:`Structure.group_tracks`). Default 'coverage'.
+        cmap : str, optional
+            Colormap. Default 'viridis'.
+        s : float, optional
+            Marker size. Default 4.
+        only_snapped : bool, optional
+            Only draw tracks that actually snapped at this frame (vs flow-predicted). Default True.
+        show_image, cmap_z_bands, alpha_z_bands, scalebar, colorbar, title
+            Background / styling, matching the other Structure plots.
+        """
+        if 'tracks_positions_px' not in sarc_obj.data:
+            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+        n_tracks = int(sarc_obj.data.get('n_tracks', 0))
+        t = sarc_obj._tracked_frame_index(frame)
+
+        pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)
+        snapped = np.asarray(sarc_obj.data['tracks_snapped']).reshape(n_tracks, -1).astype(bool)
+        yx = pos[:, t]  # (n_tracks, 2)
+        valid = np.isfinite(yx[:, 0]) & np.isfinite(yx[:, 1])
+        if only_snapped:
+            valid &= snapped[:, t]
+
+        if color_by == 'slen':
+            c = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[:, t]
+            clabel = 'Sarcomere length [µm]'
+        elif color_by == 'group':
+            if 'track_group_id' not in sarc_obj.data:
+                raise ValueError("color_by='group' requires group_tracks() first.")
+            c = np.asarray(sarc_obj.data['track_group_id']).reshape(-1).astype(float)
+            clabel = 'Group id'
+        else:  # coverage
+            length = np.asarray(sarc_obj.data['track_lengths'])
+            c = length / float(snapped.shape[1])
+            clabel = 'Track coverage'
+
+        if show_image:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        else:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+
+        sc = ax.scatter(yx[valid, 1], yx[valid, 0], c=c[valid], cmap=cmap, s=s, edgecolors='none')
+        if colorbar:
+            cb = ax.figure.colorbar(sc, ax=ax, fraction=0.035, pad=0.02)
+            cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+    @staticmethod
+    def plot_track_groups(ax: Axes, sarc_obj: Structure, frame: int = 0, cmap: str = 'gist_rainbow',
+                          s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
+                          show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
+                          scalebar: bool = True, title: Optional[str] = None):
+        """QC view of a track grouping: colour each tracked centre by its group.
+
+        Lets a user eyeball the partition (and the tracks dropped by
+        ``min_coverage``, drawn in grey) BEFORE running the expensive
+        :meth:`Structure.analyze_track_motion`. Prerequisite:
+        :meth:`Structure.group_tracks`.
+        """
+        if 'track_group_id' not in sarc_obj.data:
+            raise ValueError('No track grouping found. Run group_tracks(...) first.')
+        n_tracks = int(sarc_obj.data.get('n_tracks', 0))
+        t = sarc_obj._tracked_frame_index(frame)
+        n_groups = int(sarc_obj.data.get('n_groups', 0))
+
+        pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)
+        gid = np.asarray(sarc_obj.data['track_group_id']).reshape(-1)
+        yx = pos[:, t]
+        finite = np.isfinite(yx[:, 0]) & np.isfinite(yx[:, 1])
+
+        if show_image:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        else:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+
+        if show_dropped:
+            drop = finite & (gid < 0)
+            ax.scatter(yx[drop, 1], yx[drop, 0], c=dropped_color, s=s * 0.6, edgecolors='none', label='dropped')
+
+        assigned = finite & (gid >= 0)
+        cm = plt.get_cmap(cmap)
+        colors = cm(np.linspace(0, 1, max(n_groups, 1)))
+        ax.scatter(yx[assigned, 1], yx[assigned, 0], c=colors[gid[assigned]], s=s, edgecolors='none')
+
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([]); ax.set_yticks([])
+        kind = sarc_obj.data.get('group_kind', '')
+        ax.set_title(title if title is not None else f"Track groups ('{kind}', n={n_groups})",
+                     fontsize=PlotUtils.fontsize)
+
+    @staticmethod
+    def _equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
+        """Equilibrium (resting) sarcomere length per trace, Motion-class semantics.
+
+        ``equ = median(SL over frames where the contraction state is 0)`` — the
+        contraction intervals come from ContractionNet and the equilibrium is the
+        length wherever the trace is *not* contracting (see
+        :meth:`Motion.get_trajectories`). Falls back to the median over all frames
+        for a trace with no quiet frame. Accepts a 1D ``(T,)`` trace (returns a
+        scalar) or a 2D ``(k, T)`` stack (returns ``(k,)``)."""
+        slen = np.asarray(slen, dtype=float)
+        quiet = ~np.asarray(contr, dtype=bool)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            if slen.ndim == 1:
+                vals = slen[quiet]
+                if not np.any(np.isfinite(vals)):
+                    vals = slen
+                return float(np.nanmedian(vals)) if np.any(np.isfinite(vals)) else np.nan
+            equ = np.full(slen.shape[0], np.nan)
+            for i in range(slen.shape[0]):
+                vals = slen[i, quiet]
+                if not np.any(np.isfinite(vals)):
+                    vals = slen[i]
+                if np.any(np.isfinite(vals)):
+                    equ[i] = np.nanmedian(vals)
+            return equ
+
+    @staticmethod
+    def _plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, ylabel,
+                            t_lim, y_lim, n_rows, show_contr, hline='equ'):
+        """Stacked per-group time-series (shared by plot_slen_mean / plot_delta_slen_mean).
+
+        ``hline`` controls the dotted reference line per row: ``'equ'`` = the
+        equilibrium length (median over the non-contracting frames), ``'zero'`` =
+        the ΔSL=0 line (which *is* the equilibrium in delta space), ``None`` = no line.
+        """
+        matrix = np.asarray(matrix, dtype=float)
+        n_groups, n_frames = matrix.shape
+        time = np.arange(n_frames) * sarc_obj.metadata.frametime
+        if n_rows is None:
+            n_rows = n_groups
+        n_rows = min(n_rows, n_groups)
+        if n_rows == 0:
+            ax.text(0.5, 0.5, 'No groups', ha='center', va='center', transform=ax.transAxes)
+            return
+        y_range = y_lim[1] - y_lim[0]
+        y_step = y_range / 4
+        yticks = [y_lim[0] + y_step, y_lim[0] + 2 * y_step, y_lim[0] + 3 * y_step]
+        cm = plt.cm.gist_rainbow(np.linspace(0, 1, n_groups))
+        list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
+        for i, y in enumerate(list_y):
+            g = n_rows - 1 - i
+            if g >= n_groups:
+                continue
+            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
+            ax_i.plot(time, matrix[g], c=cm[g], lw=0.8)
+            if hline == 'zero':
+                ax_i.axhline(0, linewidth=0.5, linestyle=':', c='k')
+            elif hline == 'equ':
+                c = group_contr[g] if group_contr is not None else np.zeros(n_frames, dtype=bool)
+                equ_g = Plots._equilibrium_over_quiet(matrix[g], c)
+                if np.isfinite(equ_g):
+                    ax_i.axhline(equ_g, linewidth=0.5, linestyle=':', c='k')
+            if show_contr and group_contr is not None:
+                ax_i.fill_between(time, y_lim[0], y_lim[1], where=group_contr[g], color='lavender', alpha=0.7)
+            if i > 0:
+                ax_i.set_xticks([])
+            else:
+                PlotUtils.polish_xticks(ax_i, 2, 1)
+            ax_i.set_ylim(y_lim)
+            ax_i.set_xlim(t_lim)
+            ax_i.set_yticks(yticks)
+            ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
+            ax_i.text(0.02, 0.85, f'{kind[0].upper()}{g}', transform=ax_i.transAxes,
+                      fontsize='x-small', fontweight='bold', color=cm[g])
+        ax.set_xlabel(_LABEL_TIME)
+        ax.set_ylabel(ylabel)
+        ax.spines['bottom'].set_color('w')
+        ax.spines['top'].set_color('w')
+        ax.xaxis.label.set_color('k')
+        ax.tick_params(axis='x', colors='w')
+        ax.tick_params(axis='y', colors='w')
+
+    @staticmethod
+    def _resolve_kind(sarc_obj, kind):
+        sarc_obj._assert_track_motion_fresh()
+        if kind is None:
+            kind = sarc_obj.data.get('track_motion_kind')
+        if f'{kind}_slen_timeseries' not in sarc_obj.data:
+            raise ValueError(f"No '{kind}' track-motion results found. "
+                             f"Run analyze_track_motion(by='{kind}') first.")
+        return kind
+
+    @staticmethod
+    def plot_slen_mean(ax: Axes, sarc_obj: Structure, kind: Optional[str] = None,
+                       t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
+                       n_rows: Optional[int] = None, show_contr: bool = True,
+                       use_median: bool = False):
+        """Stacked per-group MEAN sarcomere-length time-series from :meth:`Structure.analyze_track_motion`.
+
+        One row per group, each showing that group's aggregated (mean, or median if
+        ``use_median``) sarcomere length over time — the signal the contraction
+        engine analyses. For ``by='pool'`` this is a single whole-cell trace.
+        Renamed from ``plot_track_group_timeseries``; see :meth:`plot_slen` for the
+        individual member sarcomeres.
+
+        Parameters
+        ----------
+        kind : str, optional
+            Grouping prefix ('pool', 'mband', ...). Defaults to the last analyzed
+            grouping (``track_motion_kind``).
+        t_lim, y_lim, n_rows, show_contr, use_median
+            Same semantics as :meth:`plot_domain_timeseries`.
+        """
+        kind = Plots._resolve_kind(sarc_obj, kind)
+        key = f'{kind}_slen_median_timeseries' if use_median else f'{kind}_slen_timeseries'
+        matrix = np.asarray(sarc_obj.data[key])
+        group_contr = sarc_obj.data.get(f'{kind}_contr', None)
+        Plots._plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, _LABEL_SL,
+                                  t_lim, y_lim, n_rows, show_contr)
+
+    @staticmethod
+    def plot_delta_slen_mean(ax: Axes, sarc_obj: Structure, kind: Optional[str] = None,
+                             t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
+                             n_rows: Optional[int] = None, show_contr: bool = True,
+                             use_median: bool = False):
+        """Stacked per-group MEAN sarcomere-length *change* (ΔSL) time-series.
+
+        Like :meth:`plot_slen_mean` but plotting ΔSL(t) = SL(t) − equ, where the
+        equilibrium ``equ`` is the median group length over the non-contracting
+        frames (``<kind>_contr == 0``), matching the legacy LOI ``delta_slen``.
+        See :meth:`plot_delta_slen` for the individual member sarcomeres.
+        """
+        kind = Plots._resolve_kind(sarc_obj, kind)
+        key = f'{kind}_slen_median_timeseries' if use_median else f'{kind}_slen_timeseries'
+        slen_ts = np.asarray(sarc_obj.data[key], dtype=float)
+        contr = np.asarray(sarc_obj.data[f'{kind}_contr']) if f'{kind}_contr' in sarc_obj.data else None
+        delta = np.full_like(slen_ts, np.nan)
+        for g in range(slen_ts.shape[0]):
+            c = contr[g] if contr is not None else np.zeros(slen_ts.shape[1], dtype=bool)
+            delta[g] = slen_ts[g] - Plots._equilibrium_over_quiet(slen_ts[g], c)
+        Plots._plot_group_stacked(ax, sarc_obj, kind, delta, contr, _LABEL_DELTA_SL,
+                                  t_lim, y_lim, n_rows, show_contr, hline='zero')
+
+    @staticmethod
+    def _track_group_overlay(ax, sarc_obj, *, mode, group=0, kind=None,
+                             t_lim=(0, 12), y_lim=None, show_contr=True, show_mean=True,
+                             max_lines=300, color=None, mean_color='k'):
+        """Overlay the individual member sarcomeres of one track group + the group mean.
+
+        ``mode='slen'`` plots SL(t); ``mode='delta'`` plots ΔSL(t) = SL(t) − equ
+        (per-member equilibrium over the group's non-contracting frames). The bold
+        overlay is the group aggregate over *all* members; individual member lines
+        are subsampled (longest-coverage first) to ``max_lines`` for legibility.
+        """
+        kind = Plots._resolve_kind(sarc_obj, kind)
+        if y_lim is None:
+            y_lim = (-0.4, 0.4) if mode == 'delta' else (1.6, 2.2)
+        n_tracks = int(sarc_obj.data['n_tracks'])
+        n_groups = int(sarc_obj.data.get('n_groups', 0))
+        if not (0 <= group < max(n_groups, 1)):
+            raise ValueError(f'group {group} out of range [0, {n_groups}).')
+        gid = np.asarray(sarc_obj.data['track_group_id']).reshape(-1)
+        slen_tracks = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
+        T = slen_tracks.shape[1]
+        time = np.arange(T) * sarc_obj.metadata.frametime
+        agg = np.asarray(sarc_obj.data[f'{kind}_slen_timeseries'], dtype=float)[group]
+        contr = (np.asarray(sarc_obj.data[f'{kind}_contr'])[group]
+                 if f'{kind}_contr' in sarc_obj.data else np.zeros(T, dtype=bool))
+
+        members = np.flatnonzero(gid == group)
+        if members.size == 0:
+            ax.text(0.5, 0.5, 'No members', ha='center', va='center', transform=ax.transAxes)
+            return
+        n_total = members.size
+        if max_lines is not None and members.size > max_lines:
+            cov = np.isfinite(slen_tracks[members]).sum(axis=1)
+            members = members[np.argsort(cov)[::-1][:max_lines]]
+        n_shown = members.size
+        member_slen = slen_tracks[members]  # (k, T)
+
+        if mode == 'delta':
+            equ_m = Plots._equilibrium_over_quiet(member_slen, contr)
+            member_y = member_slen - equ_m[:, None]
+            mean_y = agg - Plots._equilibrium_over_quiet(agg, contr)
+            ylabel = _LABEL_DELTA_SL
+        else:
+            member_y = member_slen
+            mean_y = agg
+            ylabel = _LABEL_SL
+
+        if show_contr and contr.any():
+            ax.fill_between(time, y_lim[0], y_lim[1], where=contr, color='lavender', alpha=0.6)
+        col = color if color is not None else '0.6'
+        alpha = float(max(0.04, min(0.5, 30.0 / max(n_shown, 1))))
+        ax.plot(time, member_y.T, c=col, lw=0.4, alpha=alpha)
+        if show_mean:
+            ax.plot(time, mean_y, c=mean_color, lw=2, zorder=3)
+        if mode == 'delta':
+            ax.axhline(0, lw=0.8, ls=':', c='k')
+
+        ax.set_xlim(t_lim)
+        ax.set_ylim(y_lim)
+        ax.set_xlabel(_LABEL_TIME)
+        ax.set_ylabel(ylabel)
+        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_yticks(ax, 0.2, 0.1)
+        title = f"{kind} group {group} (n={n_total}"
+        title += f", showing {n_shown})" if n_shown < n_total else ")"
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+
+    @staticmethod
+    def _plot_slen_loi(ax, motion_obj: Motion, t_lim=(None, None), y_lim=(None, None),
+                       show_contr=True, show_mean=True, color=None, mean_color='k'):
+        """Legacy LOI overlay of individual sarcomere lengths + the average."""
+        time = motion_obj.loi_data['time']
+        slen = np.asarray(motion_obj.loi_data['slen'], dtype=float)
+        slen_avg = motion_obj.loi_data['slen_avg']
+        if show_contr:
+            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
+                                       motion_obj.loi_data['time_contr']):
+                ax.fill_betweenx([0, 1], [start_i, start_i], [start_i + time_i, start_i + time_i],
+                                 color='lavender',
+                                 transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
+        col = color if color is not None else '0.6'
+        alpha = float(max(0.04, min(0.5, 30.0 / max(len(slen), 1))))
+        ax.plot(time, slen.T, c=col, lw=0.4, alpha=alpha)
+        if show_mean:
+            ax.plot(time, slen_avg, c=mean_color, lw=2, zorder=3)
+        ax.set_xlim(t_lim if t_lim != (None, None) else (float(time.min()), float(time.max())))
+        ax.set_ylim(y_lim)
+        ax.set_xlabel(_LABEL_TIME)
+        ax.set_ylabel(_LABEL_SL)
+        PlotUtils.polish_xticks(ax, 2, 1)
+
+    @staticmethod
+    def plot_slen(ax: Axes, obj: Union[Structure, Motion], *, group: int = 0, kind: Optional[str] = None,
+                  t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
+                  show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
+                  color: Optional[str] = None, mean_color: str = 'k'):
+        """Individual sarcomere-length traces with the mean overlaid.
+
+        Polymorphic — pass either object:
+
+        * **Structure** (track grouping): overlays the member sarcomeres of one
+          track ``group`` (``kind`` defaults to the last analyzed grouping), with
+          the group aggregate drawn bold. Members are subsampled to ``max_lines``
+          (longest-coverage first) for legibility. Requires
+          :meth:`Structure.analyze_track_motion`.
+        * **Motion** (legacy LOI): overlays the per-sarcomere lengths along the LOI
+          plus the average (``t_lim``/``y_lim``/``show_contr``/``show_mean``/``color``/
+          ``mean_color`` apply; ``group``/``kind``/``max_lines`` are ignored).
+        """
+        if isinstance(obj, Motion):
+            return Plots._plot_slen_loi(ax, obj, t_lim=t_lim if t_lim != (0, 12) else (None, None),
+                                        y_lim=y_lim if y_lim != (1.6, 2.2) else (None, None),
+                                        show_contr=show_contr, show_mean=show_mean,
+                                        color=color, mean_color=mean_color)
+        return Plots._track_group_overlay(ax, obj, mode='slen', group=group, kind=kind,
+                                          t_lim=t_lim, y_lim=y_lim, show_contr=show_contr,
+                                          show_mean=show_mean, max_lines=max_lines,
+                                          color=color, mean_color=mean_color)
+
+    @staticmethod
+    def plot_delta_slen(ax: Axes, obj: Union[Structure, Motion], **kwargs):
+        """Individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
+
+        Polymorphic dispatch on ``obj``:
+
+        * **Structure** (track grouping): overlays member ΔSL(t) = SL(t) − equ for
+          one track ``group`` (``equ`` = each member's median length over the
+          group's non-contracting frames), with the group ΔSL drawn bold. Accepts
+          ``group``, ``kind``, ``t_lim``, ``y_lim``, ``show_contr``, ``show_mean``,
+          ``max_lines``, ``color``, ``mean_color``. Requires
+          :meth:`Structure.analyze_track_motion`.
+        * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view.
+          Accepts ``frame``, ``t_lim``, ``y_lim``, ``n_rows``, ``n_start``,
+          ``show_contr`` (unchanged behaviour).
+        """
+        if isinstance(obj, Motion):
+            return Plots._plot_delta_slen_loi(ax, obj, **kwargs)
+        return Plots._track_group_overlay(ax, obj, mode='delta', **kwargs)
+
+    @staticmethod
+    def plot_track_myofibrils(ax: Axes, sarc_obj: Structure, frame: int = 0,
+                              color_by: str = 'group', cmap: str = 'gist_rainbow',
+                              linewidth: float = 1.5, show_points: bool = True, markersize: float = 6,
+                              only_snapped: bool = False, show_image: bool = False,
+                              cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
+                              scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
+        """Draw each tracked myofibril (fibre) as a connected polyline over the image.
+
+        The tracker analogue of :meth:`plot_myofibril_lines`: each fibre's member
+        sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
+        line at ``frame``, so you can see where each analyzed fibre runs and its
+        shape. Requires a ``'myofibril'`` grouping
+        (:meth:`Structure.group_tracks` / :meth:`Structure.analyze_track_motion`
+        with ``by='myofibril'``).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes to draw on.
+        sarc_obj : Structure
+            Structure with a myofibril grouping.
+        frame : int, optional
+            Movie frame to draw. Default 0.
+        color_by : {'group', 'slen', 'beating_rate'}, optional
+            Per-fibre colour: fibre id, the fibre's median sarcomere length at this
+            frame, or its beating rate (requires ``analyze_track_motion(by='myofibril')``).
+            Default 'group'.
+        cmap : str, optional
+            Colormap. Default 'gist_rainbow'.
+        linewidth, show_points, markersize, only_snapped, show_image, cmap_z_bands,
+        alpha_z_bands, scalebar, colorbar, title
+            Styling / background, matching the other Structure plots.
+        """
+        if sarc_obj.data.get('group_kind') != 'myofibril':
+            raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "
+                             "Run group_tracks(by='myofibril') first.")
+        n_tracks = int(sarc_obj.data['n_tracks'])
+        t = sarc_obj._tracked_frame_index(frame)
+        n_groups = int(sarc_obj.data.get('n_groups', 0))
+
+        pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
+        gid = np.asarray(sarc_obj.data['track_group_id']).reshape(-1)
+        order = np.asarray(sarc_obj.data['track_group_order']).reshape(-1)
+        snapped = np.asarray(sarc_obj.data['tracks_snapped']).reshape(n_tracks, -1)[:, t].astype(bool)
+        slen_t = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[:, t]
+
+        # Per-fibre colour value.
+        metric = None
+        clabel = ''
+        if color_by == 'beating_rate':
+            metric = np.asarray(sarc_obj.data.get('myofibril_beating_rate', np.full(n_groups, np.nan)), dtype=float)
+            clabel = 'Beating rate [Hz]'
+        elif color_by == 'slen':
+            with np.errstate(invalid='ignore'):
+                metric = np.array([np.nanmedian(slen_t[gid == g]) if np.any(gid == g) else np.nan
+                                   for g in range(n_groups)])
+            clabel = 'Sarcomere length [µm]'
+
+        if show_image:
+            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        else:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+
+        cm = plt.get_cmap(cmap)
+        norm = None
+        if metric is not None and np.isfinite(metric).any():
+            finite = metric[np.isfinite(metric)]
+            norm = plt.Normalize(vmin=float(finite.min()), vmax=float(finite.max()))
+
+        for g in range(n_groups):
+            members = np.flatnonzero(gid == g)
+            if members.size < 2:
+                continue
+            members = members[np.argsort(order[members])]  # head -> tail
+            p = pos[members]
+            keep = np.isfinite(p[:, 0]) & np.isfinite(p[:, 1])
+            if only_snapped:
+                keep &= snapped[members]
+            if keep.sum() < 2:
+                continue
+            p = p[keep]
+            if metric is not None:
+                c = cm(norm(metric[g])) if (norm is not None and np.isfinite(metric[g])) else 'lightgrey'
+            else:
+                c = cm(g / max(n_groups - 1, 1))
+            ax.plot(p[:, 1], p[:, 0], '-', color=c, lw=linewidth, alpha=0.9)
+            if show_points:
+                ax.scatter(p[:, 1], p[:, 0], color=c, s=markersize, edgecolors='none', zorder=3)
+
+        if colorbar and norm is not None:
+            sm = plt.cm.ScalarMappable(norm=norm, cmap=cm)
+            sm.set_array([])
+            cb = ax.figure.colorbar(sm, ax=ax, fraction=0.035, pad=0.02)
+            cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
+                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(title if title is not None else f'Tracked myofibrils (n={n_groups})',
+                     fontsize=PlotUtils.fontsize)
