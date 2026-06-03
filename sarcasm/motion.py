@@ -248,7 +248,7 @@ class Motion(SarcAsMBase):
     def track_z_bands(self, search_range: float = 1, memory_tracking: int = 10, memory_interpol: int = 3,
                       t_range: Union[Tuple[int, int], None] = None, z_range: Union[Tuple[int, int], None] = None,
                       min_length: float = 1, filter_params: Tuple[int, int] = (13, 7),
-                      equilibrium_weight: float = 0.3, use_lap_tracker: bool = True):
+                      equilibrium_weight: float = 0.3):
         """
         Track peaks of intensity profile over time using LAP-based 1D tracking optimized for periodic motion
 
@@ -271,25 +271,19 @@ class Motion(SarcAsMBase):
         equilibrium_weight : float
             Weight factor (0-1) for equilibrium position prediction. Higher values make tracking 
             more stable by pulling peaks toward their expected equilibrium positions.
-        use_lap_tracker : bool
-            If True, use LAP-based tracker optimized for periodic 1D motion. If False, use basic nearest-neighbor.
         """
         params_dict = {'params.track_z_bands.search_range': search_range,
                        'params.track_z_bands.memory_tracking': memory_tracking,
                        'params.track_z_bands.memory_interpol': memory_interpol,
                        'params.track_z_bands.t_range': t_range,
                        'params.track_z_bands.z_range': z_range,
-                       'params.track_z_bands.equilibrium_weight': equilibrium_weight,
-                       'params.track_z_bands.use_lap_tracker': use_lap_tracker}
+                       'params.track_z_bands.equilibrium_weight': equilibrium_weight}
 
         self.loi_data.update(params_dict)
         peaks = self.loi_data['peaks'].copy()
 
         # Track z-bands using LAP-based algorithm optimized for periodic 1D motion
-        if use_lap_tracker:
-            z_pos = self._track_z_bands_lap(peaks, search_range, memory_tracking, equilibrium_weight)
-        else:
-            z_pos = self._track_z_bands_simple(peaks, search_range, memory_tracking)
+        z_pos = self._track_z_bands_lap(peaks, search_range, memory_tracking, equilibrium_weight)
 
         # interpolate gaps in trajectories
         z_pos = pd.DataFrame(z_pos)
@@ -517,92 +511,6 @@ class Motion(SarcAsMBase):
             costs[:, det_idx] = np.inf
         
         return row_ind, col_ind
-
-    def _track_z_bands_simple(self, peaks: List[np.ndarray], search_range: float, memory: int) -> np.ndarray:
-        """
-        Simple nearest-neighbor tracking as fallback.
-        
-        Parameters
-        ----------
-        peaks : List[np.ndarray]
-            List of peak positions for each frame
-        search_range : float
-            Maximum allowed distance for matching
-        memory : int
-            Number of frames to remember missing peaks
-            
-        Returns
-        -------
-        z_pos : np.ndarray
-            2D array of z-band trajectories
-        """
-        if len(peaks) == 0:
-            return np.array([])
-        
-        n_frames = len(peaks)
-        trajectories = []
-        
-        # Initialize with first frame
-        for peak in peaks[0]:
-            if not np.isnan(peak):
-                trajectories.append([peak])
-        
-        # Track through subsequent frames
-        for frame_idx in range(1, n_frames):
-            current_peaks = peaks[frame_idx]
-            current_peaks = current_peaks[~np.isnan(current_peaks)]
-            
-            # Extend all trajectories with NaN initially
-            for traj in trajectories:
-                traj.append(np.nan)
-            
-            if len(current_peaks) == 0:
-                continue
-            
-            # Match peaks to trajectories using nearest neighbor
-            available_peaks = list(current_peaks)
-            
-            for traj_idx, traj in enumerate(trajectories):
-                # Get last known position
-                last_pos = None
-                for pos in reversed(traj[:-1]):
-                    if not np.isnan(pos):
-                        last_pos = pos
-                        break
-                
-                if last_pos is None:
-                    continue
-                
-                # Find nearest peak
-                if len(available_peaks) > 0:
-                    distances = np.abs(np.array(available_peaks) - last_pos)
-                    min_idx = np.argmin(distances)
-                    
-                    if distances[min_idx] <= search_range:
-                        traj[-1] = available_peaks[min_idx]
-                        available_peaks.pop(min_idx)
-            
-            # Start new trajectories for unmatched peaks
-            for peak in available_peaks:
-                new_traj = [np.nan] * (frame_idx) + [peak]
-                trajectories.append(new_traj)
-        
-        # Convert to array
-        if len(trajectories) == 0:
-            return np.array([])
-        
-        max_len = max(len(traj) for traj in trajectories)
-        z_pos = np.full((len(trajectories), max_len), np.nan)
-        
-        for i, traj in enumerate(trajectories):
-            z_pos[i, :len(traj)] = traj
-        
-        # Sort by spatial position
-        mean_positions = np.nanmean(z_pos, axis=1)
-        sort_idx = np.argsort(mean_positions)
-        z_pos = z_pos[sort_idx, :]
-        
-        return z_pos
 
     def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
