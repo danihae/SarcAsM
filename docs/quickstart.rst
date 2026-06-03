@@ -38,7 +38,7 @@ More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
 Sarcomere motion analysis
 =========================
 
-More detailed instruction see :doc:`../notebooks/tutorial_motion_analysis`.
+More detailed instruction see :doc:`../notebooks/tutorial_sarcomere_tracking`.
 
 .. code-block:: python
 

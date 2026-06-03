@@ -80,7 +80,6 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
    :caption: Tutorials:
 
    ./notebooks/tutorial_structure_analysis
-   ./notebooks/tutorial_motion_analysis
    ./notebooks/tutorial_batch_analysis
    ./notebooks/tutorial_data_export
    ./notebooks/tutorial_data_visualization

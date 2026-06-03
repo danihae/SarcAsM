@@ -19,7 +19,6 @@ from . import sarcomere_vectors
 from . import myofibril_analysis
 from . import domain_clustering
 from . import contraction_analysis
-from . import kymograph
 from . import detection
 from . import loi_detection
 from . import sarcomere_tracking
@@ -31,7 +30,6 @@ __all__ = [
     'myofibril_analysis',
     'domain_clustering',
     'contraction_analysis',
-    'kymograph',
     'detection',
     'loi_detection',
     'sarcomere_tracking',

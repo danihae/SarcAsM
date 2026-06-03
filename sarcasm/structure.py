@@ -41,7 +41,6 @@ from sarcasm.structure_modules import (
     myofibril_analysis,
     domain_clustering,
     contraction_analysis,
-    kymograph,
     detection,
     loi_detection,
     sarcomere_tracking,
@@ -239,10 +238,6 @@ class SarcAsM(SarcAsMBase):
         # persist a migration / compatibility upgrade to the store
         if self.auto_save and getattr(self.data, "_dirty", None):
             self.store_structure_data()
-
-    def get_list_lois(self):
-        """Returns list of LOIs"""
-        return Utils.get_lois_of_file(self.file_path)
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
                           model_path: str = None, max_patch_size: Tuple[int, int] = (1024, 1024),
@@ -2010,7 +2005,7 @@ class SarcAsM(SarcAsMBase):
             the **curated** lines from :meth:`detect_lois` instead of all myofibril
             lines (the same quality-filtered/clustered subset you would place manual
             LOIs on — far fewer, cleaner fibre groups; run
-            ``detect_lois(frame=reference_frame, extract_profiles=False)`` first);
+            ``detect_lois(frame=reference_frame)`` first);
             ``'domain'`` = assign each track to the
             Leiden domain its ``reference_frame`` position falls in (requires
             :meth:`analyze_sarcomere_domains`; preserves the domain mask's label
@@ -2128,7 +2123,7 @@ class SarcAsM(SarcAsMBase):
                 if loi_lines is None or len(loi_lines) == 0:
                     raise ValueError(
                         'LOI lines not available. Run detect_lois first, e.g. '
-                        'detect_lois(frame=reference_frame, extract_profiles=False).')
+                        'detect_lois(frame=reference_frame).')
                 lines_px = [np.asarray(l, dtype=float).reshape(-1, 2) for l in loi_lines]
                 pos_px_ref = np.asarray(self.data['tracks_positions_px'],
                                         dtype=float).reshape(n_tracks, T, 2)[:, rf_idx]
@@ -2684,59 +2679,6 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def create_loi_data(self, line: np.ndarray, linewidth: float = 0.65, order: int = 0,
-                        export_raw: bool = False) -> None:
-        """
-        Extract intensity kymograph along LOI and create LOI file from line.
-
-        Parameters
-        ----------
-        line : np.ndarray
-            Line start and end coordinates ((start_x, start_y), (end_x, end_y))
-            or list of segments [(x0, y0), (x1, y1), (x2, y2), ...]
-        linewidth : float, optional
-            Width of the scan in µm, perpendicular to the line. Defaults to 0.65.
-        order : int, optional
-            The order of the spline interpolation, default is 0 if image.dtype is bool and 1 otherwise.
-            The order has to be in the range 0-5. See `skimage.transform.warp` for details. Defaults to 0.
-        export_raw : bool, optional
-            If True, intensity kymograph along LOI from raw microscopy image is additionally stored. Defaults to False.
-        """
-        if self.metadata.pixelsize is None:
-            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
-        if os.path.exists(self.file_zbands_fast_movie):
-            file_z_bands = self.file_zbands_fast_movie
-        else:
-            file_z_bands = self.file_zbands
-        imgs_sarcomeres = tifffile.imread(file_z_bands)
-        profiles = kymograph.kymograph_movie(imgs_sarcomeres, line, order=order,
-                                        linewidth=int(linewidth / self.metadata.pixelsize))
-        profiles = np.asarray(profiles)
-        if export_raw:
-            imgs_raw = self.image
-            profiles_raw = kymograph.kymograph_movie(imgs_raw, line, order=order,
-                                                linewidth=int(linewidth / self.metadata.pixelsize))
-        else:
-            profiles_raw = None
-
-        # length of line
-        def __calculate_segmented_line_length(line):
-            # Ensure line is a proper numeric numpy array
-            line = np.asarray(line, dtype=np.float64)
-            diffs = np.diff(line, axis=0)
-            lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
-            return np.sum(lengths)
-
-        length = __calculate_segmented_line_length(line) * self.metadata.pixelsize
-
-        loi_data = {'profiles': profiles, 'profiles_raw': profiles_raw,
-                    'line': line, 'linewidth': linewidth, 'length': length}
-        for key, value in loi_data.items():
-            loi_data[key] = np.asarray(value)
-        save_name = os.path.join(self.base_dir,
-                                 f'{line[0][0]}_{line[0][1]}_{line[-1][0]}_{line[-1][1]}_{linewidth}_loi.json')
-        IOUtils.json_serialize(loi_data, save_name)
-
     def detect_lois(self, frame: int = 0, 
                     n_lois: int = 4, 
                     ratio_seeds: float = 0.1, 
@@ -2752,18 +2694,16 @@ class SarcAsM(SarcAsMBase):
                     midline_std_length_lims: Tuple[float, float] = (0, 50),
                     midline_min_length_lims: Tuple[float, float] = (0, 50), 
                     distance_threshold_lois: float = 40,
-                    linkage: str = 'single', 
-                    linewidth: float = 0.65,
-                    order: int = 0,
-                    export_raw: bool = False,
-                    extract_profiles: bool = True
+                    linkage: str = 'single',
                     ) -> None:
         """
-        Detects Regions of Interest (LOIs) for tracking sarcomere Z-band motion and creates kymographs.
+        Detect lines of interest (LOIs) — curated sarcomere/myofibril lines.
 
-        This method integrates several steps: growing LOIs based on seed vectors, filtering LOIs based on
-        specified criteria, clustering LOIs, fitting lines to LOI clusters, and (optionally) extracting
-        intensity profiles to generate kymographs.
+        Grows candidate lines from seed vectors, filters them by geometric and
+        morphological criteria, clusters them, and selects one line per cluster
+        (or fitted / random lines). The selected lines are stored as
+        ``self.data['loi_data']['loi_lines']`` and consumed by :meth:`group_tracks`
+        with ``by='loi'`` to group full-field tracks along the curated fibres.
 
         Parameters
         ----------
@@ -2804,20 +2744,6 @@ class SarcAsM(SarcAsMBase):
             Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
         linkage : str
             Linkage criterion for clustering ('complete', 'average', 'single').
-        linewidth : float
-            Width of the scan line (in µm), perpendicular to the LOIs.
-        order : int
-            Order of spline interpolation for transforming LOIs (range 0-5).
-        export_raw : bool
-            If True, exports raw intensity kymographs along LOIs.
-        extract_profiles : bool
-            If True (default), extract intensity kymographs along each selected
-            LOI and write the LOI files (the classic LOI/kymograph workflow). If
-            False, stop after detecting and selecting the LOI lines
-            (``self.data['loi_data']['loi_lines']``) and skip the kymograph
-            extraction entirely. Use ``False`` when you only need the LOI lines —
-            e.g. to group full-field tracks with ``group_tracks(by='loi')`` —
-            which is much faster (no per-line profile sampling).
 
         Returns
         -------
@@ -2856,40 +2782,8 @@ class SarcAsM(SarcAsMBase):
         else:
             raise ValueError(f'mode {mode} not valid.')
 
-        # extract intensity kymographs profiles and save LOI files
-        if extract_profiles:
-            for line_i in self.data['loi_data']['loi_lines']:
-                self.create_loi_data(line_i, linewidth=linewidth, order=order, export_raw=export_raw)
-        else:
-            logger.info(
-                f"detect_lois: selected {len(self.data['loi_data']['loi_lines'])} LOI line(s); "
-                "skipped kymograph profile extraction (extract_profiles=False).")
-
-    def delete_lois(self):
-        """
-        Delete all LOIs, their associated data files, and their directories.
-        """
-        self.data.pop('loi_data', None)
-
-        loi_files = glob.glob(os.path.join(self.base_dir, '*loi.json'))
-        for loi_file in loi_files:
-            try:
-                # Remove the LOI file
-                os.remove(loi_file)
-
-                # Remove the associated data file
-                data_file = os.path.join(self.data_dir,
-                                         f"{os.path.splitext(os.path.basename(loi_file))[0]}_data.json")
-                if os.path.exists(data_file):
-                    os.remove(data_file)
-
-                # Remove the directory and its contents
-                directory = loi_file[:-len('_loi.json')] + '/'
-                if os.path.exists(directory):
-                    shutil.rmtree(directory)
-
-            except Exception as e:
-                logger.debug(f"Error deleting LOI directory: {e}. Continuing anyway.")
+        logger.info(
+            f"detect_lois: selected {len(self.data['loi_data']['loi_lines'])} LOI line(s).")
 
     def full_analysis_structure(self, frames='all'):
         """
