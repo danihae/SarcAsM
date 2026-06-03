@@ -31,7 +31,7 @@ from sarcasm.utils import Utils
 logger = logging.getLogger(__name__)
 
 
-class SarcAsM:
+class SarcAsMBase:
     """
     Base class for sarcomere structural and functional analysis.
 
@@ -219,8 +219,8 @@ class SarcAsM:
         
         Examples
         --------
-        >>> sarc = Structure(file_path, log_level='DEBUG')  # Verbose output
-        >>> sarc = Structure(file_path, log_level=logging.WARNING)  # Only warnings and errors
+        >>> sarc = SarcAsM(file_path, log_level='DEBUG')  # Verbose output
+        >>> sarc = SarcAsM(file_path, log_level=logging.WARNING)  # Only warnings and errors
         """
         # Convert string to logging level if necessary
         if isinstance(log_level, str):
@@ -603,7 +603,7 @@ class SarcAsM:
                     logger.info(
                         f"Multi-channel image detected (n={n_chan}). "
                         f"Using channel 0 by default. "
-                        f"Pass Structure(..., channel=<int>) to override."
+                        f"Pass SarcAsM(..., channel=<int>) to override."
                     )
                     chan_idx = 0
                 else:
@@ -728,7 +728,7 @@ class SarcAsM:
         if self.metadata.pixelsize is None and not self.use_gui:
             raise MetaDataError(
                 f"Pixel size could not be extracted from {self.file_path}. "
-                f"Please enter manually (e.g., Structure(file_path, pixelsize=0.1))."
+                f"Please enter manually (e.g., SarcAsM(file_path, pixelsize=0.1))."
             )
 
         if self.metadata.pixelsize and not (0.01 <= self.metadata.pixelsize <= 0.5):
@@ -741,7 +741,7 @@ class SarcAsM:
 
         if self.metadata.frametime is None and stack_len > 1:
             logger.warning('Frametime could not be extracted from tif file. '
-                  'Please enter manually if needed (e.g., Structure(file, frametime=0.1)).')
+                  'Please enter manually if needed (e.g., SarcAsM(file, frametime=0.1)).')
 
         # Update the existing metadata object with extracted values
         self.metadata.axes = axes

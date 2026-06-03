@@ -13,9 +13,9 @@ More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
 
     from sarcasm import *
 
-    # initialize Structure object for tif-file
+    # initialize SarcAsM object for tif-file
     file_path = '/path/to/file.tif'
-    sarc_obj = Structure(file_path)
+    sarc_obj = SarcAsM(file_path)
 
     # detect sarcomere Z-bands, M-bands, orientation, sarcomere mask and cell mask by deep learning
     sarc_obj.detect_sarcomeres()
@@ -44,9 +44,9 @@ More detailed instruction see :doc:`../notebooks/tutorial_motion_analysis`.
 
     from sarcasm import *
 
-    # initialize Structure object for tif-file
+    # initialize SarcAsM object for tif-file
     file_path = '/path/to/file.tif'
-    sarc_obj = Structure(file_path)
+    sarc_obj = SarcAsM(file_path)
 
     # automatically detect lines of interest (LOIs) for sarcomere tracking
     sarc_obj.detect_lois(n_lois=4)
@@ -79,13 +79,13 @@ You can control the verbosity when initializing objects:
 
 .. code-block:: python
 
-    from sarcasm import Structure
+    from sarcasm import SarcAsM
 
     # Default: INFO level - shows analysis progress
-    sarc_obj = Structure('file.tif')
+    sarc_obj = SarcAsM('file.tif')
 
     # Verbose: DEBUG level - see all diagnostic details
-    sarc_obj = Structure('file.tif', log_level='DEBUG')
+    sarc_obj = SarcAsM('file.tif', log_level='DEBUG')
 
     # Quiet: WARNING level - only show warnings and errors
-    sarc_obj = Structure('file.tif', log_level='WARNING')
+    sarc_obj = SarcAsM('file.tif', log_level='WARNING')

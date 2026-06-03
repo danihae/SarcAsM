@@ -26,14 +26,14 @@ from scipy.optimize import linear_sum_assignment
 from skimage.segmentation import clear_border
 
 from contraction_net.prediction import predict_contractions
-from sarcasm.core import SarcAsM
+from sarcasm.core import SarcAsMBase
 from sarcasm.ioutils import IOUtils
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
 
 
-class Motion(SarcAsM):
+class Motion(SarcAsMBase):
     """Class for tracking and analysis of sarcomere motion at line of interest LOI"""
 
     def __init__(self, file_path: str, loi_name: str, restart: bool = False, auto_save: bool = True):
@@ -87,7 +87,7 @@ class Motion(SarcAsM):
 
         Used to wrap a *synthesized* myofibril chain (an ordered ``z_pos`` / ``slen``
         built from 2D tracks, see
-        :meth:`sarcasm.structure.Structure.get_track_motion`) so the full LOI
+        :meth:`sarcasm.structure.SarcAsM.get_track_motion`) so the full LOI
         analysis and every existing LOI plot work unchanged. ``loi_data`` is marked
         ``synthetic=True``. Nothing is written to disk unless ``auto_save=True``.
 
@@ -108,7 +108,7 @@ class Motion(SarcAsM):
             the movie has no embedded frametime (e.g. high-speed single-cell tifs).
         """
         obj = cls.__new__(cls)
-        SarcAsM.__init__(obj, file_path, frametime=frametime)
+        SarcAsMBase.__init__(obj, file_path, frametime=frametime)
         assert obj.metadata.frametime is not None, (
             "frametime is not defined in metadata; pass frametime=... to from_loi_data")
         obj.loi_data = dict(loi_data)

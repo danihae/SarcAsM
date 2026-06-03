@@ -13,8 +13,8 @@
 
 
 from ._version import __version__
-from .core import SarcAsM
-from .structure import Structure
+from .core import SarcAsMBase
+from .structure import SarcAsM
 from .motion import Motion
 from .utils import Utils
 from .ioutils import IOUtils

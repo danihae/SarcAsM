@@ -21,7 +21,7 @@ It operates on already-aggregated per-group signals, NOT on individual tracks
 (that aggregation is :mod:`sarcasm.structure_modules.grouped_motion`) and is not
 domain-specific — it is the shared engine behind every grouping kind (pool,
 m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`, as
-well as the deprecated mask-based :meth:`Structure.analyze_domain_motion`. The
+well as the deprecated mask-based :meth:`SarcAsM.analyze_domain_motion`. The
 one genuinely domain-specific helper here is :func:`compute_domain_timeseries`.
 """
 

@@ -22,7 +22,7 @@ from matplotlib.axes import Axes
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator, FuncFormatter
 from scipy.stats import gaussian_kde
 
-from sarcasm import SarcAsM, Motion
+from sarcasm import SarcAsMBase, Motion
 
 
 class PlotUtils:
@@ -264,7 +264,7 @@ class PlotUtils:
         ax.tick_params(axis='x', labelrotation=rotation)
 
     @staticmethod
-    def plot_func_to_img(sarc_obj: Union[SarcAsM, Motion], plot_func, img_file_path, figsize=(6, 6), scalebar=False,
+    def plot_func_to_img(sarc_obj: Union[SarcAsMBase, Motion], plot_func, img_file_path, figsize=(6, 6), scalebar=False,
                          dpi=300):
         """
         Generates a plot using a specified plotting function and saves it as an image file.

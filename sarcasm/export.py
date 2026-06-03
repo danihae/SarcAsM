@@ -24,7 +24,7 @@ from scipy import sparse
 from tqdm import tqdm as tqdm
 
 from sarcasm.meta_data_handler import ImageMetadata
-from sarcasm.structure import Structure
+from sarcasm.structure import SarcAsM
 from sarcasm.motion import Motion
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class MultiStructureAnalysis:
         self.data = []
         for i, tif_file in enumerate(tqdm(self.files)):
             try:
-                sarc_obj = Structure(file_path=tif_file)
+                sarc_obj = SarcAsM(file_path=tif_file)
                 dict_i = Export.get_structure_dict(sarc_obj, structure_keys,
                                                    experiment=self.experiment,
                                                    **self.conditions)
@@ -351,7 +351,7 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_structure_data(file_path, sarc_obj: Union[Structure, Motion], structure_keys=None,
+    def export_structure_data(file_path, sarc_obj: Union[SarcAsM, Motion], structure_keys=None,
                               fileformat='.xlsx', raw: bool = False):
         """
         Export structure data to a file.

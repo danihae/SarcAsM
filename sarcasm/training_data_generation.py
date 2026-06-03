@@ -28,7 +28,7 @@ from scipy.ndimage import label
 from skimage.draw import line
 from skimage.morphology import skeletonize
 
-from sarcasm import PlotUtils, Structure, Utils
+from sarcasm import PlotUtils, SarcAsM, Utils
 
 
 class TrainingDataGenerator:
@@ -235,7 +235,7 @@ class TrainingDataGenerator:
 
         # calculate sarcomere mask
         if len(pos_vectors_px) > 0:
-            sarcomere_mask = Structure.sarcomere_mask(pos_vectors_px * self.pixelsize,
+            sarcomere_mask = SarcAsM.sarcomere_mask(pos_vectors_px * self.pixelsize,
                                                       -sarcomere_orientation_vectors,
                                                       sarcomere_length_vectors,
                                                       shape=self.shape,

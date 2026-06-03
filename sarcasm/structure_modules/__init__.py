@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Structure analysis package for sarcomere morphology."""
+"""SarcAsM analysis package for sarcomere morphology."""
 
 # Import submodules for convenient access
 from . import z_band_analysis

@@ -27,7 +27,7 @@ import torch
 from bio_image_unet.progress import ProgressNotifier
 from scipy import stats, sparse
 
-from sarcasm.core import SarcAsM
+from sarcasm.core import SarcAsMBase
 from sarcasm.ioutils import IOUtils
 from sarcasm.results_store import ResultsDict, Results, export_to_json
 from sarcasm.utils import Utils
@@ -48,7 +48,7 @@ from sarcasm.structure_modules import (
     grouped_motion,
 )
 
-class Structure(SarcAsM):
+class SarcAsM(SarcAsMBase):
     """
     Class for analyzing sarcomere morphology.
 
@@ -100,7 +100,7 @@ class Structure(SarcAsM):
                  device: Union[torch.device, Literal['auto']] = 'auto',
                  **info: Any) -> None:
         """
-        Instantiate a Structure object and initialize the common SarcAsM base.
+        Instantiate a SarcAsM object and initialize the common SarcAsMBase.
         """
         super().__init__(
             file_path=file_path,

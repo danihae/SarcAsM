@@ -1,5 +1,5 @@
 import pytest
-from sarcasm import Structure, Motion, Plots
+from sarcasm import SarcAsM, Motion, Plots
 import matplotlib.pyplot as plt
 
 
@@ -9,7 +9,7 @@ class TestMotion:
     
     def test_loi_detection_pipeline(self, motion_file_path):
         """Test complete LOI detection pipeline."""
-        sarc = Structure(motion_file_path, restart=True)
+        sarc = SarcAsM(motion_file_path, restart=True)
         
         # Run detection pipeline
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
@@ -37,7 +37,7 @@ class TestMotion:
             
     def test_motion_object_initialization(self, motion_file_path):
         """Test Motion object creation and initialization."""
-        sarc = Structure(motion_file_path, restart=True)
+        sarc = SarcAsM(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -58,7 +58,7 @@ class TestMotion:
         
     def test_full_analysis_loi(self, motion_file_path):
         """Test complete LOI motion analysis."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -84,8 +84,8 @@ class TestMotion:
         sarc.remove_intermediate_tiffs()
 
     def test_get_list_lois(self, motion_file_path):
-        """Test getting list of LOIs from Structure object."""
-        sarc = Structure(motion_file_path)
+        """Test getting list of LOIs from SarcAsM object."""
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -100,7 +100,7 @@ class TestMotion:
         
     def test_delete_lois(self, motion_file_path):
         """Test LOI deletion functionality."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -126,7 +126,7 @@ class TestMotion:
     ])
     def test_loi_detection_parameters(self, motion_file_path, n_lois, persistence, mode):
         """Test LOI detection with different parameters."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -145,7 +145,7 @@ class TestMotion:
         
     def test_detect_sarcomeres_single_frame(self, motion_file_path):
         """Test sarcomere detection on single frame."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         
         # Verify detection attributes exist
@@ -154,7 +154,7 @@ class TestMotion:
         
     def test_detect_z_bands_fast_movie(self, motion_file_path):
         """Test fast Z-band detection for movies."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         
         # Run fast Z-band detection
@@ -168,7 +168,7 @@ class TestMotion:
         
     def test_analyze_sarcomere_vectors(self, motion_file_path):
         """Test sarcomere vector analysis."""
-        sarc = Structure(motion_file_path)
+        sarc = SarcAsM(motion_file_path)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         
@@ -188,8 +188,8 @@ class TestMotionIntegration:
     @pytest.mark.integration
     def test_complete_motion_workflow(self, motion_file_path):
         """Test complete motion analysis workflow from start to finish."""
-        # Structure initialization and detection
-        sarc = Structure(motion_file_path, restart=True)
+        # SarcAsM initialization and detection
+        sarc = SarcAsM(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -220,7 +220,7 @@ class TestMotionIntegration:
     @pytest.mark.integration  
     def test_multiple_lois_analysis(self, motion_file_path):
         """Test analysis of multiple LOIs."""
-        sarc = Structure(motion_file_path, restart=True)
+        sarc = SarcAsM(motion_file_path, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -256,11 +256,11 @@ class TestMotionPlots:
     @pytest.fixture(scope="class")
     def analyzed_motion_data(self, motion_file_path_class):
         """
-        Class-scoped fixture providing analyzed Structure and Motion objects.
+        Class-scoped fixture providing analyzed SarcAsM and Motion objects.
         Runs LOI detection and full motion analysis once for the entire test class.
         Returns tuple of (sarc, mot_obj) or skips if no LOIs detected.
         """
-        sarc = Structure(motion_file_path_class, restart=True)
+        sarc = SarcAsM(motion_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
         sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
         sarc.analyze_sarcomere_vectors(frames=0)

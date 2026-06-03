@@ -7,7 +7,7 @@ import types
 import numpy as np
 import pytest
 
-from sarcasm.structure import Structure
+from sarcasm.structure import SarcAsM
 from sarcasm.structure_modules import grouped_motion
 from sarcasm.utils import Utils
 
@@ -64,13 +64,13 @@ def test_run_cycle_engine_empty_groups():
 
 
 # ---------------------------------------------------------------------------
-# Structure.group_tracks / analyze_track_motion on a synthetic data dict
+# SarcAsM.group_tracks / analyze_track_motion on a synthetic data dict
 # ---------------------------------------------------------------------------
 
 def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
-    """A Structure with a synthetic tracker output, no file IO."""
+    """A SarcAsM with a synthetic tracker output, no file IO."""
     rng = np.random.default_rng(seed)
-    sarc = Structure.__new__(Structure)
+    sarc = SarcAsM.__new__(SarcAsM)
     sarc.auto_save = False
     sarc.metadata = types.SimpleNamespace(frametime=frametime, pixelsize=0.1, n_stack=T, size=(128, 128))
     sarc.model_dir = Utils.get_models_dir()

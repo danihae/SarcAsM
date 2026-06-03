@@ -1323,12 +1323,12 @@ class Utils:
     @staticmethod
     def create_distance_map(sarc_obj):
         """
-        Creates distance map for sarcomeres from a Structure object. The distance map is 0 at Z-bands and 1 at M-bands.
+        Creates distance map for sarcomeres from a SarcAsM object. The distance map is 0 at Z-bands and 1 at M-bands.
 
         Parameters
         ----------
-        sarc_obj : Structure
-            An object of the Structure class.
+        sarc_obj : SarcAsM
+            An object of the SarcAsM class.
 
         Returns
         -------

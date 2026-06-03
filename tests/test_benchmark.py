@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from sarcasm import Motion, Structure
+from sarcasm import Motion, SarcAsM
 from sarcasm._version import __version__ as sarcasm_version
 from sarcasm.utils import Utils
 
@@ -157,7 +157,7 @@ def timer(result: BenchmarkResult, step_name: str, log: bool = True):
 
 
 # ---------------------------------------------------------------------------
-# Structure
+# SarcAsM
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ class TestStructureBenchmark:
         print(f"\n[bench] {result.name} on {os.path.basename(structure_single_file_path)}")
 
         with timer(result, "full_pipeline"):
-            sarc = Structure(structure_single_file_path, restart=True)
+            sarc = SarcAsM(structure_single_file_path, restart=True)
             sarc.detect_sarcomeres(frames=0, max_patch_size=(1024, 1024))
             sarc.full_analysis_structure()
 
@@ -184,7 +184,7 @@ class TestStructureBenchmark:
         result = BenchmarkResult.for_test("structure_substeps", structure_single_file_path)
         print(f"\n[bench] {result.name} on {os.path.basename(structure_single_file_path)}")
 
-        sarc = Structure(structure_single_file_path, restart=True)
+        sarc = SarcAsM(structure_single_file_path, restart=True)
 
         with timer(result, "detect_sarcomeres"):
             sarc.detect_sarcomeres(frames=0, max_patch_size=(1024, 1024))
@@ -209,7 +209,7 @@ class TestStructureBenchmark:
         print(f"\n[bench] {result.name} on {os.path.basename(structure_timelapse_file_path)}")
 
         with timer(result, "full_pipeline_timelapse"):
-            sarc = Structure(structure_timelapse_file_path, restart=True)
+            sarc = SarcAsM(structure_timelapse_file_path, restart=True)
             sarc.detect_sarcomeres(frames=0, max_patch_size=(512, 512))
             sarc.full_analysis_structure()
 
@@ -232,7 +232,7 @@ class TestMotionBenchmark:
         print(f"\n[bench] {result.name} on {os.path.basename(motion_file_path)}")
 
         with timer(result, "full_pipeline"):
-            sarc = Structure(motion_file_path, restart=True)
+            sarc = SarcAsM(motion_file_path, restart=True)
             sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
             sarc.detect_z_bands_fast_movie(max_patch_size=(32, 210, 1024))
             sarc.analyze_sarcomere_vectors(frames=0)
@@ -256,7 +256,7 @@ class TestMotionBenchmark:
         result = BenchmarkResult.for_test("motion_substeps", motion_file_path)
         print(f"\n[bench] {result.name} on {os.path.basename(motion_file_path)}")
 
-        sarc = Structure(motion_file_path, restart=True)
+        sarc = SarcAsM(motion_file_path, restart=True)
 
         with timer(result, "detect_sarcomeres"):
             sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
@@ -287,7 +287,7 @@ class TestMotionBenchmark:
         result = BenchmarkResult.for_test("loi_detection_only", motion_file_path)
         print(f"\n[bench] {result.name} on {os.path.basename(motion_file_path)}")
 
-        sarc = Structure(motion_file_path, restart=True)
+        sarc = SarcAsM(motion_file_path, restart=True)
 
         with timer(result, "detect_sarcomeres"):
             sarc.detect_sarcomeres(frames=0, max_patch_size=(256, 1024))
@@ -321,7 +321,7 @@ class TestDomainMotionBenchmark:
         print(f"\n[bench] {result.name} on {os.path.basename(motion_30kPa_file_path)}")
 
         with timer(result, "full_domain_motion_pipeline"):
-            sarc = Structure(motion_30kPa_file_path, restart=True)
+            sarc = SarcAsM(motion_30kPa_file_path, restart=True)
             sarc.detect_sarcomeres(frames=list(range(50)), max_patch_size=(256, 1024))
             sarc.analyze_sarcomere_vectors(frames="all", interpolation_method="akima")
             sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
@@ -336,7 +336,7 @@ class TestDomainMotionBenchmark:
         result = BenchmarkResult.for_test("domain_motion_substeps", motion_30kPa_file_path)
         print(f"\n[bench] {result.name} on {os.path.basename(motion_30kPa_file_path)}")
 
-        sarc = Structure(motion_30kPa_file_path, restart=True)
+        sarc = SarcAsM(motion_30kPa_file_path, restart=True)
 
         with timer(result, "detect_sarcomeres_multi_frame"):
             sarc.detect_sarcomeres(frames=list(range(50)), max_patch_size=(256, 1024))

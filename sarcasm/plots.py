@@ -28,7 +28,7 @@ from tifffile import tifffile
 from sarcasm.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plot_utils import PlotUtils
-from sarcasm.structure import Structure
+from sarcasm.structure import SarcAsM
 from sarcasm.structure_modules import domain_clustering, myofibril_analysis
 from sarcasm.utils import Utils
 
@@ -41,11 +41,11 @@ _LABEL_DELTA_SL = r'$\Delta$SL [µm]'
 
 class Plots:
     """
-    Class with plotting functions for Structure and Motion objects
+    Class with plotting functions for SarcAsM and Motion objects
     """
 
     @staticmethod
-    def plot_stack_overlay(ax: Axes, sarc_obj: Union[Structure, Motion], frames, plot_func, offset=0.025,
+    def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
                            spine_color='w', xlim=None, ylim=None):
         """
         Plot a stack of overlayed subplots on a given Axes object.
@@ -54,8 +54,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The Axes object on which the stack should be plotted.
-        sarc_obj : Structure
-            Data to be plotted in each subplot, which can be an instance of Structure or Motion.
+        sarc_obj : SarcAsM
+            Data to be plotted in each subplot, which can be an instance of SarcAsM or Motion.
         frames : list
             The frames at which the subplots should be created.
         plot_func : function
@@ -140,15 +140,15 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: Structure, frame: int = 0, file_path: str = None,
+    def plot_loi_detection(sarc_obj: SarcAsM, frame: int = 0, file_path: str = None,
                            cmap_z_bands='Greys'):
         """
         Plots all steps of automated LOI finding algorithm
 
         Parameters
         ----------
-        sarc_obj : Structure
-            Instance of Structure class
+        sarc_obj : SarcAsM
+            Instance of SarcAsM class
         frame: int
             The time point to plot.
         file_path: str
@@ -208,7 +208,7 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_image(ax: Axes, sarc_obj: Union[Structure, Motion], frame: int = 0, cmap: str = 'gray',
+    def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap: str = 'gray',
                    alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
                    title: Union[None, str] = None, show_loi: bool = False,
                    zoom_region: Tuple[int, int, int, int] = None,
@@ -220,7 +220,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure or Motion
+        sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -275,7 +275,7 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_z_bands(ax: plt.Axes, sarc_obj: Union[Structure, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
+    def plot_z_bands(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
                      alpha=1, scalebar=True, title=None, color_scalebar='w',
                      show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
                      inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -286,7 +286,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure or Motion
+        sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -335,7 +335,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
-    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union[Structure, Motion], frame=0, cmap='berlin',
+    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='berlin',
                               alpha=1, scalebar=True, title=None, color_scalebar='w',
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                               inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -346,7 +346,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure or Motion
+        sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -404,7 +404,7 @@ class Plots:
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_cell_mask(ax: Axes, sarc_obj: Union[Structure, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
+    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
                        scalebar=True, title=None):
         """
         Plots the cell mask of the sarcomere object.
@@ -413,7 +413,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure or Motion
+        sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -442,7 +442,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_z_segmentation(ax: Axes, sarc_obj: Structure, frame=0, scalebar=True, shuffle=True,
+    def plot_z_segmentation(ax: Axes, sarc_obj: SarcAsM, frame=0, scalebar=True, shuffle=True,
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -452,8 +452,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         scalebar : bool, optional
@@ -502,19 +502,19 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_z_lateral_connections(ax: Axes, sarc_obj: Structure, frame=0, scalebar=True, markersize=1.5,
+    def plot_z_lateral_connections(ax: Axes, sarc_obj: SarcAsM, frame=0, scalebar=True, markersize=1.5,
                                    markersize_inset=3, linewidth=0.25, linewidth_inset=0.5, plot_groups=True,
                                    shuffle=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                    inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots lateral Z-band connections of a Structure object.
+        Plots lateral Z-band connections of a SarcAsM object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure object to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         scalebar : bool, optional
@@ -604,7 +604,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: Structure, frame=0, cmap='vanimo',
+    def plot_sarcomere_orientation_field(ax1: Axes, ax2: Axes, sarc_obj: SarcAsM, frame=0, cmap='vanimo',
                                          scalebar=True, colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                          zoom_region: Tuple[int, int, int, int] = None,
                                          inset_bounds=(0.6, 0.6, 0.4, 0.4),):
@@ -616,7 +616,7 @@ class Plots:
             ax1 : matplotlib.axes.Axes
                 The axes to draw the plot on.
             sarc_obj : object
-                The instance of Structure class to plot.
+                The instance of SarcAsM class to plot.
             frame : int, optional
                 The frame to plot. Defaults to 0.
             scalebar : bool, optional
@@ -693,7 +693,7 @@ class Plots:
                                         font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_sarcomere_mask(ax: Axes, sarc_obj: Structure, frame=0, cmap='viridis', threshold=0.1,
+    def plot_sarcomere_mask(ax: Axes, sarc_obj: SarcAsM, frame=0, cmap='viridis', threshold=0.1,
                             show_z_bands=False, alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9),
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -704,8 +704,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         cmap : str, optional
@@ -768,7 +768,7 @@ class Plots:
             PlotUtils.change_color_spines(ax_inset, 'w')
 
     @staticmethod
-    def plot_sarcomere_vectors(ax: Axes, sarc_obj: Structure, frame=0, color_arrows='k',
+    def plot_sarcomere_vectors(ax: Axes, sarc_obj: SarcAsM, frame=0, color_arrows='k',
                                color_points='darkgreen', s_points=0.5, linewidths=0.5,
                                s_points_inset=0.5, linewidths_inset=0.5, scalebar=True,
                                legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
@@ -782,8 +782,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         color_arrows : str, optional
@@ -896,7 +896,7 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1, }))
 
     @staticmethod
-    def plot_sarcomere_domains(ax: Axes, sarc_obj: Structure, frame=0, alpha=0.5, cmap='gist_rainbow',
+    def plot_sarcomere_domains(ax: Axes, sarc_obj: SarcAsM, frame=0, alpha=0.5, cmap='gist_rainbow',
                                scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', alpha_z_bands=1, title=None):
         """
         Plots the sarcomere domains of the sarcomere object.
@@ -905,8 +905,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         alpha : float, optional
@@ -958,7 +958,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_myofibril_lines(ax: Axes, sarc_obj: Structure , frame=0, show_z_bands=True, linewidth=1, color_lines='r',
+    def plot_myofibril_lines(ax: Axes, sarc_obj: SarcAsM , frame=0, show_z_bands=True, linewidth=1, color_lines='r',
                              linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', alpha_z_bands=1,
                              scalebar=True, title=None, zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -968,7 +968,7 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure or Motion
+        sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
@@ -1044,7 +1044,7 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_myofibril_length_map(ax: Axes, sarc_obj: Structure, frame=0, vmax=None, alpha=1,
+    def plot_myofibril_length_map(ax: Axes, sarc_obj: SarcAsM, frame=0, vmax=None, alpha=1,
                                   show_z_bands=False, cmap_z_bands='Greys', alpha_z_bands=1,
                                   colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
                                   scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
@@ -1056,8 +1056,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Defaults to 0.
         vmax : float, optional
@@ -1153,16 +1153,16 @@ class Plots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_lois(ax: Axes, sarc_obj: Union[Structure, Motion], color='darkorange', linewidth=2, alpha=0.5):
+    def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='darkorange', linewidth=2, alpha=0.5):
         """
-        Plot all LOI lines for Structure object and LOI line Motion object.
+        Plot all LOI lines for SarcAsM object and LOI line Motion object.
 
         Parameters
         ----------
         ax : matplotlib axis
             Axis on which to plot the LOI lines
-        sarc_obj : Structure or Motion
-            Object of Structure or Motion class
+        sarc_obj : SarcAsM or Motion
+            Object of SarcAsM or Motion class
         color : str
             Color of lines
         linewidth : float
@@ -1190,7 +1190,7 @@ class Plots:
 
     @staticmethod
     def plot_histogram_structure(ax: Axes,
-                                 sarc_obj: Structure,
+                                 sarc_obj: SarcAsM,
                                  feature: str,
                                  frame: int = 0,
                                  bins: int = 20,
@@ -1210,8 +1210,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes on which to draw the histogram.
-        sarc_obj : Structure
-            The instance of Structure class to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         feature : str
             The name of the structural feature to plot.
         frame : int, optional
@@ -1527,7 +1527,7 @@ class Plots:
         ax.xaxis.set_minor_locator(MultipleLocator(0.25))
 
     @staticmethod
-    def plot_domain_timeseries(ax: Axes, sarc_obj: Structure, t_lim: Tuple[float, float] = (0, 12),
+    def plot_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
                                y_lim: Tuple[float, float] = (1.6, 2.2), n_rows: Optional[int] = None,
                                show_contr: bool = True, use_median: bool = False):
         """
@@ -1540,8 +1540,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The Structure object with domain motion analysis results.
+        sarc_obj : SarcAsM
+            The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
             The time limits for the plot in seconds. Defaults to (0, 12).
         y_lim : tuple of float, optional
@@ -1628,7 +1628,7 @@ class Plots:
         ax.tick_params(axis='y', colors='w')
 
     @staticmethod
-    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: Structure, t_lim: Tuple[float, float] = (0, 12),
+    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
                                        y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True,
                                        show_average: bool = True, use_median: bool = False,
                                        domain_indices: Optional[list] = None):
@@ -1642,8 +1642,8 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : Structure
-            The Structure object with domain motion analysis results.
+        sarc_obj : SarcAsM
+            The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
             The time limits for the plot in seconds. Defaults to (0, 12).
         y_lim : tuple of float, optional
@@ -1815,7 +1815,7 @@ class Plots:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def plot_tracks(ax: Axes, sarc_obj: Structure, frame: int = 0, color_by: str = 'coverage',
+    def plot_tracks(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'coverage',
                     cmap: str = 'viridis', s: float = 4, only_snapped: bool = True,
                     show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                     scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
@@ -1825,13 +1825,13 @@ class Plots:
         ----------
         ax : matplotlib.axes.Axes
             Axes to draw on.
-        sarc_obj : Structure
-            Structure with :meth:`Structure.track_sarcomere_vectors` results.
+        sarc_obj : SarcAsM
+            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
         frame : int, optional
             Movie frame to draw. Default 0.
         color_by : {'coverage', 'slen', 'group'}, optional
             Per-track colour: snap coverage, sarcomere length at this frame, or
-            ``track_group_id`` (requires :meth:`Structure.group_tracks`). Default 'coverage'.
+            ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`). Default 'coverage'.
         cmap : str, optional
             Colormap. Default 'viridis'.
         s : float, optional
@@ -1839,7 +1839,7 @@ class Plots:
         only_snapped : bool, optional
             Only draw tracks that actually snapped at this frame (vs flow-predicted). Default True.
         show_image, cmap_z_bands, alpha_z_bands, scalebar, colorbar, title
-            Background / styling, matching the other Structure plots.
+            Background / styling, matching the other SarcAsM plots.
         """
         if 'tracks_positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
@@ -1883,7 +1883,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_track_groups(ax: Axes, sarc_obj: Structure, frame: int = 0, cmap: str = 'gist_rainbow',
+    def plot_track_groups(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, cmap: str = 'gist_rainbow',
                           s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
                           show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                           scalebar: bool = True, title: Optional[str] = None):
@@ -1891,8 +1891,8 @@ class Plots:
 
         Lets a user eyeball the partition (and the tracks dropped by
         ``min_coverage``, drawn in grey) BEFORE running the expensive
-        :meth:`Structure.analyze_track_motion`. Prerequisite:
-        :meth:`Structure.group_tracks`.
+        :meth:`SarcAsM.analyze_track_motion`. Prerequisite:
+        :meth:`SarcAsM.group_tracks`.
         """
         if 'track_group_id' not in sarc_obj.data:
             raise ValueError('No track grouping found. Run group_tracks(...) first.')
@@ -2023,11 +2023,11 @@ class Plots:
         return kind
 
     @staticmethod
-    def plot_slen_mean(ax: Axes, sarc_obj: Structure, kind: Optional[str] = None,
+    def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
                        t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False):
-        """Stacked per-group MEAN sarcomere-length time-series from :meth:`Structure.analyze_track_motion`.
+        """Stacked per-group MEAN sarcomere-length time-series from :meth:`SarcAsM.analyze_track_motion`.
 
         One row per group, each showing that group's aggregated (mean, or median if
         ``use_median``) sarcomere length over time — the signal the contraction
@@ -2051,7 +2051,7 @@ class Plots:
                                   t_lim, y_lim, n_rows, show_contr)
 
     @staticmethod
-    def plot_delta_slen_mean(ax: Axes, sarc_obj: Structure, kind: Optional[str] = None,
+    def plot_delta_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
                              t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
                              n_rows: Optional[int] = None, show_contr: bool = True,
                              use_median: bool = False):
@@ -2165,7 +2165,7 @@ class Plots:
         PlotUtils.polish_xticks(ax, 2, 1)
 
     @staticmethod
-    def plot_slen(ax: Axes, obj: Union[Structure, Motion], *, group: int = 0, kind: Optional[str] = None,
+    def plot_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
                   t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
                   show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                   color: Optional[str] = None, mean_color: str = 'k'):
@@ -2173,11 +2173,11 @@ class Plots:
 
         Polymorphic — pass either object:
 
-        * **Structure** (track grouping): overlays the member sarcomeres of one
+        * **SarcAsM** (track grouping): overlays the member sarcomeres of one
           track ``group`` (``kind`` defaults to the last analyzed grouping), with
           the group aggregate drawn bold. Members are subsampled to ``max_lines``
           (longest-coverage first) for legibility. Requires
-          :meth:`Structure.analyze_track_motion`.
+          :meth:`SarcAsM.analyze_track_motion`.
         * **Motion** (legacy LOI): overlays the per-sarcomere lengths along the LOI
           plus the average (``t_lim``/``y_lim``/``show_contr``/``show_mean``/``color``/
           ``mean_color`` apply; ``group``/``kind``/``max_lines`` are ignored).
@@ -2193,17 +2193,17 @@ class Plots:
                                           color=color, mean_color=mean_color)
 
     @staticmethod
-    def plot_delta_slen(ax: Axes, obj: Union[Structure, Motion], **kwargs):
+    def plot_delta_slen(ax: Axes, obj: Union[SarcAsM, Motion], **kwargs):
         """Individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
 
         Polymorphic dispatch on ``obj``:
 
-        * **Structure** (track grouping): overlays member ΔSL(t) = SL(t) − equ for
+        * **SarcAsM** (track grouping): overlays member ΔSL(t) = SL(t) − equ for
           one track ``group`` (``equ`` = each member's median length over the
           group's non-contracting frames), with the group ΔSL drawn bold. Accepts
           ``group``, ``kind``, ``t_lim``, ``y_lim``, ``show_contr``, ``show_mean``,
           ``max_lines``, ``color``, ``mean_color``. Requires
-          :meth:`Structure.analyze_track_motion`.
+          :meth:`SarcAsM.analyze_track_motion`.
         * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view.
           Accepts ``frame``, ``t_lim``, ``y_lim``, ``n_rows``, ``n_start``,
           ``show_contr`` (unchanged behaviour).
@@ -2213,7 +2213,7 @@ class Plots:
         return Plots._track_group_overlay(ax, obj, mode='delta', **kwargs)
 
     @staticmethod
-    def plot_track_myofibrils(ax: Axes, sarc_obj: Structure, frame: int = 0,
+    def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0,
                               color_by: str = 'group', cmap: str = 'gist_rainbow',
                               linewidth: float = 1.5, show_points: bool = True, markersize: float = 6,
                               only_snapped: bool = False, show_image: bool = False,
@@ -2225,15 +2225,15 @@ class Plots:
         sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
         line at ``frame``, so you can see where each analyzed fibre runs and its
         shape. Requires a ``'myofibril'`` grouping
-        (:meth:`Structure.group_tracks` / :meth:`Structure.analyze_track_motion`
+        (:meth:`SarcAsM.group_tracks` / :meth:`SarcAsM.analyze_track_motion`
         with ``by='myofibril'``).
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             Axes to draw on.
-        sarc_obj : Structure
-            Structure with a myofibril grouping.
+        sarc_obj : SarcAsM
+            SarcAsM with a myofibril grouping.
         frame : int, optional
             Movie frame to draw. Default 0.
         color_by : {'group', 'slen', 'beating_rate'}, optional
@@ -2244,7 +2244,7 @@ class Plots:
             Colormap. Default 'gist_rainbow'.
         linewidth, show_points, markersize, only_snapped, show_image, cmap_z_bands,
         alpha_z_bands, scalebar, colorbar, title
-            Styling / background, matching the other Structure plots.
+            Styling / background, matching the other SarcAsM plots.
         """
         if sarc_obj.data.get('group_kind') != 'myofibril':
             raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "

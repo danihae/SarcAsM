@@ -509,14 +509,14 @@ class Results:
 
 
 class ResultsDict(MutableMapping):
-    """Lazy, dict-compatible backing for ``Structure.data`` over ``data.zarr``.
+    """Lazy, dict-compatible backing for ``SarcAsM.data`` over ``data.zarr``.
 
     Reads materialise (numpy/objects) on first access and cache; writes stage
     in memory and persist incrementally via :meth:`flush` (only the changed
     members are rewritten). Implements the full ``dict`` surface the codebase
     uses (``[]``, ``get``, ``update``, ``keys``, ``pop``, ``in``, iteration), so
     it is a drop-in for the old plain dict. For the ergonomic grouped/lazy view
-    use :meth:`view` (``Structure.results``).
+    use :meth:`view` (``SarcAsM.results``).
     """
 
     def __init__(self, store_path: Union[str, Path], *, initial: Optional[dict] = None):

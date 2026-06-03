@@ -1,5 +1,5 @@
 import pytest
-from sarcasm import Structure, Plots
+from sarcasm import SarcAsM, Plots
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -8,41 +8,41 @@ class TestStructureMetadata:
     """Test metadata functionality on one fixed file."""
 
     def test_initialization_auto_pixelsize(self, structure_metadata_file_path):
-        """Test basic Structure initialization with auto pixel size."""
-        sarc = Structure(structure_metadata_file_path, restart=True)
-        assert isinstance(sarc, Structure)
+        """Test basic SarcAsM initialization with auto pixel size."""
+        sarc = SarcAsM(structure_metadata_file_path, restart=True)
+        assert isinstance(sarc, SarcAsM)
         assert sarc.file_path is not None
         assert sarc.metadata.pixelsize is not None
         
     def test_initialization_manual_pixelsize(self, structure_metadata_file_path):
-        """Test Structure initialization with manual pixel size."""
-        sarc = Structure(structure_metadata_file_path, restart=True, pixelsize=0.1)
-        assert isinstance(sarc, Structure)
+        """Test SarcAsM initialization with manual pixel size."""
+        sarc = SarcAsM(structure_metadata_file_path, restart=True, pixelsize=0.1)
+        assert isinstance(sarc, SarcAsM)
         assert sarc.metadata.pixelsize == 0.1
         
     def test_initialization_with_metadata(self, structure_metadata_file_path):
-        """Test Structure initialization with additional metadata."""
-        sarc = Structure(structure_metadata_file_path, cell_line='WT', treatment='control', restart=True)
-        assert isinstance(sarc, Structure)
+        """Test SarcAsM initialization with additional metadata."""
+        sarc = SarcAsM(structure_metadata_file_path, cell_line='WT', treatment='control', restart=True)
+        assert isinstance(sarc, SarcAsM)
         assert sarc.metadata.user_info['cell_line'] == 'WT'
         assert sarc.metadata.user_info['treatment'] == 'control'
         
     def test_multiple_metadata_entries(self, structure_metadata_file_path):
-        """Test Structure with multiple metadata entries."""
+        """Test SarcAsM with multiple metadata entries."""
         metadata = {
             'experiment_date': '2025-08-29',
             'concentration': '30kPa',
             'cell_type': 'cardiomyocyte',
             'researcher': 'Daniel'
         }
-        sarc = Structure(structure_metadata_file_path, **metadata, restart=True)
+        sarc = SarcAsM(structure_metadata_file_path, **metadata, restart=True)
         
         for key, value in metadata.items():
             assert sarc.metadata.user_info[key] == value
         
     def test_structure_metadata_properties(self, structure_metadata_file_path):
         """Test that metadata is properly initialized."""
-        sarc = Structure(structure_metadata_file_path, restart=False)
+        sarc = SarcAsM(structure_metadata_file_path, restart=False)
         
         # Check core metadata properties exist
         assert hasattr(sarc, 'metadata')
@@ -53,7 +53,7 @@ class TestStructureMetadata:
         
     def test_file_path_storage(self, structure_metadata_file_path):
         """Test that file path is correctly stored."""
-        sarc = Structure(structure_metadata_file_path, restart=False)
+        sarc = SarcAsM(structure_metadata_file_path, restart=False)
         assert structure_metadata_file_path in sarc.file_path or structure_metadata_file_path == sarc.file_path
 
 
@@ -63,7 +63,7 @@ class TestStructureTimelapseAnalysis:
     @pytest.mark.slow
     def test_timelapse_sarcomere_detection(self, structure_timelapse_file_path):
         """Test sarcomere detection on time-lapse."""
-        sarc = Structure(structure_timelapse_file_path, restart=False)
+        sarc = SarcAsM(structure_timelapse_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         
         # Verify detection attributes exist
@@ -74,7 +74,7 @@ class TestStructureTimelapseAnalysis:
     @pytest.mark.slow
     def test_timelapse_full_analysis(self, structure_timelapse_file_path):
         """Test complete structural analysis pipeline on time-lapse."""
-        sarc = Structure(structure_timelapse_file_path, restart=False)
+        sarc = SarcAsM(structure_timelapse_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         sarc.full_analysis_structure()
         
@@ -90,7 +90,7 @@ class TestStructureSingleImageAnalysis:
 
     def test_single_image_sarcomere_detection(self, structure_single_file_path):
         """Test sarcomere detection on single image."""
-        sarc = Structure(structure_single_file_path, restart=False)
+        sarc = SarcAsM(structure_single_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         
         # Verify detection attributes exist
@@ -100,7 +100,7 @@ class TestStructureSingleImageAnalysis:
         
     def test_single_image_full_analysis(self, structure_single_file_path):
         """Test complete structural analysis pipeline on single image."""
-        sarc = Structure(structure_single_file_path, restart=False)
+        sarc = SarcAsM(structure_single_file_path, restart=False)
         sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
         sarc.full_analysis_structure()
         
@@ -116,7 +116,7 @@ class TestStructureErrors:
     def test_file_not_found_error(self):
         """Test error handling for non-existent files."""
         with pytest.raises(FileNotFoundError):
-            Structure('nonexistent_file.tif')
+            SarcAsM('nonexistent_file.tif')
 
 
 class TestStructureIntegration:
@@ -125,9 +125,9 @@ class TestStructureIntegration:
     @pytest.mark.slow
     @pytest.mark.integration
     def test_complete_workflow_timelapse(self, structure_timelapse_file_path):
-        """Test complete Structure workflow on time-lapse."""
+        """Test complete SarcAsM workflow on time-lapse."""
         # Initialize with metadata
-        sarc = Structure(structure_timelapse_file_path, 
+        sarc = SarcAsM(structure_timelapse_file_path, 
                         experiment_type='timelapse',
                         restart=True)
         
@@ -146,9 +146,9 @@ class TestStructureIntegration:
         
     @pytest.mark.integration
     def test_complete_workflow_single_image(self, structure_single_file_path):
-        """Test complete Structure workflow on single image."""
+        """Test complete SarcAsM workflow on single image."""
         # Initialize with metadata
-        sarc = Structure(structure_single_file_path, 
+        sarc = SarcAsM(structure_single_file_path, 
                         experiment_type='single_image',
                         restart=True)
         
@@ -173,14 +173,14 @@ class TestStructurePlots:
     @pytest.fixture(scope="class")
     def analyzed_structure(self, structure_single_file_path_class):
         """
-        Class-scoped fixture providing a fully analyzed Structure object.
+        Class-scoped fixture providing a fully analyzed SarcAsM object.
         Runs all required analysis steps once for the entire test class.
         
         Note: We detect on frame 33 to test non-zero frame handling, but
         the data is stored at index 0 (first analyzed frame), so subsequent
         analysis and plotting use frame=0.
         """
-        sarc = Structure(structure_single_file_path_class, restart=True)
+        sarc = SarcAsM(structure_single_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=33, max_patch_size=(1024, 1024))
         sarc.analyze_z_bands(frames=[0])
         sarc.analyze_sarcomere_vectors(frames=0)
@@ -304,10 +304,10 @@ class TestDomainMotionPlots:
     @pytest.fixture(scope="class")
     def analyzed_domain_motion(self, motion_30kPa_file_path_class):
         """
-        Class-scoped fixture providing a Structure object with domain motion analysis.
+        Class-scoped fixture providing a SarcAsM object with domain motion analysis.
         Runs detection and analysis on multiple frames for domain motion.
         """
-        sarc = Structure(motion_30kPa_file_path_class, restart=True)
+        sarc = SarcAsM(motion_30kPa_file_path_class, restart=True)
         # Analyze first 100 frames for domain motion
         sarc.detect_sarcomeres(frames=np.arange(100), max_patch_size=(256, 1024))
         sarc.analyze_sarcomere_vectors(frames='all', interpolation_method='akima')
