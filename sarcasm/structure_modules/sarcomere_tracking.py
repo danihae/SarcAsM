@@ -38,8 +38,14 @@ Anti-convergence is enforced by the snap: detections sit at physical sarcomere
 centres (~1 sarcomere apart), so snapping keeps neighbouring query points
 anchored to different detections and they cannot collapse onto each other.
 
-Soft assignment is allowed — multiple query points may snap to the same
-detection. Unclaimed detections spawn new query points (appearance).
+Assignment is **hard greedy**: candidate (query-point, detection) pairs are
+ordered by ascending distance and claimed greedily, so each detection is
+consumed by at most one query point (see :func:`_greedy_claim`).
+This — not soft assignment — is what prevents two query points from collapsing
+onto a single detection. Unclaimed detections spawn new query points
+(appearance). A track that fails to snap is flow-advected through the gap; if it
+has been coasting it re-acquires with a random-walk-widened gate before it dies
+(``reacquire_gap_cap``), and a final pass stitches the fragments that remain.
 """
 
 from __future__ import annotations
@@ -55,10 +61,43 @@ from scipy.spatial import cKDTree
 
 logger = logging.getLogger(__name__)
 
+# Scale-invariance safety caps (fractions of the sarcomere length). The
+# along/perpendicular snap gates are reduced to at most these fractions of the
+# median sarcomere length in pixels, so that — regardless of pixel size — a
+# single-frame snap can never reach a neighbouring sarcomere (a swap). At the
+# calibration scale (slen ≈ 30 px, along gate 15 px) these are no-ops; they only
+# bind at coarse pixel sizes where the structure shrinks toward the raw gate.
+_ALONG_SLEN_FRAC = 0.6
+_PERP_SLEN_FRAC = 0.25
+# Merge (gap-bridging) gates may reach a little further than a single-frame snap,
+# but the gap-scaled reach is still capped below ~1 sarcomere so a stitch can
+# never join the next sarcomere. No-op at the calibration scale.
+_MERGE_ALONG_SLEN_FRAC = 0.9
+_MERGE_PERP_SLEN_FRAC = 0.35
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _median_slen_px(sarcomere_lengths_all, pixelsize: float) -> Optional[float]:
+    """Median finite sarcomere length across all frames, converted to pixels.
+
+    ``sarcomere_lengths_all`` is the per-frame list of detection slens in µm.
+    Returns ``None`` if no finite slen exists or pixelsize is non-positive — the
+    caller then keeps the raw pixel gates unchanged.
+    """
+    if pixelsize is None or pixelsize <= 0 or sarcomere_lengths_all is None:
+        return None
+    vals = [np.asarray(s, dtype=np.float64) for s in sarcomere_lengths_all
+            if s is not None and len(s) > 0]
+    if not vals:
+        return None
+    cat = np.concatenate(vals)
+    cat = cat[np.isfinite(cat)]
+    if cat.size == 0:
+        return None
+    return float(np.median(cat)) / float(pixelsize)
 
 def _angular_diff(a: float, b: float) -> float:
     """Smallest signed angular difference a − b, wrapped to (−π/2, π/2].
@@ -94,18 +133,25 @@ def build_dt_channels(
     mbands_mask: np.ndarray,
     threshold: float = 0.5,
     clip: float = 20.0,
+    threshold_m: Optional[float] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Build the two-channel distance-transform representation used for flow.
+
+    ``threshold`` binarizes the Z-band mask; ``threshold_m`` binarizes the
+    M-band mask (defaults to ``threshold`` for backward compatibility). The
+    M-band probability mask is typically weaker/sparser than the Z-band one, so
+    a lower M-band threshold preserves its structure in the distance transform.
 
     Returns ``(dt_z, dt_m)`` as uint8 arrays — each is 0 on the structure and
     grows with distance from it, clipped at ``clip`` pixels.
     """
+    thr_m = threshold if threshold_m is None else threshold_m
     if zbands_mask.dtype != np.bool_:
         z = zbands_mask > threshold
     else:
         z = zbands_mask
     if mbands_mask.dtype != np.bool_:
-        m = mbands_mask > threshold
+        m = mbands_mask > thr_m
     else:
         m = mbands_mask
     dt_z = ndimage.distance_transform_edt(~z)
@@ -142,15 +188,19 @@ def compute_flow_pair(
     threshold: float = 0.5,
     clip: float = 20.0,
     farneback_kwargs: Optional[dict] = None,
+    threshold_m: Optional[float] = None,
 ) -> np.ndarray:
     """Flow for one frame pair, averaged across the two DT channels.
+
+    ``threshold`` / ``threshold_m`` binarize the Z- / M-band masks respectively
+    (``threshold_m`` defaults to ``threshold``).
 
     Returns ``(H, W, 2)`` float32, ``[dy, dx]`` in pixels (numpy row/col
     convention).
     """
     kw = farneback_kwargs or {}
-    dt_z_t, dt_m_t = build_dt_channels(zbands_t, mbands_t, threshold, clip)
-    dt_z_t1, dt_m_t1 = build_dt_channels(zbands_t1, mbands_t1, threshold, clip)
+    dt_z_t, dt_m_t = build_dt_channels(zbands_t, mbands_t, threshold, clip, threshold_m=threshold_m)
+    dt_z_t1, dt_m_t1 = build_dt_channels(zbands_t1, mbands_t1, threshold, clip, threshold_m=threshold_m)
     flow_z = compute_flow_farneback(dt_z_t, dt_z_t1, **kw)  # [dx, dy]
     flow_m = compute_flow_farneback(dt_m_t, dt_m_t1, **kw)
     flow_xy = 0.5 * (flow_z + flow_m)
@@ -166,19 +216,33 @@ def compute_flow_sequence(
     threshold: float = 0.5,
     clip: float = 20.0,
     farneback_kwargs: Optional[dict] = None,
+    progress_notifier: Optional[object] = None,
+    threshold_m: Optional[float] = None,
 ) -> np.ndarray:
-    """Flow for a full sequence. Returns ``(T-1, H, W, 2)`` float32 ``[dy,dx]``."""
+    """Flow for a full sequence. Returns ``(T-1, H, W, 2)`` float32 ``[dy,dx]``.
+
+    ``threshold`` / ``threshold_m`` binarize the Z- / M-band masks respectively
+    (``threshold_m`` defaults to ``threshold``).
+
+    ``progress_notifier`` (a ``bio_image_unet.progress.ProgressNotifier``) is
+    optional; when given, its ``.iterator`` wraps the per-frame-pair loop so
+    GUI/notebook callers see a progress bar for this (dominant) cost.
+    """
     T = len(zbands_stack)
     if T < 2:
         raise ValueError("Need at least 2 frames to compute flow.")
     H, W = zbands_stack.shape[-2:]
     flows = np.empty((T - 1, H, W, 2), dtype=np.float32)
-    for t in range(T - 1):
+    frame_iter = range(T - 1)
+    if progress_notifier is not None:
+        frame_iter = progress_notifier.iterator(frame_iter, total=T - 1)
+    for t in frame_iter:
         flows[t] = compute_flow_pair(
             zbands_stack[t], mbands_stack[t],
             zbands_stack[t + 1], mbands_stack[t + 1],
             threshold=threshold, clip=clip,
             farneback_kwargs=farneback_kwargs,
+            threshold_m=threshold_m,
         )
     return flows
 
@@ -384,6 +448,8 @@ def _merge_short_tracks(
     tracks_slen: np.ndarray,
     tracks_ori: np.ndarray,
     tracks_snapped: np.ndarray,
+    tracks_detection_id: np.ndarray,
+    tracks_midline_id: np.ndarray,
     flows: np.ndarray,
     pixelsize: float,
     min_track_length: int,
@@ -393,13 +459,26 @@ def _merge_short_tracks(
     merge_ori_tol_deg: float,
     merge_slen_tol_um: float,
     slen_lims: Tuple[float, float],
+    merge_min_bridge_snaps: int = 1,
+    merge_gap_penalty: float = 0.5,
+    median_slen_px: Optional[float] = None,
     return_log: bool = False,
 ) -> Tuple[int, Optional[List[Dict[str, float]]]]:
     """Stitch fragmented trajectories produced by the per-frame snap loop.
 
-    Only tracks with ``snapped_count >= min_track_length`` participate.
-    Each eligible track A is greedily extended by chaining valid successors
-    B whose first-snap frame falls within ``[t_last(A)+1, t_last(A)+max_gap]``.
+    A track may **seed** a chain (act as ``A``) only if it already has
+    ``snapped_count >= min_track_length``. The successors it absorbs (``B``),
+    however, only need ``snapped_count >= merge_min_bridge_snaps`` (default 1).
+    This lets a long track swallow the short respawn fragments that transient
+    detection dropout produces — the dominant ``long-short-long`` fragmentation
+    class — into one unbroken trajectory. Isolated short fragments that never
+    get absorbed are still dropped by the ``min_track_length`` filter at the
+    call site (it runs on the *assembled* snap count). Each chosen ``B`` is a
+    real fragment with ≥1 real snap, so its seam slen/orientation are genuine
+    (never synthesized) evidence for the gates below.
+
+    Each eligible seed ``A`` is greedily extended by chaining valid successors
+    ``B`` whose first-snap frame falls within ``[t_last(A)+1, t_last(A)+max_gap]``.
 
     Gates use **merge-specific tolerances** that are intentionally more
     permissive than the per-frame snap gates: a 1-frame snap and a 5-frame
@@ -429,6 +508,15 @@ def _merge_short_tracks(
     ori_sim_threshold = float(np.cos(2.0 * ori_tol_rad))
     max_along2 = float(merge_max_disp_along_px * merge_max_disp_along_px)
     max_perp2 = float(merge_max_disp_perp_px * merge_max_disp_perp_px)
+    # Scale-invariance: bound the (gap-scaled) merge position gate at a fraction
+    # of the sarcomere length, so a stitch can never bridge to a neighbouring
+    # sarcomere regardless of pixel size. No-op at the calibration scale; binds
+    # only when slen_px is small (coarse pixel size) — see _ALONG/_PERP_SLEN_FRAC.
+    if median_slen_px is not None and median_slen_px > 0:
+        along_cap2 = (_MERGE_ALONG_SLEN_FRAC * median_slen_px) ** 2
+        perp_cap2 = (_MERGE_PERP_SLEN_FRAC * median_slen_px) ** 2
+    else:
+        along_cap2 = perp_cap2 = np.inf
     # tracks_slen is in micrometers (same units as the upstream sarcomere length
     # vectors); compare directly without a px conversion.
     slen_tol_um = float(merge_slen_tol_um)
@@ -436,40 +524,56 @@ def _merge_short_tracks(
     slen_lo = float(slen_lims[0])
     slen_hi = float(slen_lims[1])
 
-    # Per-track terminal state (only for eligible tracks).
+    # Per-track terminal state. Two eligibility tiers:
+    #   eligible_a — may SEED a chain (snapped_count >= min_track_length).
+    #   eligible_b — may be ABSORBED as a successor/bridge (>= merge_min_bridge_snaps).
+    # The looser bridge tier lets short respawn fragments be stitched in; the
+    # call-site min_track_length filter then runs on the assembled snap count.
     snap = tracks_snapped[:n_tracks]
     snap_counts = snap.sum(axis=1)
-    eligible = snap_counts >= int(min_track_length)
+    min_bridge = max(1, int(merge_min_bridge_snaps))
+    eligible_a = snap_counts >= int(min_track_length)
+    eligible_b = snap_counts >= min_bridge
     t_first = np.full(n_tracks, -1, dtype=np.int32)
     t_last = np.full(n_tracks, -1, dtype=np.int32)
     for i in range(n_tracks):
-        if not eligible[i]:
+        if not eligible_b[i]:
             continue
         idx = np.flatnonzero(snap[i])
         if idx.size == 0:
-            eligible[i] = False
+            eligible_a[i] = False
+            eligible_b[i] = False
             continue
         t_first[i] = int(idx[0])
         t_last[i] = int(idx[-1])
 
-    # Bucket eligible heads by t_first so the candidate scan is bounded.
+    # Bucket all absorbable heads by t_first so the candidate scan is bounded.
     heads_by_frame: List[List[int]] = [[] for _ in range(T)]
     for i in range(n_tracks):
-        if eligible[i] and t_first[i] >= 0:
+        if eligible_b[i] and t_first[i] >= 0:
             heads_by_frame[t_first[i]].append(i)
 
     consumed = np.zeros(n_tracks, dtype=bool)
     n_merges = 0
     merge_log: Optional[List[Dict[str, float]]] = [] if return_log else None
 
-    # Iterate As in ascending t_last so earliest-finishing tracks claim heads
-    # first; the inner while-loop chains A→B→C in one pass.
+    # Seed chains from long tracks in ascending t_last so earliest-finishing
+    # tracks claim successors first; the inner while-loop chains A→B→C in one
+    # pass (each absorbed B may itself be short).
     order = sorted(
-        (i for i in range(n_tracks) if eligible[i]),
+        (i for i in range(n_tracks) if eligible_a[i] and t_last[i] >= 0),
         key=lambda i: int(t_last[i]),
     )
     ys_buf = np.empty(1, dtype=np.float32)
     xs_buf = np.empty(1, dtype=np.float32)
+
+    def _last_finite_before(row, t):
+        """Last finite value at index ≤ t (NaN if none)."""
+        for k in range(t, -1, -1):
+            v = row[k]
+            if np.isfinite(v):
+                return float(v)
+        return float('nan')
 
     for A in order:
         if consumed[A]:
@@ -480,10 +584,15 @@ def _merge_short_tracks(
                 break
             ya = float(positions_px[A, t_a, 0])
             xa = float(positions_px[A, t_a, 1])
-            oa_raw = float(tracks_ori[A, t_a])
-            sa = float(tracks_slen[A, t_a])
             if not (np.isfinite(ya) and np.isfinite(xa)):
                 break
+            # Seam descriptors: read the last FINITE slen / orientation at or
+            # before t_a. A snapped frame can still carry NaN slen/ori when its
+            # detection lacked them; a NaN slen here would silently disable the
+            # slen-continuity guard (the strongest anti-swap gate), and a NaN
+            # orientation would collapse the along/perp seam axis to horizontal.
+            sa = _last_finite_before(tracks_slen[A], t_a)
+            oa_raw = _last_finite_before(tracks_ori[A], t_a)
             oa = oa_raw if np.isfinite(oa_raw) else 0.0
             sin_o = float(np.sin(oa))
             cos_o = float(np.cos(oa))
@@ -509,8 +618,8 @@ def _merge_short_tracks(
 
                 # Both along and perp tolerances scale with gap (random-walk
                 # accumulation of position uncertainty across the bridged gap).
-                gate_along2 = max_along2 * gap
-                gate_perp2 = max_perp2 * gap
+                gate_along2 = min(max_along2 * gap, along_cap2)
+                gate_perp2 = min(max_perp2 * gap, perp_cap2)
 
                 for B in heads_by_frame[t_target]:
                     if consumed[B] or B == A:
@@ -557,11 +666,16 @@ def _merge_short_tracks(
                     else:
                         dslen = 0.0
 
+                    # Normalize each residual by THIS gap's budget (the gates
+                    # scale with gap) so the cost reflects fraction-of-budget
+                    # used, plus an explicit shortest-bridge preference. Together
+                    # these make a safe near-by 1-gap match outrank a borderline
+                    # far-gap one with a small absolute residual.
                     cost = (
-                        (along_resid * along_resid) / max_along2
-                        + (perp_resid * perp_resid) / max_perp2
+                        (along_resid * along_resid) / gate_along2
+                        + (perp_resid * perp_resid) / gate_perp2
                         + (dslen * dslen) / slen_tol2
-                        + 0.25 * (gap - 1) / float(max_gap_interpolation)
+                        + merge_gap_penalty * (gap - 1)
                     )
                     if cost < best_cost:
                         best_cost = cost
@@ -589,12 +703,17 @@ def _merge_short_tracks(
                 tracks_slen[A, t_a + k] = np.nan
                 tracks_ori[A, t_a + k] = np.nan
                 tracks_snapped[A, t_a + k] = False
+                # Interpolated gap frames carry no real detection.
+                tracks_detection_id[A, t_a + k] = -1
+                tracks_midline_id[A, t_a + k] = -1
 
             # Copy B's row into A from t_b onward.
             positions_px[A, t_b:] = positions_px[B, t_b:]
             tracks_slen[A, t_b:] = tracks_slen[B, t_b:]
             tracks_ori[A, t_b:] = tracks_ori[B, t_b:]
             tracks_snapped[A, t_b:] = tracks_snapped[B, t_b:]
+            tracks_detection_id[A, t_b:] = tracks_detection_id[B, t_b:]
+            tracks_midline_id[A, t_b:] = tracks_midline_id[B, t_b:]
 
             # Mark B consumed: zero it so the downstream length filter drops it.
             consumed[B] = True
@@ -603,6 +722,8 @@ def _merge_short_tracks(
             positions_px[B, :, 1] = np.nan
             tracks_slen[B, :] = np.nan
             tracks_ori[B, :] = np.nan
+            tracks_detection_id[B, :] = -1
+            tracks_midline_id[B, :] = -1
 
             # Update A's terminal state so the inner while-loop can chain further.
             t_last[A] = t_b_last
@@ -629,7 +750,7 @@ def track_sarcomere_vectors(
     zbands_stack: np.ndarray,
     mbands_stack: np.ndarray,
     pos_vectors_px_all: List[np.ndarray],
-    midline_ids_all: List[np.ndarray],   # retained for API compat; not used here
+    midline_ids_all: List[np.ndarray],   # per-frame midline id of each detection; -1 if absent
     sarcomere_lengths_all: List[np.ndarray],
     orientations_all: List[np.ndarray],
     pixelsize: float,
@@ -642,17 +763,24 @@ def track_sarcomere_vectors(
     ori_tol_deg: float = 45.0,
     memory: int = 5,
     min_track_length: int = 5,
+    reacquire_gap_cap: int = 4,
+    reacquire_perp_scale: float = 0.5,
+    reacquire_along_cap2_factor: float = 2.0,
     max_gap_interpolation: int = 5,
     merge_tracks: bool = True,
     merge_max_disp_along_px: float = 25.0,
     merge_max_disp_perp_px: float = 4.0,
     merge_ori_tol_deg: float = 45.0,
     merge_slen_tol_um: float = 0.30,
+    merge_min_bridge_snaps: int = 1,
+    merge_gap_penalty: float = 0.5,
+    merge_max_passes: int = 1,
     slen_lims: Tuple[float, float] = (1.0, 3.0),
     return_merge_log: bool = False,
     compute_motion_field: bool = True,
     store_flow_fields: bool = False,
     farneback_kwargs: Optional[dict] = None,
+    progress_notifier: Optional[object] = None,
 ) -> Dict[str, object]:
     """Run the 2D full-field tracker on a stack.
 
@@ -660,15 +788,41 @@ def track_sarcomere_vectors(
     a sarcomere-centre marker that flow-advects and snaps to a consistent
     detection each frame. Outputs are dense ``(n_tracks, T)`` arrays.
 
-    When ``merge_tracks`` is True (default), a final stitching pass joins
-    trajectories that died and respawned across short gaps (1..
-    ``max_gap_interpolation`` frames). The merge gates are intentionally
-    looser than the per-frame snap gates (``merge_max_disp_*_px`` >
-    ``max_disp_*_px``) and scale linearly with gap (random-walk position
-    uncertainty over the bridged interval). The flow-predicted tail of A
-    must match B's head within these gates and a sarcomere-length
-    continuity tolerance (``|Δslen| <= merge_slen_tol_um``). Gap frames
-    carry linearly interpolated positions and ``tracks_snapped=False``.
+    Each (track, frame) also records ``tracks_detection_id`` — the index of the
+    snapped detection into ``pos_vectors_px_all[frame]`` — and
+    ``tracks_midline_id`` — that detection's entry in ``midline_ids_all``. Both
+    are ``-1`` on gap/interpolated frames (no real detection). These provide an
+    exact join from a track back to the per-frame vector / domain / myofibril
+    analyses, which downstream grouping (myofibril/domain/pool) relies on.
+
+    Continuity is built up in three complementary stages:
+
+    1. **Gap-scaled re-acquisition** (``reacquire_gap_cap`` > 1, default 4): a
+       live track that is coasting through a detection gap widens its snap gate
+       by a random-walk factor (∝ ``sqrt(gap)``, gap capped at
+       ``reacquire_gap_cap``) so it can re-snap to a reappearing detection
+       *before* it dies, instead of fragmenting. The along budget is hard-capped
+       (``reacquire_along_cap2_factor``) so it can never reach the next sarcomere
+       centre, and the perpendicular budget grows only ``reacquire_perp_scale``×
+       as fast (perpendicular jumps onto a neighbouring myofibril are the
+       dangerous swap). Set to 1 to disable (legacy behaviour).
+    2. **Hard greedy assignment**: candidate matches are claimed greedily in
+       order of ascending distance, each detection consumed by at most one query
+       point — the anti-convergence guarantee.
+    3. **Fragment stitching** (``merge_tracks`` True, default): a final pass
+       joins trajectories that died and respawned across short gaps
+       (1..``max_gap_interpolation``); each seed chains A→B→C in one pass via the
+       inner loop (``merge_max_passes`` > 1 re-runs it, rarely needed).
+       A long track (``snapped_count >= min_track_length``) may absorb even
+       short respawn fragments (``snapped_count >= merge_min_bridge_snaps``,
+       default 1) as bridges; the call-site length filter then runs on the
+       *assembled* track. Merge gates are looser than the snap gates
+       (``merge_max_disp_*_px``) and scale with gap; the flow-predicted tail of A
+       must match B's head within them plus a sarcomere-length continuity
+       tolerance (``|Δslen| <= merge_slen_tol_um``). The merge cost normalizes
+       each residual by its gap-scaled budget and adds ``merge_gap_penalty`` per
+       extra gap frame, preferring short, safe bridges. Gap frames carry linearly
+       interpolated positions and ``tracks_snapped=False``.
     """
     T = len(zbands_stack)
     if T < 2:
@@ -676,6 +830,23 @@ def track_sarcomere_vectors(
     H, W = zbands_stack.shape[-2:]
     ori_tol_rad = float(np.deg2rad(ori_tol_deg))
     ori_similarity_threshold = float(np.cos(2.0 * ori_tol_rad))
+
+    # Scale-invariance: cap the snap gates relative to the sarcomere length (px)
+    # so a snap can never cross to a neighbour, regardless of pixel size. No-op
+    # at the calibration scale; only binds at coarse pixel sizes (small slen_px).
+    median_slen_px = _median_slen_px(sarcomere_lengths_all, pixelsize)
+    if median_slen_px is not None and median_slen_px > 0:
+        along_cap = _ALONG_SLEN_FRAC * median_slen_px
+        perp_cap = _PERP_SLEN_FRAC * median_slen_px
+        if along_cap < max_disp_along_px or perp_cap < max_disp_perp_px:
+            logger.info(
+                f"Scale-aware gate cap (median slen ≈ {median_slen_px:.1f} px): "
+                f"along {max_disp_along_px:.1f}→{min(max_disp_along_px, along_cap):.1f} px, "
+                f"perp {max_disp_perp_px:.1f}→{min(max_disp_perp_px, perp_cap):.1f} px."
+            )
+        max_disp_along_px = min(float(max_disp_along_px), along_cap)
+        max_disp_perp_px = min(float(max_disp_perp_px), perp_cap)
+
     max_along2 = float(max_disp_along_px * max_disp_along_px)
     max_perp2 = float(max_disp_perp_px * max_disp_perp_px)
     max_radius = float(max_disp_along_px)
@@ -683,9 +854,11 @@ def track_sarcomere_vectors(
     logger.info("Computing optical flow sequence…")
     flows = compute_flow_sequence(
         zbands_stack, mbands_stack,
-        threshold=max(threshold_zbands, threshold_mbands),
+        threshold=threshold_zbands,
+        threshold_m=threshold_mbands,
         clip=dt_clip,
         farneback_kwargs=farneback_kwargs,
+        progress_notifier=progress_notifier,
     )
 
     # --- struct-of-arrays track state ---
@@ -701,6 +874,10 @@ def track_sarcomere_vectors(
     tracks_slen = np.full((capacity, T), np.nan, dtype=np.float32)
     tracks_ori = np.full((capacity, T), np.nan, dtype=np.float32)
     tracks_snapped = np.zeros((capacity, T), dtype=bool)
+    # Per-(track, frame) provenance: index of the snapped detection into
+    # pos_vectors_px_all[frame], and that detection's midline id. -1 = no snap.
+    tracks_detection_id = np.full((capacity, T), -1, dtype=np.int32)
+    tracks_midline_id = np.full((capacity, T), -1, dtype=np.int32)
     start_frame_arr = np.zeros(capacity, dtype=np.int32)
     last_y = np.full(capacity, np.nan, dtype=np.float32)
     last_x = np.full(capacity, np.nan, dtype=np.float32)
@@ -711,6 +888,7 @@ def track_sarcomere_vectors(
     def _grow(needed: int):
         """Double capacity until >= ``needed`` and resize all SoA arrays."""
         nonlocal capacity, positions_px, tracks_slen, tracks_ori, tracks_snapped
+        nonlocal tracks_detection_id, tracks_midline_id
         nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_snap, alive
         if needed <= capacity:
             return
@@ -728,6 +906,8 @@ def track_sarcomere_vectors(
         tracks_slen = _resize(tracks_slen, np.nan)
         tracks_ori = _resize(tracks_ori, np.nan)
         tracks_snapped = _resize(tracks_snapped, False)
+        tracks_detection_id = _resize(tracks_detection_id, -1)
+        tracks_midline_id = _resize(tracks_midline_id, -1)
         start_frame_arr = _resize(start_frame_arr, 0)
         last_y = _resize(last_y, np.nan)
         last_x = _resize(last_x, np.nan)
@@ -755,6 +935,12 @@ def track_sarcomere_vectors(
         tracks_slen[sl, 0] = slen0
         tracks_ori[sl, 0] = ori0
         tracks_snapped[sl, 0] = True
+        # Frame-0 seeds map 1:1 onto frame-0 detections (slot i == detection i).
+        tracks_detection_id[sl, 0] = np.arange(n0, dtype=np.int32)
+        tracks_midline_id[sl, 0] = _as_arr_padded(
+            midline_ids_all[0] if (midline_ids_all is not None and len(midline_ids_all) > 0)
+            else None, n0, np.int32, -1,
+        )
         start_frame_arr[sl] = 0
         last_y[sl] = pos0[:, 0]
         last_x[sl] = pos0[:, 1]
@@ -791,6 +977,10 @@ def track_sarcomere_vectors(
         n_det = len(dets)
         det_oris = _as_arr_padded(orientations_all[t + 1], n_det, np.float32, np.nan)
         det_slens = _as_arr_padded(sarcomere_lengths_all[t + 1], n_det, np.float32, np.nan)
+        det_mids = _as_arr_padded(
+            midline_ids_all[t + 1] if (midline_ids_all is not None and (t + 1) < len(midline_ids_all))
+            else None, n_det, np.int32, -1,
+        )
 
         # Bool masks over the current track slots / detections so we can do
         # claim bookkeeping in pure numpy without Python sets.
@@ -803,7 +993,24 @@ def track_sarcomere_vectors(
         if n_det > 0 and live.size > 0:
             tree = cKDTree(dets)
             live_pos = np.column_stack((last_y[live], last_x[live]))
-            neighbors = tree.query_ball_point(live_pos, r=max_radius)
+            # Gap-scaled re-acquisition: a track that has been coasting for k
+            # frames has accumulated ~k frames of flow-prediction uncertainty.
+            # Widen its gate by a random-walk factor (∝ sqrt(gap)) so it can
+            # re-snap to a reappearing detection instead of dying and
+            # fragmenting. The widening is capped at ``reacquire_gap_cap`` (1 =
+            # disabled / legacy behaviour) and the perpendicular budget grows
+            # more slowly than the along budget — perpendicular jumps onto a
+            # neighbouring myofibril are the dangerous swap; along growth is
+            # bounded so it cannot reach the next sarcomere centre.
+            if reacquire_gap_cap > 1:
+                g_live = np.minimum(
+                    frames_since_snap[live] + 1, reacquire_gap_cap
+                ).astype(np.float32)
+            else:
+                g_live = np.ones(live.size, dtype=np.float32)
+            # kd-tree radius must cover the (capped) along gate, the larger axis.
+            radii = max_radius * np.sqrt(np.minimum(g_live, reacquire_along_cap2_factor))
+            neighbors = tree.query_ball_point(live_pos, r=radii)
 
             counts = np.fromiter(
                 (len(n) for n in neighbors),
@@ -824,6 +1031,12 @@ def track_sarcomere_vectors(
                     np.arange(live.size, dtype=np.int64), counts,
                 )
                 qp_abs = live[qp_flat_rel]
+                # Per-pair gate budgets (random-walk scaling with the query
+                # point's coasting gap). along grows ∝ gap but is hard-capped
+                # below one sarcomere length; perp grows only ∝ a fraction.
+                g_pair = g_live[qp_flat_rel]
+                along_budget = max_along2 * np.minimum(g_pair, reacquire_along_cap2_factor)
+                perp_budget = max_perp2 * (1.0 + reacquire_perp_scale * (g_pair - 1.0))
 
                 qy = last_y[qp_abs]
                 qx = last_x[qp_abs]
@@ -851,7 +1064,7 @@ def track_sarcomere_vectors(
                 dx = cx - qx
                 along_p = dy * sref + dx * cref
                 perp_p = -dy * cref + dx * sref
-                pass_pos = (along_p * along_p <= max_along2) & (perp_p * perp_p <= max_perp2)
+                pass_pos = (along_p * along_p <= along_budget) & (perp_p * perp_p <= perp_budget)
                 mask = pass_ori & pass_pos
 
                 keep_pairs = np.flatnonzero(mask)
@@ -884,6 +1097,8 @@ def track_sarcomere_vectors(
                     tracks_slen[qp_acc, t + 1] = sl_acc
                     tracks_ori[qp_acc, t + 1] = co_acc
                     tracks_snapped[qp_acc, t + 1] = True
+                    tracks_detection_id[qp_acc, t + 1] = det_acc.astype(np.int32)
+                    tracks_midline_id[qp_acc, t + 1] = det_mids[det_acc]
                     last_y[qp_acc] = cy_acc
                     last_x[qp_acc] = cx_acc
                     # Only overwrite last_orientation when detection ori is finite.
@@ -925,6 +1140,8 @@ def track_sarcomere_vectors(
                 tracks_slen[new_slots, t + 1] = new_slen
                 tracks_ori[new_slots, t + 1] = new_ori
                 tracks_snapped[new_slots, t + 1] = True
+                tracks_detection_id[new_slots, t + 1] = unclaimed_det.astype(np.int32)
+                tracks_midline_id[new_slots, t + 1] = det_mids[unclaimed_det]
                 start_frame_arr[new_slots] = t + 1
                 last_y[new_slots] = new_y
                 last_x[new_slots] = new_x
@@ -934,28 +1151,44 @@ def track_sarcomere_vectors(
                 n_tracks += n_new
 
     # --- merge fragmented trajectories ---
+    # Run to a fixed point: absorbing a fragment can expose a further seam that
+    # was previously unreachable (the assembled track now ends later / a bridge
+    # was zeroed). Each pass is cheap O(n_tracks) bucketing vs. the Farneback
+    # cost, and converges quickly (no seam passing the gates -> 0 merges).
     n_merges = 0
-    merge_log: Optional[List[Dict[str, float]]] = None
+    merge_log: Optional[List[Dict[str, float]]] = [] if return_merge_log else None
     if merge_tracks and n_tracks > 0 and max_gap_interpolation >= 1:
         logger.info("Merging short trajectory fragments…")
-        n_merges, merge_log = _merge_short_tracks(
-            n_tracks=n_tracks,
-            positions_px=positions_px,
-            tracks_slen=tracks_slen,
-            tracks_ori=tracks_ori,
-            tracks_snapped=tracks_snapped,
-            flows=flows,
-            pixelsize=pixelsize,
-            min_track_length=min_track_length,
-            max_gap_interpolation=max_gap_interpolation,
-            merge_max_disp_along_px=merge_max_disp_along_px,
-            merge_max_disp_perp_px=merge_max_disp_perp_px,
-            merge_ori_tol_deg=merge_ori_tol_deg,
-            merge_slen_tol_um=merge_slen_tol_um,
-            slen_lims=slen_lims,
-            return_log=return_merge_log,
-        )
-        logger.info(f"Merged {n_merges} fragment pairs.")
+        for _pass in range(max(1, int(merge_max_passes))):
+            n_pass, pass_log = _merge_short_tracks(
+                n_tracks=n_tracks,
+                positions_px=positions_px,
+                tracks_slen=tracks_slen,
+                tracks_ori=tracks_ori,
+                tracks_snapped=tracks_snapped,
+                tracks_detection_id=tracks_detection_id,
+                tracks_midline_id=tracks_midline_id,
+                flows=flows,
+                pixelsize=pixelsize,
+                min_track_length=min_track_length,
+                max_gap_interpolation=max_gap_interpolation,
+                merge_max_disp_along_px=merge_max_disp_along_px,
+                merge_max_disp_perp_px=merge_max_disp_perp_px,
+                merge_ori_tol_deg=merge_ori_tol_deg,
+                merge_slen_tol_um=merge_slen_tol_um,
+                merge_min_bridge_snaps=merge_min_bridge_snaps,
+                merge_gap_penalty=merge_gap_penalty,
+                median_slen_px=median_slen_px,
+                slen_lims=slen_lims,
+                return_log=return_merge_log,
+            )
+            n_merges += n_pass
+            if pass_log:
+                merge_log.extend(pass_log)
+            logger.info(f"Merge pass {_pass + 1}: {n_pass} fragment pairs.")
+            if n_pass == 0:
+                break
+        logger.info(f"Merged {n_merges} fragment pairs total.")
 
     # --- filter short tracks (count of actual snaps) ---
     logger.info("Filtering short tracks…")
@@ -969,6 +1202,8 @@ def track_sarcomere_vectors(
     out_tracks_slen = tracks_slen[kept].copy()
     out_tracks_ori = tracks_ori[kept].copy()
     out_tracks_snapped = tracks_snapped[kept].copy()
+    out_tracks_detection_id = tracks_detection_id[kept].copy()
+    out_tracks_midline_id = tracks_midline_id[kept].copy()
     out_start_frame = start_frame_arr[kept].astype(np.int64)
     out_track_ids = kept.astype(np.int64)
     out_track_lengths = snapped_counts[kept].astype(np.int64)
@@ -983,6 +1218,8 @@ def track_sarcomere_vectors(
         'tracks_slen': out_tracks_slen,
         'tracks_orientations': out_tracks_ori,
         'tracks_snapped': out_tracks_snapped,
+        'tracks_detection_id': out_tracks_detection_id,
+        'tracks_midline_id': out_tracks_midline_id,
         'n_merges': n_merges,
     }
     if return_merge_log:
@@ -1005,15 +1242,7 @@ def track_sarcomere_vectors(
         result.update(stats)
 
     if store_flow_fields:
-        scales = np.zeros(len(flows), dtype=np.float32)
-        quant = np.empty(flows.shape, dtype=np.int16)
-        for i, f in enumerate(flows):
-            m = float(np.max(np.abs(f))) if f.size else 0.0
-            sc = (m / 32000.0) if m > 0 else 1.0
-            scales[i] = sc
-            quant[i] = np.clip(np.round(f / sc), -32000, 32000).astype(np.int16)
-        result['flow_fields_int16'] = quant
-        result['flow_fields_scales'] = scales
+        result['flow_fields'] = flows
 
     return result
 
@@ -1028,12 +1257,14 @@ def compute_motion_field(
     threshold: float = 0.5,
     dt_clip: float = 20.0,
     farneback_kwargs: Optional[dict] = None,
+    progress_notifier: Optional[object] = None,
 ) -> Dict[str, object]:
     """Flow + sampling without tracking. Useful for quick motion assessment."""
     flows = compute_flow_sequence(
         zbands_stack, mbands_stack,
         threshold=threshold, clip=dt_clip,
         farneback_kwargs=farneback_kwargs,
+        progress_notifier=progress_notifier,
     )
     pos_px_lists: List[np.ndarray] = []
     for p in pos_vectors_px_all:

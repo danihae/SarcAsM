@@ -663,6 +663,112 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'Structure.analyze_z_bands',
         'name': 'STD Z-band straightness'
+    },
+    # --- 2D sarcomere-vector tracking (Structure.track_sarcomere_vectors) ---
+    'n_tracks': {
+        'description': 'Number of sarcomere query-point tracks kept after the min_track_length filter.',
+        'data type': int,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Number of tracks'
+    },
+    'track_ids': {
+        'description': 'Internal slot id of each kept track. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track ids'
+    },
+    'track_start_frame': {
+        'description': 'Frame at which each track first appears. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track start frame'
+    },
+    'track_lengths': {
+        'description': 'Number of frames each track actually snapped to a detection. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track length [frames]'
+    },
+    'tracks_positions_um': {
+        'description': 'Per-track sarcomere-centre positions (y, x) in µm. np.ndarray, shape (n_tracks, T, 2); '
+                       'NaN before start / after close.',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track positions [µm]'
+    },
+    'tracks_positions_px': {
+        'description': 'Per-track sarcomere-centre positions (y, x) in pixels. np.ndarray, shape (n_tracks, T, 2).',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track positions [px]'
+    },
+    'tracks_slen': {
+        'description': 'Per-track sarcomere length over time in µm. np.ndarray, shape (n_tracks, T); '
+                       'NaN on gap (non-snapped) frames. The core per-sarcomere length-vs-time signal.',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track sarcomere length [µm]'
+    },
+    'tracks_orientations': {
+        'description': 'Per-track sarcomere orientation over time in radians. np.ndarray, shape (n_tracks, T); '
+                       'NaN on gap frames.',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track orientation [rad]'
+    },
+    'tracks_snapped': {
+        'description': 'Boolean mask, True where a real detection was snapped (vs flow-predicted gap). '
+                       'np.ndarray, shape (n_tracks, T).',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track snapped mask'
+    },
+    'tracks_detection_id': {
+        'description': 'Index of the snapped detection into pos_vectors_px of that frame (-1 on gap frames). '
+                       'np.ndarray, shape (n_tracks, T). Joins a track back to the per-frame vector analysis.',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track detection id'
+    },
+    'tracks_midline_id': {
+        'description': 'M-band (midline) id of the snapped detection per frame (-1 on gap frames). '
+                       'np.ndarray, shape (n_tracks, T). Basis for M-band-level grouping.',
+        'data type': np.ndarray,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Track M-band id'
+    },
+    'n_merges': {
+        'description': 'Number of fragmented trajectory pairs stitched by the post-loop merge step.',
+        'data type': int,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Number of track merges'
+    },
+    'motionfield_source': {
+        'description': "Which producer last wrote the motion-field keys: 'tracker' "
+                       '(track_sarcomere_vectors) or \'standalone\' (compute_motion_field).',
+        'data type': str,
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Motion-field source'
+    },
+    'displacement_along_sarcomere': {
+        'description': 'Per-frame optical-flow displacement projected onto the sarcomere axis, in µm. '
+                       'List of np.ndarray (one per frame). Also stored namespaced as motionfield_<source>_*.',
+        'data type': list[np.ndarray],
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Displacement along sarcomere [µm]'
+    },
+    'displacement_perpendicular': {
+        'description': 'Per-frame optical-flow displacement perpendicular to the sarcomere axis, in µm. '
+                       'List of np.ndarray (one per frame).',
+        'data type': list[np.ndarray],
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Displacement perpendicular [µm]'
+    },
+    'velocity_magnitude': {
+        'description': 'Per-frame optical-flow speed at each detection, in µm/s. List of np.ndarray (one per frame).',
+        'data type': list[np.ndarray],
+        'function': 'Structure.track_sarcomere_vectors',
+        'name': 'Velocity magnitude [µm/s]'
     }
 }
 

@@ -551,3 +551,124 @@ def test_merge_log_records_each_merge():
     # Residuals on flat synthetic flow should be tiny.
     assert abs(entry['perp_resid_px']) < 1.0
     assert abs(entry['along_resid_px']) < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Short-fragment merge bridges + gap-scaled re-acquisition
+# ---------------------------------------------------------------------------
+
+def test_merge_uses_short_fragment_as_bridge():
+    """A short fragment (< min_track_length) must be usable as a bridge that
+    chains two longer pieces which are otherwise too far apart to merge directly.
+
+    Layout (min_track_length=4, max_gap_interpolation=5):
+        A: snaps at 0,1,2,3      (len 4 — eligible seed)
+        B: snap  at 8            (len 1 — short fragment, bridge only)
+        C: snaps at 13,14,15     (len 3 — too short to seed/keep alone)
+    A→C directly spans a 9-frame gap (> max_gap), so it can only be stitched
+    *through* B (A→B gap 4, B→C gap 4). Legacy eligibility (bridge must be long)
+    drops B and C, leaving A alone at length 4.
+    """
+    T = 16
+    zstack, mstack = _identical_band_stack(T)
+    p = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    sl = np.array([1.8], np.float32)
+    ori = np.array([0.0], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    pos_px_all, slen_all, ori_all = [], [], []
+    for t in range(T):
+        if t in (0, 1, 2, 3, 8, 13, 14, 15):
+            pos_px_all.append(p); slen_all.append(sl); ori_all.append(ori)
+        else:
+            pos_px_all.append(empty); slen_all.append(sl0); ori_all.append(sl0)
+
+    common = dict(pixelsize=0.1, frametime=0.01, memory=0, min_track_length=4,
+                  max_gap_interpolation=5, merge_tracks=True, reacquire_gap_cap=1)
+
+    # New behaviour: short B bridges A→B→C into one long track.
+    out_new = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        merge_min_bridge_snaps=1, **common)
+    assert out_new['n_tracks'] == 1
+    assert int(out_new['tracks_snapped'][0].sum()) == 8   # 4 + 1 + 3 snaps
+
+    # Legacy emulation: bridges must themselves be >= min_track_length, so B and
+    # C are excluded and A can't reach C across the 9-frame gap → A alone.
+    out_old = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        merge_min_bridge_snaps=4, merge_max_passes=1, **common)
+    assert out_old['n_tracks'] == 1
+    assert int(out_old['tracks_snapped'][0].sum()) == 4
+
+
+def test_gap_scaled_reacquisition_recovers_offset_snap():
+    """A coasting track re-snaps to a detection just outside the fresh gate but
+    inside the gap-widened gate, instead of fragmenting.
+
+    Flow ~0 (identical masks). Track sits at (25,40), detected at frames 0,1;
+    frame 2 has no detection (track coasts, frames_since_snap→1); frames 3-5
+    have a detection 18 px along-axis away. The fresh along gate is 15 px (legacy
+    rejects → new track spawns), but after one gap frame the widened along gate
+    is 15·sqrt(2) ≈ 21 px (re-acquisition accepts). merge is OFF to isolate the
+    live loop. pixelsize=0.05 → slen ≈ 36 px, so the scale-aware along cap
+    (0.6·slen ≈ 21.6 px) is inactive and does not interfere with this test.
+    """
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    p0 = np.array([[25.0, 40.0]], dtype=np.float32)
+    p1 = np.array([[25.0, 58.0]], dtype=np.float32)   # 18 px along cols
+    empty = np.zeros((0, 2), dtype=np.float32)
+    sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    pos_px_all = [p0, p0, empty, p1, p1, p1]
+    slen_all = [sl, sl, sl0, sl, sl, sl]
+    ori_all = [ori, ori, sl0, ori, ori, ori]
+    common = dict(pixelsize=0.05, frametime=0.01, memory=3, min_track_length=2,
+                  merge_tracks=False)
+
+    out_off = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        reacquire_gap_cap=1, **common)
+    assert out_off['n_tracks'] == 2     # legacy: gap not bridged, B spawns
+
+    out_on = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        reacquire_gap_cap=4, **common)
+    assert out_on['n_tracks'] == 1      # widened gate re-acquires the offset det
+    assert int(out_on['tracks_snapped'][0].sum()) == 5
+
+
+def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
+    """The along snap gate is capped relative to sarcomere length (in px), so it
+    is scale-invariant: a fixed pixel offset that the raw 15 px gate would accept
+    is rejected at coarse pixel size (where it equals ~1 sarcomere = a swap), but
+    accepted at fine pixel size. Same masks/positions/offset — only pixelsize
+    (hence slen_px and the cap) differs.
+
+    offset = 12 px. fine: slen=1.8/0.05=36 px → cap 0.6·36=21.6 (no-op, gate 15)
+    → 12<15 snapped → 1 track. coarse: slen=1.8/0.12=15 px → cap 0.6·15=9 → 12>9
+    rejected → fragments into 2 tracks (12 px ≈ 0.8 sarcomere = a neighbour).
+    """
+    T = 5
+    zstack, mstack = _identical_band_stack(T)
+    p0 = np.array([[25.0, 40.0]], dtype=np.float32)
+    p1 = np.array([[25.0, 52.0]], dtype=np.float32)   # 12 px along cols
+    empty = np.zeros((0, 2), dtype=np.float32)
+    sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    pos_px_all = [p0, p0, empty, p1, p1]
+    slen_all = [sl, sl, sl0, sl, sl]
+    ori_all = [ori, ori, sl0, ori, ori]
+    common = dict(frametime=0.01, memory=3, min_track_length=2,
+                  merge_tracks=False, reacquire_gap_cap=1)
+
+    out_fine = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.05, **common)
+    assert out_fine['n_tracks'] == 1     # cap inactive → 12 px snapped
+
+    out_coarse = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.12, **common)
+    assert out_coarse['n_tracks'] == 2   # cap (9 px) rejects the 12 px neighbour

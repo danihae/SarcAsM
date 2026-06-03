@@ -151,6 +151,7 @@ class SarcAsM:
         self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
         self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
         self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
+        self.file_flow = os.path.join(self.base_dir, "flow.tif")
 
         # Initialize metadata
         self.metadata = ImageMetadata(
@@ -253,32 +254,47 @@ class SarcAsM:
         # Prevent propagation to root logger to avoid duplicate messages
         root_logger.propagate = False
 
+    # Map of dynamic attribute name -> instance attribute holding the file path.
+    # Used by __getattr__ via self.__dict__ to avoid recursion when an entry
+    # in the mapping isn't yet set on the instance.
+    _DYNAMIC_TIFF_ATTRS = {
+        'image': 'file_path',
+        'zbands': 'file_zbands',
+        'zbands_fast_movie': 'file_zbands_fast_movie',
+        'mbands': 'file_mbands',
+        'orientation': 'file_orientation',
+        'cell_mask': 'file_cell_mask',
+        'sarcomere_mask': 'file_sarcomere_mask',
+        'flow': 'file_flow',
+    }
+
     def __getattr__(self, name: str) -> Any:
         """Dynamic loading of analysis result TIFFs"""
-        attr_map = {
-            'image': self.file_path,
-            'zbands': self.file_zbands,
-            'zbands_fast_movie': self.file_zbands_fast_movie,
-            'mbands': self.file_mbands,
-            'orientation': self.file_orientation,
-            'cell_mask': self.file_cell_mask,
-            'sarcomere_mask': self.file_sarcomere_mask
-        }
+        file_attr = type(self)._DYNAMIC_TIFF_ATTRS.get(name)
+        if file_attr is None:
+            raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
 
-        if name in attr_map:
-            import tifffile
-            file_path = attr_map[name]
-            if name == 'image':
-                return self.read_imgs()
-            else:
-                if not os.path.exists(file_path):
-                    raise FileNotFoundError(
-                        f"Required analysis file missing: {os.path.basename(file_path)}\n"
-                        f"Run the 'detect_sarcomeres' to create this file."
-                    )
-                return tifffile.imread(file_path)
+        # Read directly from __dict__ to avoid re-entering __getattr__ if the
+        # underlying file_* attribute hasn't been set yet (e.g., on an instance
+        # constructed before this attribute was added to __init__).
+        try:
+            file_path = self.__dict__[file_attr]
+        except KeyError as e:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' instance is missing '{file_attr}'. "
+                f"Re-instantiate the object to populate it."
+            ) from e
 
-        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+        if name == 'image':
+            return self.read_imgs()
+
+        import tifffile
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(
+                f"Required analysis file missing: {os.path.basename(file_path)}\n"
+                f"Run the 'detect_sarcomeres' to create this file."
+            )
+        return tifffile.imread(file_path)
 
     def __dir__(self) -> list[str]:
         """Augment autocomplete with dynamic attributes"""
@@ -826,6 +842,7 @@ class SarcAsM:
             self.file_cell_mask,
             self.file_sarcomere_mask,
             self.file_zbands_fast_movie,
+            self.file_flow,
         ]
 
         for path in targets:
