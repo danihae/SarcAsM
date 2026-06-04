@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 _METADATA_KEYS = frozenset(ImageMetadata.__dataclass_fields__.keys())
 
 
-class MultiStructureAnalysis:
+class BatchExport:
     """
-    Class for multi-tif-file comparison of structure.
+    Batch export: collect already-analyzed features from many recordings into one table (.xlsx/.csv).
 
     Parameters
     ----------

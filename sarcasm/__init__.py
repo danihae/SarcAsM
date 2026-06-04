@@ -20,6 +20,6 @@ from .utils import Utils
 from .ioutils import IOUtils
 from .plots import Plots
 from .plot_utils import PlotUtils
-from .export import MultiStructureAnalysis
+from .export import BatchExport
 from .type_utils import TypeUtils
 from .training_data_generation import TrainingDataGenerator
