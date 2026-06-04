@@ -17,9 +17,9 @@ from .core import SarcAsMBase
 from .structure import SarcAsM
 from .motion import Motion
 from .utils import Utils
-from .ioutils import IOUtils
-from .plots import Plots
-from .plot_utils import PlotUtils
+from .io.ioutils import IOUtils
+from .plotting.plots import Plots
+from .plotting.plot_utils import PlotUtils
 from .export import BatchExport
 from .type_utils import TypeUtils
 from .training_data_generation import TrainingDataGenerator

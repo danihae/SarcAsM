@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from sarcasm.structure import SarcAsM
-from sarcasm.structure_modules import grouped_motion
+from sarcasm.analysis import grouped_motion
 from sarcasm.utils import Utils
 
 
@@ -345,7 +345,7 @@ def test_plot_track_myofibrils_smoke():
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from sarcasm.plots import Plots
+    from sarcasm.plotting.plots import Plots
     # stub the image background (needs file IO)
     orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
     Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)

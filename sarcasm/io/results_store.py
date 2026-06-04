@@ -395,7 +395,7 @@ def export_to_json(data, path: Union[str, Path], *,
     the old ``structure.json`` and reloadable by old code. Includes everything by
     default; ``include_arrays=False`` skips large arrays (handy for a readable
     params/scalars dump). ``keys`` selects a subset (e.g. one group's keys)."""
-    from sarcasm.ioutils import IOUtils
+    from sarcasm.io.ioutils import IOUtils
     keys = list(data.keys()) if keys is None else list(keys)
     out = {}
     for k in keys:

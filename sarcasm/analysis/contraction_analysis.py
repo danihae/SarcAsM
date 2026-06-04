@@ -18,7 +18,7 @@ length matrix into contraction cycles (via ContractionNet) and per-group
 contraction parameters (beating rate, amplitude, velocity, time-to-peak, …).
 
 It operates on already-aggregated per-group signals, NOT on individual tracks
-(that aggregation is :mod:`sarcasm.structure_modules.grouped_motion`) and is not
+(that aggregation is :mod:`sarcasm.analysis.grouped_motion`) and is not
 domain-specific — it is the shared engine behind every grouping kind (pool,
 m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`, as
 well as the deprecated mask-based :meth:`SarcAsM.analyze_domain_motion`. The
@@ -35,7 +35,7 @@ from scipy.signal import savgol_filter
 from skimage.segmentation import clear_border
 
 from contraction_net.prediction import predict_contractions
-from sarcasm.structure_modules.domain_clustering import (
+from sarcasm.analysis.domain_clustering import (
     analyze_domains,
     assign_vectors_to_domains,
 )

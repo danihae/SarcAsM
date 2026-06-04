@@ -25,11 +25,11 @@ from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
 from tifffile import tifffile
 
-from sarcasm.feature_dict import structure_feature_dict
+from sarcasm._internal.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
-from sarcasm.plot_utils import PlotUtils
+from sarcasm.plotting.plot_utils import PlotUtils
 from sarcasm.structure import SarcAsM
-from sarcasm.structure_modules import domain_clustering, myofibril_analysis
+from sarcasm.analysis import domain_clustering, myofibril_analysis
 from sarcasm.utils import Utils
 
 # Canonical axis labels (kept consistent with the symbols used across the

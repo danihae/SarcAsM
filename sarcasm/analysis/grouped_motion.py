@@ -13,7 +13,7 @@
 
 """Grouping-blind contraction analysis over per-track sarcomere lengths.
 
-The 2D tracker (:func:`sarcasm.structure_modules.sarcomere_tracking.track_sarcomere_vectors`)
+The 2D tracker (:func:`sarcasm.analysis.sarcomere_tracking.track_sarcomere_vectors`)
 already produces a per-sarcomere length time-series ``tracks_slen`` of shape
 ``(n_tracks, T)``. Every post-tracking "method" — pool, M-band, myofibril, domain,
 custom — is just a *grouping* of those tracks. This module turns a grouping
@@ -23,7 +23,7 @@ custom — is just a *grouping* of those tracks. This module turns a grouping
 2. per-group contraction cycles + kinematics (:func:`run_cycle_engine`),
 
 reusing the existing, battle-tested ContractionNet engine
-(:mod:`sarcasm.structure_modules.contraction_analysis`) verbatim — those
+(:mod:`sarcasm.analysis.contraction_analysis`) verbatim — those
 functions are pure functions of a ``(n_groups, T)`` length matrix plus
 ``frametime``.
 """
@@ -35,7 +35,7 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
-from sarcasm.structure_modules import contraction_analysis
+from sarcasm.analysis import contraction_analysis
 
 
 def aggregate_group_slen(

@@ -23,7 +23,7 @@ import pandas as pd
 from scipy import sparse
 from tqdm import tqdm as tqdm
 
-from sarcasm.meta_data_handler import ImageMetadata
+from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.structure import SarcAsM
 from sarcasm.motion import Motion
 

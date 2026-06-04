@@ -466,7 +466,7 @@ Key directories and files:
   * **motion.py** - Motion analysis (tracking, contraction detection)
   * **plots.py** - Plotting functions
   * **export.py** - Data export utilities
-  * **structure_modules/** - Modular structure analysis functions
+  * **analysis/** - Modular structure analysis functions
 
 * **sarcasm_app/** - GUI application code
   * **control/** - Application controllers

@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sarcasm.structure_modules import sarcomere_tracking as stk
+from sarcasm.analysis import sarcomere_tracking as stk
 
 PX = 0.06117      # µm/px (matches the real high-speed dataset)
 FT = 0.0164       # s/frame

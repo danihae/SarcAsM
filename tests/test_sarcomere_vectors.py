@@ -1,9 +1,9 @@
-"""Unit tests for helpers in :mod:`sarcasm.structure_modules.sarcomere_vectors`."""
+"""Unit tests for helpers in :mod:`sarcasm.analysis.sarcomere_vectors`."""
 from __future__ import annotations
 
 import numpy as np
 
-from sarcasm.structure_modules import sarcomere_vectors as sv
+from sarcasm.analysis import sarcomere_vectors as sv
 from sarcasm.utils import Utils
 
 

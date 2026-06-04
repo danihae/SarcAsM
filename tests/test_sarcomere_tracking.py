@@ -1,4 +1,4 @@
-"""Unit + behavioural tests for :mod:`sarcasm.structure_modules.sarcomere_tracking`.
+"""Unit + behavioural tests for :mod:`sarcasm.analysis.sarcomere_tracking`.
 
 The tracker is flow-predict + detection-snap; no M-band identity is persisted.
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sarcasm.structure_modules import sarcomere_tracking as st
+from sarcasm.analysis import sarcomere_tracking as st
 
 
 # ---------------------------------------------------------------------------

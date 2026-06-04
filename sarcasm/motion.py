@@ -27,7 +27,7 @@ from skimage.segmentation import clear_border
 
 from contraction_net.prediction import predict_contractions
 from sarcasm.core import SarcAsMBase
-from sarcasm.ioutils import IOUtils
+from sarcasm.io.ioutils import IOUtils
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the Zarr results store + lazy accessor (sarcasm.results_store)."""
+"""Tests for the Zarr results store + lazy accessor (sarcasm.io.results_store)."""
 from __future__ import annotations
 
 import os
@@ -9,8 +9,8 @@ import pytest
 import zarr
 from scipy import sparse
 
-from sarcasm.ioutils import IOUtils
-from sarcasm.results_store import (
+from sarcasm.io.ioutils import IOUtils
+from sarcasm.io.results_store import (
     Results,
     ResultsDict,
     export_to_json,

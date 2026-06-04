@@ -28,14 +28,14 @@ from bio_image_unet.progress import ProgressNotifier
 from scipy import stats, sparse
 
 from sarcasm.core import SarcAsMBase
-from sarcasm.ioutils import IOUtils
-from sarcasm.results_store import ResultsDict, Results, export_to_json
+from sarcasm.io.ioutils import IOUtils
+from sarcasm.io.results_store import ResultsDict, Results, export_to_json
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
 
 # Import structure modules
-from sarcasm.structure_modules import (
+from sarcasm.analysis import (
     z_band_analysis,
     sarcomere_vectors,
     myofibril_analysis,

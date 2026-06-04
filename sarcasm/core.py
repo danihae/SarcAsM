@@ -25,7 +25,7 @@ import tifffile
 import torch
 
 from sarcasm.exceptions import MetaDataError
-from sarcasm.meta_data_handler import ImageMetadata
+from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)

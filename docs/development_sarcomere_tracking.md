@@ -1,6 +1,6 @@
 # 2D full-field sarcomere tracking — flow-predict + detection-snap
 
-Location: [`sarcasm/structure_modules/sarcomere_tracking.py`](../sarcasm/structure_modules/sarcomere_tracking.py)
+Location: [`sarcasm/analysis/sarcomere_tracking.py`](../sarcasm/analysis/sarcomere_tracking.py)
 
 User-facing wrappers on [`Structure`](../sarcasm/structure.py):
 
@@ -95,4 +95,4 @@ Parameters prefixed `params.track_sarcomere_vectors.*`.
 ## Related
 
 - LOI tracker: [`sarcasm/motion.py`](../sarcasm/motion.py) — also received an opt-in topological-ordering constraint (`enforce_topological_order=True`) in `Motion._track_z_bands_lap`.
-- Domain motion: [`sarcasm/structure_modules/domain_motion.py`](../sarcasm/structure_modules/domain_motion.py) — can consume `displacement_along_sarcomere` from the new tracker's output for per-domain aggregates.
+- Domain motion: [`sarcasm/analysis/contraction_analysis.py`](../sarcasm/analysis/contraction_analysis.py) — can consume `displacement_along_sarcomere` from the new tracker's output for per-domain aggregates.
