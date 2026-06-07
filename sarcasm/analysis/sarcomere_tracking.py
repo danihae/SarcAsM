@@ -344,7 +344,12 @@ def _sample_bilinear(flow: np.ndarray, ys: np.ndarray, xs: np.ndarray) -> np.nda
     for i in range(N):
         y = ys[i]
         x = xs[i]
-        if y < 0 or x < 0 or y > H - 1 or x > W - 1:
+        # Valid image domain is the half-open interval [0, H) x [0, W). Sub-pixel
+        # positions in the last-pixel band (e.g. y in (H-1, H)) are inside the
+        # image and must be sampled (the upper-neighbour clamp below handles the
+        # missing row/col), not treated as out-of-bounds. Only positions truly
+        # off the grid get a zero (no extrapolation).
+        if y < 0 or x < 0 or y >= H or x >= W:
             out[i, 0] = 0.0
             out[i, 1] = 0.0
             continue
@@ -920,7 +925,8 @@ def track_sarcomere_vectors(
     merge_max_passes: int = 1,
     slen_lims: Tuple[float, float] = (1.0, 3.0),
     return_merge_log: bool = False,
-    compute_motion_field: bool = True,
+    motion_predictor: str = 'none',
+    compute_motion_field: bool = False,
     store_flow_fields: bool = False,
     farneback_kwargs: Optional[dict] = None,
     progress_notifier: Optional[object] = None,
@@ -1079,15 +1085,45 @@ def track_sarcomere_vectors(
     max_perp2 = float(max_disp_perp_px * max_disp_perp_px)
     max_radius = float(max_disp_along_px)
 
-    logger.info("Computing optical flow sequence…")
-    flows = compute_flow_sequence(
-        zbands_stack, mbands_stack,
-        threshold=threshold_zbands,
-        threshold_m=threshold_mbands,
-        clip=dt_clip,
-        farneback_kwargs=farneback_kwargs,
-        progress_notifier=progress_notifier,
-    )
+    if motion_predictor not in ('none', 'flow'):
+        raise ValueError(
+            f"motion_predictor must be 'none' or 'flow', got {motion_predictor!r}. "
+            "('constant_velocity' is planned but not yet implemented.)")
+
+    # The dense DT-Farneback flow is needed only (a) as a per-frame motion
+    # *predictor* for the snap loop / merge (motion_predictor='flow') or (b) to
+    # produce the flow-based motion field / stored flow stack. By default the
+    # tracker is pure snap-to-detection: at normal frame rates the next-frame
+    # detection sits well inside the snap gate, so a flow predictor changes
+    # <0.5% of snaps while the flow is the dominant compute cost and carries a
+    # segmentation-flicker velocity floor. So compute the (expensive) flow only
+    # when something actually consumes it; otherwise use a zero field.
+    need_real_flow = (motion_predictor == 'flow') or compute_motion_field or store_flow_fields
+    if need_real_flow:
+        logger.info("Computing optical flow sequence…")
+        flows = compute_flow_sequence(
+            zbands_stack, mbands_stack,
+            threshold=threshold_zbands,
+            threshold_m=threshold_mbands,
+            clip=dt_clip,
+            farneback_kwargs=farneback_kwargs,
+            progress_notifier=progress_notifier,
+        )
+    else:
+        flows = np.zeros((T - 1, H, W, 2), dtype=np.float32)
+
+    # The predictor field drives advection + merge. It is the real flow only when
+    # explicitly requested; otherwise a zero field (zero-motion predictor: each
+    # track's prediction is its previous position, and the merge tail holds
+    # position). When the real flow was computed solely for the motion field /
+    # storage (motion_predictor='none' but compute_motion_field/store_flow_fields),
+    # the predictor must still be zero so tracking is flow-free as intended.
+    if motion_predictor == 'flow':
+        predictor_flows = flows
+    elif need_real_flow:
+        predictor_flows = np.zeros((T - 1, H, W, 2), dtype=np.float32)
+    else:
+        predictor_flows = flows  # already the zero field
 
     # --- struct-of-arrays track state ---
     # History arrays (grow in chunks when capacity exceeded). Live state
@@ -1179,7 +1215,7 @@ def track_sarcomere_vectors(
     # --- frame-to-frame: advect, snap, spawn, close ---
     logger.info("Tracking frames…")
     for t in range(T - 1):
-        flow = flows[t]
+        flow = predictor_flows[t]
 
         # 1. advect every live track along its sarcomere axis only. Motion
         # perpendicular to the axis can only come from the snap residual,
@@ -1396,7 +1432,7 @@ def track_sarcomere_vectors(
                 tracks_snapped=tracks_snapped,
                 tracks_detection_id=tracks_detection_id,
                 tracks_midline_id=tracks_midline_id,
-                flows=flows,
+                flows=predictor_flows,
                 pixelsize=pixelsize,
                 min_track_length=min_track_length,
                 max_gap_interpolation=max_gap_interpolation,
@@ -1417,6 +1453,31 @@ def track_sarcomere_vectors(
             if n_pass == 0:
                 break
         logger.info(f"Merged {n_merges} fragment pairs total.")
+
+    # --- blank the trailing coast of lost tracks (no constant hold-over) ---
+    # A query point that stops snapping is flow-coasted for up to ``memory``
+    # frames before it is closed. Those trailing frames carried the last
+    # *predicted* position (≈ constant when the local flow is ~0) with NaN slen /
+    # orientation — a dead-end, not a real observation. Blank them to NaN so a
+    # lost track does not appear to freeze in place at its last position.
+    # Interior gap frames (between two snaps, bridged live or by the merge step
+    # above) are anchored on both sides and kept; only frames strictly after a
+    # track's final snap are cleared. tracks_snapped is left untouched, so the
+    # short-track filter below still counts real snaps.
+    if n_tracks > 0:
+        snap_view = tracks_snapped[:n_tracks]
+        has_snap = snap_view.any(axis=1)
+        # Index of the last True per row (all-False rows → -1 → whole row blanked;
+        # those have 0 snaps and are dropped by the short-track filter anyway).
+        last_snap_idx = np.where(
+            has_snap,
+            (T - 1) - np.argmax(snap_view[:, ::-1], axis=1),
+            -1,
+        )
+        trailing = np.arange(T)[None, :] > last_snap_idx[:, None]
+        positions_px[:n_tracks][trailing] = np.nan
+        tracks_slen[:n_tracks][trailing] = np.nan
+        tracks_ori[:n_tracks][trailing] = np.nan
 
     # --- filter short tracks (count of actual snaps) ---
     logger.info("Filtering short tracks…")

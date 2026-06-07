@@ -1497,7 +1497,8 @@ class SarcAsM(SarcAsMBase):
         merge_ori_tol_deg: float = 45.0,
         merge_slen_tol_um: float = 0.30,
         slen_lims: Tuple[float, float] = (1.0, 3.0),
-        compute_motion_field: bool = True,
+        motion_predictor: str = 'none',
+        compute_motion_field: bool = False,
         store_flow_fields: bool = False,
         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
     ) -> None:
@@ -1704,6 +1705,7 @@ class SarcAsM(SarcAsMBase):
             merge_ori_tol_deg=merge_ori_tol_deg,
             merge_slen_tol_um=merge_slen_tol_um,
             slen_lims=slen_lims,
+            motion_predictor=motion_predictor,
             compute_motion_field=compute_motion_field,
             store_flow_fields=store_flow_fields,
             progress_notifier=progress_notifier,
@@ -1739,6 +1741,7 @@ class SarcAsM(SarcAsMBase):
             'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
             'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
             'params.track_sarcomere_vectors.slen_lims': list(slen_lims),
+            'params.track_sarcomere_vectors.motion_predictor': motion_predictor,
             'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
             'params.track_sarcomere_vectors.store_flow_fields': store_flow_fields,
         }

@@ -314,6 +314,87 @@ def test_gap_frame_records_nan_slen_but_keeps_position():
     )
 
 
+def test_lost_track_trailing_coast_is_nan_not_held():
+    """A track that permanently loses its detection must not freeze in place at
+    its last position. The trailing coast frames (after the final snap, while
+    the query point is flow-advected toward closure) are blanked to NaN in the
+    output — position, slen and orientation alike."""
+    T = 8
+    zstack, mstack = _identical_band_stack(T)  # flow ~ 0
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    # Detection present frames 0-3, then gone for good (track is lost).
+    pos_px_all = [pos, pos, pos, pos, empty, empty, empty, empty]
+    slen_one = np.array([1.8], np.float32)
+    ori_one = np.array([0.0], np.float32)
+    slen_all = [slen_one if len(p) else np.zeros(0, np.float32) for p in pos_px_all]
+    ori_all = [ori_one if len(p) else np.zeros(0, np.float32) for p in pos_px_all]
+
+    out = st.track_sarcomere_vectors(
+        zstack, mstack,
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01,
+        memory=3, min_track_length=2,
+        merge_tracks=False,
+    )
+    assert out['n_tracks'] == 1
+    snapped = out['tracks_snapped'][0]
+    assert snapped.tolist() == [True, True, True, True, False, False, False, False]
+    pos_out = out['tracks_positions_px'][0]
+    pos_um = out['tracks_positions_um'][0]
+    slens = out['tracks_slen'][0]
+    oris = out['tracks_orientations'][0]
+    # Snapped frames keep their real values...
+    np.testing.assert_allclose(pos_out[:4, 0], 25.0, atol=1.0)
+    np.testing.assert_allclose(pos_out[:4, 1], 40.0, atol=1.0)
+    assert np.all(np.isfinite(slens[:4]))
+    # ...and every frame after the final snap is NaN (no constant hold-over).
+    assert np.all(np.isnan(pos_out[4:]))
+    assert np.all(np.isnan(pos_um[4:]))
+    assert np.all(np.isnan(slens[4:]))
+    assert np.all(np.isnan(oris[4:]))
+
+
+def test_motion_predictor_none_is_default_and_flowless():
+    """Default motion_predictor='none' computes NO optical flow and returns no
+    flow-derived outputs, while producing the same tracks as the flow predictor
+    on quiescent input. compute_motion_field still forces flow on demand."""
+    T = 6
+    zstack, mstack = _identical_band_stack(T)
+    pos = np.array([[25.0, 40.0]], np.float32)
+    pos_px_all = [pos.copy() for _ in range(T)]
+    slen_all = [np.array([1.8], np.float32) for _ in range(T)]
+    ori_all = [np.array([0.0], np.float32) for _ in range(T)]
+    common = dict(pixelsize=0.1, frametime=0.01, memory=2, min_track_length=2)
+
+    out_none = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all, **common)
+    # No flow-derived outputs by default.
+    assert 'velocity_magnitude' not in out_none
+    assert 'flow_at_vectors' not in out_none
+    assert 'flow_fields' not in out_none
+    assert out_none['n_tracks'] == 1
+
+    # Equivalent to the flow predictor on quiescent input (flow ~ 0 there).
+    out_flow = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        motion_predictor='flow', **common)
+    np.testing.assert_array_equal(np.nan_to_num(out_none['tracks_positions_px']),
+                                  np.nan_to_num(out_flow['tracks_positions_px']))
+
+    # compute_motion_field forces the flow computation even with predictor 'none'.
+    out_mf = st.track_sarcomere_vectors(
+        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        compute_motion_field=True, **common)
+    assert 'velocity_magnitude' in out_mf
+
+    # Unknown predictor is rejected.
+    with pytest.raises(ValueError):
+        st.track_sarcomere_vectors(
+            zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+            motion_predictor='bogus', **common)
+
+
 # ---------------------------------------------------------------------------
 # Trajectory-merge step
 # ---------------------------------------------------------------------------
