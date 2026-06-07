@@ -52,20 +52,19 @@ def compute_domain_timeseries(
 ) -> Dict[str, np.ndarray]:
     """
     Compute per-domain sarcomere length statistics over time.
-    
-    For each frame, assigns sarcomere vectors to domains based on their position
-    and computes summary statistics (mean, std, quartiles) of sarcomere lengths
-    within each domain.
-    
+
+    For each frame, assigns sarcomere vectors to domains by position and computes
+    summary statistics (mean, median, std, quartiles) of sarcomere lengths per domain.
+
     Parameters
     ----------
-    pos_vectors_all : List[np.ndarray]
-        List of position vectors for each frame. Each element is shape (n_vectors, 2) in µm.
-    sarcomere_length_vectors_all : List[np.ndarray]
-        List of sarcomere length vectors for each frame. Each element is shape (n_vectors,) in µm.
+    pos_vectors_all : list of np.ndarray
+        Per-frame position vectors, each of shape ``(n_vectors, 2)`` in µm.
+    sarcomere_length_vectors_all : list of np.ndarray
+        Per-frame sarcomere length vectors, each of shape ``(n_vectors,)`` in µm.
     domain_mask : np.ndarray
-        Integer-labeled domain mask from the reference frame. Domain IDs are 1, 2, 3, etc.
-        Background pixels have value 0.
+        Integer-labeled domain mask from the reference frame. Domain IDs are 1, 2, 3,
+        ...; background is 0.
     pixelsize : float
         Pixel size in µm.
     n_domains : int
@@ -74,13 +73,14 @@ def compute_domain_timeseries(
     Returns
     -------
     dict
-        Dictionary containing per-domain time-series:
-        - 'domain_slen_timeseries': np.ndarray, shape (n_domains, n_frames), mean sarcomere length
-        - 'domain_slen_median_timeseries': np.ndarray, shape (n_domains, n_frames), median sarcomere length
-        - 'domain_slen_std_timeseries': np.ndarray, shape (n_domains, n_frames), std of sarcomere length
-        - 'domain_slen_q25_timeseries': np.ndarray, shape (n_domains, n_frames), 25th percentile
-        - 'domain_slen_q75_timeseries': np.ndarray, shape (n_domains, n_frames), 75th percentile
-        - 'domain_n_vectors_timeseries': np.ndarray, shape (n_domains, n_frames), number of vectors
+        Per-domain time-series of shape ``(n_domains, n_frames)``:
+
+        - 'domain_slen_timeseries' : mean sarcomere length (µm)
+        - 'domain_slen_median_timeseries' : median sarcomere length (µm)
+        - 'domain_slen_std_timeseries' : std of sarcomere length (µm)
+        - 'domain_slen_q25_timeseries' : 25th percentile (µm)
+        - 'domain_slen_q75_timeseries' : 75th percentile (µm)
+        - 'domain_n_vectors_timeseries' : number of vectors
     """
     n_frames = len(pos_vectors_all)
     
@@ -139,46 +139,48 @@ def detect_contractions(
     id_offset: int = 0,
 ) -> Dict[str, np.ndarray]:
     """
-    Detect contraction cycles from domain-averaged sarcomere length time-series using ContractionNet.
+    Detect contraction cycles from per-group sarcomere length time-series via ContractionNet.
 
-    ``group_label`` / ``id_offset`` affect only log messages: each row ``i`` is
-    named ``f"{group_label} {i + id_offset}"`` so the shared engine matches the
-    numbering the caller uses (0-based group id for most kinds; 1-based mask
-    label for domains, where group id = mask label - 1). They do not affect any
-    computation.
-    
-    Uses the ContractionNet neural network to predict contraction states from the
-    mean sarcomere length signal of each domain, then applies morphological operations
-    to clean up the predictions.
-    
+    Predicts contraction states with the ContractionNet network for each row's
+    mean sarcomere length signal, then cleans the predictions with morphological
+    operations. ``group_label`` and ``id_offset`` affect only log messages: each
+    row ``i`` is named ``f"{group_label} {i + id_offset}"`` so the shared engine
+    matches the caller's numbering (0-based group id for most kinds; 1-based mask
+    label for domains, where group id = mask label - 1).
+
     Parameters
     ----------
     domain_slen_timeseries : np.ndarray
-        Per-domain mean sarcomere length time-series. Shape (n_domains, n_frames).
+        Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
     frametime : float
-        Time between frames in seconds.
+        Time between frames in s.
     model_path : str
         Path to the ContractionNet model weights (.pt file).
     threshold : float, optional
-        Binary threshold for contraction state prediction. Default 0.3.
+        Binary threshold for contraction state prediction. Default is 0.3.
     contr_time_min : float, optional
-        Minimal time of contraction in seconds. Shorter contractions are removed. Default 0.2.
+        Minimal contraction duration in s; shorter contractions are removed. Default is 0.2.
     merge_time_max : float, optional
-        Maximal time between two contractions. Closer contractions are merged. Default 0.05.
+        Maximal gap in s between two contractions; closer ones are merged. Default is 0.05.
     buffer_frames : int, optional
-        Remove contraction cycles within this many frames of start/end of time-series. Default 3.
+        Remove contraction cycles within this many frames of the start/end. Default is 3.
     min_valid_frames : float, optional
-        Minimum fraction of valid (non-NaN) frames required for a domain to be analyzed. Default 0.5.
-    
+        Minimum fraction of valid (non-NaN) frames required to analyze a group. Default is 0.5.
+    group_label : str, optional
+        Label used to name rows in log messages. Default is "Domain".
+    id_offset : int, optional
+        Offset added to the row index when naming rows in log messages. Default is 0.
+
     Returns
     -------
     dict
-        Dictionary containing per-domain contraction detection results:
-        - 'domain_contr': np.ndarray, shape (n_domains, n_frames), binary contraction state
-        - 'domain_n_contr': np.ndarray, shape (n_domains,), number of contractions per domain
-        - 'domain_labels_contr': np.ndarray, shape (n_domains, n_frames), contraction cycle labels
-        - 'domain_beating_rate': np.ndarray, shape (n_domains,), beating rate in Hz
-        - 'domain_beating_rate_variability': np.ndarray, shape (n_domains,), std of inter-beat interval
+        Per-group contraction detection results:
+
+        - 'domain_contr' : np.ndarray ``(n_domains, n_frames)``, binary contraction state
+        - 'domain_n_contr' : np.ndarray ``(n_domains,)``, number of contractions per group
+        - 'domain_labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
+        - 'domain_beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
+        - 'domain_beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
     """
     n_domains, n_frames = domain_slen_timeseries.shape
     
@@ -259,37 +261,39 @@ def analyze_contraction_parameters(
     filter_params: Tuple[int, int] = (13, 5),
 ) -> Dict[str, np.ndarray]:
     """
-    Analyze contraction parameters for domain-averaged sarcomere length trajectories.
-    
-    Computes per-domain, per-contraction-cycle parameters including maximum contraction,
-    maximum elongation, velocities, and timing parameters.
-    
+    Analyze per-cycle contraction parameters for per-group sarcomere length trajectories.
+
+    Computes per-group, per-contraction-cycle parameters: maximum contraction and
+    elongation, peak velocities, and timing parameters.
+
     Parameters
     ----------
     domain_slen_timeseries : np.ndarray
-        Per-domain mean sarcomere length time-series. Shape (n_domains, n_frames).
+        Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
     domain_labels_contr : np.ndarray
-        Per-domain contraction cycle labels. Shape (n_domains, n_frames).
+        Per-group contraction cycle labels, shape ``(n_domains, n_frames)``.
     domain_n_contr : np.ndarray
-        Number of contractions per domain. Shape (n_domains,).
+        Number of contractions per group, shape ``(n_domains,)``.
     frametime : float
-        Time between frames in seconds.
-    filter_params : Tuple[int, int], optional
-        Savitzky-Golay filter parameters (window_length, polyorder) for velocity smoothing.
-        Default (13, 5).
-    
+        Time between frames in s.
+    filter_params : tuple of int, optional
+        Savitzky-Golay filter parameters ``(window_length, polyorder)`` for velocity
+        smoothing. Default is (13, 5).
+
     Returns
     -------
     dict
-        Dictionary containing per-domain contraction parameters:
-        - 'domain_equ': np.ndarray, shape (n_domains,), equilibrium/resting sarcomere length
-        - 'domain_contr_max': np.ndarray, shape (n_domains, max_n_contr), max contraction per cycle
-        - 'domain_elong_max': np.ndarray, shape (n_domains, max_n_contr), max elongation per cycle
-        - 'domain_vel_contr_max': np.ndarray, shape (n_domains, max_n_contr), max shortening velocity
-        - 'domain_vel_elong_max': np.ndarray, shape (n_domains, max_n_contr), max elongation velocity
-        - 'domain_time_to_peak': np.ndarray, shape (n_domains, max_n_contr), time to maximal contraction
-        - 'domain_time_to_relax': np.ndarray, shape (n_domains, max_n_contr), time from peak to relaxation
-        - 'domain_time_contr': np.ndarray, shape (n_domains, max_n_contr), contraction duration
+        Per-group contraction parameters (``max_n_contr`` is the max cycle count
+        across groups):
+
+        - 'domain_equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm)
+        - 'domain_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
+        - 'domain_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation per cycle (µm)
+        - 'domain_vel_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max shortening velocity (µm/s)
+        - 'domain_vel_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation velocity (µm/s)
+        - 'domain_time_to_peak' : np.ndarray ``(n_domains, max_n_contr)``, time to maximal contraction (s)
+        - 'domain_time_to_relax' : np.ndarray ``(n_domains, max_n_contr)``, time from peak to relaxation (s)
+        - 'domain_time_contr' : np.ndarray ``(n_domains, max_n_contr)``, contraction duration (s)
     """
     n_domains = domain_slen_timeseries.shape[0]
     max_n_contr = int(np.max(domain_n_contr)) if np.max(domain_n_contr) > 0 else 1
@@ -370,17 +374,17 @@ def analyze_contraction_parameters(
 
 def _interpolate_nans(arr: np.ndarray) -> np.ndarray:
     """
-    Interpolate NaN values in a 1D array using linear interpolation.
-    
+    Linearly interpolate NaN values in a 1D array.
+
     Parameters
     ----------
     arr : np.ndarray
-        1D array potentially containing NaN values.
-    
+        1D array potentially containing NaNs.
+
     Returns
     -------
     np.ndarray
-        Array with NaN values interpolated.
+        Array with interior NaNs replaced by linear interpolation.
     """
     arr = arr.copy()
     nans = np.isnan(arr)

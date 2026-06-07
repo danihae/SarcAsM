@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Feature metadata registries mapping result keys to descriptions, data types, producing functions, and display names."""
 
 import numpy as np
 from scipy import sparse

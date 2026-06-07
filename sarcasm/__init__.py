@@ -12,6 +12,8 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+"""SarcAsM: sarcomere analysis of cardiomyocytes (public API re-exports)."""
+
 from ._version import __version__
 from .core import SarcAsMBase
 from .structure import SarcAsM

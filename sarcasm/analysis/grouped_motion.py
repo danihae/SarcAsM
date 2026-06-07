@@ -57,13 +57,14 @@ def aggregate_group_slen(
         tracks (excluded from every group).
     n_groups : int
         Number of groups (labels ``0 .. n_groups-1``).
-    aggregate : {'nanmedian', 'nanmean'}
+    aggregate : {'nanmedian', 'nanmean'}, optional
         Reduction used for the primary ``slen_timeseries`` (the signal fed to
         the contraction engine). The full distribution (median/std/q25/q75) is
         always returned for plotting regardless of this choice.
-    slen_lims : tuple(float, float), optional
+        Default is 'nanmedian'.
+    slen_lims : (float, float) or None, optional
         If given, member lengths outside ``[lo, hi]`` (µm) are set to NaN before
-        aggregation.
+        aggregation. Default is None.
 
     Returns
     -------
@@ -136,9 +137,40 @@ def run_cycle_engine(
     (:func:`contraction_analysis.detect_contractions` and
     :func:`contraction_analysis.analyze_contraction_parameters`) and returns
     their combined output dict (keys prefixed ``domain_*`` — the caller remaps
-    the prefix to the grouping kind). ``group_label`` / ``id_offset`` only label
-    the engine's per-group log messages. Returns empty ``(0, T)`` / ``(0,)``
-    arrays when ``n_groups == 0``.
+    the prefix to the grouping kind).
+
+    Parameters
+    ----------
+    group_slen : np.ndarray
+        Per-group sarcomere length over time, shape ``(n_groups, T)``.
+    frametime : float
+        Seconds per frame.
+    model_path : str
+        Path to the ContractionNet model used for contraction detection.
+    threshold : float, optional
+        Detection probability threshold. Default is 0.3.
+    contr_time_min : float, optional
+        Minimum contraction duration in seconds. Default is 0.2.
+    merge_time_max : float, optional
+        Maximum gap in seconds between contractions that are merged. Default is 0.05.
+    buffer_frames : int, optional
+        Frames added around each detected contraction. Default is 3.
+    min_valid_frames : float, optional
+        Minimum fraction of valid frames required per group. Default is 0.5.
+    filter_params : (int, int), optional
+        Savitzky-Golay (window_length, polyorder) for the velocity filter.
+        Default is (13, 5).
+    group_label : str, optional
+        Label used only in the engine's per-group log messages. Default is "Domain".
+    id_offset : int, optional
+        Offset added to group ids in the engine's per-group log messages.
+        Default is 0.
+
+    Returns
+    -------
+    dict
+        Combined ContractionNet output (keys prefixed ``domain_*``). Empty
+        ``(0, T)`` / ``(0,)`` arrays when ``n_groups == 0``.
     """
     group_slen = np.asarray(group_slen, dtype=float)
     n_groups, T = group_slen.shape
@@ -195,9 +227,11 @@ def _interp_nan_1d(a: np.ndarray) -> np.ndarray:
 
 
 def synthesize_loi_chain(member_slen: np.ndarray, frametime: float):
-    """Turn an ordered chain of K member sarcomere-length series into an LOI-style
-    ``(z_pos, slen, time)`` triple so the :mod:`sarcasm.motion` LOI engine runs
-    unmodified on a myofibril built from tracks.
+    """Build an LOI-style ``(z_pos, slen, time)`` triple from an ordered chain of tracks.
+
+    Turns K member sarcomere-length series ordered head-to-tail into the triple
+    the :mod:`sarcasm.motion` LOI engine consumes, so it runs unmodified on a
+    myofibril built from tracks.
 
     Parameters
     ----------

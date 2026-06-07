@@ -84,18 +84,18 @@ def smooth_orientation_field_temporal(
         x-component, channel 1 is the y-component.
     sigma : float
         Gaussian sigma in frames. ``sigma ≈ 1`` corresponds to an effective
-        span of ~5 frames. ``0`` returns the input unchanged.
+        span of ~5 frames; ``0`` returns the input unchanged.
     mode : str, optional
-        Boundary condition. ``'nearest'`` (default) extends the end values;
-        ``'reflect'`` and ``'mirror'`` are also accepted (mapped to the
-        backend's equivalent).
-    backend : str, optional
-        ``'scipy'`` (default, fastest on CPU for typical stacks) uses
-        ``scipy.ndimage.gaussian_filter1d``.  ``'torch'`` uses a depthwise 1D
-        convolution (useful for very large stacks on CUDA).
+        Boundary condition: ``'nearest'`` extends the end values; ``'reflect'``
+        and ``'mirror'`` are also accepted (mapped to the backend's
+        equivalent). Default is 'nearest'.
+    backend : {'scipy', 'torch'}, optional
+        ``'scipy'`` (fastest on CPU for typical stacks) uses
+        ``scipy.ndimage.gaussian_filter1d``; ``'torch'`` uses a depthwise 1D
+        convolution (useful for very large stacks on CUDA). Default is 'scipy'.
     device : str, optional
-        When ``backend='torch'``: ``'auto'`` picks cuda / mps / cpu; can also
-        be ``'cpu'``, ``'cuda'``, ``'mps'``.
+        Used when ``backend='torch'``: ``'auto'`` picks cuda / mps / cpu; can
+        also be ``'cpu'``, ``'cuda'``, ``'mps'``. Default is 'auto'.
 
     Returns
     -------
@@ -164,54 +164,62 @@ def get_sarcomere_vectors(
         precomputed_angle_map: Union[np.ndarray, None] = None,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
-    """
-    Extract sarcomere orientation and length vectors.
+    """Extract sarcomere orientation and length vectors.
 
     Parameters
     ----------
     zbands : np.ndarray
-        2D array representing the semantic segmentation map of Z-bands.
+        2D semantic segmentation map of Z-bands.
     mbands : np.ndarray
-        2D array representing the semantic segmentation map of mbands.
+        2D semantic segmentation map of M-bands.
     orientation_field : np.ndarray
-        2D array representing the orientation field.
+        Sarcomere orientation field.
     pixelsize : float
-        Size of a pixel in micrometers.
+        Pixel size in µm.
     median_filter_radius : float, optional
-        Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
+        Radius to smooth the orientation field before sampling orientation at
+        M-points, in µm. Default is 0.25.
     slen_lims : tuple of float, optional
-        Sarcomere size limits in micrometers (default is (1, 3)).
+        Sarcomere length limits in µm. Default is (1, 3).
     interp_factor : int, optional
-        Interpolation factor for profiles to calculate sarcomere length. Defaults to 4.
+        Profile interpolation factor for length estimation. Default is 4.
     linewidth : float, optional
-        Line width of profiles to calculate sarcomere length. Defaults to 0.3 µm.
+        Profile line width in µm. Default is 0.3.
     interpolation_method : str, optional
-        Interpolation method: 'linear' (fast) or 'akima' (smooth). Defaults to 'linear'.
+        Profile interpolation: 'linear' (fast) or 'akima' (smooth). Default is
+        'linear'.
     peak_prominence : float, optional
         ``scipy.signal.find_peaks`` prominence threshold used inside
-        :func:`Utils.process_profiles_batch`. Default 0.5 (matches LOI). Only
-        used when ``peak_algorithm='default'``.
+        :func:`Utils.process_profiles_batch`; only used when
+        ``peak_algorithm='default'``. Default is 0.5.
     peak_algorithm : {'default', 'loi'}, optional
-        Which peak-detection routine to apply to each profile.
-
-        * ``'default'`` — :func:`Utils.process_profiles_batch` (fast, batched,
-          with ``peak_prominence`` + ``interp_factor`` + ``interpolation_method``
-          configurable).
-        * ``'loi'`` — route every profile through :func:`Utils.peakdetekt`, the
-          exact peak-detection + Akima-upsampling + COM-refinement pipeline used
-          by the LOI analysis. Parameter presets match LOI (``interp_factor=6``,
-          ``prominence=0.5``, Akima). Slightly slower.
+        Peak-detection routine applied to each profile. ``'default'`` uses
+        :func:`Utils.process_profiles_batch` (fast, batched, honours
+        ``peak_prominence`` / ``interp_factor`` / ``interpolation_method``);
+        ``'loi'`` routes every profile through
+        :func:`Utils.process_profiles_batch_loi`, the peak-detection +
+        Akima-upsampling + COM-refinement pipeline used by the LOI analysis
+        (slower). Default is 'default'.
+    precomputed_angle_map : np.ndarray or None, optional
+        Precomputed orientation-angle map; if None it is derived from
+        ``orientation_field``. Default is None.
 
     Returns
     -------
+    pos_vectors_px : np.ndarray
+        Midline-point positions in pixels (row, col).
     pos_vectors : np.ndarray
-        Array of position vectors for sarcomeres.
-    sarcomere_orientation_vectors : np.ndarray
-        Sarcomere orientation values at midline points.
+        Center-corrected midline-point positions in µm.
+    midline_id_vectors : np.ndarray
+        M-band (midline) label for each vector.
+    midline_length_vectors : np.ndarray
+        Midline length (max Feret diameter) per vector in µm.
     sarcomere_length_vectors : np.ndarray
-        Sarcomere length values at midline points.
-    sarcomere_mask : np.ndarray
-        Mask indicating the presence of sarcomeres.
+        Sarcomere length at each midline point in µm.
+    sarcomere_orientation_vectors : np.ndarray
+        Sarcomere orientation at each midline point in radians.
+    n_mbands : int
+        Number of detected M-bands.
     """
     if peak_algorithm not in ('default', 'loi'):
         raise ValueError(f"peak_algorithm must be 'default' or 'loi'; got {peak_algorithm!r}")

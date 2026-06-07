@@ -12,6 +12,8 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+"""Generation of training data (Z-band, M-band, orientation, sarcomere masks) via wavelet analysis."""
+
 import os.path
 from typing import Union
 
@@ -33,28 +35,39 @@ from sarcasm import PlotUtils, SarcAsM, Utils
 
 class TrainingDataGenerator:
     """
-    Class for training data generation:
-    - Z-band mask
-    - M-band mask
-    - Sarcomere orientation field
-    - Sarcomere mask
+    Generate training data targets from a microscopy image.
+
+    Produces Z-band mask, M-band mask, sarcomere orientation field and
+    sarcomere mask for a single TIFF file.
+
+    Parameters
+    ----------
+    image_path : str
+        Path to microscopy image TIFF file.
+    output_dirs : dict
+        Mapping of target name to output directory, e.g.
+        ``{'zbands': '.../zbands/', 'mbands': '.../mbands/',
+        'orientation': '.../orientation/', 'sarcomere_mask': '.../sarcomere_mask/'}``.
+    pixelsize : float or None, optional
+        Pixel size of image in µm. If None, read from the TIFF metadata.
+        Default is None.
     """
 
     def __init__(self, image_path: str, output_dirs: dict, pixelsize: float = None) -> None:
         """
-        Initialize TrainingDataGenerator for a single tiff file.
+        Initialize TrainingDataGenerator for a single TIFF file.
 
         Parameters
         ----------
         image_path : str
-            Path to microscopy image tiff file.
+            Path to microscopy image TIFF file.
         output_dirs : dict
-            Dictionary with paths of output dictionaries for targets,
-            e.g. {'zbands': 'D:/training_data/zbands/', 'mbands': 'D:/training_data/mbands/',
-                  'orientation': 'D:/training_data/orientation/',
-                  'sarcomere_mask': 'D:/training_data/sarcomere_mask/'}
-        pixelsize : float
-            Pixel size of image in µm.
+            Mapping of target name to output directory, e.g.
+            ``{'zbands': '.../zbands/', 'mbands': '.../mbands/',
+            'orientation': '.../orientation/', 'sarcomere_mask': '.../sarcomere_mask/'}``.
+        pixelsize : float or None, optional
+            Pixel size of image in µm. If None, read from the TIFF metadata.
+            Default is None.
         """
         self.image_path = image_path
         self.image = tifffile.imread(image_path)
@@ -80,17 +93,21 @@ class TrainingDataGenerator:
 
     def predict_zbands(self, model_path: str, network: str = 'Unet_v0', patch_size: tuple[int, int] = (1024, 1024)):
         """
-        Predict sarcomere Z-bands using pre-trained U-Net model. This is optional, alternatively manually annotated
-        Z-band masks in 'zbands' directory can be used.
+        Predict sarcomere Z-bands using a pre-trained U-Net model.
+
+        Optional; manually annotated Z-band masks in the 'zbands' directory may
+        be used instead.
 
         Parameters
         ----------
         model_path : str
             Path of U-Net model for sarcomere Z-band detection.
-        network : str
-            Model type, choose from models in bio-image-unet package. Defaults to 'UNet_v0'.
-        patch_size : Tuple[int, int]
-            Patch size for prediction. Sizes should be multiples of 16.
+        network : str, optional
+            Model type, chosen from models in the bio-image-unet package.
+            Default is 'Unet_v0'.
+        patch_size : tuple of int, optional
+            Patch size ``(height, width)`` for prediction; should be multiples
+            of 16. Default is (1024, 1024).
         """
         Predict(self.image, result_name=self.output_dirs['zbands'] + self.basename, model_params=model_path,
                 network=network, resize_dim=patch_size)
@@ -108,48 +125,55 @@ class TrainingDataGenerator:
     
         Parameters
         ----------
-        kernel : str, optional
-            Filter kernel
-            - 'gaussian' for bivariate Gaussian kernel
-            - 'half_gaussian' for univariate Gaussian in minor axis direction and step function in major axis direction
-            - 'binary' for binary step function in both directions
-            Defaults to 'half_gaussian'.
+        kernel : {'gaussian', 'half_gaussian', 'binary'}, optional
+            Filter kernel. 'gaussian' is a bivariate Gaussian; 'half_gaussian'
+            is a univariate Gaussian in the minor axis direction and a step
+            function in the major axis direction; 'binary' is a step function in
+            both directions. Default is 'half_gaussian'.
         size : float, optional
-            Size of wavelet filters (in µm), needs to be larger than the upper limit of len_lims. Defaults to 3.0.
+            Size of wavelet filters in µm; must exceed the upper limit of
+            ``len_lims``. Default is 3.0.
         minor : float, optional
-            Minor axis width in µm, quantified by full width at half-maximum (FWHM, 2.33 * sigma in our paper),
-            should match the thickness of Z-bands, for kernel='gaussian' and kernel='half_gaussian'. Defaults to 0.33.
+            Minor axis width in µm (FWHM), should match Z-band thickness; for
+            kernel 'gaussian' and 'half_gaussian'. Default is 0.33.
         major : float, optional
-            Major axis width (parameter 'w' in our paper) in µm, should match the width of Z-bands.
-            Full width at half-maximum (FWHM) for kernel='gaussian' and full width for kernel='half_gaussian'.
-            Defaults to 1.0.
-        len_lims : tuple(float, float), optional
-            Limits of lengths / wavelet distances in µm, range of sarcomere lengths. Defaults to (1.3, 2.6).
+            Major axis width in µm, should match Z-band width (FWHM for
+            'gaussian', full width for 'half_gaussian'). Default is 1.0.
+        len_lims : tuple of float, optional
+            Limits of lengths / wavelet distances in µm. Default is (1.45, 2.7).
         len_step : float, optional
-            Step size of sarcomere lengths in µm. Defaults to 0.05.
-        orient_lims : tuple(float, float), optional
-            Limits of sarcomere orientation angles in degrees. Defaults to (-90, 90).
+            Step size of sarcomere lengths in µm. Default is 0.05.
+        orient_lims : tuple of float, optional
+            Limits of sarcomere orientation angles in degrees. Default is (-90, 90).
         orient_step : float, optional
-            Step size of orientation angles in degrees. Defaults to 10.
+            Step size of orientation angles in degrees. Default is 10.
         add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere, only for kernel='gaussian'. Defaults to False.
+            Whether to add a negative kernel between the two wavelets to avoid
+            detecting two Z-bands two sarcomeres apart as a sarcomere; only for
+            kernel 'gaussian'. Default is False.
         patch_size : int, optional
-            Patch size for wavelet analysis, default is 1024 pixels. Adapt to GPU storage. Defaults to 1024.
+            Patch size in pixels for wavelet analysis; adapt to GPU memory.
+            Default is 1024.
         score_threshold : float, optional
-            Threshold score for clipping of length and orientation map (if abs_threshold=False, score_threshold is
-            percentile (e.g., 90) for adaptive thresholding). Defaults to 0.25.
+            Threshold score for clipping the length and orientation map. If
+            ``abs_threshold`` is False, interpreted as a percentile for adaptive
+            thresholding. Default is 0.25.
         abs_threshold : bool, optional
-            If True, absolute threshold value is applied; if False, adaptive threshold based on percentile. Defaults to True.
+            If True, ``score_threshold`` is an absolute value; if False, a
+            percentile for adaptive thresholding. Default is True.
         gating : bool, optional
-            If True, AND-gated wavelet filtering is used. If False, both wavelet filters are applied jointly. Defaults to True.
+            If True, AND-gated wavelet filtering is used; if False, both wavelet
+            filters are applied jointly. Default is True.
         load_mbands : bool, optional
-            If True, manually curated M-band mask is loaded.
+            If True, load a manually curated M-band mask. Default is False.
         dtype : torch.dtype or str, optional
-            Specify torch data type (torch.float32 or torch.float16),
-            'auto' chooses float16 for cuda and mps, and float32 for cpu. Defaults to 'auto'.
-        device : torch.device
-            Device for 2D convolutions (torch.device('cuda') for GPU, torch.device('mps') for Apple Silicon, torch.device('cpu') for CPU)
+            Torch data type (torch.float32 or torch.float16); 'auto' chooses
+            float16 for cuda and mps, float32 for cpu. Default is 'auto'.
+        save_memory : bool, optional
+            Whether to save memory by moving intermediate results to CPU.
+            Default is False.
+        device : torch.device, optional
+            Device for 2D convolutions. Default is ``torch.device('cpu')``.
         """
         assert size > 1.1 * len_lims[1], (f"The size of wavelet filter {size} is too small for the maximum sarcomere "
                                           f"length {len_lims[1]}")
@@ -249,14 +273,11 @@ class TrainingDataGenerator:
 
     def create_orientation_map(self):
         """
-        Creates 2D sarcomere orientation map from sarcomere vectors.
-        The 2D shows shows the directions of unit vectors pointing from M-bands to Z-bands.
-        Undefined regions have np.nan values.
+        Create a 2D sarcomere orientation map from sarcomere vectors and save it.
 
-        Returns
-        -------
-        orientation_map : numpy.ndarray
-            A 2D array with values reflecting the local sarcomere orientation angle.
+        The map holds the local sarcomere orientation angle (direction of unit
+        vectors pointing from M-bands to Z-bands); undefined regions are np.nan.
+        The result is written to the 'orientation' output directory.
         """
         # Extract data from wavelet_dict
         pos_vectors = self.wavelet_dict['pos_vectors_px']
@@ -304,14 +325,15 @@ class TrainingDataGenerator:
 
     def smooth_orientation_map(self, window_size: int = 3):
         """
-        Smooth orientation angle map using a nanmedian filter. To handle the angle discontinuity from 2 pi -> 0,
-        the orientation angle map is converted to a 2D orientation field, both components are smoothed,
-        and then converted back
+        Smooth the orientation angle map using a nanmedian filter and save it.
+
+        To handle the angle discontinuity at 2*pi -> 0, the map is converted to
+        a 2D orientation field, both components are smoothed, then converted back.
 
         Parameters
         ----------
-        window_size : int
-            Size of smoothing kernel, must be odd integer.
+        window_size : int, optional
+            Size of smoothing kernel; must be an odd integer. Default is 3.
         """
         # load orientation map
         orientation_map = tifffile.imread(self.output_dirs['orientation'] + self.basename)
@@ -331,6 +353,18 @@ class TrainingDataGenerator:
         tifffile.imwrite(self.output_dirs['orientation'] + self.basename, orientation_map_smoothed)
 
     def plot_results(self, save_path=None, xlim=None, ylim=None):
+        """
+        Plot image, Z-bands, M-bands, sarcomere vectors, mask and orientation map.
+
+        Parameters
+        ----------
+        save_path : str or None, optional
+            If given, path to save the figure. Default is None.
+        xlim : tuple of float or None, optional
+            x-axis limits applied to all panels. Default is None.
+        ylim : tuple of float or None, optional
+            y-axis limits applied to all panels. Default is None.
+        """
         mosaic = """
         ABC
         DEF
@@ -412,29 +446,30 @@ class TrainingDataGenerator:
     def binary_kernel(d: float, sigma: float, width: float, orient: float, size: float,
                       pixelsize: float, mode: str = 'both') -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
         """
-        Returns binary kernel pair for AND-gated double wavelet analysis.
+        Return a binary kernel pair for AND-gated double wavelet analysis.
 
         Parameters
         ----------
         d : float
-            Distance between two wavelets.
+            Distance between the two wavelets.
         sigma : float
             Minor axis width of single wavelets.
         width : float
             Major axis width of single wavelets.
         orient : float
             Rotation orientation in degrees.
-        size : Tuple[float, float]
+        size : float
             Size of kernel in µm.
         pixelsize : float
-            Pixelsize in µm.
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns a single kernel. Defaults to 'both'.
+            Pixel size in µm.
+        mode : {'both', 'separate'}, optional
+            'separate' returns two separate kernels, 'both' returns a single
+            combined kernel. Default is 'both'.
 
         Returns
         -------
-        Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]
-            The generated binary kernel(s).
+        np.ndarray or tuple of np.ndarray
+            The generated binary kernel, or kernel pair if ``mode='separate'``.
         """
         # meshgrid
         size_pixel = TrainingDataGenerator.round_up_to_odd(size / pixelsize)
@@ -466,32 +501,34 @@ class TrainingDataGenerator:
                         pixelsize: float, mode: str = 'both',
                         add_negative_center_kernel: bool = False) -> Union[tuple[np.ndarray, np.ndarray], np.ndarray]:
         """
-        Returns gaussian kernel pair for AND-gated double wavelet analysis
+        Return a Gaussian kernel pair for AND-gated double wavelet analysis.
 
         Parameters
         ----------
         dist : float
-            Distance between two wavelets
+            Distance between the two wavelets.
         minor : float
-            Minor axis width of single wavelets in µm
+            Minor axis width of single wavelets in µm.
         major : float
-            Major axis width of single wavelets in µm
+            Major axis width of single wavelets in µm.
         orient : float
-            Rotation orientation in degree
+            Rotation orientation in degrees.
         size : float
-            Size of kernel in µm
+            Size of kernel in µm.
         pixelsize : float
-            Pixelsize in µm
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns single kernel
+            Pixel size in µm.
+        mode : {'both', 'separate'}, optional
+            'separate' returns two separate kernels, 'both' returns a single
+            combined kernel. Default is 'both'.
         add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere
+            Whether to add a negative kernel between the two wavelets to avoid
+            detecting two Z-bands two sarcomeres apart as a sarcomere.
+            Default is False.
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
-            Gaussian kernel pair
+        np.ndarray or tuple of np.ndarray
+            The combined Gaussian kernel, or kernel pair if ``mode='separate'``.
         """
         # Transform FWHM to sigma
         minor_sigma = minor / 2.355
@@ -542,33 +579,37 @@ class TrainingDataGenerator:
                              add_negative_center_kernel: bool = False) -> Union[
         tuple[np.ndarray, np.ndarray], np.ndarray]:
         """
-        Returns kernel pair for AND-gated double wavelet analysis with univariate Gaussian profile in longitudinal minor
-        axis direction and step function in lateral major axis direction
+        Return a kernel pair for AND-gated double wavelet analysis.
+
+        Uses a univariate Gaussian profile in the longitudinal minor axis
+        direction and a step function in the lateral major axis direction.
 
         Parameters
         ----------
         dist : float
-            Distance between two wavelets
+            Distance between the two wavelets.
         minor : float
-            Minor axis width, in full width at half maximum (FWHM), of single wavelets in µm
+            Minor axis width (FWHM) of single wavelets in µm.
         major : float
             Major axis width of single wavelets in µm.
         orient : float
-            Rotation orientation in degree
+            Rotation orientation in degrees.
         size : float
-            Size of kernel in µm
+            Size of kernel in µm.
         pixelsize : float
-            Pixelsize in µm
-        mode : str, optional
-            'separate' returns two separate kernels, 'both' returns single kernel
+            Pixel size in µm.
+        mode : {'both', 'separate'}, optional
+            'separate' returns two separate kernels, 'both' returns a single
+            combined kernel. Default is 'both'.
         add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere
+            Whether to add a negative kernel between the two wavelets to avoid
+            detecting two Z-bands two sarcomeres apart as a sarcomere.
+            Default is False.
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
-            Gaussian kernel pair
+        np.ndarray or tuple of np.ndarray
+            The combined kernel, or kernel pair if ``mode='separate'``.
         """
         # Transform FWHM to sigma
         minor_sigma = minor / 2.355
@@ -638,39 +679,41 @@ class TrainingDataGenerator:
                             orient_lims: tuple[float, float] = (-90, 90), orient_step: float = 5,
                             add_negative_center_kernel: bool = False) -> list[np.ndarray]:
         """
-        Returns bank of double wavelets.
-    
+        Return a bank of double wavelets over lengths and orientations.
+
         Parameters
         ----------
         pixelsize : float
             Pixel size in µm.
-        kernel : str, optional
-            Filter kernel ('gaussian' for double Gaussian kernel, 'binary' for binary double-line,
-            'half_gaussian' for half Gaussian kernel). Defaults to 'half_gaussian'.
+        kernel : {'half_gaussian', 'gaussian', 'binary'}, optional
+            Filter kernel. Default is 'half_gaussian'.
         size : float, optional
-            Size of kernel in µm. Defaults to 3.
+            Size of kernel in µm. Default is 3.
         minor : float, optional
-            Minor axis width of single wavelets. Defaults to 0.15.
+            Minor axis width of single wavelets. Default is 0.15.
         major : float, optional
-            Major axis width of single wavelets. Defaults to 0.5.
-        len_lims : Tuple[float, float], optional
-            Limits of lengths / wavelet distances in µm. Defaults to (1.3, 2.5).
+            Major axis width of single wavelets. Default is 0.5.
+        len_lims : tuple of float, optional
+            Limits of lengths / wavelet distances in µm. Default is (1.3, 2.5).
         len_step : float, optional
-            Step size in µm. Defaults to 0.025.
-        orient_lims : Tuple[float, float], optional
-            Limits of orientation angle in degrees. Defaults to (-90, 90).
+            Step size in µm. Default is 0.025.
+        orient_lims : tuple of float, optional
+            Limits of orientation angle in degrees. Default is (-90, 90).
         orient_step : float, optional
-            Step size in degrees. Defaults to 5.
+            Step size in degrees. Default is 5.
         add_negative_center_kernel : bool, optional
-            Whether to add a negative kernel in the middle of the two wavelets,
-            to avoid detection of two Z-bands two sarcomeres apart as sarcomere,
-            only for kernel=='gaussian' or 'half_gaussian.
-            Defaults to False.
-    
+            Whether to add a negative kernel between the two wavelets to avoid
+            detecting two Z-bands two sarcomeres apart as a sarcomere; only for
+            kernel 'gaussian' or 'half_gaussian'. Default is False.
+
         Returns
         -------
-        List[np.ndarray]
-            Bank of double wavelets.
+        bank : np.ndarray
+            Wavelet bank of shape ``(n_lengths, n_orientations, 2, size, size)``.
+        len_range : np.ndarray
+            Array of sarcomere lengths used in the bank.
+        orient_range : np.ndarray
+            Array of orientation angles (degrees) used in the bank.
         """
 
         len_range = np.arange(len_lims[0] - len_step, len_lims[1] + len_step, len_step, dtype='float32')
@@ -700,9 +743,11 @@ class TrainingDataGenerator:
                                  dtype: torch.dtype = torch.float16, save_memory: bool = False,
                                  patch_size: int = 512) -> torch.Tensor:
         """
-        AND-gated double-wavelet convolution of image using kernels from filter bank, with merged functionality.
-        Processes the image in smaller overlapping patches to manage GPU memory usage and avoid edge effects.
-    
+        AND-gated double-wavelet convolution of an image using a filter bank.
+
+        Processes the image in overlapping patches to manage GPU memory usage
+        and avoid edge effects.
+
         Parameters
         ----------
         image : np.ndarray
@@ -803,33 +848,25 @@ class TrainingDataGenerator:
     def argmax_wavelets(result: torch.Tensor, len_range: torch.Tensor, orient_range: torch.Tensor) -> tuple[
         np.ndarray, np.ndarray, np.ndarray]:
         """
-        Compute the argmax of wavelet convolution results to extract length, orientation, and maximum score map.
-    
-        This function processes the result of a wavelet convolution operation to determine the optimal
-        length and orientation for each position in the input image. It leverages GPU acceleration for
-        efficient computation and returns the results as NumPy arrays.
-    
+        Compute argmax of wavelet convolution results to extract length, orientation and score maps.
+
         Parameters
         ----------
         result : torch.Tensor
-            The result tensor from a wavelet convolution operation, expected to be on a GPU device.
-            Shape is expected to be (num_orientations, num_lengths, height, width).
+            Wavelet convolution result of shape ``(num_lengths, num_orientations, height, width)``.
         len_range : torch.Tensor
-            A tensor containing the different lengths used in the wavelet bank. Shape: (num_lengths,).
+            Lengths used in the wavelet bank, shape ``(num_lengths,)``.
         orient_range : torch.Tensor
-            A tensor containing the different orientation angles used in the wavelet bank, in degrees.
-            Shape: (num_orientations,).
-    
+            Orientation angles (radians) used in the wavelet bank, shape ``(num_orientations,)``.
+
         Returns
         -------
         length_np : np.ndarray
-            A 2D array of the optimal length for each position in the input image. Shape: (height, width).
+            Optimal length per pixel, shape ``(height, width)``.
         orient_np : np.ndarray
-            A 2D array of the optimal orientation (in radians) for each position in the input image.
-            Shape: (height, width).
+            Optimal orientation (radians) per pixel, shape ``(height, width)``.
         max_score_np : np.ndarray
-            A 2D array of the maximum convolution score for each position in the input image.
-            Shape: (height, width).
+            Maximum convolution score per pixel, shape ``(height, width)``.
         """
         # Keep the reshaping and max operation on the GPU
         result_reshaped = result.permute(2, 3, 0, 1).view(result.shape[2] * result.shape[3], -1)
@@ -849,46 +886,43 @@ class TrainingDataGenerator:
                                       len_range: np.ndarray, mbands: Union[np.ndarray, None] = None,
                                       score_threshold: float = 0.2, abs_threshold: bool = True) -> tuple:
         """
-        Extracts vector positions on sarcomere mbands and calculates sarcomere length and orientation.
+        Extract vector positions on sarcomere M-bands and compute length and orientation.
 
-        This function performs the following steps:
-        1. **Thresholding:** Applies a threshold to the length, orientation, and max_score arrays to refine sarcomere detection.
-        2. **Binarization:** Creates a binary mask to isolate mband regions.
-        3. **Skeletonization:** Thins the mband regions for easier analysis.
-        4. **Labeling:** Assigns unique labels to each connected mband component.
-        5. **Midline Point Extraction:** Identifies the coordinates of vectors along each mband.
-        6. **Value Calculation:** Calculates sarcomere length, orientation, and maximal score at each mband point.
+        Thresholds the score map, binarizes and skeletonizes M-band regions,
+        labels connected components, extracts midline coordinates and reads the
+        sarcomere length, orientation and score at each point.
 
         Parameters
         ----------
         length : np.ndarray
-            Sarcomere length map obtained from wavelet analysis.
+            Sarcomere length map from wavelet analysis.
         orientation : np.ndarray
-            Sarcomere orientation angle map obtained from wavelet analysis.
+            Sarcomere orientation angle map from wavelet analysis.
         max_score : np.ndarray
             Map of maximal wavelet scores.
-        len_range : torch.Tensor
-            An array containing the different lengths used in the wavelet bank.
+        len_range : np.ndarray
+            Lengths used in the wavelet bank.
         mbands : np.ndarray or None, optional
-            If not None, manually curated / corrected M-band mask is loaded.
+            If not None, a manually curated / corrected M-band mask to use.
+            Default is None.
         score_threshold : float, optional
-            Threshold for filtering detected sarcomeres. Can be either an absolute value (if abs_threshold=True) or
-            a percentile value for adaptive thresholding (if abs_threshold=False). Default is 90.
+            Threshold for filtering detected sarcomeres; an absolute value if
+            ``abs_threshold`` is True, otherwise a percentile for adaptive
+            thresholding. Default is 0.2.
         abs_threshold : bool, optional
-            Flag to determine the thresholding method. If True, 'score_threshold' is used as an absolute value.
-            If False, 'score_threshold' is interpreted as a percentile for adaptive thresholding. Default is False.
+            If True, ``score_threshold`` is an absolute value; if False, a
+            percentile for adaptive thresholding. Default is True.
 
         Returns
         -------
         tuple
-            * **pos_vectors_px** (list): List of (x, y) coordinates for each mband point. In pixels.
-            * **mband_id_vectors** (list): List of corresponding mband labels for each point.
-            * **mband_length_vectors** (list): List of approximate mband lengths associated with each point. In pixels.
-            * **sarcomere_length_vectors** (list): List of sarcomere lengths at each mband point. In µm.
-            * **sarcomere_orientation_vectors** (list): List of sarcomere orientation angles at each mband point.
-            * **max_score_vectors** (list): List of maximal wavelet scores at each mband point.
-            * **mband** (np.ndarray): The binarized mband mask.
-            * **score_threshold** (float): The final threshold value used.
+            ``(pos_vectors_px, mband_id_vectors, mband_length_vectors,
+            sarcomere_length_vectors, sarcomere_orientation_vectors,
+            max_score_vectors, mbands, mbands_labels, score_threshold)``:
+            M-band point coordinates (pixels), M-band labels, approximate M-band
+            lengths (pixels), sarcomere lengths (µm), orientation angles, maximal
+            wavelet scores, the binarized M-band mask, the labeled M-band mask and
+            the final threshold value used.
         """
         # rough thresholding of sarcomere structures to better identify adaptive threshold
         # determine adaptive threshold from value distribution
@@ -943,25 +977,25 @@ class TrainingDataGenerator:
     @staticmethod
     def interpolate_distance_map(image, N=50, method='linear'):
         """
-        Interpolates NaN regions in a 2D image, filling only those regions whose size
-        is less than or equal to a specified threshold.
+        Interpolate small NaN regions in a 2D image.
+
+        Only connected NaN regions with size <= N are filled; larger regions are
+        left unchanged.
 
         Parameters
         ----------
-        image : numpy.ndarray
-            A 2D array representing the input image. NaN values represent gaps to be filled.
-        N : int
-            The maximum size (in pixels) of connected NaN regions to interpolate. Regions larger
-            than this threshold will remain unaltered.
-        method : str, optional
-            The interpolation method to use. Options are 'linear', 'nearest', and 'cubic'.
-            Default is 'linear'.
+        image : np.ndarray
+            2D input image; NaN values mark gaps to be filled.
+        N : int, optional
+            Maximum size (in pixels) of connected NaN regions to interpolate.
+            Default is 50.
+        method : {'linear', 'nearest', 'cubic'}, optional
+            Interpolation method. Default is 'linear'.
 
         Returns
         -------
-        numpy.ndarray
-            A 2D array with the same shape as the input `image`, where small NaN regions
-            (size <= N) have been interpolated. Larger NaN regions are left unchanged.
+        np.ndarray
+            Image with the same shape, with small NaN regions interpolated.
         """
 
         # Get indices and mask valid points
@@ -995,9 +1029,24 @@ class TrainingDataGenerator:
     @staticmethod
     def get_pixel_size(file_path):
         """
-        Retrieves pixel size (x, y) in micrometers from a TIFF file.
+        Retrieve pixel size (x, y) in µm from a TIFF file.
+
         Prioritizes ImageJ metadata, then falls back to TIFF resolution tags.
-        Raises ValueError if pixel size cannot be determined.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to the TIFF file.
+
+        Returns
+        -------
+        tuple of float
+            Pixel size ``(x, y)`` in µm.
+
+        Raises
+        ------
+        ValueError
+            If the pixel size cannot be determined.
         """
         with tifffile.TiffFile(file_path) as tif:
             # Handle ImageJ metadata case

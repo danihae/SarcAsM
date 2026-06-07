@@ -11,6 +11,11 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Legacy JSON (de)serialization of SarcAsM results (``IOUtils``).
+
+Round-trips nested results dicts to/from the old ``structure.json`` format,
+preserving numpy arrays, scalars and scipy sparse matrices.
+"""
 
 import copy
 import json
@@ -28,6 +33,20 @@ class IOUtils:
 
     @staticmethod
     def __serialize_field(field):
+        """Recursively convert a value into JSON-serializable form.
+
+        Parameters
+        ----------
+        field : Any
+            Value to encode (ndarray, sparse matrix, np.generic, list, dict,
+            or plain JSON type).
+
+        Returns
+        -------
+        Any
+            JSON-serializable representation, tagging arrays/sparse matrices/
+            scalars with a ``'type'`` field for round-trip.
+        """
         if sparse.issparse(field):
             return {
                 'type': 'sparse_matrix',
@@ -46,6 +65,20 @@ class IOUtils:
 
     @staticmethod
     def __deserialize_field(field):
+        """Recursively decode a value produced by :meth:`__serialize_field`.
+
+        Parameters
+        ----------
+        field : Any
+            Encoded value (possibly a type-tagged dict for ndarray, sparse
+            matrix or scalar), list, dict, or plain JSON type.
+
+        Returns
+        -------
+        Any
+            Reconstructed value, restoring numpy arrays (NaN-aware), sparse
+            matrices and scalars.
+        """
         if isinstance(field, list):
             return [IOUtils.__deserialize_field(val) for val in field]
         elif isinstance(field, dict) and 'type' in field:
@@ -73,6 +106,22 @@ class IOUtils:
 
     @staticmethod
     def json_serialize(obj, file_path):
+        """Serialize a results object to a JSON file.
+
+        Parameters
+        ----------
+        obj : Any
+            Object to serialize (typically a nested results dict). Deep-copied
+            before encoding.
+        file_path : str
+            Destination path. Written as binary via ``orjson`` with sorted
+            keys and 2-space indent.
+
+        Raises
+        ------
+        Exception
+            If serialization fails.
+        """
         cpy = copy.deepcopy(obj)
         cpy = IOUtils.__serialize_field(cpy)
         try:
@@ -89,6 +138,25 @@ class IOUtils:
 
     @staticmethod
     def json_deserialize(file_path):
+        """Load and decode a results object from a JSON file.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to the JSON file. Read with ``orjson``; on failure falls back
+            to the standard ``json`` parser.
+
+        Returns
+        -------
+        Any
+            Deserialized object with numpy arrays, scalars and sparse matrices
+            reconstructed.
+
+        Raises
+        ------
+        Exception
+            If both the primary and fallback parsers fail.
+        """
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
@@ -111,6 +179,19 @@ class IOUtils:
 
     @staticmethod
     def __sparse_to_json_serializable(sparse_matrix):
+        """Encode a sparse matrix as a JSON string of COO components.
+
+        Parameters
+        ----------
+        sparse_matrix : scipy.sparse.spmatrix
+            Matrix to encode.
+
+        Returns
+        -------
+        str
+            JSON string with ``data``, ``row``, ``col`` and ``shape`` of the
+            COO representation.
+        """
         sparse_coo = sparse_matrix.tocoo()
         serializable_data = {
             "data": sparse_coo.data.tolist(),
@@ -122,6 +203,18 @@ class IOUtils:
 
     @staticmethod
     def __json_serializable_to_sparse(json_data):
+        """Decode a JSON string of COO components back into a sparse matrix.
+
+        Parameters
+        ----------
+        json_data : str
+            JSON string produced by :meth:`__sparse_to_json_serializable`.
+
+        Returns
+        -------
+        scipy.sparse.coo_matrix
+            Reconstructed sparse matrix.
+        """
         data = orjson.loads(json_data.encode('utf-8'))
         return sparse.coo_matrix(
             (np.array(data["data"]),

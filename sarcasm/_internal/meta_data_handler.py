@@ -11,6 +11,8 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Image metadata container and JSON (de)serialization helpers."""
+
 import datetime
 import json
 from dataclasses import dataclass, field, asdict
@@ -24,7 +26,42 @@ from sarcasm._version import __version__
 
 @dataclass
 class ImageMetadata:
-    """Metadata of tif file."""
+    """Metadata of a TIFF image and its analysis.
+
+    Attributes
+    ----------
+    axes : str or None
+        Axis order string of the image. Default is None.
+    pixelsize : float or None
+        Pixel size in µm. Default is None.
+    frametime : float or None
+        Time between frames in seconds. Default is None.
+    shape_orig : tuple of int
+        Original image shape before processing. Default is an empty tuple.
+    shape : tuple of int or None
+        Image shape after processing. Default is None.
+    n_stack : int or None
+        Number of frames in the stack. Default is None.
+    size : tuple of int or None
+        Spatial size ``(height, width)`` in pixels. Default is None.
+    timestamps : list of float or None
+        Per-frame acquisition timestamps. Default is None.
+    file_name : str
+        Image file name. Default is "".
+    file_path : str
+        Image file path. Default is "".
+    time : np.ndarray or None
+        Time array, computed in :meth:`__post_init__` from ``frametime`` and
+        ``n_stack``.
+    sarcasm_version : str
+        SarcAsM version that produced the metadata.
+    timestamp_analysis : str
+        ISO-format timestamp of the analysis.
+    channel : int or None
+        Channel index containing the sarcomere signal. Default is None.
+    user_info : dict
+        Arbitrary user-supplied metadata. Default is an empty dict.
+    """
 
     # Core image properties (set during read_imgs)
     axes: str | None = None
@@ -65,11 +102,23 @@ class ImageMetadata:
             self.time = None
 
     def add_user_info(self, **kwargs):
-        """Add arbitrary user metadata after initialization."""
+        """Add arbitrary user metadata after initialization.
+
+        Parameters
+        ----------
+        **kwargs
+            Key-value pairs added to ``user_info``.
+        """
         self.user_info.update(kwargs)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to JSON-serializable dictionary."""
+        """Convert to a JSON-serializable dictionary.
+
+        Returns
+        -------
+        dict
+            Field values with ``user_info`` flattened into the top level.
+        """
         result = asdict(self)
 
         # Flatten user_info into the main dict
@@ -80,7 +129,18 @@ class ImageMetadata:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ImageMetadata':
-        """Create from dictionary (for loading from JSON)."""
+        """Create an instance from a dictionary (e.g. loaded from JSON).
+
+        Parameters
+        ----------
+        data : dict
+            Field values; unknown keys are stored in ``user_info``.
+
+        Returns
+        -------
+        ImageMetadata
+            Reconstructed instance.
+        """
         # Get only fields that can be passed to __init__ (init=True)
         dataclass_fields = cls.__dataclass_fields__
         init_fields = {name for name, field_obj in dataclass_fields.items() if field_obj.init}
@@ -101,7 +161,15 @@ class ImageMetadata:
 
     @classmethod
     def save_to_file(cls, instance, file_path: Path):
-        """Save metadata to JSON file."""
+        """Save metadata to a JSON file.
+
+        Parameters
+        ----------
+        instance : ImageMetadata
+            Metadata to serialize.
+        file_path : Path
+            Destination JSON file path.
+        """
         # Convert numpy array to list for JSON serialization
         data = instance.to_dict()
         if 'time' in data and isinstance(data['time'], np.ndarray):
@@ -111,7 +179,18 @@ class ImageMetadata:
 
     @classmethod
     def load_from_file(cls, file_path: Path) -> 'ImageMetadata':
-        """Load metadata from JSON file."""
+        """Load metadata from a JSON file.
+
+        Parameters
+        ----------
+        file_path : Path
+            Source JSON file path.
+
+        Returns
+        -------
+        ImageMetadata
+            Loaded instance.
+        """
         with open(file_path, 'r') as f:
             data = json.load(f)
         # Convert time list back to numpy array

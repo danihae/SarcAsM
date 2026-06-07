@@ -41,36 +41,39 @@ def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, m
     ----------
     images : np.ndarray
         Images to process.
-    model_path : str, optional
-        Path of trained network weights for U-Net. Default is None.
-    base_dir : str
-        Base directory for output files.
+    model_path : str
+        Path of trained network weights for U-Net. If None or 'generalist',
+        the bundled generalist model is used.
     model_dir : str
         Directory containing model files.
     pixelsize : float
         Pixel size in micrometers.
     max_patch_size : tuple of int, optional
-        Maximal patch dimensions for convolutional neural network (n_x, n_y).
+        Maximal patch dimensions ``(n_x, n_y)`` for the network.
         Default is (1024, 1024).
     normalization_mode : str, optional
-        Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-        'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
-        Default is 'all'.
+        Intensity normalization mode for 3D stacks ('single': each image
+        individually, 'all': histogram of full stack, 'first': histogram of
+        first image). Default is 'all'.
     clip_thres : tuple of float, optional
-        Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
+        Clip threshold (lower, upper) for intensity normalization.
+        Default is (0., 99.98).
     rescale_factor : float, optional
-        Factor by which to rescale the input images in the XY dimensions before prediction.
-        For example, 0.5 reduces the XY resolution by half.
-        The images and all subsequent outputs will be rescaled back to their original resolution after prediction.
+        Factor to rescale input images in XY before prediction (e.g. 0.5 halves
+        XY resolution); outputs are rescaled back to original resolution.
         Default is 1.0 (no rescaling).
-    device : torch.device or str
-        Device on which PyTorch kernels are executed.
+    device : torch.device or str, optional
+        Device on which PyTorch kernels are executed. Default is 'auto'.
     progress_notifier : ProgressNotifier, optional
-        Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
+        Progress notifier for inclusion in GUI.
+        Default is ProgressNotifier.progress_notifier_tqdm().
 
     Returns
     -------
-    None
+    dict of str to np.ndarray
+        Predicted masks keyed by name (``zbands``, ``mbands``, ``orientation``,
+        ``cell_mask``, ``sarcomere_mask``) as float probability maps at the
+        original XY resolution. The caller writes these into the OME-Zarr store.
     """
     max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
     
@@ -156,29 +159,31 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, base_dir
     ----------
     images : np.ndarray
         Images to process.
-    model_path : str, optional
-        Path of trained network weights for 3D U-Net. Default is None.
-    base_dir : str
-        Base directory for output.
+    model_path : str
+        Path of trained network weights for 3D U-Net. If None, the bundled
+        z-band model is used.
     model_dir : str
         Directory containing model files.
     max_patch_size : tuple of int, optional
-        Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
-        Dimensions need to be divisible by 16. Default is (32, 256, 256).
+        Maximal patch dimensions ``(n_frames, n_x, n_y)`` for the network;
+        dimensions must be divisible by 16. Default is (32, 256, 256).
     normalization_mode : str, optional
-        Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-        'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
-        Default is 'all'.
+        Intensity normalization mode for 3D stacks ('single': each image
+        individually, 'all': histogram of full stack, 'first': histogram of
+        first image). Default is 'all'.
     clip_thres : tuple of float, optional
-        Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
-    device : torch.device or str
-        Device for PyTorch.
+        Clip threshold (lower, upper) for intensity normalization.
+        Default is (0., 99.8).
+    device : torch.device or str, optional
+        Device on which PyTorch kernels are executed. Default is 'auto'.
     progress_notifier : ProgressNotifier, optional
-        Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
+        Progress notifier for inclusion in GUI.
+        Default is ProgressNotifier.progress_notifier_tqdm().
 
     Returns
     -------
-    None
+    dict of str to np.ndarray
+        ``{'zbands_fast_movie': ndarray}`` — the caller writes it into the store.
     """
     logger.info('Predicting sarcomere z-bands ...')
 
@@ -199,8 +204,7 @@ def analyze_cell_mask_from_file(file_cell_mask: str, images: np.ndarray, pixelsi
                                 frames: Union[str, int, List[int], np.ndarray] = 'all',
                                 threshold: float = 0.1) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Analyzes the area occupied by cells in the given image(s) and calculates the average cell intensity and
-    cell area ratio.
+    Analyze the area occupied by cells and compute average cell intensity and cell area ratio.
 
     Parameters
     ----------
@@ -210,13 +214,13 @@ def analyze_cell_mask_from_file(file_cell_mask: str, images: np.ndarray, pixelsi
         Raw images.
     pixelsize : float
         Pixel size in micrometers.
-    frames: {'all', int, list, np.ndarray}, optional
-        Frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
-        selected frames). Defaults to 'all'.
+    frames : {'all'}, int, list of int or np.ndarray, optional
+        Frames to analyze ('all' for all frames, int for a single frame, list
+        or ndarray for selected frames). Default is 'all'.
     threshold : float, optional
-        Threshold value for binarizing the cell mask image. Pixels with intensity
-        above threshold are considered cell. Defaults to 0.1.
-        
+        Threshold for binarizing the cell mask; pixels above it are cell.
+        Default is 0.1.
+
     Returns
     -------
     cell_area : np.ndarray

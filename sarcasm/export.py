@@ -11,6 +11,12 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Export structure and motion features to tabular (.xlsx/.csv) and JSON files.
+
+:class:`Export` writes features from a single analyzed object; :class:`BatchExport`
+collects features from many recordings into one table.
+"""
+
 import json
 import logging
 import os.path
@@ -36,7 +42,7 @@ _METADATA_KEYS = frozenset(ImageMetadata.__dataclass_fields__.keys())
 
 class BatchExport:
     """
-    Batch export: collect already-analyzed features from many recordings into one table (.xlsx/.csv).
+    Collect already-analyzed features from many recordings into one table (.xlsx/.csv).
 
     Parameters
     ----------
@@ -44,12 +50,14 @@ class BatchExport:
         List of tif files.
     folder : str
         Path to a folder to store data and results.
-    experiment : str, optional
-        Name of the experiment (default is None).
+    experiment : str or None, optional
+        Name of the experiment. Default is None.
     load_data : bool, optional
-        Whether to load the dataframe from previous analysis from the data folder (default is False).
-    **conditions : dict
-        Keyword arguments with regex functions to extract information from the filename.
+        Whether to load the dataframe from a previous analysis in the data folder.
+        Default is False.
+    **conditions
+        Keyword arguments with constants or regex functions to extract information
+        from the filename.
 
     Attributes
     ----------
@@ -60,9 +68,10 @@ class BatchExport:
     files : list
         List of tif files.
     conditions : dict
-        Keyword arguments with regex functions to extract information from the filename.
+        Keyword arguments with constants or regex functions to extract information
+        from the filename.
     data : pandas.DataFrame
-        DataFrame to store the structure data.
+        DataFrame holding the collected feature data.
     """
 
     def __init__(self, list_files: List, folder: str, experiment: str = None, load_data: bool = False, **conditions):
@@ -77,16 +86,13 @@ class BatchExport:
 
     def get_data(self, structure_keys=None):
         """
-        Iterate files and get structure data.
+        Iterate files and collect structure features into ``self.data``.
 
         Parameters
         ----------
-        structure_keys : list, optional
-            List of keys to extract structure data (default is None).
-
-        Returns
-        -------
-        None
+        structure_keys : list or None, optional
+            Structure keys to extract; uses
+            :attr:`Export.structure_keys_default` when None. Default is None.
         """
         self.data = []
         for i, tif_file in enumerate(tqdm(self.files)):
@@ -105,21 +111,22 @@ class BatchExport:
 
     def save_data(self):
         """
-        Save the DataFrame to the data folder.
+        Iterate files and collect per-group track-based motion features.
 
-        Returns
-        -------
-        None
+        One row per group per file; files without track motion are skipped.
+        Saves to ``<folder>data_motion.pd``.
+
+        Parameters
+        ----------
+        motion_keys : list or None, optional
+            Feature suffixes to extract; uses
+            :attr:`Export.motion_keys_default` when None. Default is None.
         """
         self.data.to_pickle(self.folder + 'data_structure.pd')
 
     def load_data(self):
         """
-        Load the DataFrame from the data folder.
-
-        Returns
-        -------
-        None
+        Load the DataFrame from ``<folder>data_structure.pd``.
 
         Raises
         ------
@@ -140,12 +147,8 @@ class BatchExport:
         ----------
         file_path : str
             Path to the output file.
-        format : str, optional
-            Format of the output file ('.xlsx' or '.csv') (default is '.xlsx').
-
-        Returns
-        -------
-        None
+        format : {'.xlsx', '.csv'}, optional
+            Format of the output file. Default is '.xlsx'.
         """
         _data = self.data.applymap(Export.flatten_single)
         if format == '.xlsx':
@@ -160,14 +163,14 @@ class BatchExport:
 
 class Export:
     """
-    A class used to export structure and motion data from SarcAsM and Motion objects.
+    Export structure and motion data from SarcAsM and Motion objects.
 
     Attributes
     ----------
     structure_keys_default : list
-        Default structure keys.
+        Default structure feature keys.
     motion_keys_default : list
-        Default motion keys.
+        Default track-based motion feature suffixes.
     """
 
     structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'cell_mask_intensity',
@@ -203,17 +206,19 @@ class Export:
 
         Parameters
         ----------
-        sarc_obj : SarcAsM
-            Object of SarcAsM class or Motion class.
-        structure_keys : list, optional
-            List of structure keys (default is None).
-        conditions : kwargs
-            Keyword arguments to add information to the dictionary (e.g., "cell_line"= "wt", "info_xyz"=42).
+        sarc_obj : SarcAsM or Motion
+            Analyzed object holding metadata and structure features.
+        structure_keys : list or None, optional
+            Structure keys; uses :attr:`Export.structure_keys_default` when None.
+            Default is None.
+        **conditions
+            Extra columns: constants or filename-regex functions
+            (e.g. ``cell_line='wt'``, ``info_xyz=42``).
 
         Returns
         -------
         dict
-            Dictionary containing selected metadata and structure features.
+            Selected metadata and structure features.
         """
         metadata_dict = sarc_obj.metadata.to_dict()
         if structure_keys is None:
@@ -247,16 +252,16 @@ class Export:
         ----------
         file_path : str
             Path to the output file.
-        sarc_obj : SarcAsM
-            Object of SarcAsM class.
-        structure_keys : list, optional
-            List of structure keys (default is None).
-        fileformat : str, optional
-            Format of the output file: ``'.xlsx'``, ``'.csv'``, or ``'.json'``
-            (default is ``'.xlsx'``).
+        sarc_obj : SarcAsM or Motion
+            Analyzed object holding the structure features to export.
+        structure_keys : list or None, optional
+            Structure keys; uses :attr:`Export.structure_keys_default` when None.
+            Default is None.
+        fileformat : {'.xlsx', '.csv', '.json'}, optional
+            Format of the output file. Default is '.xlsx'.
         raw : bool, optional
             If True, export raw per-object distributions (JSON only).
-            Default False.
+            Default is False.
         """
         structure_dict = Export.get_structure_dict(sarc_obj, structure_keys=structure_keys)
         Export.write_dict(file_path, structure_dict, fileformat, raw=raw)
@@ -271,23 +276,30 @@ class Export:
     @staticmethod
     def get_motion_dict(motion_obj, loi_keys=None, concat=False, **conditions):
         """
-        Create a dictionary of motion features and metadata from a Motion object.
+        Build one record per group of track-based motion features from a SarcAsM object.
+
+        Reads the ``<kind>_<suffix>`` keys written by
+        :meth:`SarcAsM.analyze_track_motion` (kind = pool / mband / myofibril /
+        domain / loi). Each record is one group; per-cycle arrays (e.g.
+        ``contr_max``) are collapsed to a per-group ``nanmean``.
 
         Parameters
         ----------
-        motion_obj : Motion
-            Object of Motion class for LOI analysis.
-        loi_keys : list, optional
-            List of LOI keys (default is None).
-        concat : bool, optional
-            If True, all 2D arrays will be concatenated to 1D arrays (default is False).
-        conditions : kwargs
-            Keyword arguments to add to the dictionary, can be any information, e.g., drug='ABC'.
+        sarc_obj : SarcAsM
+            Analyzed object holding ``track_motion_kind`` and ``<kind>_*`` keys.
+        motion_keys : list or None, optional
+            Feature suffixes; uses :attr:`Export.motion_keys_default` when None.
+            Default is None.
+        kind : str or None, optional
+            Grouping kind; defaults to ``sarc_obj.data['track_motion_kind']``.
+            Default is None.
+        **conditions
+            Extra columns: constants or filename-regex functions.
 
         Returns
         -------
-        dict
-            Dictionary containing selected metadata and motion features.
+        list of dict
+            One record per group (metadata + group_id + selected features).
         """
         metadata_dict = motion_obj.metadata.to_dict()
         if loi_keys is None:
@@ -482,18 +494,15 @@ class Export:
 
         Parameters
         ----------
-        mot_obj : Motion
-            Object of Motion class.
+        sarc_obj : SarcAsM
+            Analyzed object (must have run analyze_track_motion).
         file_path : str
             Path to the output file.
-        motion_keys : list, optional
-            List of motion keys (default is None).
-        fileformat : str, optional
-            Format of the output file: ``'.xlsx'``, ``'.csv'``, or ``'.json'``
-            (default is ``'.xlsx'``).
-        raw : bool, optional
-            If True, export raw per-object distributions (JSON only).
-            Default False.
+        motion_keys : list or None, optional
+            Feature suffixes; uses :attr:`Export.motion_keys_default` when None.
+            Default is None.
+        fileformat : {'.xlsx', '.csv', '.json'}, optional
+            Format of the output file. Default is '.xlsx'.
         """
         motion_dict = Export.get_motion_dict(mot_obj, loi_keys=motion_keys)
         Export.write_dict(file_path, motion_dict, fileformat, raw=raw)

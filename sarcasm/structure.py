@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Main :class:`SarcAsM` object: sarcomere morphology, full-field 2D tracking, and grouped motion analysis."""
 
 import glob
 import hashlib
@@ -49,42 +50,42 @@ from sarcasm.analysis import (
 
 class SarcAsM(SarcAsMBase):
     """
-    Class for analyzing sarcomere morphology.
+    Analyze sarcomere morphology, full-field 2D tracking, and grouped motion.
 
     Parameters
     ----------
-    file_path : str | os.PathLike
-        Path to the image tif file.
+    file_path : str or os.PathLike
+        Path to the image TIFF file.
     restart : bool, optional
-        If ``True`` the previous analysis folder is deleted and a fresh run is
-        started (default: ``False``).
+        If True, delete the previous analysis folder and start fresh.
+        Default is False.
     pixelsize : float or None, optional
-        Physical pixel size in µm.  If ``None`` the value is taken from file
-        metadata; otherwise the supplied number overrides all metadata.
+        Physical pixel size in µm. If None, taken from file metadata; an
+        explicit value overrides the metadata. Default is None.
     frametime : float or None, optional
-        Time between frames in s.  If ``None`` it is taken from metadata; an
-        explicit number overrides it.
-    channel : int | None, optional
-        Index of the fluorescence channel that shows the sarcomeres.  If the
-        image has only one channel this argument is ignored.
-    axes : str | None, optional
-        Explicit dimension order (e.g. ``'TXYC'``).  ``None`` lets the base
-        class auto-detect the order.
+        Time between frames in s. If None, taken from metadata; an explicit
+        value overrides it. Default is None.
+    channel : int or None, optional
+        Index of the fluorescence channel that shows the sarcomeres. Ignored
+        for single-channel images. Default is None.
+    axes : str or None, optional
+        Explicit dimension order (e.g. ``'TXYC'``). None lets the base class
+        auto-detect the order. Default is None.
     auto_save : bool, optional
-        Write analysis results to disk automatically (default ``True``).
+        Write analysis results to disk automatically. Default is True.
     use_gui : bool, optional
-        Activate GUI mode (default ``False``).
-    device : torch.device | Literal['auto'], optional
-        Device on which PyTorch kernels are executed.  ``'auto'`` selects CUDA
-        or MPS when available (default ``'auto'``).
-    **info : Any
-        Additional key-value pairs that are stored in the metadata file.
+        Activate GUI mode. Default is False.
+    device : torch.device or {'auto'}, optional
+        Device on which PyTorch kernels are executed. ``'auto'`` selects CUDA
+        or MPS when available. Default is ``'auto'``.
+    **info
+        Additional key-value pairs stored in the metadata file.
 
     Attributes
     ----------
-    data : dict
-        Dictionary that contains numeric results of the morphology analysis
-        (populated after running the respective detection routines).
+    data : ResultsDict
+        Lazy, Zarr-backed store of morphology, tracking, and motion results
+        (populated after running the respective routines).
     """
 
     def __init__(self,
@@ -153,7 +154,7 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         override : bool, optional
-            If False and a store already exists, do nothing.
+            If False and a store already exists, do nothing. Default is True.
         """
         if not override and os.path.exists(self.__get_store_path()):
             return
@@ -192,8 +193,20 @@ class SarcAsM(SarcAsMBase):
                     include_arrays: bool = True) -> str:
         """Export results to a legacy-format JSON file (reloadable by old code).
 
-        Defaults to the historical ``structure.json`` location. ``keys`` selects a
-        subset; ``include_arrays=False`` skips large arrays for a readable dump.
+        Parameters
+        ----------
+        path : str or None, optional
+            Output path. Default is None, which uses the historical
+            ``structure.json`` location.
+        keys : list of str or None, optional
+            Subset of result keys to export. Default is None (all keys).
+        include_arrays : bool, optional
+            If False, skip large arrays for a readable dump. Default is True.
+
+        Returns
+        -------
+        str
+            Path to the written JSON file.
         """
         if path is None:
             path = self.__get_structure_data_file(is_temp_file=False)
@@ -249,31 +262,29 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : Union[str, int, List[int], np.ndarray]
-            Frames for sarcomere detection ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). Defaults to 'all'.
-        model_path : str, optional
-            Path of trained network weights for U-Net. Default is None.
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames for sarcomere detection ('all', a single frame index, or
+            selected frames). Default is 'all'.
+        model_path : str or None, optional
+            Path of trained U-Net weights. None uses the default model.
+            Default is None.
         max_patch_size : tuple of int, optional
-            Maximal patch dimensions for convolutional neural network (n_x, n_y).
+            Maximal patch dimensions ``(n_x, n_y)`` for the CNN.
             Default is (1024, 1024).
         normalization_mode : str, optional
-            Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
-            Default is 'all'.
+            Intensity normalization mode for 3D stacks ('single': each image
+            individually, 'all': histogram of full stack, 'first': histogram of
+            first image). Default is 'all'.
         clip_thres : tuple of float, optional
-            Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
+            Clip threshold (lower, upper percentiles) for intensity
+            normalization. Default is (0., 99.98).
         rescale_factor : float, optional
-            Factor by which to rescale the input images in the XY dimensions before prediction.
-            For example, 0.5 reduces the XY resolution by half.
-            The images and all subsequent outputs will be rescaled back to their original resolution after prediction.
+            Factor to rescale input images in XY before prediction (e.g. 0.5
+            halves the XY resolution); outputs are rescaled back afterwards.
             Default is 1.0 (no rescaling).
         progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
-
-        Returns
-        -------
-        None
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if isinstance(frames, str) and frames == 'all':
@@ -347,11 +358,11 @@ class SarcAsM(SarcAsMBase):
             self.store_structure_data()
 
     def _remap_mask_key(self, list_frames: List[int], detected_frames: Any) -> Union[int, List[int]]:
-        """Translate movie-frame indices to page indices inside a sparsely-saved mask TIFF.
+        """Translate movie-frame indices to page indices inside the sparsely-saved mask store.
 
         Masks are stored only for frames passed to detect_sarcomeres, in detection order.
-        When `detected_frames` covers every frame this is an identity mapping, so we just
-        return the original indices; otherwise we look up each requested frame's position.
+        When ``detected_frames`` covers every frame this is an identity mapping, so the
+        original indices are returned; otherwise each requested frame's position is looked up.
         """
         if detected_frames == 'all' or detected_frames is None:
             return list_frames[0] if len(list_frames) == 1 else list_frames
@@ -371,12 +382,13 @@ class SarcAsM(SarcAsMBase):
 
     def load_mask_full_stack(self, file_path: str) -> Optional[np.ndarray]:
         """
-        Load a mask TIFF and expand it to full stack length in memory for display.
+        Load a mask from the store by name and expand it to full stack length for display.
 
-        Masks are saved sparsely (only for detected frames) to save disk space. For napari
-        display alongside the raw movie, this returns an (n_stack, ...) array with computed
-        frames placed at their original frame indices and zeros elsewhere. Returns None if
-        the file does not exist.
+        Masks are stored sparsely (only for detected frames). For napari display alongside
+        the raw movie, this returns an (n_stack, ...) array with computed frames placed at
+        their original frame indices and zeros elsewhere. ``name`` is a store mask name
+        (e.g. ``'zbands'``, ``'mbands'``, ``'cell_mask'``, ``'zbands_fast_movie'``). Returns
+        None if the mask is not present.
         """
         if not os.path.exists(file_path):
             return None
@@ -417,23 +429,22 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        model_path : str, optional
-            Path of trained network weights for 3D U-Net. Default is None.
+        model_path : str or None, optional
+            Path of trained 3D U-Net weights. None uses the default model.
+            Default is None.
         max_patch_size : tuple of int, optional
-            Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
-            Dimensions need to be divisible by 16. Default is (32, 256, 256).
+            Maximal patch dimensions ``(n_frames, n_x, n_y)`` for the CNN;
+            each must be divisible by 16. Default is (32, 256, 256).
         normalization_mode : str, optional
-            Mode for intensity normalization for 3D stacks prior to prediction ('single': each image individually,
-            'all': based on histogram of full stack, 'first': based on histogram of first image in stack).
-            Default is 'all'.
+            Intensity normalization mode for 3D stacks ('single': each image
+            individually, 'all': histogram of full stack, 'first': histogram of
+            first image). Default is 'all'.
         clip_thres : tuple of float, optional
-            Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).
+            Clip threshold (lower, upper percentiles) for intensity
+            normalization. Default is (0., 99.8).
         progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in GUI. Default is ProgressNotifier.progress_notifier_tqdm().
-
-        Returns
-        -------
-        None
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if model_path is None:
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
@@ -460,17 +471,17 @@ class SarcAsM(SarcAsMBase):
 
     def analyze_cell_mask(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1) -> None:
         """
-        Analyzes the area occupied by cells in the given image(s) and calculates the average cell intensity and
+        Analyze the area occupied by cells and compute average cell intensity and
         cell area ratio.
 
         Parameters
         ----------
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            Default is 'all'.
         threshold : float, optional
-            Threshold value for binarizing the cell mask image. Pixels with intensity
-            above threshold are considered cell. Defaults to 0.1.
-        frames: {'all', int, list, np.ndarray}, optional
-            Frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). Defaults to 'all'.
+            Threshold for binarizing the cell mask; pixels above it are cell.
+            Default is 0.1.
         """
         if not os.path.exists(self.file_cell_mask):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
@@ -530,28 +541,35 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames: {'all', int, list, np.ndarray}, optional
-            Frames for z-band analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). Defaults to 'all'.
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            Default is 'all'.
         threshold : float, optional
-            Threshold for binarizing z-bands prior to labeling (0 - 1). Defaults to 0.1.
+            Threshold for binarizing z-bands prior to labeling (0-1).
+            Default is 0.5.
         min_length : float, optional
-            Minimal length of z-bands; smaller z-bands are removed (in µm). Defaults to 0.5.
+            Minimal z-band length in µm; shorter z-bands are removed.
+            Default is 0.2.
         median_filter_radius : float, optional
-            Radius of kernel to smooth sarcomere orientation field. Default is 0.2 µm.
+            Radius of the kernel smoothing the orientation field, in µm.
+            Default is 0.2.
         theta_phi_min : float, optional
-            Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.4.
-        a_min: float, optional
-            Minimal lateral alignment between z-band ends to create a lateral connection. Defaults to 0.3.
+            Minimal cosine of the angle between the pointed z-band vector and the
+            vector connecting z-band ends; smaller values are not recognized as
+            connections (for lateral alignment and distance analysis).
+            Default is 0.4.
+        a_min : float, optional
+            Minimal lateral alignment between z-band ends to create a lateral
+            connection. Default is 0.3.
         d_max : float, optional
-            Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 3.0.
+            Maximal distance between z-band ends in µm; pairs farther apart are
+            not connected. Default is 3.0.
         d_min : float, optional
-            Minimal distance between z-band ends (in µm). Z-band end pairs with smaller distances are not connected.
-            Defaults to 0.0.
-        progress_notifier: ProgressNotifier
-            Wraps progress notification, default is progress notification done with tqdm
+            Minimal distance between z-band ends in µm; pairs closer than this are
+            not connected. Default is 0.0.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
@@ -718,67 +736,59 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list, np.ndarray}, optional
-            frames for sarcomere vector analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). Defaults to 'all'.
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            Default is 'all'.
         threshold_mbands : float, optional
-            Threshold to binarize sarcomere M-bands. Lower values might result in more false-positive sarcomere vectors. Defaults to 0.2.
+            Threshold to binarize sarcomere M-bands. Lower values may yield more
+            false-positive sarcomere vectors. Default is 0.25.
         median_filter_radius : float, optional
-            Radius of kernel to smooth orientation field before assessing orientation at M-points, in µm (default 0.25 µm).
+            Radius of the kernel smoothing the orientation field before assessing
+            orientation at M-points, in µm. Default is 0.25.
         linewidth : float, optional
-            Line width of profile lines to analyze sarcomere lengths, in µm (default is 0.3 µm).
-            LOI analysis, tuned for maximum accuracy, uses 0.65 µm — increasing ``linewidth``
-            toward that averages over more transverse pixels and smooths per-frame slen.
-        interp_factor: int, optional
-            Akima/linear upsampling factor applied to each profile before peak detection.
-            Default **4** (was 0). LOI analysis uses 6; raising from 0 → 4 was the single
-            largest driver of the accuracy gap (sub-pixel peak localisation).
+            Line width of profile lines for analyzing sarcomere lengths, in µm.
+            Default is 0.2. LOI analysis, tuned for maximum accuracy, uses 0.65 µm —
+            increasing ``linewidth`` toward that averages over more transverse
+            pixels and smooths per-frame slen.
+        interp_factor : int, optional
+            Akima/linear upsampling factor applied to each profile before peak
+            detection. Default is 4. LOI analysis uses 6; sub-pixel peak
+            localisation drives per-frame slen accuracy.
         slen_lims : tuple of float, optional
-            Sarcomere size limits in µm (default is (1, 3) µm).
-        threshold_sarcomere_mask : float
-            Threshold to binarize sarcomere masks. Defaults to 0.1.
+            Sarcomere length limits in µm. Default is (1, 3).
+        threshold_sarcomere_mask : float, optional
+            Threshold to binarize sarcomere masks. Default is 0.1.
         interpolation_method : str, optional
-            Interpolation method for profile analysis: 'linear' (fast) or 'akima' (smooth). Defaults to 'akima'.
+            Interpolation method for profile analysis: 'linear' (fast) or 'akima'
+            (smooth). Default is 'akima'.
         smooth_orientation_sigma : float, optional
-            Temporal Gaussian sigma (in frames) for smoothing the orientation field across
-            the time axis *before* per-frame vector extraction. The U-Net emits orientation
-            frame-by-frame with small jitter that propagates into vector positions and
-            downstream tracking; temporal smoothing (axially correct via the double-angle
-            trick) reduces this jitter. ``0`` disables smoothing (default). ``sigma ≈ 1``
-            corresponds to a ~5-frame effective span. Only meaningful for multi-frame
-            stacks.
+            Temporal Gaussian sigma (in frames) for smoothing the orientation
+            field along the time axis before per-frame vector extraction,
+            reducing frame-to-frame jitter (axially correct via the double-angle
+            trick). 0 disables smoothing; ``sigma ≈ 1`` is a ~5-frame effective
+            span. Only meaningful for multi-frame stacks. Default is 0.0.
         peak_prominence : float, optional
-            ``scipy.signal.find_peaks`` prominence threshold for Z-band peak detection
-            inside each profile. Default 0.5 (matches LOI). Lower values accept weaker,
-            noisier peaks. Only used when ``peak_algorithm='default'``.
+            ``scipy.signal.find_peaks`` prominence threshold for Z-band peak
+            detection inside each profile; lower values accept weaker, noisier
+            peaks. Only used when ``peak_algorithm='default'``. Default is 0.5.
         peak_algorithm : {'default', 'loi'}, optional
-            Peak detection routine.
-
-            * ``'default'`` — :func:`sarcasm.utils.Utils.process_profiles_batch` (fast,
-              batched, with ``interp_factor`` + ``peak_prominence`` configurable).
-            * ``'loi'`` — route every profile through
-              :func:`sarcasm.utils.Utils.peakdetekt`, the exact peak-detection +
-              6× Akima + COM-refinement pipeline used by the LOI analysis. Parameter
-              presets match LOI; ``interp_factor`` + ``peak_prominence`` are ignored.
-              Slightly slower but maximum per-frame slen accuracy.
+            Peak detection routine. ``'default'`` uses the fast batched
+            :func:`sarcasm.utils.Utils.process_profiles_batch` (``interp_factor``
+            and ``peak_prominence`` configurable); ``'loi'`` routes every profile
+            through :func:`sarcasm.utils.Utils.peakdetekt` (the LOI peak +
+            6× Akima + COM-refinement pipeline; ``interp_factor`` and
+            ``peak_prominence`` ignored), slower but most accurate. Default is
+            'default'.
         use_fast_movie_zbands : bool, optional
-            If True (default) and ``zbands_fast_movie.tif`` exists on disk (produced by
-            :meth:`detect_z_bands_fast_movie`), read Z-bands from that 3D U-Net output
-            instead of the per-frame ``zbands.tif``. The 3D model uses a temporal window
-            and produces Z-band masks that are ~3× less noisy frame-to-frame at "active"
-            pixels, which directly propagates into smoother per-frame slen. Set to
-            False if the 3D model is unreliable on this movie (e.g. rejected by manual
-            QC) — the method will then fall back to the per-frame 2D masks. The active
-            choice is logged and stored in ``params.analyze_sarcomere_vectors.zbands_source``.
-        progress_notifier: ProgressNotifier
-            Wraps progress notification, default is progress notification done with tqdm
-
-        Returns
-        -------
-        sarcomere_orientation_points : np.ndarray
-            Sarcomere orientation values at midline points.
-        sarcomere_length_points : np.ndarray
-            Sarcomere length values at midline points.
+            If True and a ``zbands_fast_movie`` mask exists (produced by
+            :meth:`detect_z_bands_fast_movie`), use that 3D U-Net output instead
+            of the per-frame ``zbands`` mask; it is less noisy frame-to-frame,
+            yielding smoother per-frame slen. Falls back to the 2D mask when
+            unavailable; the choice is stored in
+            ``params.analyze_sarcomere_vectors.zbands_source``. Default is True.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if not os.path.exists(self.file_zbands):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
@@ -966,22 +976,28 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list, np.ndarray}, optional
-            frames for myofibril analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, frames from sarcomere vector analysis are used. Defaults to None.
+        frames : {'all', int, list of int, np.ndarray} or None, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            If None, frames from sarcomere vector analysis are used.
+            Default is None.
         ratio_seeds : float, optional
-            Ratio of sarcomere vector used as seeds for line growth. Defaults to 0.1.
+            Ratio of sarcomere vectors used as seeds for line growth.
+            Default is 0.1.
         persistence : int, optional
-            Persistence of line (average vector length and orientation for prior estimation), needs to be > 0.
-            Defaults to 3.
+            Persistence of line (averaged vector length and orientation for prior
+            estimation); must be > 0. Default is 3.
         threshold_distance : float, optional
-            Maximal distance for nearest neighbor estimation (in micrometers). Defaults to 0.3.
+            Maximal distance for nearest-neighbor estimation, in µm.
+            Default is 0.5.
         n_min : int, optional
-            Minimal number of sarcomere line segments per line. Shorter lines are removed. Defaults to 5.
+            Minimal number of sarcomere segments per line; shorter lines are
+            removed. Default is 4.
         median_filter_radius : float, optional
-            Filter radius for smoothing myofibril length map (in micrometers). Defaults to 0.5.
-        progress_notifier: ProgressNotifier
-            Wraps progress notification, default is progress notification done with tqdm
+            Filter radius for smoothing the myofibril length map, in µm.
+            Default is 0.5.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
@@ -1111,27 +1127,32 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list, np.ndarray}, optional
-            frames for domain analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames). If None, frames from sarcomere vector analysis are used. Defaults to None.
-        d_max : float
-            Max. distance threshold for creating a network edge between vector ends
-        cosine_min : float
-            Minimal absolute cosine between vector angles for creating a network edge between vector ends
+        frames : {'all', int, list of int, np.ndarray} or None, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            If None, frames from sarcomere vector analysis are used.
+            Default is None.
+        d_max : float, optional
+            Max. distance threshold (µm) for creating a network edge between
+            vector ends. Default is 3.
+        cosine_min : float, optional
+            Minimal absolute cosine between vector angles for creating a network
+            edge between vector ends. Default is 0.65.
         leiden_resolution : float, optional
-            Control parameter for domain size. If resolution is small, the algorithm favors larger domains.
-            Greater resolution favors smaller domains. Defaults to 0.05.
+            Control parameter for domain size; smaller values favor larger
+            domains, larger values favor smaller domains. Default is 0.06.
         random_seed : int, optional
-            Random seed for Leiden algorithm, to ensure reproducibility. Defaults to 2.
+            Random seed for the Leiden algorithm (reproducibility).
+            Default is 42.
         area_min : float, optional
-            Minimal area of domains/clusters (in µm^2). Defaults to 50.0.
+            Minimal area of domains/clusters in µm². Default is 20.0.
         dilation_radius : float, optional
-            Dilation radius for refining domain area masks, in µm. Defaults to 0.3.
+            Dilation radius for refining domain area masks, in µm. Default is 0.3.
         store_mask : bool, optional
-            If True, store the domain mask (integer-labeled image with domain IDs) in self.data.
-            Can be memory-intensive for large time-series. Defaults to False.
-        progress_notifier: ProgressNotifier
-            Wraps progress notification, default is progress notification done with tqdm
+            If True, store the integer-labeled domain mask in ``self.data``
+            (memory-intensive for large time-series). Default is False.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if 'pos_vectors' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
@@ -1263,26 +1284,32 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         reference_frame : int, optional
-            Frame index to use as reference for domain masks. Must be a frame where domains
-            were analyzed. Defaults to 0.
-        model : str, optional
-            Path to ContractionNet model weights (.pt file). If None, uses default model.
+            Frame index used as reference for domain masks; must be a frame where
+            domains were analyzed. Default is 0.
+        model : str or None, optional
+            Path to ContractionNet model weights (.pt). None uses the default
+            model. Default is None.
         threshold : float, optional
-            Binary threshold for contraction state prediction. Default 0.3.
+            Binary threshold for contraction-state prediction. Default is 0.3.
         contr_time_min : float, optional
-            Minimal time of contraction in seconds. Shorter contractions are removed. Default 0.2.
+            Minimal contraction duration in s; shorter contractions are removed.
+            Default is 0.2.
         merge_time_max : float, optional
-            Maximal time between two contractions. Closer contractions are merged. Default 0.05.
+            Maximal time in s between two contractions; closer ones are merged.
+            Default is 0.05.
         buffer_frames : int, optional
-            Remove contraction cycles within this many frames of start/end of time-series. Default 3.
+            Remove contraction cycles within this many frames of the
+            start/end of the time-series. Default is 3.
         min_valid_frames : float, optional
-            Minimum fraction of valid (non-NaN) frames required for a domain to be analyzed. Default 0.5.
-        filter_params : Tuple[int, int], optional
-            Savitzky-Golay filter parameters (window_length, polyorder) for velocity calculation.
-            Default (13, 5).
+            Minimum fraction of valid (non-NaN) frames required to analyze a
+            domain. Default is 0.5.
+        filter_params : tuple of int, optional
+            Savitzky-Golay filter parameters ``(window_length, polyorder)`` for
+            velocity calculation. Default is (13, 5).
         progress_notifier : ProgressNotifier, optional
-            Progress notification wrapper. Default uses tqdm.
-        
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
+
         Raises
         ------
         ValueError
@@ -1474,12 +1501,12 @@ class SarcAsM(SarcAsMBase):
         store_flow_fields: bool = False,
         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
     ) -> None:
-        """2D full-field sarcomere-vector tracking + motion field.
+        """2D full-field sarcomere-vector tracking.
 
         Complements :meth:`Motion.track_z_bands` (LOI / 1D). Each sarcomere
-        detection in the first analyzed frame seeds a **query point**; every
+        detection in the first analyzed frame seeds a query point; every
         subsequent frame the query point is flow-advected (Lagrangian
-        prediction) and then *snapped* to the nearest sarcomere detection
+        prediction) and then snapped to the nearest sarcomere detection
         consistent with its prediction under anisotropic (along-/perpendicular-
         to-sarcomere) and orientation gates. No M-band identity is tracked;
         anti-convergence is guaranteed by snapping to discrete detections.
@@ -1488,68 +1515,93 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames
-            Frame selection (``'all'`` or a list/int).
-        threshold_mbands, threshold_zbands
-            Thresholds used to binarize the probability masks before DT
-            computation.
-        dt_clip
-            Distance-transform clipping distance (pixels).
-        max_disp_along_px, max_disp_perp_px
-            Anisotropic tolerance for the snap gate, in pixels. Motion along
-            the sarcomere axis (contraction direction) can be large; motion
-            perpendicular should be small.
-        ori_tol_deg
-            Orientation tolerance for the snap gate, in degrees. Orientations
-            are compared modulo π.
-        memory
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to track ('all', a single frame index, or selected frames).
+            Default is 'all'.
+        threshold_mbands : float, optional
+            Threshold to binarize the M-band mask before distance-transform
+            computation. Default is 0.25.
+        threshold_zbands : float, optional
+            Threshold to binarize the Z-band mask before distance-transform
+            computation. Default is 0.5.
+        dt_clip : float, optional
+            Distance-transform clipping distance, in px. Default is 20.0.
+        max_disp_along_px : float, optional
+            Snap-gate tolerance for motion along the sarcomere axis, in px;
+            contraction-direction motion can be large. Default is 15.0.
+        max_disp_perp_px : float, optional
+            Snap-gate tolerance for motion perpendicular to the sarcomere axis,
+            in px; should be small. Default is 2.0.
+        ori_tol_deg : float, optional
+            Orientation tolerance for the snap gate, in degrees (compared
+            modulo π). Default is 45.0.
+        memory : int, optional
             Frames a query point may go without snapping before it is closed.
-        min_track_length
-            Minimum number of *actual snaps* required to keep a track.
-        reacquire_gap_cap
-            Live gap-scaled re-acquisition. A track coasting through a detection
-            gap widens its snap gate by a random-walk factor (``∝ sqrt(gap)``,
-            gap capped at this value) so it can re-snap to a reappearing
-            detection before it dies, reducing fragmentation at the source. The
-            along budget is hard-capped so it cannot reach the next sarcomere and
-            the perpendicular budget grows more slowly (anti-swap). Set to 1 to
-            disable (legacy behaviour). Default 4.
-        max_gap_interpolation
-            Maximum absence span (in frames) that may be bridged by the
-            post-loop merge step (and linearly interpolated in the gap).
-        merge_tracks
-            If True (default), run a final pass that stitches respawned
-            trajectory fragments back to their parent track when the flow-
-            predicted tail of one matches the head of another. Reduces
-            fragmentation caused by transient U-Net misses without per-
-            dataset tuning.
-        merge_max_disp_along_px, merge_max_disp_perp_px
-            Anisotropic position-residual tolerances for the merge step,
-            in pixels. Both scale linearly with the bridged gap (random-walk
-            position uncertainty). Defaults are intentionally looser than
-            the per-frame snap gates: a multi-frame bridge has a larger
-            uncertainty budget than a 1-frame snap.
-        merge_ori_tol_deg
+            Default is 5.
+        min_track_length : int, optional
+            Minimum number of actual snaps required to keep a track. Default is 5.
+        reacquire_gap_cap : int, optional
+            Live gap-scaled re-acquisition cap. A coasting track widens its snap
+            gate by a random-walk factor (``∝ sqrt(gap)``, gap capped at this
+            value) to re-snap to a reappearing detection, reducing fragmentation.
+            Set to 1 to disable (legacy behaviour). Default is 4.
+        max_gap_interpolation : int, optional
+            Maximum absence span, in frames, that the post-loop merge step may
+            bridge (and linearly interpolate). Default is 5.
+        merge_tracks : bool, optional
+            If True, run a final pass that stitches respawned trajectory
+            fragments back to their parent when the flow-predicted tail of one
+            matches the head of another, reducing fragmentation from transient
+            U-Net misses. Default is True.
+        merge_max_disp_along_px : float, optional
+            Along-axis position-residual tolerance for the merge step, in px
+            (scales with the bridged gap). Default is 25.0.
+        merge_max_disp_perp_px : float, optional
+            Perpendicular position-residual tolerance for the merge step, in px
+            (scales with the bridged gap). Default is 4.0.
+        merge_ori_tol_deg : float, optional
             Orientation tolerance for merging, in degrees (axial / mod π).
-        merge_slen_tol_um
-            Sarcomere-length continuity tolerance for merging, in micrometers.
-            Two fragments are only stitched if their seam-frame slens differ
-            by at most this much. Strongest single guard against same-
-            myofibril neighbour swaps.
-        slen_lims
-            Physiologically valid sarcomere-length range (μm). A merge is
-            rejected if either seam slen is finite and falls outside the
-            range. Same semantics as ``slen_lims`` in the LOI motion
-            analysis (see :class:`~sarcasm.motion.Motion`).
-        compute_motion_field
-            Sample flow at every detection position and decompose into
-            along-sarcomere / perpendicular components (independent of tracking
-            success).
-        store_flow_fields
-            If True, write the dense optical-flow stack to ``self.file_flow``
-            (``base_dir/flow.tif``) as a compressed float32 TIFF with shape
-            ``(T-1, H, W, 2)`` (last axis is ``[dy, dx]`` in pixels/frame).
-            Large on disk; off by default.
+            Default is 45.0.
+        merge_slen_tol_um : float, optional
+            Sarcomere-length continuity tolerance for merging, in µm; fragments
+            are stitched only if their seam-frame slens differ by at most this.
+            Default is 0.30.
+        slen_lims : tuple of float, optional
+            Physiologically valid sarcomere-length range, in µm; a merge is
+            rejected if either seam slen is finite and outside this range. Same
+            semantics as ``slen_lims`` in :class:`~sarcasm.motion.Motion`.
+            Default is (1.0, 3.0).
+        motion_predictor : {'none', 'flow'}, optional
+            How each track's next-frame position is predicted before snapping to
+            a detection. ``'none'`` (default) is a zero-motion predictor: the
+            previous position is used, and no optical flow is computed. ``'flow'``
+            computes the dense DT-Farneback optical flow and advects each track
+            along its sarcomere axis before snapping. On benchmark data the two
+            give equivalent tracks at normal frame rates (the next-frame
+            detection sits well inside the snap gate), so ``'none'`` is the
+            default — it is markedly faster and avoids the flow's
+            segmentation-flicker noise. Use ``'flow'`` only for low frame rates /
+            large inter-frame motion (per-frame displacement approaching the snap
+            gate). Track positions / lengths / orientations come from snapping to
+            detections regardless of this choice. Default is 'none'.
+        compute_motion_field : bool, optional
+            If True, also compute the dense optical flow and sample it at every
+            detection position to produce a per-vector displacement / velocity
+            field (``velocity_magnitude``, ``displacement_*``). This is the 2D
+            *centroid* motion of the vectors, not the sarcomere length-change
+            velocity — for contraction dynamics use ``tracks_slen`` and the
+            slen-based motion analysis instead. Carries the flow's flicker noise
+            floor. Forces the flow computation even when ``motion_predictor`` is
+            ``'none'``. Default is False.
+        store_flow_fields : bool, optional
+            If True, persist the dense optical-flow stack to the OME-Zarr store
+            (``<name>.ome.zarr/sarcasm/flow``) as a lossless float32 array of
+            shape ``(T-1, H, W, 2)`` (last axis ``[dy, dx]`` in px/frame; entry
+            ``t`` is the flow from frame ``t`` to ``t+1``). Load it back via
+            ``sarc.flow``. Large on disk. Default is False.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
@@ -1727,12 +1779,26 @@ class SarcAsM(SarcAsMBase):
         """Compute optical flow + per-vector motion field without tracking.
 
         Useful for quick motion assessment, strain maps, or as input to
-        downstream contraction detection. Prerequisites:
+        downstream contraction detection. Prerequisite:
         :meth:`analyze_sarcomere_vectors`.
 
         Outputs are written under ``motionfield_standalone_*`` keys (and the bare
         ``displacement_*`` / ``velocity_magnitude`` aliases); ``motionfield_source``
         is set to ``'standalone'`` to distinguish them from the tracker's.
+
+        Parameters
+        ----------
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to use ('all', a single frame index, or selected frames).
+            Default is 'all'.
+        threshold : float, optional
+            Threshold to binarize the probability masks before distance-transform
+            computation. Default is 0.5.
+        dt_clip : float, optional
+            Distance-transform clipping distance, in px. Default is 20.0.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
         """
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
@@ -1940,15 +2006,20 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        points : (N, 2) array of (row, col) positions.
-        lines : list of (Li, 2) polyline vertex arrays (same coordinate space).
-        max_dist : maximum point-to-polyline distance to accept an assignment.
+        points : np.ndarray
+            ``(N, 2)`` array of ``(row, col)`` positions.
+        lines : list of np.ndarray
+            List of ``(Li, 2)`` polyline vertex arrays (same coordinate space).
+        max_dist : float
+            Maximum point-to-polyline distance to accept an assignment.
 
         Returns
         -------
-        line_id : (N,) int array — index of the nearest polyline, or -1 if none
-            is within ``max_dist``.
-        arclen : (N,) float array — arc length of the closest point along that
+        line_id : np.ndarray
+            ``(N,)`` int array; index of the nearest polyline, or -1 if none is
+            within ``max_dist``.
+        arclen : np.ndarray
+            ``(N,)`` float array; arc length of the closest point along that
             polyline (NaN if unassigned), used to order points along the line.
         """
         n = len(points)
@@ -1994,7 +2065,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        by : {'pool', 'mband', 'myofibril', 'loi', 'domain', 'custom'}
+        by : {'pool', 'mband', 'myofibril', 'loi', 'domain', 'custom'}, optional
             Grouping level. ``'pool'`` = all eligible tracks in one group;
             ``'mband'`` = group tracks by the M-band (midline) they snapped to at
             ``reference_frame`` (laterally-registered sarcomeres); ``'myofibril'`` =
@@ -2010,18 +2081,18 @@ class SarcAsM(SarcAsMBase):
             Leiden domain its ``reference_frame`` position falls in (requires
             :meth:`analyze_sarcomere_domains`; preserves the domain mask's label
             space so the existing domain plots stay aligned); ``'custom'`` = use
-            ``labels``.
+            ``labels``. Default is 'pool'.
         reference_frame : int, optional
             Movie-frame whose geometry defines the grouping (must be a tracked
             frame). Used by ``'mband'`` / ``'myofibril'`` / ``'loi'`` / ``'domain'``.
             For ``'loi'`` this should match the ``frame`` passed to
-            :meth:`detect_lois`. Default 0.
+            :meth:`detect_lois`. Default is 0.
         min_coverage : float, optional
             Tracks snapped in fewer than this fraction of frames are dropped
-            (group id ``-1``). Default 0.5.
-        labels : np.ndarray, optional
+            (group id ``-1``). Default is 0.5.
+        labels : np.ndarray or None, optional
             Required for ``by='custom'``: integer label per track, row-aligned to
-            ``track_ids``. Negative labels drop the track.
+            ``track_ids``. Negative labels drop the track. Default is None.
 
         Notes
         -----
@@ -2303,22 +2374,24 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        by : {'pool', 'mband', 'domain'}, optional
+        by : {'pool', 'mband', 'domain'} or None, optional
             If given, run ``group_tracks(by=..., reference_frame=..., min_coverage=...)``
             first. If None, use the existing grouping. (``'custom'`` must be set up
             via a separate :meth:`group_tracks` call with ``labels``.)
-        aggregate : {'nanmedian', 'nanmean'}, optional
-            Reduction of member ``slen(t)`` into the per-group signal. Default
-            ``None`` resolves to ``'nanmean'`` for ``domain`` (legacy parity) and
-            ``'nanmedian'`` otherwise (robust to a few mis-tracked members).
-        slen_lims : tuple(float, float)
+            Default is None.
+        aggregate : {'nanmedian', 'nanmean'} or None, optional
+            Reduction of member ``slen(t)`` into the per-group signal. None
+            resolves to ``'nanmean'`` for ``domain`` (legacy parity) and
+            ``'nanmedian'`` otherwise. Default is None.
+        slen_lims : tuple of float, optional
             Member lengths outside this µm range are ignored in the aggregate.
-        model, threshold, contr_time_min, merge_time_max, buffer_frames,
-        min_valid_frames, filter_params
+            Default is (1.0, 3.0).
+        model, threshold, contr_time_min, merge_time_max, buffer_frames, min_valid_frames, filter_params
             ContractionNet engine knobs (same names/defaults as
             :meth:`analyze_domain_motion`).
         reference_frame, min_coverage
-            Forwarded to :meth:`group_tracks` when ``by`` is given.
+            Forwarded to :meth:`group_tracks` when ``by`` is given. Defaults are
+            0 and 0.5.
         """
         if by is not None:
             if by == 'custom':
@@ -2443,10 +2516,11 @@ class SarcAsM(SarcAsMBase):
         analyze : bool, optional
             If True, run the standard LOI chain on the view
             (``detect_analyze_contractions`` -> ``get_trajectories`` ->
-            ``analyze_trajectories``) so it is immediately plot-ready. Default False.
+            ``analyze_trajectories``) so it is immediately plot-ready.
+            Default is False.
         persist_loi : bool, optional
             If True, persist the synthesized LOI to ``{base}/track_myofibril_{group}/``.
-            Default False (purely in-memory, keeps the dataset directory clean).
+            Default is False (purely in-memory, keeps the dataset directory clean).
         """
         from sarcasm.motion import Motion
 
@@ -2484,20 +2558,24 @@ class SarcAsM(SarcAsMBase):
     def _grow_lois(self, frame: int = 0, ratio_seeds: float = 0.1, persistence: int = 2,
                    threshold_distance: float = 0.3, random_seed: Union[None, int] = None) -> None:
         """
-        Find LOIs (lines of interest) using a line growth algorithm. The parameters **lims can be used to filter LOIs.
+        Find LOIs (lines of interest) using a line-growth algorithm.
 
         Parameters
         ----------
         frame : int, optional
-            Frame to select frame. Selects i-th frame of frames specified in sarcomere vector analysis. Defaults to 0.
+            Index of the frame to analyze (i-th frame of the sarcomere-vector
+            analysis frames). Default is 0.
         ratio_seeds : float, optional
-            Ratio of sarcomere vectors to take as seeds for line growth. Default 0.1.
+            Ratio of sarcomere vectors used as seeds for line growth.
+            Default is 0.1.
         persistence : int, optional
-            Persistence of line (average vector length and orientation for prior estimation). Defaults to 2.
+            Persistence of line (averaged vector length and orientation for prior
+            estimation). Default is 2.
         threshold_distance : float, optional
-            Maximal distance for nearest neighbor estimation. Defaults to 0.5.
-        random_seed : int, optional
-            Random seed for reproducibility. Defaults to None.
+            Maximal distance for nearest-neighbor estimation, in µm.
+            Default is 0.3.
+        random_seed : int or None, optional
+            Random seed for reproducibility. Default is None.
         """
         # select midline point data at frame
         (pos_vectors, sarcomere_length_vectors,
@@ -2526,24 +2604,29 @@ class SarcAsM(SarcAsMBase):
                      midline_min_length_lims: Tuple[float, float] = (0, 50),
                      ) -> None:
         """
-        Filters Lines of Interest (LOIs) based on various geometric and morphological criteria.
+        Filter Lines of Interest (LOIs) by geometric and morphological criteria.
 
         Parameters
         ----------
         number_lims : tuple of int, optional
-            Limits of sarcomere numbers in LOI (min, max). Defaults to (10, 100).
+            Limits (min, max) of sarcomere number in an LOI. Default is (10, 100).
         length_lims : tuple of float, optional
-            Limits for LOI lengths (in µm) (min, max). Defaults to (0, 200).
+            Limits (min, max) for LOI length in µm. Default is (0, 200).
         sarcomere_mean_length_lims : tuple of float, optional
-            Limits for mean length of sarcomeres in LOI (min, max). Defaults to (1, 3).
+            Limits (min, max) for mean sarcomere length in an LOI.
+            Default is (1, 3).
         sarcomere_std_length_lims : tuple of float, optional
-            Limits for standard deviation of sarcomere lengths in LOI (min, max). Defaults to (0, 1).
+            Limits (min, max) for the std of sarcomere lengths in an LOI.
+            Default is (0, 1).
         midline_mean_length_lims : tuple of float, optional
-            Limits for mean length of the midline in LOI (min, max). Defaults to (0, 50).
+            Limits (min, max) for mean midline length in an LOI.
+            Default is (0, 50).
         midline_std_length_lims : tuple of float, optional
-            Limits for standard deviation of the midline length in LOI (min, max). Defaults to (0, 50).
+            Limits (min, max) for the std of midline length in an LOI.
+            Default is (0, 50).
         midline_min_length_lims : tuple of float, optional
-            Limits for minimum length of the midline in LOI (min, max). Defaults to (0, 50).
+            Limits (min, max) for minimum midline length in an LOI.
+            Default is (0, 50).
         """
         # Delegate to loi_detection module
         (filtered_lois, filtered_lois_vectors,
@@ -2570,8 +2653,9 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        symmetry_mode : str, optional
-            Choose 'min' or 'max', whether min/max(H(loi_i, loi_j), H(loi_j, loi_i)). Defaults to 'max'.
+        symmetry_mode : {'min', 'max'}, optional
+            Whether to take min or max of ``H(loi_i, loi_j)`` and
+            ``H(loi_j, loi_i)``. Default is 'max'.
         """
         # Delegate to loi_detection module
         hausdorff_dist_matrix = loi_detection.hausdorff_distance_lois(
@@ -2590,14 +2674,13 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         distance_threshold_lois : float, optional
-            The linkage distance threshold above which clusters will not be merged. Defaults to 40.
+            Linkage distance threshold above which clusters are not merged.
+            Default is 40.
         linkage : {'complete', 'average', 'single'}, optional
-            Which linkage criterion to use. The linkage criterion determines which distance to use between sets of
-            observations. The algorithm will merge the pairs of clusters that minimize this criterion.
-            - 'average' uses the average of the distances of each observation of the two sets.
-            - 'complete' or 'maximum' linkage uses the maximum distances between all observations of the two sets.
-            - 'single' uses the minimum of the distances between all observations of the two sets.
-            Defaults to 'single'.
+            Linkage criterion determining the inter-cluster distance to minimize
+            when merging: 'average' uses the mean pairwise distance, 'complete'
+            the maximum pairwise distance, 'single' the minimum pairwise distance.
+            Default is 'single'.
         """
         # Delegate to loi_detection module
         cluster_labels, n_clusters = loi_detection.cluster_lois(
@@ -2612,14 +2695,16 @@ class SarcAsM(SarcAsMBase):
             self.store_structure_data()
 
     def _fit_straight_line(self, add_length=1, n_lois=None):
-        """Fit linear lines to cluster points
+        """Fit straight lines to cluster points.
 
         Parameters
         ----------
-        add_length : float
-            Elongate line at end with add_length (in length unit)
-        n_lois : int
-            If int, only n longest LOIs are saved. If None, all are saved.
+        add_length : float, optional
+            Elongate each fitted line at its end by this amount, in µm.
+            Default is 1.
+        n_lois : int or None, optional
+            If int, only the n longest LOIs are saved; if None, all are saved.
+            Default is None.
         """
         # Delegate to loi_detection module
         loi_lines, len_loi_lines = loi_detection.fit_straight_line_to_clusters(
@@ -2707,47 +2792,54 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frame : int
-            The index of the frame to select for analysis.
-        n_lois : int
-            Number of LOIs.
-        ratio_seeds : float
-            Ratio of sarcomere vectors to take as seed vectors for initiating LOI growth.
-        persistence : int
-            Persistence parameter influencing line growth direction and termination.
-        threshold_distance : float
-            Maximum distance for nearest neighbor estimation during line growth.
-        mode : str
-            Mode for selecting LOIs from identified clusters.
-            - 'fit_straight_line' fits a straight line to all midline points in the cluster.
-            - 'longest_in_cluster' selects the longest line of each cluster, also allowing curved LOIs.
-            - 'random_from_cluster' selects a random line from each cluster, also allowing curved LOIs.
-            - 'random_line' selects a set of random lines that fulfil the filtering criteria.
-        random_seed : int, optional
-            Random seed for selection of random starting vectors for line growth algorithm, for reproducible outcomes.
-            If None, no random seed is set, and outcomes in every run will differ.
-        number_lims : tuple of int
-            Limits for the number of sarcomeres within an LOI (min, max).
-        length_lims : tuple of float
-            Length limits for LOIs (in µm) (min, max).
-        sarcomere_mean_length_lims : tuple of float
-            Limits for the mean length of sarcomeres within an LOI (min, max).
-        sarcomere_std_length_lims : tuple of float
-            Limits for the standard deviation of sarcomere lengths within an LOI (min, max).
-        midline_mean_length_lims : tuple of float
-            Limits for the mean length of the midline of vectors in LOI (min, max).
-        midline_std_length_lims : tuple of float
-            Limits for the standard deviation of the midline length of vectors in LOI (min, max).
-        midline_min_length_lims : tuple of float
-            Limits for the minimum length of the midline of vectors in LOI (min, max).
-        distance_threshold_lois : float
-            Distance threshold for clustering LOIs. Clusters will not be merged above this threshold.
-        linkage : str
-            Linkage criterion for clustering ('complete', 'average', 'single').
-
-        Returns
-        -------
-        None
+        frame : int, optional
+            Index of the frame to analyze. Default is 0.
+        n_lois : int, optional
+            Number of LOIs to select. Default is 4.
+        ratio_seeds : float, optional
+            Ratio of sarcomere vectors used as seed vectors for LOI growth.
+            Default is 0.1.
+        persistence : int, optional
+            Persistence parameter influencing line-growth direction and
+            termination. Default is 4.
+        threshold_distance : float, optional
+            Maximum distance for nearest-neighbor estimation during line growth,
+            in µm. Default is 0.5.
+        mode : {'fit_straight_line', 'longest_in_cluster', 'random_from_cluster', 'random_line'}, optional
+            Mode for selecting LOIs from identified clusters:
+            'fit_straight_line' fits a straight line to all midline points in the
+            cluster; 'longest_in_cluster' selects the longest (possibly curved)
+            line per cluster; 'random_from_cluster' selects a random line per
+            cluster; 'random_line' selects random lines passing the filters.
+            Default is 'longest_in_cluster'.
+        random_seed : int or None, optional
+            Random seed for selecting random starting vectors (reproducibility).
+            If None, results differ each run. Default is None.
+        number_lims : tuple of int, optional
+            Limits (min, max) for the number of sarcomeres within an LOI.
+            Default is (10, 50).
+        length_lims : tuple of float, optional
+            Length limits (min, max) for LOIs in µm. Default is (0, 200).
+        sarcomere_mean_length_lims : tuple of float, optional
+            Limits (min, max) for mean sarcomere length within an LOI.
+            Default is (1, 3).
+        sarcomere_std_length_lims : tuple of float, optional
+            Limits (min, max) for the std of sarcomere lengths within an LOI.
+            Default is (0, 1).
+        midline_mean_length_lims : tuple of float, optional
+            Limits (min, max) for mean midline length within an LOI.
+            Default is (0, 50).
+        midline_std_length_lims : tuple of float, optional
+            Limits (min, max) for the std of midline length within an LOI.
+            Default is (0, 50).
+        midline_min_length_lims : tuple of float, optional
+            Limits (min, max) for minimum midline length within an LOI.
+            Default is (0, 50).
+        distance_threshold_lois : float, optional
+            Distance threshold for clustering LOIs; clusters are not merged above
+            it. Default is 40.
+        linkage : {'complete', 'average', 'single'}, optional
+            Linkage criterion for clustering. Default is 'single'.
         """
         if 'pos_vectors' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
@@ -2787,13 +2879,13 @@ class SarcAsM(SarcAsMBase):
 
     def full_analysis_structure(self, frames='all'):
         """
-        Analyze sarcomere structure with default parameters at specified frames
+        Analyze sarcomere structure with default parameters at specified frames.
 
         Parameters
         ----------
-        frames : {'all', int, list, np.ndarray}
-            frames for analysis ('all' for all frames, int for a single frame, list or ndarray for
-            selected frames).
+        frames : {'all', int, list of int, np.ndarray}, optional
+            Frames to analyze ('all', a single frame index, or selected frames).
+            Default is 'all'.
         """
         self.auto_save = False
         self.analyze_cell_mask()

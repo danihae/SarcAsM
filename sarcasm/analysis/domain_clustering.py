@@ -39,56 +39,56 @@ def cluster_sarcomeres(pos_vectors: np.ndarray,
                        area_min: float = 20,
                        dilation_radius: float = 0.3) -> Tuple[int, List, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    This function clusters sarcomeres into domains based on their spatial and orientational properties
-    using the Leiden method for community detection in igraph. It considers sarcomere lengths, orientations,
-    and positions along mbands to form networks of connected sarcomeres. Domains are then identified
-    as communities within these networks, with additional criteria for minimum domain area
-    and connectivity thresholds. Finally, this function quantifies the mean and std of sarcomere lengths,
-    and the orientational order parameter and mean orientation of each domain.
+    Cluster sarcomeres into domains by spatial and orientational properties via Leiden community detection.
+
+    Builds a network of connected sarcomeres from lengths, orientations, and
+    m-band positions, then identifies domains as communities (igraph Leiden),
+    subject to minimum-area and connectivity thresholds. Quantifies mean/std
+    sarcomere length, orientational order parameter, and mean orientation per domain.
 
     Parameters
     ----------
     pos_vectors : np.ndarray
-        Array of sarcomere midline point positions in µm.
+        Sarcomere midline point positions in µm, shape ``(n_vectors, 2)``.
     sarcomere_length_vectors : np.ndarray
-        List of midline point sarcomere lengths
+        Midline point sarcomere lengths in µm.
     sarcomere_orientation_vectors : np.ndarray
-        List of midline point sarcomere orientations, in radians
+        Midline point sarcomere orientations in radians.
     pixelsize : float
-        Pixel size in µm
-    size : tuple(int, int)
-        Shape of the image in pixels
-    d_max : float
-        Max. distance threshold for creating a network edge between vector ends
-    cosine_min : float
-        Minimal absolute cosine between vector angles for creating a network edge between vector ends
-    leiden_resolution : float
-        Resolution parameter for the Leiden algorithm
-    random_seed : int
-        Random seed for reproducibility
-    area_min : float
-        Minimal area (in µm²) for a domain to be kept
-    dilation_radius : float
-        Dilation radius for refining domain area masks (in µm)
+        Pixel size in µm.
+    size : tuple of int
+        Image shape ``(height, width)`` in pixels.
+    d_max : float, optional
+        Max distance in µm for a network edge between vector ends. Default is 3.
+    cosine_min : float, optional
+        Minimal absolute cosine between vector angles for a network edge. Default is 0.65.
+    leiden_resolution : float, optional
+        Resolution parameter for the Leiden algorithm. Default is 0.06.
+    random_seed : int, optional
+        Random seed for reproducibility. Default is 42.
+    area_min : float, optional
+        Minimal area in µm² for a domain to be kept. Default is 20.
+    dilation_radius : float, optional
+        Dilation radius in µm for refining domain area masks. Default is 0.3.
 
     Returns
     -------
     n_domains : int
-        Number of domains
+        Number of domains.
     domains : list
-        List of domain sets with point indices
-    area_domains : list
-        List with domain areas
-    sarcomere_length_mean_domains : list
-        Mean sarcomere length within each domain
-    sarcomere_length_std_domains : list
-        Standard deviation of sarcomere length within each domain
-    sarcomere_oop_domains : list
-        Orientational order parameter of sarcomeres in each domain
-    sarcomere_orientation_domains : list
-        Main orientation of domains
-    mask_domains : ndarray
-        Masks of domains with value representing domain label
+        List of domain sets, each holding point indices.
+    area_domains : np.ndarray
+        Domain areas in µm².
+    sarcomere_length_mean_domains : np.ndarray
+        Mean sarcomere length per domain (µm).
+    sarcomere_length_std_domains : np.ndarray
+        Std of sarcomere length per domain (µm).
+    sarcomere_oop_domains : np.ndarray
+        Orientational order parameter per domain.
+    sarcomere_orientation_domains : np.ndarray
+        Main orientation per domain (radians).
+    mask_domains : np.ndarray
+        Integer-labeled domain mask (pixel value = domain label).
     """
 
     if len(pos_vectors) < 10:
@@ -208,26 +208,26 @@ def sarcomere_mask(points: np.ndarray,
                    pixelsize: float,
                    dilation_radius: float = 0.3) -> np.ndarray:
     """
-    Calculates a binary mask of areas with sarcomeres.
+    Compute a binary mask of areas covered by sarcomeres.
 
     Parameters
     ----------
-    points : ndarray
-        Positions of sarcomere vectors in µm. (n_vectors, 2)
-    sarcomere_orientation_vectors : ndarray
-        Orientations of sarcomere vectors.
-    sarcomere_length_vectors : ndarray
-        Lengths of sarcomere vectors in µm.
-    shape : tuple
-        Shape of the image, in pixels.
+    points : np.ndarray
+        Sarcomere vector positions in µm, shape ``(n_vectors, 2)``.
+    sarcomere_orientation_vectors : np.ndarray
+        Sarcomere vector orientations in radians.
+    sarcomere_length_vectors : np.ndarray
+        Sarcomere vector lengths in µm.
+    shape : tuple of int
+        Image shape ``(height, width)`` in pixels.
     pixelsize : float
         Pixel size in µm.
     dilation_radius : float, optional
-        Dilation radius to close small holes in mask, in µm (default is 0.3).
+        Dilation radius in µm to close small holes in the mask. Default is 0.3.
 
     Returns
     -------
-    mask : ndarray
+    np.ndarray
         Binary mask of sarcomeres.
     """
     # Calculate orientation vectors using trigonometry
@@ -259,26 +259,41 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
                     dilation_radius: float,
                     area_min: float):
     """
-    Creates a domain mask, where each domain has a distinct label, and analyzes the individual domains.
+    Create an integer-labeled domain mask and analyze the individual domains.
 
     Parameters
-    __________
+    ----------
     domains : list
-        List with domain labels for each vector. Each domain is labeled with a unique integer.
-    pos_vectors : ndarray
-        Position vectors in micrometers.
-    sarcomere_orientation_vectors : ndarray
+        List of domains, each holding the point indices belonging to that domain.
+    pos_vectors : np.ndarray
+        Position vectors in µm.
+    sarcomere_orientation_vectors : np.ndarray
         Orientation angles in radians.
-    sarcomere_length_vectors : ndarray
-        Sarcomere lengths in micrometers.
+    sarcomere_length_vectors : np.ndarray
+        Sarcomere lengths in µm.
     size : tuple of int
-        Output map dimensions (height, width) in pixels.
+        Output map dimensions ``(height, width)`` in pixels.
     pixelsize : float
-        Physical size of one pixel in micrometers.
-    dilation_radius : float, optional
-        Dilation radius for refining domain masks, in µm.
-    area_min : float, optional
-        Minimal area of a domain in µm^2, smaller domains are discarded.
+        Pixel size in µm.
+    dilation_radius : float
+        Dilation radius in µm for refining domain masks.
+    area_min : float
+        Minimal domain area in µm²; smaller domains are discarded.
+
+    Returns
+    -------
+    mask_domains : np.ndarray
+        Integer-labeled domain mask (pixel value = domain label).
+    area_domains : list
+        Domain areas in µm².
+    sarcomere_length_mean_domains : list
+        Mean sarcomere length per domain (µm).
+    sarcomere_length_std_domains : list
+        Std of sarcomere length per domain (µm).
+    sarcomere_oop_domains : list
+        Orientational order parameter per domain.
+    sarcomere_orientation_domains : list
+        Main orientation per domain (radians).
     """
     # calculate domain properties and remove small domains
     (area_domains, sarcomere_orientation_domains, sarcomere_oop_domains, sarcomere_length_mean_domains,
@@ -329,27 +344,23 @@ def assign_vectors_to_domains(pos_vectors: np.ndarray,
                               domain_mask: np.ndarray,
                               pixelsize: float) -> np.ndarray:
     """
-    Assign sarcomere vectors to domains based on their centroid positions.
-    
-    Uses the domain mask to look up which domain each vector belongs to based on
-    its position. Vectors that fall outside any domain (background) are assigned
-    domain ID 0.
-    
+    Assign sarcomere vectors to domains by looking up their positions in the domain mask.
+
+    Vectors falling outside any domain (background) are assigned domain ID 0.
+
     Parameters
     ----------
     pos_vectors : np.ndarray
-        Array of sarcomere vector positions in µm. Shape (n_vectors, 2).
+        Sarcomere vector positions in µm, shape ``(n_vectors, 2)``.
     domain_mask : np.ndarray
-        Integer-labeled domain mask where pixel values indicate domain IDs.
-        Background pixels have value 0, domains are labeled 1, 2, 3, etc.
+        Integer-labeled domain mask; background is 0, domains are 1, 2, 3, ....
     pixelsize : float
-        Pixel size in µm for converting positions to pixel coordinates.
-    
+        Pixel size in µm, used to convert positions to pixel coordinates.
+
     Returns
     -------
-    domain_ids : np.ndarray
-        Array of domain IDs for each vector. Shape (n_vectors,).
-        Vectors outside any domain have ID 0.
+    np.ndarray
+        Domain ID per vector, shape ``(n_vectors,)``; 0 for vectors outside any domain.
     """
     if len(pos_vectors) == 0:
         return np.array([], dtype=np.int32)

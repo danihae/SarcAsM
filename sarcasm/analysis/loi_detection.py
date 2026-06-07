@@ -41,39 +41,39 @@ def filter_lois(
         midline_min_length_lims: Tuple[float, float] = (0, 50)
 ) -> Tuple[List[np.ndarray], List[np.ndarray], Dict[str, List]]:
     """
-    Filter Lines of Interest (LOIs) based on various geometric and morphological criteria.
+    Filter Lines of Interest (LOIs) based on geometric and morphological criteria.
 
     Parameters
     ----------
     lois : list of np.ndarray
-        List of LOI indices into sarcomere vectors
+        List of LOI indices into sarcomere vectors.
     loi_features : dict
-        Dictionary containing LOI features (n_vectors, length, sarcomere stats, etc.)
+        LOI features (n_vectors, length, sarcomere stats, etc.).
     lois_vectors : list of np.ndarray
-        List of actual position vectors for each LOI
+        Position vectors for each LOI.
     number_lims : tuple of int, optional
-        Limits of sarcomere numbers in LOI (min, max). Defaults to (10, 100).
+        Limits (min, max) of sarcomere numbers in LOI. Default is (10, 100).
     length_lims : tuple of float, optional
-        Limits for LOI lengths (in µm) (min, max). Defaults to (0, 200).
+        Limits (min, max) for LOI lengths in µm. Default is (0, 200).
     sarcomere_mean_length_lims : tuple of float, optional
-        Limits for mean length of sarcomeres in LOI (min, max). Defaults to (1, 3).
+        Limits (min, max) for mean sarcomere length in LOI. Default is (1, 3).
     sarcomere_std_length_lims : tuple of float, optional
-        Limits for standard deviation of sarcomere lengths in LOI (min, max). Defaults to (0, 1).
+        Limits (min, max) for std of sarcomere lengths in LOI. Default is (0, 1).
     midline_mean_length_lims : tuple of float, optional
-        Limits for mean length of the midline in LOI (min, max). Defaults to (0, 50).
+        Limits (min, max) for mean midline length in LOI. Default is (0, 50).
     midline_std_length_lims : tuple of float, optional
-        Limits for standard deviation of the midline length in LOI (min, max). Defaults to (0, 50).
+        Limits (min, max) for std of midline length in LOI. Default is (0, 50).
     midline_min_length_lims : tuple of float, optional
-        Limits for minimum length of the midline in LOI (min, max). Defaults to (0, 50).
+        Limits (min, max) for minimum midline length in LOI. Default is (0, 50).
 
     Returns
     -------
     filtered_lois : list of np.ndarray
-        Filtered LOI indices
+        Filtered LOI indices.
     filtered_lois_vectors : list of np.ndarray
-        Filtered position vectors
+        Filtered position vectors.
     filtered_features : dict
-        Filtered features dictionary
+        Filtered features dictionary.
     """
     # Convert feature lists to numpy arrays for boolean operations
     n_vectors = np.array(loi_features['n_vectors_lines'])
@@ -117,14 +117,15 @@ def hausdorff_distance_lois(lines_vectors: List[np.ndarray], symmetry_mode: str 
     Parameters
     ----------
     lines_vectors : list of np.ndarray
-        List of position vectors for each LOI
+        Position vectors for each LOI.
     symmetry_mode : {'min', 'max'}, optional
-        Whether to use min or max of H(loi_i, loi_j) and H(loi_j, loi_i). Defaults to 'max'.
+        Whether to use min or max of H(loi_i, loi_j) and H(loi_j, loi_i).
+        Default is 'max'.
 
     Returns
     -------
     hausdorff_dist_matrix : np.ndarray
-        Symmetric matrix of pairwise Hausdorff distances
+        Symmetric matrix of pairwise Hausdorff distances.
     """
     n_lois = len(lines_vectors)
     hausdorff_dist_matrix = np.zeros((n_lois, n_lois))
@@ -158,22 +159,23 @@ def cluster_lois(
     Parameters
     ----------
     hausdorff_dist_matrix : np.ndarray
-        Precomputed pairwise distance matrix
+        Precomputed pairwise distance matrix.
     distance_threshold : float, optional
-        The linkage distance threshold above which clusters will not be merged. Defaults to 40.
+        Linkage distance threshold above which clusters are not merged.
+        Default is 40.
     linkage : {'complete', 'average', 'single'}, optional
-        Which linkage criterion to use:
-        - 'single' uses the minimum of distances between all observations of the two sets
-        - 'average' uses the average of the distances of each observation of the two sets
-        - 'complete' uses the maximum distances between all observations of the two sets
-        Defaults to 'single'.
+        Linkage criterion to use:
+        'single' uses the minimum of distances between all observations of the
+        two sets, 'average' uses the average of the distances of each observation
+        of the two sets, 'complete' uses the maximum of distances between all
+        observations of the two sets. Default is 'single'.
 
     Returns
     -------
     cluster_labels : np.ndarray
-        Cluster label for each LOI
+        Cluster label for each LOI.
     n_clusters : int
-        Number of unique clusters
+        Number of unique clusters.
     """
     n_lois = hausdorff_dist_matrix.shape[0]
 
@@ -212,24 +214,25 @@ def fit_straight_line_to_clusters(
     Parameters
     ----------
     lines_vectors : list of np.ndarray
-        List of position vectors for each LOI
+        Position vectors for each LOI.
     cluster_labels : np.ndarray
-        Cluster label for each LOI
+        Cluster label for each LOI.
     n_clusters : int
-        Number of clusters
+        Number of clusters.
     pixelsize : float
-        Pixel size in micrometers
+        Pixel size in micrometers.
     add_length : float, optional
-        Length to extend line at each end (in micrometers). Defaults to 1.0.
-    n_lois : int, optional
-        If specified, only the n longest LOIs are returned. If None, all are returned.
+        Length in micrometers to extend the line at each end. Default is 1.0.
+    n_lois : int or None, optional
+        If specified, only the n longest LOIs are returned; if None, all are
+        returned. Default is None.
 
     Returns
     -------
     loi_lines : list of np.ndarray
-        List of fitted line coordinates [(y0, x0), (y1, x1)]
+        Fitted line coordinates ``[(y0, x0), (y1, x1)]``.
     len_loi_lines : list of float
-        Length of each fitted line in pixels
+        Length of each fitted line in pixels.
     """
 
     def linear(x, a, b):
@@ -292,22 +295,22 @@ def select_longest_in_cluster(
     Parameters
     ----------
     lines : list of np.ndarray
-        List of LOI indices
+        List of LOI indices.
     pos_vectors : np.ndarray
-        Position vectors array
+        Position vectors array.
     cluster_labels : np.ndarray
-        Cluster label for each LOI
+        Cluster label for each LOI.
     n_clusters : int
-        Number of clusters
+        Number of clusters.
     n_lois : int
-        Maximum number of LOIs to return
+        Maximum number of LOIs to return.
 
     Returns
     -------
     loi_lines : list of np.ndarray
-        Selected LOI position vectors
+        Selected LOI position vectors.
     len_loi_lines : list of int
-        Length (number of points) of each LOI
+        Length (number of points) of each LOI.
     """
     longest_lines = []
 
@@ -346,22 +349,22 @@ def select_random_from_cluster(
     Parameters
     ----------
     lines : list of np.ndarray
-        List of LOI indices
+        List of LOI indices.
     pos_vectors : np.ndarray
-        Position vectors array
+        Position vectors array.
     cluster_labels : np.ndarray
-        Cluster label for each LOI
+        Cluster label for each LOI.
     n_clusters : int
-        Number of clusters
+        Number of clusters.
     n_lois : int
-        Number of LOIs to randomly select from available clusters
+        Number of LOIs to randomly select from available clusters.
 
     Returns
     -------
     loi_lines : list of np.ndarray
-        Selected LOI position vectors
+        Selected LOI position vectors.
     len_loi_lines : list of int
-        Length (number of points) of each LOI
+        Length (number of points) of each LOI.
     """
     random_lines = []
 
@@ -391,18 +394,18 @@ def select_random_lois(
     Parameters
     ----------
     lines : list of np.ndarray
-        List of LOI indices
+        List of LOI indices.
     pos_vectors : np.ndarray
-        Position vectors array
+        Position vectors array.
     n_lois : int
-        Number of LOIs to randomly select
+        Number of LOIs to randomly select.
 
     Returns
     -------
     loi_lines : list of np.ndarray
-        Selected LOI position vectors
+        Selected LOI position vectors.
     len_loi_lines : list of int
-        Length (number of points) of each LOI
+        Length (number of points) of each LOI.
     """
     selected_lines = random.sample(lines, min(n_lois, len(lines)))
     loi_lines = [pos_vectors[line_i] for line_i in selected_lines]

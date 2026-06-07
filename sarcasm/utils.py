@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Miscellaneous helper utilities for SarcAsM (filtering, profiles, geometry, I/O)."""
 
 import datetime
 import glob
@@ -44,13 +45,22 @@ from skimage.transform import resize
 def _batched_linear_interp(
     x: np.ndarray, y: np.ndarray, x_new: np.ndarray,
 ) -> np.ndarray:
-    """Batched linear interpolation equivalent to calling ``np.interp`` once per
-    row of ``y``. ``x`` is 1-D (shared), ``y`` has shape ``(N, L)``, ``x_new``
-    is 1-D. Returns ``(N, len(x_new))``.
+    """Batched linear interpolation equivalent to per-row ``np.interp``.
 
-    Uses ``searchsorted`` to compute indices once, then a vectorised two-tap
-    linear combination. Matches ``np.interp`` behaviour including constant
-    extrapolation at the boundaries.
+    Parameters
+    ----------
+    x : np.ndarray
+        Shared 1-D sample positions, shape ``(L,)``.
+    y : np.ndarray
+        Values to interpolate, shape ``(N, L)``.
+    x_new : np.ndarray
+        1-D positions to interpolate at.
+
+    Returns
+    -------
+    np.ndarray
+        Interpolated values, shape ``(N, len(x_new))``. Matches ``np.interp``
+        including constant extrapolation at the boundaries.
     """
     L = x.shape[0]
     idx = np.clip(np.searchsorted(x, x_new, side='right') - 1, 0, L - 2)
@@ -63,15 +73,17 @@ def _batched_linear_interp(
 
 
 class Utils:
-    """ Miscellaneous utility functions """
+    """Miscellaneous utility functions."""
 
     @staticmethod
     def get_device():
         """
-        Determines the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
+        Determine the most suitable device (CUDA, MPS, or CPU) for PyTorch operations.
 
-        Returns:
-        - torch.device: The selected device for PyTorch operations.
+        Returns
+        -------
+        torch.device
+            The selected device for PyTorch operations.
         """
         # Check for CUDA support
         if torch.cuda.is_available():
@@ -101,7 +113,18 @@ class Utils:
 
     @staticmethod
     def get_models_dir() -> Path:
-        """Returns path to 'sarcasm/models' directory."""
+        """Return the path to the 'sarcasm/models' directory.
+
+        Returns
+        -------
+        Path
+            Path to the models directory.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the models directory does not exist.
+        """
         base_path = Path(__file__).resolve().parent
 
         models_dir = base_path / "models"
@@ -168,7 +191,18 @@ class Utils:
 
     @staticmethod
     def check_and_round_max_patch_size(max_patch_size):
-        """Checks whether each element of tuple is divisible by 16, and if not, rounds them up"""
+        """Round each element of a tuple up to the next multiple of 16 if not already divisible by 8.
+
+        Parameters
+        ----------
+        max_patch_size : tuple of int
+            Patch dimensions to check and round.
+
+        Returns
+        -------
+        tuple of int
+            Rounded patch dimensions.
+        """
         rounded_patch_size = []
         for dim in max_patch_size:
             if dim % 8 != 0:
@@ -187,15 +221,15 @@ class Utils:
 
         Parameters
         ----------
-        data : array-like
-            Input data for the t-test.
+        data : np.ndarray
+            Input data for the t-test, one entry per condition.
         alpha : float, optional
             Significance level. Default is 0.05.
 
         Returns
         -------
-        tuple
-            p-values and significance levels for each pair of conditions.
+        tuple of np.ndarray
+            p-values and binary significance flags for each pair of conditions.
         """
         p_values = np.zeros((len(data), len(data))) * np.nan
         significance = np.zeros((len(data), len(data))) * np.nan
@@ -219,18 +253,18 @@ class Utils:
 
         Parameters
         ----------
-        data : array-like
+        data : np.ndarray
             Input data.
         window_length : int
             Length of the filter window, must be odd and greater than polyorder.
         polyorder : int
             Order of the polynomial used for the filtering.
         axis : int, optional
-            The axis along which to apply the filter. The default is 0 (first axis).
+            Axis along which to apply the filter. Default is 0.
 
         Returns
         -------
-        array-like
+        np.ndarray
             Filtered data with NaN values preserved.
         """
 
@@ -342,16 +376,16 @@ class Utils:
         Parameters
         ----------
         data : np.ndarray
-            Input array (one dimension array).
+            1-D input array.
         weights : np.ndarray
-            Array with the weights of the same size of data.
+            Weights, same size as ``data``.
         quantile : float
-            Desired quantile.
+            Desired quantile (in percent, 0-100).
 
         Returns
         -------
-        result : np.ndarray
-            Weighted quantile of data.
+        float
+            Weighted quantile of data, or np.nan if no value exceeds the threshold.
         """
         # Flatten the arrays and remove NaNs
         data = data.flatten()
@@ -387,16 +421,16 @@ class Utils:
         Parameters
         ----------
         data : np.ndarray
-            Input array (two dimension array).
+            2-D input array.
         weights : np.ndarray
-            Array with the weights of the same size of data.
+            Weights, same size as ``data``.
         quantiles : list of float
-            List with desired quantiles.
+            Desired quantiles (in percent, 0-100).
 
         Returns
         -------
-        result : np.array
-            2D array with weighted quantiles of each data column.
+        np.ndarray
+            2-D array with weighted quantiles of each data column.
         """
         results = np.zeros((len(quantiles), data.shape[1]))
         for i in range(data.shape[1]):
@@ -407,24 +441,22 @@ class Utils:
     @staticmethod
     def custom_diff(x: np.ndarray, dt: float) -> np.ndarray:
         """
-        Compute derivative of `x` using central differences.
+        Compute the derivative of ``x`` using central differences.
 
-        This function computes the derivative of the input time-series `x` using
-        central differences. At the edges of `x`, forward and backward differences
-        are used. The time-series `x` can be either 1D or 2D.
+        Central differences are used in the interior; forward and backward
+        differences are used at the edges. ``x`` may be 1-D or 2-D.
 
         Parameters
         ----------
-        x : ndarray
-            The input time-series, must be 1D or 2D.
+        x : np.ndarray
+            Input time-series, must be 1-D or 2-D.
         dt : float
-            The time interval between pos_vectors in `x`.
+            Time interval between points in ``x``, in s.
 
         Returns
         -------
-        v : ndarray
-            The derivative of `x`, has the same shape as `x`.
-
+        np.ndarray
+            Derivative of ``x``, same shape as ``x``.
         """
 
         v = np.zeros_like(x)
@@ -447,13 +479,16 @@ class Utils:
 
         Parameters
         ----------
-        regionmask : 2-D boolean array
-            One-pixel-wide skeleton (True = foreground).
+        regionmask : np.ndarray
+            2-D boolean one-pixel-wide skeleton (True = foreground).
+        intensity_image : np.ndarray or None, optional
+            Unused; accepted for compatibility with regionprops callers.
+            Default is None.
 
         Returns
         -------
         float
-            Path length.
+            Path length in pixels.
         """
         # coordinates of all skeleton pixels
         coords = np.column_stack(np.nonzero(regionmask))
@@ -502,21 +537,21 @@ class Utils:
     ) -> None:
         """
         Restore rescaled TIFFs to their original XY resolution.
-        Assumes all TIFFs in 'paths' should be restored to the same 'original_xy_shape'.
+
+        All TIFFs in ``paths`` are restored to the same ``original_xy_shape``.
 
         Parameters
         ----------
-        paths : List[str]
-            List of paths to the rescaled TIFF files.
-        original_xy_shape : Tuple[int, int]
-            The target original (height, width) for the XY dimensions.
-            This shape is applied to all images in 'paths'.
+        paths : list of str
+            Paths to the rescaled TIFF files.
+        original_xy_shape : tuple of int
+            Target original (height, width) for the XY dimensions, applied to
+            all images in ``paths``.
         output_dir : str
             Directory where the restored TIFFs will be saved.
         mask_data : bool, optional
-            If True, indicates the data represents segmentation masks,
-            and nearest-neighbor interpolation will be used for upscaling
-            to preserve discrete label values. Defaults to False (uses cubic).
+            If True, the data are segmentation masks; flagged for callers that
+            preserve discrete label values. Default is False.
         """
         os.makedirs(output_dir, exist_ok=True)
 
@@ -614,28 +649,30 @@ class Utils:
         Parameters
         ----------
         profile : np.ndarray
-            1D intensity profile.
+            1-D intensity profile.
         pixelsize : float
-            Physical size per pixel.
+            Physical size per pixel, in µm.
         slen_lims : tuple of float, optional
-            (min, max) valid peak separation range, by default (1, 3).
+            (min, max) valid peak separation range in µm. Default is (1, 3).
         thres : float, optional
-            Peak detection height threshold (0-1), by default 0.25.
+            Peak detection height threshold (0-1). Default is 0.25.
         min_dist : float, optional
-            Minimum peak separation in µm, by default 1.
+            Minimum peak separation in µm. Default is 1.
         width : float, optional
-            Half-width of COM window in µm, by default 0.5.
+            Half-width of COM window in µm. Default is 0.5.
         interp_factor : int, optional
-            Interpolation upsampling factor, by default 4. If ≤ 1, no interpolation is performed.
-        interpolation_method : str, optional
-            Interpolation method: 'linear' (fast) or 'akima' (smooth), by default 'linear'.
+            Interpolation upsampling factor; no interpolation if <= 1.
+            Default is 4.
+        interpolation_method : {'linear', 'akima'}, optional
+            Interpolation method ('linear' is fast, 'akima' is smooth).
+            Default is 'linear'.
 
         Returns
         -------
         slen_profile : float
-            Peak separation distance in micrometer, or np.nan if invalid.
+            Peak separation distance in µm, or np.nan if invalid.
         center_offsets : float
-            Offset of the profile center in micrometer, or np.nan if invalid.
+            Offset of the profile center in µm, or np.nan if invalid.
 
         Notes
         -----
@@ -743,26 +780,27 @@ class Utils:
 
         Parameters
         ----------
-        profiles : List[np.ndarray]
-            List of 1D intensity profiles.
+        profiles : list of np.ndarray
+            List of 1-D intensity profiles.
         pixelsize : float
-            Physical size per pixel.
+            Physical size per pixel, in µm.
         slen_lims : tuple of float, optional
-            (min, max) valid peak separation range, by default (1, 3).
+            (min, max) valid peak separation range in µm. Default is (1, 3).
         thres : float, optional
-            Peak detection height threshold (0-1), by default 0.25.
+            Peak detection height threshold (0-1). Default is 0.25.
         min_dist : float, optional
-            Minimum peak separation in µm, by default 1.
+            Minimum peak separation in µm. Default is 1.
         width : float, optional
-            Half-width of COM window in µm, by default 0.5.
+            Half-width of COM window in µm. Default is 0.5.
         interp_factor : int, optional
-            Interpolation upsampling factor, by default 4.
-        interpolation_method : str, optional
-            Interpolation method: 'linear' (fast) or 'akima' (smooth), by default 'linear'.
+            Interpolation upsampling factor. Default is 4.
+        interpolation_method : {'linear', 'akima'}, optional
+            Interpolation method ('linear' is fast, 'akima' is smooth).
+            Default is 'linear'.
         prominence : float, optional
-            ``scipy.signal.find_peaks`` prominence threshold, by default 0.5 (matches the
-            LOI :func:`Utils.peakdetekt` setting). Lower values accept weaker, noisier
-            peaks.
+            ``scipy.signal.find_peaks`` prominence threshold; lower values
+            accept weaker, noisier peaks. Default is 0.5 (matches the LOI
+            :func:`Utils.peakdetekt` setting).
 
         Returns
         -------
@@ -953,26 +991,28 @@ class Utils:
 
         Parameters
         ----------
-        x_pos : ndarray
-            An array containing the positions in µm.
-        y : ndarray
-            The intensity profile.
+        x_pos : np.ndarray
+            Positions in µm.
+        y : np.ndarray
+            Intensity profile.
         thres : float, optional
-            Threshold for the peak detection. Default is 0.3.
+            Threshold for the peak detection. Default is 0.2.
         thres_abs : bool, optional
-            Whether the peak detection threshold is absolute. Default is True.
+            Whether the peak detection threshold is absolute (else relative to
+            the maximum). Default is False.
         min_dist : int, optional
             Minimum distance between detected peaks, in pixels. Default is 10.
         width : int, optional
-            Width of the region of interest around the detected peaks for the
-            method of moments computation. Default is 6.
+            Half-width of the region of interest around each peak for the
+            center-of-mass refinement, in pixels. Default is 6.
         interp_factor : int, optional
-            Factor by which to increase the resolution through interpolation. Default is 10.
+            Factor by which to increase resolution through interpolation.
+            Default is 6.
 
         Returns
         -------
-        refined_peaks : ndarray
-            An array containing the refined peak positions in µm.
+        np.ndarray
+            Refined peak positions in µm.
         """
         # Apply Akima interpolation to refine the intensity profile
         akima_interpolator = Akima1DInterpolator(x_pos, y)
@@ -1027,21 +1067,27 @@ class Utils:
 
         Parameters
         ----------
-        profiles, pixelsize, slen_lims
-            As in :func:`process_profiles_batch`.
+        profiles : list of np.ndarray
+            List of 1-D intensity profiles.
+        pixelsize : float
+            Physical size per pixel, in µm.
+        slen_lims : tuple of float, optional
+            (min, max) valid peak separation range in µm. Default is (1, 3).
         thres : float, optional
-            Relative height threshold (``thres * max(profile)``). Default 0.2.
+            Relative height threshold (``thres * max(profile)``). Default is 0.2.
         min_dist : float, optional
-            Minimum peak separation in µm, by default 1.0.
+            Minimum peak separation in µm. Default is 1.0.
         width : float, optional
-            Half-width of COM window in µm, by default 0.5.
+            Half-width of COM window in µm. Default is 0.5.
         interp_factor : int, optional
-            Akima upsampling factor, by default 6 (matches LOI).
+            Akima upsampling factor. Default is 6 (matches LOI).
 
         Returns
         -------
-        sarcomere_lengths, center_offsets : np.ndarray
-            Same semantics as :func:`process_profiles_batch`.
+        sarcomere_lengths : np.ndarray
+            Sarcomere length per profile in µm (np.nan if invalid).
+        center_offsets : np.ndarray
+            Center offset per profile in µm (np.nan if invalid).
         """
         n = len(profiles)
         sarcomere_lengths = np.full(n, np.nan, dtype=np.float64)
@@ -1081,15 +1127,15 @@ class Utils:
 
         Parameters
         ----------
-        x : numpy.ndarray
+        x : np.ndarray
             The x-values of the data.
-        y : numpy.ndarray
+        y : np.ndarray
             The y-values of the data.
 
         Returns
         -------
-        peak : float
-            The calculated peak value.
+        float
+            The calculated peak position.
         """
         return np.sum(x * y) / np.sum(y)
 
@@ -1102,15 +1148,15 @@ class Utils:
 
         Parameters
         ----------
-        orientations : numpy.ndarray
-            Array of orientations. In radians.
+        orientations : np.ndarray
+            Array of orientations in radians.
 
         Returns
         -------
         oop : float
-            The calculated orientational order parameter.
+            The orientational order parameter.
         angle : float
-            The calculated mean vector angle.
+            The mean vector angle in radians.
         """
         oop = 1 / len(orientations) * np.abs(np.sum(np.exp(orientations * 2 * 1j)))
         angle = np.angle(np.sum(np.exp(orientations * 2 * 1j))) / 2
@@ -1171,17 +1217,17 @@ class Utils:
 
         Parameters
         ----------
-        array : numpy.ndarray
-            The input 2D numpy array.
-        from_values : list
-            List of original values.
-        to_values : list
-            List of target values.
+        array : np.ndarray
+            The input numpy array.
+        from_values : list or np.ndarray
+            Original values.
+        to_values : list or np.ndarray
+            Target values.
 
         Returns
         -------
-        out : numpy.ndarray
-            The array with values mapped from 'from_values' to 'to_values'.
+        np.ndarray
+            The array with values mapped from ``from_values`` to ``to_values``.
         """
         sort_idx = np.argsort(from_values)
         idx = np.searchsorted(from_values, array, sorter=sort_idx)
@@ -1191,18 +1237,18 @@ class Utils:
     @staticmethod
     def shuffle_labels(labels: np.ndarray, seed=0):
         """
-        Shuffle labels randomly
+        Shuffle labels randomly.
 
         Parameters
         ----------
-        labels : numpy.ndarray
+        labels : np.ndarray
             The labels to be shuffled.
         seed : int, optional
-            The seed for the random number generator, by default 0.
+            Seed for the random number generator. Default is 0.
 
         Returns
         -------
-        labels_shuffled : numpy.ndarray
+        np.ndarray
             The input labels, randomly shuffled.
         """
         values = np.unique(labels)
@@ -1215,6 +1261,7 @@ class Utils:
 
     @staticmethod
     def convert_lists_to_arrays_in_dict(d):
+        """Convert every list value in a dict to a numpy array in place."""
         for key, value in d.items():
             if isinstance(value, list):
                 d[key] = np.array(value)
@@ -1222,6 +1269,7 @@ class Utils:
 
     @staticmethod
     def find_closest(array, x):
+        """Return the index and value of the element in ``array`` closest to ``x``."""
         # Calculate the absolute differences
         differences = np.abs(array - x)
 
@@ -1235,6 +1283,7 @@ class Utils:
 
     @staticmethod
     def max_orientation_change(angles):
+        """Return the maximum consecutive change in non-polar orientation angles, in radians."""
         # Ensure angles are in the range [-π/2, π/2]
         angles = np.mod(angles + np.pi / 2, np.pi) - np.pi / 2
 
@@ -1262,21 +1311,24 @@ class Utils:
 
         Parameters
         ----------
-        orientation_field : numpy.ndarray
-            Polar vector field(s). For a single image, a 3D array of shape (2, H, W).
-            For multiple images, a 4D array of shape (N, 2, H, W).
+        orientation_field : np.ndarray
+            Polar vector field(s). For a single image, shape ``(2, H, W)``.
+            For multiple images, shape ``(N, 2, H, W)``.
         use_median_filter : bool, optional
-            Whether to apply a median filter to the resulting angle map. Default is True.
+            Whether to apply a median filter to the resulting angle map.
+            Default is True.
         radius : int, optional
-            Radius of the disk-shaped footprint for the median filter. Default is 3.
+            Radius of the disk-shaped footprint for the median filter.
+            Default is 3.
+        progress_notifier : object or None, optional
+            Optional notifier providing an ``iterator`` method to report
+            per-frame progress. Default is None.
 
         Returns
         -------
-        numpy.ndarray
-            A 2D or 3D array of angles in radians, mapped to the range [0, π].
-            If the input is a single image of shape (2, H, W), the output shape is (H, W).
-            If the input contains multiple images of shape (N, 2, H, W), the output
-            shape is (N, H, W).
+        np.ndarray
+            Array of angles in radians, mapped to the range [0, π]. Shape
+            ``(H, W)`` for a single image, ``(N, H, W)`` for multiple images.
         """
         # Reshape input to (N, 2, H, W) if necessary
         if orientation_field.ndim == 3 and orientation_field.shape[0] == 2:
@@ -1323,17 +1375,19 @@ class Utils:
     @staticmethod
     def create_distance_map(sarc_obj):
         """
-        Creates distance map for sarcomeres from a SarcAsM object. The distance map is 0 at Z-bands and 1 at M-bands.
+        Create a distance map for sarcomeres from a SarcAsM object.
+
+        The distance map is 0 at Z-bands and 1 at M-bands.
 
         Parameters
         ----------
         sarc_obj : SarcAsM
-            An object of the SarcAsM class.
+            A SarcAsM object.
 
         Returns
         -------
-        distance : numpy.ndarray
-            A 2D array with normalized distances (0 to 1) along sarcomeres.
+        np.ndarray
+            A 2-D array with normalized distances (0 to 1) along sarcomeres.
         """
 
         # Validate sarc_obj data
@@ -1387,25 +1441,25 @@ class Utils:
     @staticmethod
     def interpolate_distance_map(image, N=50, method='linear'):
         """
-        Interpolates NaN regions in a 2D image, filling only those regions whose size
-        is less than or equal to a specified threshold.
+        Interpolate small NaN regions in a 2-D image.
+
+        Only connected NaN regions whose size is <= ``N`` pixels are filled.
 
         Parameters
         ----------
-        image : numpy.ndarray
-            A 2D array representing the input image. NaN values represent gaps to be filled.
-        N : int
-            The maximum size (in pixels) of connected NaN regions to interpolate. Regions larger
-            than this threshold will remain unaltered.
-        method : str, optional
-            The interpolation method to use. Options are 'linear', 'nearest', and 'cubic'.
-            Default is 'linear'.
+        image : np.ndarray
+            2-D input image; NaN values represent gaps to be filled.
+        N : int, optional
+            Maximum size (in pixels) of connected NaN regions to interpolate.
+            Larger regions are left unaltered. Default is 50.
+        method : {'linear', 'nearest', 'cubic'}, optional
+            Interpolation method. Default is 'linear'.
 
         Returns
         -------
-        numpy.ndarray
-            A 2D array with the same shape as the input `image`, where small NaN regions
-            (size <= N) have been interpolated. Larger NaN regions are left unchanged.
+        np.ndarray
+            Array with the same shape as ``image``, where small NaN regions
+            (size <= N) have been interpolated.
         """
 
         # Get indices and mask valid points
@@ -1439,27 +1493,27 @@ class Utils:
     @staticmethod
     def fast_profile_lines(image, start_points, end_points, linewidth=3, mode='constant', cval=0.0):
         """
-        Vectorized version of profile_line from scikit-image that processes multiple lines simultaneously.
+        Sample many profile lines at once (vectorized scikit-image profile_line).
 
         Parameters
         ----------
-        image : ndarray
-            The input image from which to sample the profile lines.
+        image : np.ndarray
+            Input image from which to sample the profile lines.
         start_points : array_like
-            An array of shape (N, 2) containing the starting coordinates of the lines.
+            Starting coordinates of the lines, shape ``(N, 2)``.
         end_points : array_like
-            An array of shape (N, 2) containing the ending coordinates of the lines.
+            Ending coordinates of the lines, shape ``(N, 2)``.
         linewidth : int, optional
-            The width of the profile line, in pixels. Default is 1.
+            Width of the profile line, in pixels. Default is 3.
         mode : str, optional
-            The mode parameter for map_coordinates. Default is 'constant'.
+            Boundary mode passed to ``map_coordinates``. Default is 'constant'.
         cval : float, optional
-            The value used for points outside the boundaries of the input image. Default is 0.0.
+            Value used for points outside the image boundaries. Default is 0.0.
 
         Returns
         -------
-        result : list of ndarray
-            A list containing the sampled profile values for each line.
+        list of np.ndarray
+            Sampled profile values for each line.
         """
         # Convert to array and swap row/col order to match image coordinates
         start_points = np.asarray(start_points).T
@@ -1549,6 +1603,20 @@ class Utils:
     @staticmethod
     @njit(parallel=True)
     def median_filter_numba(data, footprint):
+        """Numba-accelerated median filter over a 2-D array with a boolean footprint.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            2-D input array.
+        footprint : np.ndarray
+            2-D boolean footprint defining the filter window.
+
+        Returns
+        -------
+        np.ndarray
+            Filtered array, same shape as ``data``.
+        """
         H, W = data.shape
         fH, fW = footprint.shape
         pad_h, pad_w = fH // 2, fW // 2
@@ -1582,18 +1650,21 @@ class Utils:
     @njit(parallel=True)
     def nanmedian_filter_numba(data, window_size):
         """
-        Applies a nanmedian filter to a 2D array using a sliding window.
-        The function computes the median of each window ignoring NaN values.
+        Apply a nanmedian filter to a 2-D array using a sliding window.
 
-        text
-        Parameters:
-          data : 2D numpy array of float
-            Input array with possible NaN values.
-          window_size : int
-            The size (assumed odd) of the square window.
+        The median of each window is computed ignoring NaN values.
 
-        Returns:
-          out : 2D numpy array of the same shape as data containing the filtered result.
+        Parameters
+        ----------
+        data : np.ndarray
+            2-D input array of floats with possible NaN values.
+        window_size : int
+            Size (assumed odd) of the square window.
+
+        Returns
+        -------
+        np.ndarray
+            Filtered array, same shape as ``data``.
         """
         H, W = data.shape
         pad = window_size // 2

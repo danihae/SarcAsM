@@ -34,6 +34,12 @@ The tracker does **not** track M-bands as a separate entity. Instead each
    query point keeps its predicted position but records NaN for slen and
    orientation that frame.
 
+A query point's **trailing coast** — the frames after its *final* snap, where it
+is flow-advected until it is closed — is blanked to NaN (position, slen,
+orientation) in the output: a lost track does not freeze in place at its last
+position. Interior gaps that are later re-snapped or bridged keep their
+predicted/interpolated position (they are anchored on both sides).
+
 Anti-convergence is enforced by the snap: detections sit at physical sarcomere
 centres (~1 sarcomere apart), so snapping keeps neighbouring query points
 anchored to different detections and they cannot collapse onto each other.
@@ -137,13 +143,26 @@ def build_dt_channels(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Build the two-channel distance-transform representation used for flow.
 
-    ``threshold`` binarizes the Z-band mask; ``threshold_m`` binarizes the
-    M-band mask (defaults to ``threshold`` for backward compatibility). The
-    M-band probability mask is typically weaker/sparser than the Z-band one, so
-    a lower M-band threshold preserves its structure in the distance transform.
+    Parameters
+    ----------
+    zbands_mask : np.ndarray
+        Z-band mask (binary, or probability binarized at ``threshold``).
+    mbands_mask : np.ndarray
+        M-band mask (binary, or probability binarized at ``threshold_m``).
+    threshold : float, optional
+        Threshold binarizing the Z-band probability mask. Default is 0.5.
+    clip : float, optional
+        Distance-transform clip in px. Default is 20.0.
+    threshold_m : float or None, optional
+        Threshold binarizing the M-band probability mask; the M-band mask is
+        typically weaker/sparser, so a lower threshold preserves its structure.
+        Falls back to ``threshold`` when None. Default is None.
 
-    Returns ``(dt_z, dt_m)`` as uint8 arrays — each is 0 on the structure and
-    grows with distance from it, clipped at ``clip`` pixels.
+    Returns
+    -------
+    tuple of np.ndarray
+        ``(dt_z, dt_m)`` uint8 arrays — each is 0 on the structure and grows
+        with distance from it, clipped at ``clip`` px.
     """
     thr_m = threshold if threshold_m is None else threshold_m
     if zbands_mask.dtype != np.bool_:
@@ -169,8 +188,32 @@ def compute_flow_farneback(
     poly_n: int = 7,
     poly_sigma: float = 1.5,
 ) -> np.ndarray:
-    """Farneback flow on a single uint8 channel. Returns ``(H, W, 2)`` float32
-    ``[dx, dy]`` in pixels (OpenCV convention)."""
+    """Compute Farneback optical flow on a single uint8 channel.
+
+    Parameters
+    ----------
+    dt_t : np.ndarray
+        Distance-transform channel at frame t (uint8).
+    dt_t1 : np.ndarray
+        Distance-transform channel at frame t+1 (uint8).
+    pyr_scale : float, optional
+        Image-pyramid scale per level. Default is 0.5.
+    levels : int, optional
+        Number of pyramid levels. Default is 4.
+    winsize : int, optional
+        Averaging window size in px. Default is 21.
+    iterations : int, optional
+        Iterations per pyramid level. Default is 3.
+    poly_n : int, optional
+        Pixel-neighbourhood size for the polynomial expansion. Default is 7.
+    poly_sigma : float, optional
+        Gaussian sigma for the polynomial expansion. Default is 1.5.
+
+    Returns
+    -------
+    np.ndarray
+        ``(H, W, 2)`` float32 flow ``[dx, dy]`` in px (OpenCV convention).
+    """
     flow = cv2.calcOpticalFlowFarneback(
         dt_t, dt_t1, None,
         pyr_scale=pyr_scale, levels=levels, winsize=winsize,
@@ -190,13 +233,34 @@ def compute_flow_pair(
     farneback_kwargs: Optional[dict] = None,
     threshold_m: Optional[float] = None,
 ) -> np.ndarray:
-    """Flow for one frame pair, averaged across the two DT channels.
+    """Compute flow for one frame pair, averaged across the two DT channels.
 
-    ``threshold`` / ``threshold_m`` binarize the Z- / M-band masks respectively
-    (``threshold_m`` defaults to ``threshold``).
+    Parameters
+    ----------
+    zbands_t : np.ndarray
+        Z-band mask at frame t.
+    mbands_t : np.ndarray
+        M-band mask at frame t.
+    zbands_t1 : np.ndarray
+        Z-band mask at frame t+1.
+    mbands_t1 : np.ndarray
+        M-band mask at frame t+1.
+    threshold : float, optional
+        Threshold binarizing the Z-band masks. Default is 0.5.
+    clip : float, optional
+        Distance-transform clip in px. Default is 20.0.
+    farneback_kwargs : dict or None, optional
+        Extra keyword arguments forwarded to :func:`compute_flow_farneback`.
+        Default is None.
+    threshold_m : float or None, optional
+        Threshold binarizing the M-band masks; falls back to ``threshold`` when
+        None. Default is None.
 
-    Returns ``(H, W, 2)`` float32, ``[dy, dx]`` in pixels (numpy row/col
-    convention).
+    Returns
+    -------
+    np.ndarray
+        ``(H, W, 2)`` float32 flow ``[dy, dx]`` in px (numpy row/col
+        convention).
     """
     kw = farneback_kwargs or {}
     dt_z_t, dt_m_t = build_dt_channels(zbands_t, mbands_t, threshold, clip, threshold_m=threshold_m)
@@ -219,14 +283,33 @@ def compute_flow_sequence(
     progress_notifier: Optional[object] = None,
     threshold_m: Optional[float] = None,
 ) -> np.ndarray:
-    """Flow for a full sequence. Returns ``(T-1, H, W, 2)`` float32 ``[dy,dx]``.
+    """Compute flow for a full sequence.
 
-    ``threshold`` / ``threshold_m`` binarize the Z- / M-band masks respectively
-    (``threshold_m`` defaults to ``threshold``).
+    Parameters
+    ----------
+    zbands_stack : np.ndarray
+        ``(T, H, W)`` stack of Z-band masks.
+    mbands_stack : np.ndarray
+        ``(T, H, W)`` stack of M-band masks.
+    threshold : float, optional
+        Threshold binarizing the Z-band masks. Default is 0.5.
+    clip : float, optional
+        Distance-transform clip in px. Default is 20.0.
+    farneback_kwargs : dict or None, optional
+        Extra keyword arguments forwarded to :func:`compute_flow_farneback`.
+        Default is None.
+    progress_notifier : object or None, optional
+        Optional ``bio_image_unet.progress.ProgressNotifier``; when given, its
+        ``.iterator`` wraps the per-frame-pair loop so GUI/notebook callers see
+        a progress bar for this (dominant) cost. Default is None.
+    threshold_m : float or None, optional
+        Threshold binarizing the M-band masks; falls back to ``threshold`` when
+        None. Default is None.
 
-    ``progress_notifier`` (a ``bio_image_unet.progress.ProgressNotifier``) is
-    optional; when given, its ``.iterator`` wraps the per-frame-pair loop so
-    GUI/notebook callers see a progress bar for this (dominant) cost.
+    Returns
+    -------
+    np.ndarray
+        ``(T-1, H, W, 2)`` float32 flow ``[dy, dx]`` in px.
     """
     T = len(zbands_stack)
     if T < 2:
@@ -286,7 +369,20 @@ def _sample_bilinear(flow: np.ndarray, ys: np.ndarray, xs: np.ndarray) -> np.nda
 
 
 def sample_flow_bilinear(flow: np.ndarray, positions_px: np.ndarray) -> np.ndarray:
-    """Bilinear-interpolated flow lookup. Positions in pixels (row, col)."""
+    """Bilinear-interpolated flow lookup at subpixel positions.
+
+    Parameters
+    ----------
+    flow : np.ndarray
+        ``(H, W, 2)`` flow field.
+    positions_px : np.ndarray
+        ``(N, 2)`` query positions in px (row, col).
+
+    Returns
+    -------
+    np.ndarray
+        ``(N, 2)`` interpolated flow vectors; zero for off-grid positions.
+    """
     if positions_px.size == 0:
         return np.zeros((0, 2), dtype=np.float32)
     ys = np.ascontiguousarray(positions_px[:, 0], dtype=np.float32)
@@ -299,8 +395,23 @@ def sample_flow_at_structures(
     positions_per_frame: List[np.ndarray],
     pixelsize: float,
 ) -> List[np.ndarray]:
-    """Sample flow at per-frame structure positions. Returns per-frame
-    displacement in µm; last frame is zero-filled (no outgoing flow)."""
+    """Sample flow at per-frame structure positions.
+
+    Parameters
+    ----------
+    flows : np.ndarray
+        ``(T-1, H, W, 2)`` flow sequence in px.
+    positions_per_frame : list of np.ndarray
+        Per-frame ``(N_t, 2)`` structure positions in px (row, col).
+    pixelsize : float
+        Pixel size in µm, used to convert sampled displacement to µm.
+
+    Returns
+    -------
+    list of np.ndarray
+        Per-frame ``(N_t, 2)`` displacement in µm; the last frame is
+        zero-filled (no outgoing flow).
+    """
     T = len(positions_per_frame)
     out: List[np.ndarray] = []
     for t in range(T):
@@ -320,8 +431,22 @@ def decompose_along_perpendicular(
     displacement: np.ndarray,
     orientations: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Project displacement onto sarcomere orientation (along) and its
-    perpendicular. Sarcomere axis = (sin θ, cos θ) in (row, col)."""
+    """Project displacement onto the sarcomere axis (along) and perpendicular.
+
+    The sarcomere axis is ``(sin θ, cos θ)`` in (row, col).
+
+    Parameters
+    ----------
+    displacement : np.ndarray
+        ``(..., 2)`` displacement vectors (row, col).
+    orientations : np.ndarray
+        Sarcomere orientation θ in radians, broadcastable to ``displacement``.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        ``(along, perp)`` components, same leading shape as ``displacement``.
+    """
     if displacement.size == 0:
         return np.zeros(0, np.float32), np.zeros(0, np.float32)
     s = np.sin(orientations)
@@ -336,7 +461,25 @@ def compute_motion_field_stats(
     orientations_per_frame: List[np.ndarray],
     frametime: Optional[float] = None,
 ) -> Dict[str, List[np.ndarray]]:
-    """Per-frame motion-field summaries (magnitude + along/perp decomposition)."""
+    """Compute per-frame motion-field summaries.
+
+    Parameters
+    ----------
+    flow_at_vectors : list of np.ndarray
+        Per-frame ``(N_t, 2)`` displacement in µm (row, col).
+    orientations_per_frame : list of np.ndarray
+        Per-frame sarcomere orientations in radians.
+    frametime : float or None, optional
+        Frame time in s, used to convert displacement magnitude to velocity;
+        when None, velocity equals magnitude. Default is None.
+
+    Returns
+    -------
+    dict of str to list of np.ndarray
+        Keys ``'displacement_magnitude'``, ``'displacement_along_sarcomere'``,
+        ``'displacement_perpendicular'`` (all in µm) and
+        ``'velocity_magnitude'`` (µm/s if ``frametime`` given).
+    """
     mag: List[np.ndarray] = []
     along: List[np.ndarray] = []
     perp: List[np.ndarray] = []
@@ -782,47 +925,132 @@ def track_sarcomere_vectors(
     farneback_kwargs: Optional[dict] = None,
     progress_notifier: Optional[object] = None,
 ) -> Dict[str, object]:
-    """Run the 2D full-field tracker on a stack.
+    """Run the 2D full-field sarcomere-vector tracker on a stack.
 
     The tracker does not persist M-band identity. Instead every query point is
     a sarcomere-centre marker that flow-advects and snaps to a consistent
-    detection each frame. Outputs are dense ``(n_tracks, T)`` arrays.
-
-    Each (track, frame) also records ``tracks_detection_id`` — the index of the
-    snapped detection into ``pos_vectors_px_all[frame]`` — and
-    ``tracks_midline_id`` — that detection's entry in ``midline_ids_all``. Both
-    are ``-1`` on gap/interpolated frames (no real detection). These provide an
-    exact join from a track back to the per-frame vector / domain / myofibril
-    analyses, which downstream grouping (myofibril/domain/pool) relies on.
+    detection each frame. Outputs are dense ``(n_tracks, T)`` arrays. Snap gates
+    are capped relative to the sarcomere length so the tracker stays
+    scale-invariant across pixel size / frame time.
 
     Continuity is built up in three complementary stages:
 
-    1. **Gap-scaled re-acquisition** (``reacquire_gap_cap`` > 1, default 4): a
-       live track that is coasting through a detection gap widens its snap gate
-       by a random-walk factor (∝ ``sqrt(gap)``, gap capped at
-       ``reacquire_gap_cap``) so it can re-snap to a reappearing detection
-       *before* it dies, instead of fragmenting. The along budget is hard-capped
-       (``reacquire_along_cap2_factor``) so it can never reach the next sarcomere
-       centre, and the perpendicular budget grows only ``reacquire_perp_scale``×
-       as fast (perpendicular jumps onto a neighbouring myofibril are the
-       dangerous swap). Set to 1 to disable (legacy behaviour).
+    1. **Gap-scaled re-acquisition** (``reacquire_gap_cap`` > 1): a live track
+       coasting through a detection gap widens its snap gate by a random-walk
+       factor (∝ ``sqrt(gap)``, capped at ``reacquire_gap_cap``) so it can
+       re-snap before it dies. The along budget is hard-capped
+       (``reacquire_along_cap2_factor``) so it cannot reach the next sarcomere
+       centre; the perpendicular budget grows only ``reacquire_perp_scale``× as
+       fast (perpendicular jumps onto a neighbouring myofibril are the dangerous
+       swap).
     2. **Hard greedy assignment**: candidate matches are claimed greedily in
-       order of ascending distance, each detection consumed by at most one query
-       point — the anti-convergence guarantee.
-    3. **Fragment stitching** (``merge_tracks`` True, default): a final pass
-       joins trajectories that died and respawned across short gaps
-       (1..``max_gap_interpolation``); each seed chains A→B→C in one pass via the
-       inner loop (``merge_max_passes`` > 1 re-runs it, rarely needed).
-       A long track (``snapped_count >= min_track_length``) may absorb even
-       short respawn fragments (``snapped_count >= merge_min_bridge_snaps``,
-       default 1) as bridges; the call-site length filter then runs on the
-       *assembled* track. Merge gates are looser than the snap gates
-       (``merge_max_disp_*_px``) and scale with gap; the flow-predicted tail of A
-       must match B's head within them plus a sarcomere-length continuity
-       tolerance (``|Δslen| <= merge_slen_tol_um``). The merge cost normalizes
-       each residual by its gap-scaled budget and adds ``merge_gap_penalty`` per
-       extra gap frame, preferring short, safe bridges. Gap frames carry linearly
-       interpolated positions and ``tracks_snapped=False``.
+       ascending distance, each detection consumed by at most one query point —
+       the anti-convergence guarantee.
+    3. **Fragment stitching** (``merge_tracks``): a final pass joins
+       trajectories that died and respawned across short gaps; gates are looser
+       than the snap gates and scale with gap, plus a sarcomere-length
+       continuity tolerance (see :func:`_merge_short_tracks`).
+
+    Each (track, frame) also records ``tracks_detection_id`` (index of the
+    snapped detection into ``pos_vectors_px_all[frame]``) and
+    ``tracks_midline_id`` (that detection's entry in ``midline_ids_all``); both
+    are ``-1`` on gap/interpolated frames, giving an exact join back to the
+    per-frame vector / domain / myofibril analyses.
+
+    Parameters
+    ----------
+    zbands_stack : np.ndarray
+        ``(T, H, W)`` stack of Z-band masks.
+    mbands_stack : np.ndarray
+        ``(T, H, W)`` stack of M-band masks.
+    pos_vectors_px_all : list of np.ndarray
+        Per-frame ``(N_t, 2)`` sarcomere-centre detections in px (row, col).
+    midline_ids_all : list of np.ndarray
+        Per-frame midline (M-band) id of each detection; -1 if absent.
+    sarcomere_lengths_all : list of np.ndarray
+        Per-frame detection sarcomere lengths in µm.
+    orientations_all : list of np.ndarray
+        Per-frame detection orientations in radians.
+    pixelsize : float
+        Pixel size in µm.
+    frametime : float or None, optional
+        Frame time in s, used for motion-field velocity. Default is None.
+    threshold_mbands : float, optional
+        Threshold binarizing the M-band masks for flow. Default is 0.25.
+    threshold_zbands : float, optional
+        Threshold binarizing the Z-band masks for flow. Default is 0.5.
+    dt_clip : float, optional
+        Distance-transform clip in px. Default is 20.0.
+    max_disp_along_px : float, optional
+        Snap gate along the sarcomere axis in px. Default is 15.0.
+    max_disp_perp_px : float, optional
+        Snap gate perpendicular to the sarcomere axis in px. Default is 2.0.
+    ori_tol_deg : float, optional
+        Orientation tolerance for snapping in degrees. Default is 45.0.
+    memory : int, optional
+        Frames a track may coast unsnapped before it is closed. Default is 5.
+    min_track_length : int, optional
+        Minimum number of real snaps to keep a track. Default is 5.
+    reacquire_gap_cap : int, optional
+        Cap on the coasting gap used to widen the re-acquisition gate; 1
+        disables re-acquisition. Default is 4.
+    reacquire_perp_scale : float, optional
+        Growth rate of the perpendicular re-acquisition budget per gap frame.
+        Default is 0.5.
+    reacquire_along_cap2_factor : float, optional
+        Hard cap (in gap units) on along-gate widening during re-acquisition.
+        Default is 2.0.
+    max_gap_interpolation : int, optional
+        Maximum gap (frames) bridgeable by the merge step. Default is 5.
+    merge_tracks : bool, optional
+        Whether to run the fragment-stitching pass. Default is True.
+    merge_max_disp_along_px : float, optional
+        Per-frame along merge gate in px (scaled by gap). Default is 25.0.
+    merge_max_disp_perp_px : float, optional
+        Per-frame perpendicular merge gate in px (scaled by gap). Default is 4.0.
+    merge_ori_tol_deg : float, optional
+        Orientation tolerance for merging in degrees. Default is 45.0.
+    merge_slen_tol_um : float, optional
+        Sarcomere-length continuity tolerance at a merge seam in µm.
+        Default is 0.30.
+    merge_min_bridge_snaps : int, optional
+        Minimum real snaps for a fragment to be absorbed as a bridge.
+        Default is 1.
+    merge_gap_penalty : float, optional
+        Cost added per extra gap frame, preferring short bridges. Default is 0.5.
+    merge_max_passes : int, optional
+        Number of merge passes to run (each re-exposes new seams). Default is 1.
+    slen_lims : tuple of float, optional
+        Physiological sarcomere-length sanity range in µm. Default is (1.0, 3.0).
+    return_merge_log : bool, optional
+        If True, include a per-merge log under key ``'merge_log'``.
+        Default is False.
+    compute_motion_field : bool, optional
+        If True, also compute tracking-independent motion-field stats.
+        Default is True.
+    store_flow_fields : bool, optional
+        If True, include the dense flow fields under key ``'flow_fields'``.
+        Default is False.
+    farneback_kwargs : dict or None, optional
+        Extra keyword arguments forwarded to :func:`compute_flow_farneback`.
+        Default is None.
+    progress_notifier : object or None, optional
+        Optional ``bio_image_unet.progress.ProgressNotifier`` for the flow loop.
+        Default is None.
+
+    Returns
+    -------
+    dict
+        Result dictionary with keys: ``'n_tracks'``, ``'track_ids'``,
+        ``'track_start_frame'``, ``'track_lengths'``, ``'tracks_positions_um'``,
+        ``'tracks_positions_px'``, ``'tracks_slen'`` (µm),
+        ``'tracks_orientations'`` (rad), ``'tracks_snapped'`` (bool),
+        ``'tracks_detection_id'``, ``'tracks_midline_id'``, ``'n_merges'``.
+        Track arrays are dense ``(n_tracks, T)`` (positions ``(n_tracks, T, 2)``).
+        Adds ``'merge_log'`` when ``return_merge_log``; motion-field keys
+        (``'flow_at_vectors'`` plus :func:`compute_motion_field_stats` outputs)
+        when ``compute_motion_field``; and ``'flow_fields'`` when
+        ``store_flow_fields``.
     """
     T = len(zbands_stack)
     if T < 2:
@@ -1259,7 +1487,40 @@ def compute_motion_field(
     farneback_kwargs: Optional[dict] = None,
     progress_notifier: Optional[object] = None,
 ) -> Dict[str, object]:
-    """Flow + sampling without tracking. Useful for quick motion assessment."""
+    """Compute flow and sample it at structures, without tracking.
+
+    Useful for a quick motion assessment.
+
+    Parameters
+    ----------
+    zbands_stack : np.ndarray
+        ``(T, H, W)`` stack of Z-band masks.
+    mbands_stack : np.ndarray
+        ``(T, H, W)`` stack of M-band masks.
+    pos_vectors_px_all : list of np.ndarray
+        Per-frame ``(N_t, 2)`` structure positions in px (row, col).
+    orientations_all : list of np.ndarray
+        Per-frame sarcomere orientations in radians.
+    pixelsize : float
+        Pixel size in µm.
+    frametime : float or None, optional
+        Frame time in s, used for velocity. Default is None.
+    threshold : float, optional
+        Threshold binarizing both masks for flow. Default is 0.5.
+    dt_clip : float, optional
+        Distance-transform clip in px. Default is 20.0.
+    farneback_kwargs : dict or None, optional
+        Extra keyword arguments forwarded to :func:`compute_flow_farneback`.
+        Default is None.
+    progress_notifier : object or None, optional
+        Optional ``bio_image_unet.progress.ProgressNotifier`` for the flow loop.
+        Default is None.
+
+    Returns
+    -------
+    dict
+        ``'flow_at_vectors'`` plus the :func:`compute_motion_field_stats` keys.
+    """
     flows = compute_flow_sequence(
         zbands_stack, mbands_stack,
         threshold=threshold, clip=dt_clip,

@@ -35,24 +35,24 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
     seed : int
         Index of the seed point.
     points_t : np.ndarray
-        Array of point coordinates.
+        Point coordinates.
     sarcomere_length_vectors_t : np.ndarray
-        Sarcomere lengths at each point.
+        Sarcomere lengths at each point (µm).
     sarcomere_orientation_vectors_t : np.ndarray
-        Sarcomere orientations at each point.
+        Sarcomere orientations at each point (radians).
     tree : scipy.spatial.cKDTree
-        Fitted cKDTree for nearest-neighbor queries.
+        cKDTree for nearest-neighbor queries.
     threshold_distance : float
-        Maximum distance for neighbor search in pixels.
+        Maximum neighbor search distance in µm.
     pixelsize : float
         Pixel size in µm.
     persistence : int
-        Number of points to consider for averaging.
+        Number of points averaged for length and orientation.
 
     Returns
     -------
     np.ndarray
-        Array of indices forming the line.
+        Indices of the points forming the line.
     """
     line_i = deque([seed])
     stop_right = stop_left = False
@@ -67,6 +67,7 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
         return np.arctan2(np.sin(beta - alpha), np.cos(beta - alpha))
 
     def calculate_mean_orientation(orientations):
+        """Return the circular mean of axial orientations (period pi), in radians."""
         # Convert orientations to complex numbers on the unit circle
         complex_orientations = np.exp(2j * np.array(orientations))
         # Calculate the mean of the complex numbers
@@ -75,6 +76,7 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
         return np.angle(mean_complex) / 2
 
     def adjust_orientation(current_orientation, previous_orientation):
+        """Flip the current orientation by pi so it stays consistent with the previous one."""
         diff = angle_diff(current_orientation, previous_orientation)
         if diff > np.pi / 2:
             return current_orientation - np.pi
@@ -133,31 +135,36 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
                 persistence: int = 4, threshold_distance: float = 0.3, n_min: int = 5,
                 random_seed: Union[None, int] = None):
     """
-    Line growth algorithm to determine myofibril lines perpendicular to sarcomere z-bands
+    Grow myofibril lines along the sarcomere axis (perpendicular to z-bands) from random seeds.
 
     Parameters
     ----------
     points_t : np.ndarray
-        List of midline point positions
-    sarcomere_length_vectors_t : list
-        Sarcomere length at midline points
-    sarcomere_orientation_vectors_t : list
-        Sarcomere orientation angle at midline points, in radians
-    midline_length_vectors_t : list
-        Length of sarcomere mbands of midline points
+        Midline point positions.
+    sarcomere_length_vectors_t : np.ndarray
+        Sarcomere lengths at midline points (µm).
+    sarcomere_orientation_vectors_t : np.ndarray
+        Sarcomere orientation angles at midline points (radians).
+    midline_length_vectors_t : np.ndarray
+        Lengths of sarcomere m-bands at midline points (µm).
     pixelsize : float
-        Pixel size in µm
-    ratio_seeds : float
-        Ratio of sarcomere vectors to be takes as seeds for line growth
-    persistence : int
-        Number of points to consider for averaging length and orientation.
-    random_seed : int, optional
-        Random seed for reproducibility. Defaults to None.
+        Pixel size in µm.
+    ratio_seeds : float, optional
+        Fraction of sarcomere vectors used as seeds for line growth. Default is 0.1.
+    persistence : int, optional
+        Number of points averaged for length and orientation. Default is 4.
+    threshold_distance : float, optional
+        Maximum neighbor search distance in µm during growth. Default is 0.3.
+    n_min : int, optional
+        Minimum number of points; shorter lines are discarded. Default is 5.
+    random_seed : int or None, optional
+        Random seed for reproducibility. Default is None.
 
     Returns
     -------
-    line_data : dict
-        Dictionary with LOI data keys = (lines, line_features)
+    dict
+        Line data with keys 'lines' (list of point-index arrays) and 'line_features'
+        (dict of per-line feature arrays).
     """
     # select random origins for line growth
     points_t = np.asarray(points_t)
@@ -204,18 +211,19 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
     # Straightness
     def frechet_straightness(points):
         """
-        Compute a Fréchet-inspired straightness measure:
-        1 - (max perpendicular deviation from chord / chord length)
+        Compute a Fréchet-inspired straightness measure.
+
+        Defined as ``1 - (max perpendicular deviation from chord / chord length)``.
 
         Parameters
         ----------
         points : np.ndarray
-            Array of shape (n_points, 2) representing polyline vertices
+            Polyline vertices, shape ``(n_points, 2)``.
 
         Returns
         -------
         float
-            Straightness measure (1 = perfectly straight)
+            Straightness measure (1 = perfectly straight).
         """
 
         if len(points) < 2:
@@ -287,34 +295,34 @@ def create_myofibril_length_map(
         median_filter_radius: float = 0.6,
 ) -> np.ndarray:
     """
-    The `create_myofibril_length_map` function generates a **2D spatial map** of myofibril lengths represented
-    as pixel values. It achieves this by rasterizing myofibril line segments, assigning their corresponding lengths
-    to the pixels they occupy, and averaging these values at overlapping pixels. The resulting map is optionally
-    smoothed using a median filter to reduce noise and provide a more coherent spatial representation.
+    Generate a 2D spatial map of myofibril lengths.
+
+    Rasterizes myofibril line segments, assigns each line's length to the pixels it
+    covers, averages overlapping pixels, and optionally smooths with a median filter.
 
     Parameters
     ----------
-    myof_lines : ndarray
-        Line indices for myofibril structures.
-    myof_length : ndarray
-        Length values for each myofibril line.
-    pos_vectors : ndarray
-        Position vectors in micrometers.
-    sarcomere_orientation_vectors : ndarray
+    myof_lines : np.ndarray
+        Per-line point indices for myofibril structures.
+    myof_length : np.ndarray
+        Length value for each myofibril line (µm).
+    pos_vectors : np.ndarray
+        Position vectors in µm.
+    sarcomere_orientation_vectors : np.ndarray
         Orientation angles in radians.
-    sarcomere_length_vectors : ndarray
-        Sarcomere lengths in micrometers.
+    sarcomere_length_vectors : np.ndarray
+        Sarcomere lengths in µm.
     size : tuple of int
-        Output map dimensions (height, width) in pixels.
+        Output map dimensions ``(height, width)`` in pixels.
     pixelsize : float
-        Physical size of one pixel in micrometers.
+        Pixel size in µm.
     median_filter_radius : float, optional
-        Filter radius in micrometers, by default 0.6.
+        Median filter radius in µm. Default is 0.6.
 
     Returns
     -------
-    ndarray
-        2D array of calculated myofibril lengths with NaN for empty regions.
+    np.ndarray
+        2D map of myofibril lengths (µm), with NaN in empty regions.
     """
     from skimage.draw import line
     

@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Plotting functions for SarcAsM and Motion objects."""
 
 import numbers
 import os.path
@@ -40,34 +41,33 @@ _LABEL_DELTA_SL = r'$\Delta$SL [µm]'
 
 
 class Plots:
-    """
-    Class with plotting functions for SarcAsM and Motion objects
-    """
+    """Plotting functions for SarcAsM and Motion objects."""
 
     @staticmethod
     def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
                            spine_color='w', xlim=None, ylim=None):
         """
-        Plot a stack of overlayed subplots on a given Axes object.
+        Plot a stack of overlaid subplots on a given Axes object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            The Axes object on which the stack should be plotted.
-        sarc_obj : SarcAsM
-            Data to be plotted in each subplot, which can be an instance of SarcAsM or Motion.
-        frames : list
-            The frames at which the subplots should be created.
-        plot_func : function
-            The function used to plot the data in each subplot, e.g.
+            The axes on which the stack is plotted.
+        sarc_obj : SarcAsM or Motion
+            The object to plot in each subplot.
+        frames : list of int
+            The frames at which the subplots are created.
+        plot_func : callable
+            The function used to plot the data in each subplot, called as
+            ``plot_func(ax, sarc_obj, frame)``.
         offset : float, optional
-            The offset between each subplot. Defaults to 0.025.
+            The offset between each subplot. Default is 0.025.
         spine_color : str, optional
-            The color of the spines (borders) of each subplot. Defaults to 'w' (white).
+            The color of the spines (borders) of each subplot. Default is 'w'.
         xlim : tuple, optional
-            The x-axis limits for each subplot. Defaults to None.
+            The x-axis limits for each subplot. Default is None.
         ylim : tuple, optional
-            The y-axis limits for each subplot. Defaults to None.
+            The y-axis limits for each subplot. Default is None.
         """
         ax.axis('off')
         for i, t in enumerate(frames):
@@ -86,20 +86,21 @@ class Plots:
     def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
                                 file_path=None):
         """
-        Plots a summary of the motion of the line of interest (LOI).
+        Plot a summary of the motion of the line of interest (LOI).
 
         Parameters
         ----------
         motion_obj : Motion
             The Motion object to plot.
         number_contr : int, optional
-            The number of contractions to plot. Defaults to 0.
+            The index of the contraction to plot. Default is 0.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Defaults to (0, 12).
+            The time limits for the plot in seconds. Default is (0, 12).
         t_lim_overlay : tuple of float, optional
-            The time limits for the overlay plots in seconds. Defaults to (-0.1, 2.9)
+            The time limits for the overlay plots in seconds. Default is (-0.1, 2.9).
         file_path : str, optional
-            The file path to save the plot. Defaults to None.
+            The file path to save the plot. If None, saved to ``summary_loi.png``
+            in the LOI folder. Default is None.
         """
 
         mosaic = """
@@ -143,18 +144,18 @@ class Plots:
     def plot_loi_detection(sarc_obj: SarcAsM, frame: int = 0, file_path: str = None,
                            cmap_z_bands='Greys'):
         """
-        Plots all steps of automated LOI finding algorithm
+        Plot all steps of the automated LOI finding algorithm.
 
         Parameters
         ----------
         sarc_obj : SarcAsM
-            Instance of SarcAsM class
-        frame: int
-            The time point to plot.
-        file_path: str
-            Path to save the plot. If None, plot is not saved.
+            The instance of SarcAsM class to plot.
+        frame : int, optional
+            The frame to plot. Default is 0.
+        file_path : str, optional
+            Path to save the plot. If None, the plot is not saved. Default is None.
         cmap_z_bands : str, optional
-            Colormap of Z-bands. Defaults to 'Greys'.
+            Colormap of Z-bands. Default is 'Greys'.
         """
         mosaic = """
         ac
@@ -214,7 +215,7 @@ class Plots:
                    zoom_region: Tuple[int, int, int, int] = None,
                    inset_bounds: Tuple[float, float, float, float] = (0.6, 0.6, 0.4, 0.4)):
         """
-        Plots microscopy raw image of the sarcomere object.
+        Plot the raw microscopy image of the sarcomere object.
 
         Parameters
         ----------
@@ -223,23 +224,23 @@ class Plots:
         sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
-        cmap : matplotlib.cm.Colormap, optional
-            The colormap to use. Defaults to 'gray'.
+            The frame to plot. Default is 0.
+        cmap : str, optional
+            The colormap to use. Default is 'gray'.
         alpha : float, optional
-            The transparency to use. Defaults to 1.
-        clip_thrs : tuple, optional
-            Clipping thresholds to normalize intensity, in percentiles. Defaults to (1, 99).
+            The opacity of the image. Default is 1.
+        clip_thrs : tuple of float, optional
+            Clipping thresholds to normalize intensity, in percentiles. Default is (1, 99).
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         show_loi : bool, optional
-            Whether to show the line of interest (LOI). Defaults to True.
+            Whether to show the line of interest (LOI). Default is False.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
 
         img = sarc_obj.read_imgs(frames=frame)
@@ -280,7 +281,7 @@ class Plots:
                      show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
                      inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots the Z-bands of the sarcomere object.
+        Plot the Z-bands of the sarcomere object.
 
         Parameters
         ----------
@@ -289,21 +290,25 @@ class Plots:
         sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
-        cmap : matplotlib.cm.Colormap, optional
-            Colormap to use. Defaults to 'Greys_r'.
+            The frame to plot. Default is 0.
+        cmap : str, optional
+            Colormap to use. Default is 'Greys_r'.
+        zero_transparent : bool, optional
+            Whether to render near-zero pixels (< 0.05) as transparent. Default is False.
         alpha : float, optional
-            Alpha value to change opacity of image. Defaults to 1
+            Opacity of the image. Default is 1.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
+        color_scalebar : str, optional
+            The color of the scalebar. Default is 'w'.
         show_loi : bool, optional
-            Whether to show the line of interest (LOI). Defaults to True.
+            Whether to show the line of interest (LOI). Default is False.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert os.path.exists(sarc_obj.file_zbands), ('Z-band mask not found. Run predict_z_bands first.')
 
@@ -340,7 +345,7 @@ class Plots:
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                               inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots the Z-bands and midlines of the sarcomere object.
+        Plot the Z-bands and midlines of the sarcomere object.
 
         Parameters
         ----------
@@ -349,21 +354,23 @@ class Plots:
         sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
-        cmap : matplotlib.cm.Colormap, optional
-            Colormap to use. Defaults to 'Blues_r'.
+            The frame to plot. Default is 0.
+        cmap : str, optional
+            Colormap to use. Default is 'berlin'.
         alpha : float, optional
-            Alpha value to change opacity of image. Defaults to 1
+            Opacity of the image. Default is 1.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
+        color_scalebar : str, optional
+            The color of the scalebar. Default is 'w'.
         show_loi : bool, optional
-            Whether to show the line of interest (LOI). Defaults to True.
+            Whether to show the line of interest (LOI). Default is True.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         if not os.path.exists(sarc_obj.file_zbands):
             raise FileNotFoundError(f"Z-bands file not found: {sarc_obj.file_zbands}")
@@ -407,7 +414,7 @@ class Plots:
     def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
                        scalebar=True, title=None):
         """
-        Plots the cell mask of the sarcomere object.
+        Plot the cell mask of the sarcomere object.
 
         Parameters
         ----------
@@ -416,17 +423,17 @@ class Plots:
         sarc_obj : SarcAsM or Motion
             The sarcomere object to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         threshold : float, optional
-            Binarization threshold to use for cell mask. Defaults to 0.5.
-        cmap : matplotlib.colors.Colormap, optional
-            The colormap to use. Defaults to 'gray'
+            Binarization threshold for the cell mask. Default is 0.5.
+        cmap : str, optional
+            The colormap to use. Default is 'gray'.
         alpha : float, optional
-            Transparency value to change opacity of mask. Defaults to 0.5.
+            Opacity of the mask. Default is 1.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         """
         assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_mask first.')
 
@@ -446,7 +453,7 @@ class Plots:
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots the Z-band segmentation result of the sarcomere object.
+        Plot the Z-band segmentation result of the sarcomere object.
 
         Parameters
         ----------
@@ -455,17 +462,17 @@ class Plots:
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         shuffle : bool, optional
-            Whether to shuffle the labels. Defaults to True.
+            Whether to shuffle the labels. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert 'z_labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
         assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
@@ -507,36 +514,36 @@ class Plots:
                                    shuffle=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                    inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots lateral Z-band connections of a SarcAsM object.
+        Plot lateral Z-band connections of a SarcAsM object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
         sarc_obj : SarcAsM
-            The instance of SarcAsM object to plot.
+            The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
-        markersize : int, optional
-            The size of the markers of the Z-band ends. Defaults to 5.
-        markersize_inset : int, optional
-            The size of the markers of the Z-band ends in the inset plot. Defaults to 5.
-        linewidth : int, optional
-            The width of the connection lines. Defaults to 0.25.
-        linewidth : int, optional
-            The width of the connection lines in the inset plot. Defaults to 0.5.
-        plot_groups : bool
-            Whether to show the Z-bands of each lateral group with the same color. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
+        markersize : float, optional
+            The size of the markers of the Z-band ends. Default is 1.5.
+        markersize_inset : float, optional
+            The size of the markers of the Z-band ends in the inset plot. Default is 3.
+        linewidth : float, optional
+            The width of the connection lines. Default is 0.25.
+        linewidth_inset : float, optional
+            The width of the connection lines in the inset plot. Default is 0.5.
+        plot_groups : bool, optional
+            Whether to show the Z-bands of each lateral group with the same color. Default is True.
         shuffle : bool, optional
-            Whether to shuffle the labels. Defaults to True.
+            Whether to shuffle the labels. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert 'z_labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
         assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
@@ -698,7 +705,7 @@ class Plots:
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots binary mask of sarcomeres, derived from sarcomere vectors.
+        Plot the binary mask of sarcomeres, derived from sarcomere vectors.
 
         Parameters
         ----------
@@ -707,25 +714,28 @@ class Plots:
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         cmap : str, optional
-            The colormap to use. Defaults to 'viridis'
+            The colormap to use. Default is 'viridis'.
+        threshold : float, optional
+            Binarization threshold for the sarcomere mask. If None, the threshold
+            from the sarcomere vector analysis is used. Default is 0.1.
         show_z_bands : bool, optional
-            Whether to show Z-bands. If False, the raw image is shown. Defaults to False.
+            Whether to show Z-bands. If False, the raw image is shown. Default is False.
         alpha : float, optional
-            The transparency of sarcomere mask. Defaults to 0.5.
-        cmap_z_bands : bool, optional
-            Colormap for Z-bands. Defaults to 'gray'.
+            The opacity of the sarcomere mask. Default is 0.5.
+        cmap_z_bands : str, optional
+            Colormap for Z-bands. Default is 'gray'.
         alpha_z_bands : float, optional
-            Alpha value of Z-bands. Defaults to 1.
+            Opacity of Z-bands. Default is 1.
         clip_thrs : tuple of float, optional
-            Clipping threshold for image in background. Defaults to (1, 99.9). Only if show_z_bands is False.
+            Clipping thresholds for the background image (only if show_z_bands is False). Default is (1, 99.9).
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
                                                               'Run sarc_obj.analyze_sarcomere_vectors ')
@@ -775,8 +785,8 @@ class Plots:
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots quiver plot reflecting local sarcomere length and orientation based on sarcomere vector analysis result
-        of the sarcomere object.
+        Plot a quiver plot of local sarcomere length and orientation from the
+        sarcomere vector analysis of the sarcomere object.
 
         Parameters
         ----------
@@ -785,35 +795,35 @@ class Plots:
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         color_arrows : str, optional
-            The color of the arrows. Defaults to 'mediumpurple'.
+            The color of the arrows. Default is 'k'.
         color_points : str, optional
-            The color of the points. Defaults to 'darkgreen'.
+            The color of the midline points. Default is 'darkgreen'.
         s_points : float, optional
-            The size of midline points. Defaults to 0.5.
+            The size of midline points. Default is 0.5.
         linewidths : float, optional
-            The width of the arrow lines. Defaults to 0.0005.
+            The width of the arrow lines. Default is 0.5.
         s_points_inset : float, optional
-            The size of midline points. Defaults to 0.5.
+            The size of midline points in the inset plot. Default is 0.5.
         linewidths_inset : float, optional
-            The width of the arrow lines in the inset plot. Defaults to 0.0001.
+            The width of the arrow lines in the inset plot. Default is 0.5.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         legend : bool, optional
-            Whether to add a legend to the plot. Defaults to False.
+            Whether to add a legend to the plot. Default is False.
         show_image : bool, optional
-            Whether to show the image (True) or the Z-bands (False). Defaults to False.
+            Whether to show the raw image (True) or the Z-bands (False). Default is False.
         cmap_z_bands : str, optional
-            Colormap of Z-bands. Defaults to 'Greys'.
+            Colormap of Z-bands (or image). Default is 'Purples'.
         alpha_z_bands : float, optional
-            Alpha value of Z-bands. Defaults to 1.
+            Opacity of Z-bands. Default is 1.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert 'pos_vectors' in sarc_obj.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                                  'run analyze_sarcomere_vectors first.')
@@ -899,7 +909,7 @@ class Plots:
     def plot_sarcomere_domains(ax: Axes, sarc_obj: SarcAsM, frame=0, alpha=0.5, cmap='gist_rainbow',
                                scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', alpha_z_bands=1, title=None):
         """
-        Plots the sarcomere domains of the sarcomere object.
+        Plot the sarcomere domains of the sarcomere object.
 
         Parameters
         ----------
@@ -908,22 +918,21 @@ class Plots:
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         alpha : float, optional
-            The transparency of the domain masks. Defaults to 0.3.
+            The opacity of the domain masks. Default is 0.5.
         cmap : str, optional
-            The colormap to use. Defaults to 'gist_rainbow'.
+            The colormap to use. Default is 'gist_rainbow'.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         plot_raw_data : bool, optional
-            Whether to plot the raw data. Defaults to False.
+            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
         cmap_z_bands : str, optional
-            Colormap for Z-bands. Defaults to 'Greys'.
+            Colormap for Z-bands. Default is 'Greys'.
         alpha_z_bands : float, optional
-            Transparency of Z-bands. Defaults to 1.
+            Opacity of Z-bands. Default is 1.
         title : str, optional
-            The title for the plot. Defaults to None.
-
+            The title for the plot. Default is None.
         """
         assert 'n_domains' in sarc_obj.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
@@ -962,38 +971,38 @@ class Plots:
                              linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', alpha_z_bands=1,
                              scalebar=True, title=None, zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots result of myofibril line growth algorithm of the sarcomere object.
+        Plot the result of the myofibril line growth algorithm of the sarcomere object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
-            The sarcomere object to plot.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
-        show_z_bands : bool
-            Whether or not to show Z-bands. Defaults to True
+            The frame to plot. Default is 0.
+        show_z_bands : bool, optional
+            Whether to show the Z-bands (True) or the raw image (False) in the background. Default is True.
         linewidth : float, optional
-            The width of the lines. Defaults to 1.
-        color_lines : str
-            Color of lines. Defaults to 'r'
+            The width of the lines. Default is 1.
+        color_lines : str, optional
+            The color of the lines. Default is 'r'.
         linewidth_inset : float, optional
-            Thickness of the lines in inset. Defaults to 1.
+            The width of the lines in the inset plot. Default is 3.
         alpha : float, optional
-            The transparency of the lines. Defaults to 0.2.
+            The opacity of the lines. Default is 0.2.
         cmap_z_bands : str, optional
-            Colormap of Z-bands. Defaults to 'Greys'.
+            Colormap of Z-bands. Default is 'Greys'.
         alpha_z_bands : float, optional
-            Transparency of Z-bands. Defaults to 1.
+            Opacity of Z-bands. Default is 1.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The titlefor the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
@@ -1050,7 +1059,7 @@ class Plots:
                                   scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
                                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
-        Plots the spatial map of myofibril lengths for a given frame.
+        Plot the spatial map of myofibril lengths for a given frame.
 
         Parameters
         ----------
@@ -1059,31 +1068,31 @@ class Plots:
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         frame : int, optional
-            The frame to plot. Defaults to 0.
+            The frame to plot. Default is 0.
         vmax : float, optional
-            Maximum value for the colormap. If None, the maximum value in the data is used. Defaults to None.
+            Maximum value for the colormap. If None, the maximum value in the data is used. Default is None.
         alpha : float, optional
-            Transparency of the colormap. Defaults to 1.
+            Opacity of the length map. Default is 1.
         show_z_bands : bool, optional
-            Whether to show Z-band mask, else raw image is shown. Defaults to False.
+            Whether to show the Z-band mask (True) or the raw image (False) in the background. Default is False.
         cmap_z_bands : str, optional
-            Colormap of Z-bands. Defaults to 'Greys'.
+            Colormap of Z-bands (or image). Default is 'Greys'.
         alpha_z_bands : float, optional
-            Transparency of Z-bands or raw image. Defaults to 1.
+            Opacity of Z-bands or raw image. Default is 1.
         colorbar : bool, optional
-            Whether to show the colorbar. Defaults to True.
-        shrink_colorbar: float, optional
-            Shrinkage of the colorbar. Defaults to 0.7.
-        orient_colorbar : str, optional
-            Orientation of the colorbar. Defaults to 'vertical'.
+            Whether to show the colorbar. Default is True.
+        shrink_colorbar : float, optional
+            Shrinkage of the colorbar. Default is 0.7.
+        orient_colorbar : {'vertical', 'horizontal'}, optional
+            Orientation of the colorbar. Default is 'vertical'.
         scalebar : bool, optional
-            Whether to add a scalebar to the plot. Defaults to True.
+            Whether to add a scalebar to the plot. Default is True.
         title : str, optional
-            The title for the plot. Defaults to None.
+            The title for the plot. Default is None.
         zoom_region : tuple of int, optional
-            The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
-            Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         # create myofibril length map
         assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
@@ -1155,20 +1164,20 @@ class Plots:
     @staticmethod
     def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='darkorange', linewidth=2, alpha=0.5):
         """
-        Plot all LOI lines for SarcAsM object and LOI line Motion object.
+        Plot all LOI lines of a SarcAsM or Motion object.
 
         Parameters
         ----------
-        ax : matplotlib axis
-            Axis on which to plot the LOI lines
+        ax : matplotlib.axes.Axes
+            The axes to draw the LOI lines on.
         sarc_obj : SarcAsM or Motion
-            Object of SarcAsM or Motion class
-        color : str
-            Color of lines
-        linewidth : float
-            Width of lines
-        alpha : float
-            Transparency of lines
+            The object to plot.
+        color : str, optional
+            Color of the lines. Default is 'darkorange'.
+        linewidth : float, optional
+            Width of the lines. Default is 2.
+        alpha : float, optional
+            Opacity of the lines. Default is 0.5.
         """
         loi_lines = None
 
@@ -1204,40 +1213,38 @@ class Plots:
                                  align: Literal['mid', 'left', 'right'] = 'mid',
                                  rotate_yticks: bool = False) -> None:
         """
-        Plots the histogram of a specified structural feature from a sarcomere object on a given Axes.
+        Plot a histogram of a specified structural feature from a sarcomere object.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            The axes on which to draw the histogram.
+            The axes to draw the histogram on.
         sarc_obj : SarcAsM
             The instance of SarcAsM class to plot.
         feature : str
             The name of the structural feature to plot.
         frame : int, optional
-            The frame index from which to extract the data. Defaults to 0.
+            The frame index from which to extract the data. Default is 0.
         bins : int, optional
-            The number of bins for the histogram. Defaults to 20.
+            The number of bins for the histogram. Default is 20.
         density : bool, optional
-            If True, the histogram is normalized to show the probability density rather than raw counts.
-            Defaults to False.
+            If True, normalize the histogram to a probability density rather than raw counts. Default is False.
         range : tuple, optional
-            The lower and upper range of the bins. If not provided, the range is determined from the data.
+            The lower and upper range of the bins. If None, determined from the data. Default is None.
         label : str, optional
-            The label for the x-axis. If not specified, a default label based on the feature will be used.
+            The label for the x-axis. If None, a default label based on the feature is used. Default is None.
         ylabel : str, optional
-            The label for the y-axis. Overrides the default label if provided.
+            The label for the y-axis. Overrides the default label if provided. Default is None.
         rwidth : float, optional
-            The relative width of the histogram bars. Defaults to 0.7.
+            The relative width of the histogram bars. Default is 0.6.
         color : str, optional
-            The fill color of the histogram bars. Defaults to 'darkslategray'.
+            The fill color of the histogram bars. Default is 'darkslategray'.
         edge_color : str, optional
-            The color of the edges of the histogram bars. Defaults to 'k'.
-        align : str, optional
-            The alignment of the histogram bars. Defaults to 'mid'.
+            The color of the edges of the histogram bars. Default is 'k'.
+        align : {'mid', 'left', 'right'}, optional
+            The alignment of the histogram bars. Default is 'mid'.
         rotate_yticks : bool, optional
-            If True, rotates the y-axis tick labels by 90 degrees for improved readability.
-            Defaults to False.
+            If True, rotate the y-axis tick labels by 90 degrees. Default is False.
         """
         data = sarc_obj.data[feature][frame]
         # Flatten data if it has more than one dimension
@@ -1276,7 +1283,7 @@ class Plots:
     def plot_z_pos(ax: Axes, motion_obj: Motion, number_contr=None, show_contr=True, show_kymograph=False, color='k',
                    t_lim=(None, None), y_lim=(None, None)):
         """
-        Plots the z-band trajectories of the motion object.
+        Plot the Z-band trajectories of the motion object.
 
         Parameters
         ----------
@@ -1284,16 +1291,19 @@ class Plots:
             The axes to draw the plot on.
         motion_obj : Motion
             The motion object to plot.
+        number_contr : int, optional
+            The index of the contraction to center the plot on. If None, the full
+            time series is shown. Default is None.
         show_contr : bool, optional
-            Whether to show the contractions. Defaults to True.
+            Whether to shade the contraction periods. Default is True.
         show_kymograph : bool, optional
-            Whether to show the kymograph. Defaults to False.
+            Whether to show the kymograph. Default is False.
         color : str, optional
-            The color of the plot. Defaults to 'k'.
+            The color of the trajectories. Default is 'k'.
         t_lim : tuple, optional
-            The time limits for the plot. Defaults to (None, None).
+            The time limits for the plot in seconds. Default is (None, None).
         y_lim : tuple, optional
-            The y limits for the plot. Defaults to (None, None).
+            The y-axis limits for the plot. Default is (None, None).
         """
         # plot limits and params
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
@@ -1340,7 +1350,7 @@ class Plots:
     def _plot_delta_slen_loi(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
                              n_start=1, show_contr=True):
         """
-        Plots the change in sarcomere length over time for a motion object.
+        Plot the change in sarcomere length over time (stacked rows) for a motion object.
 
         Parameters
         ----------
@@ -1348,18 +1358,18 @@ class Plots:
             The axes to draw the plot on.
         motion_obj : Motion
             The motion object to plot.
-        frame : int or None, optional
-            Show frame with vertical dashed line, in frames. Defaults to None.
+        frame : int, optional
+            Mark this frame with a vertical dashed line. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot. Defaults to (0, 12).
+            The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple, optional
-            The y limits for the plot. Defaults to (-0.3, 0.4).
+            The y-axis limits for the plot. Default is (-0.3, 0.4).
         n_rows : int, optional
-            The number of rows for the plot. Defaults to 6.
+            The number of sarcomere rows to plot. Default is 6.
         n_start : int, optional
-            The starting index for the plot. Defaults to 1.
+            The starting sarcomere index for the plot. Default is 1.
         show_contr : bool, optional
-            Whether to show the systoles. Defaults to True.
+            Whether to shade the contraction periods. Default is True.
         """
         yticks = [-0.2, 0, 0.2]
         delta_slen = motion_obj.loi_data['delta_slen']
@@ -1397,7 +1407,7 @@ class Plots:
     def plot_overlay_delta_slen(ax: Axes, motion_obj: Motion, number_contr=None, t_lim=(0, 1), y_lim=(-0.35, 0.5),
                                 show_contr=True):
         """
-        Plots the sarcomere length change over time for a motion object, overlaying multiple trajectories.
+        Plot the sarcomere length change over time for a motion object, overlaying multiple trajectories.
 
         Parameters
         ----------
@@ -1406,13 +1416,14 @@ class Plots:
         motion_obj : Motion
             The motion object to plot.
         number_contr : int, optional
-            The number of contractions to overlay. If None, all contractions are overlaid. Defaults to None.
+            The index of a single contraction to center on. If None, the full time
+            series is shown. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot. Defaults to (0, 1).
+            The time limits for the plot in seconds. Default is (0, 1).
         y_lim : tuple, optional
-            The y limits for the plot. Defaults to (-0.35, 0.45).
+            The y-axis limits for the plot. Default is (-0.35, 0.5).
         show_contr : bool, optional
-            Whether to show the contractions. Defaults to True.
+            Whether to shade the contraction periods. Default is True.
         """
         # plot limits and params
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
@@ -1461,7 +1472,7 @@ class Plots:
     def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, 0.9), y_lim=(-9, 12),
                               show_contr=True):
         """
-        Plots overlay of sarcomere velocity time series of the motion object
+        Plot an overlay of the sarcomere velocity time series of the motion object.
 
         Parameters
         ----------
@@ -1470,13 +1481,14 @@ class Plots:
         motion_obj : Motion
             The motion object to plot.
         number_contr : int, optional
-            The number of contractions to overlay. If None, all contractions are overlaid. Defaults to None.
+            The index of a single contraction to center on. If None, the full time
+            series is shown. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot. Defaults to (0, 0.9).
+            The time limits for the plot in seconds. Default is (0, 0.9).
         y_lim : tuple, optional
-            The y limits for the plot. Defaults to (-7, 10).
+            The y-axis limits for the plot. Default is (-9, 12).
         show_contr : bool, optional
-            Whether to show the contractions. Defaults to True.
+            Whether to shade the contraction periods. Default is True.
         """
         # plot limits and params
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
@@ -1543,15 +1555,15 @@ class Plots:
         sarc_obj : SarcAsM
             The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Defaults to (0, 12).
+            The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Defaults to (1.6, 2.2).
-        n_rows : int or None, optional
-            Number of domains to display. If None, shows all domains. Defaults to None.
+            The y-axis limits for sarcomere length in µm. Default is (1.6, 2.2).
+        n_rows : int, optional
+            Number of domains to display. If None, all domains are shown. Default is None.
         show_contr : bool, optional
-            Whether to shade contraction periods. Defaults to True.
+            Whether to shade contraction periods. Default is True.
         use_median : bool, optional
-            If True, use median sarcomere length instead of mean. Defaults to False.
+            If True, use median sarcomere length instead of mean. Default is False.
 
         Raises
         ------
@@ -1645,19 +1657,17 @@ class Plots:
         sarc_obj : SarcAsM
             The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Defaults to (0, 12).
+            The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Defaults to (1.6, 2.2).
+            The y-axis limits for sarcomere length in µm. Default is (1.4, 2.2).
         show_contr : bool, optional
-            Whether to shade contraction periods (uses union of all domain contractions).
-            Defaults to True.
+            Whether to shade contraction periods (union of all domain contractions). Default is True.
         show_average : bool, optional
-            Whether to show the average across all domains. Defaults to True.
+            Whether to show the average across all domains. Default is True.
         use_median : bool, optional
-            If True, use median sarcomere length instead of mean. Defaults to False.
-        domain_indices : list or None, optional
-            List of domain indices (0-based) to plot. If None, plots all domains.
-            Defaults to None.
+            If True, use median sarcomere length instead of mean. Default is False.
+        domain_indices : list of int, optional
+            Domain indices (0-based) to plot. If None, all domains are plotted. Default is None.
 
         Raises
         ------
@@ -1716,7 +1726,7 @@ class Plots:
     @staticmethod
     def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, 4), number_contr=None, frame=None):
         """
-        Plots sarcomere trajectory in length-change velocity phase space
+        Plot the sarcomere trajectory in length-change vs. velocity phase space.
 
         Parameters
         ----------
@@ -1725,11 +1735,12 @@ class Plots:
         motion_obj : Motion
             The motion object to plot.
         t_lim : tuple, optional
-            The time limits for the plot. Defaults to (0, 4).
+            The time limits for the plot in seconds. Default is (0, 4).
         number_contr : int, optional
-            The number of contractions to overlay. If None, all contractions are overlaid. Defaults to None.
+            The index of a single contraction to plot. If None, all contractions are
+            overlaid. Default is None.
         frame : int, optional
-            The frame number to plot the individual sarcomeres in phase space. Defaults to None.
+            If set, mark the individual sarcomeres at this frame as scatter points. Default is None.
         """
         # get data
         delta_slen = motion_obj.loi_data['delta_slen']
@@ -1763,14 +1774,14 @@ class Plots:
     @staticmethod
     def plot_popping_events(motion_obj: Motion, save_name=None):
         """
-        Create binary event map of popping events of the motion object.
+        Create a binary event map of the popping events of the motion object.
 
         Parameters
         ----------
         motion_obj : Motion
             The motion object to plot.
         save_name : str, optional
-            The name to save the plot as. If None, the plot is not saved. Defaults to None.
+            File path to save the plot. If None, the plot is not saved. Default is None.
         """
         popping_events = motion_obj.loi_data['popping_events']
         prob_time = motion_obj.loi_data['popping_freq_time']
@@ -1819,27 +1830,38 @@ class Plots:
                     cmap: str = 'viridis', s: float = 4, only_snapped: bool = True,
                     show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                     scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
-        """Scatter the tracked sarcomere centres at one frame, coloured per track.
+        """
+        Scatter the tracked sarcomere centres at one frame, coloured per track.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            Axes to draw on.
+            The axes to draw the plot on.
         sarc_obj : SarcAsM
             SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
         frame : int, optional
-            Movie frame to draw. Default 0.
+            Movie frame to draw. Default is 0.
         color_by : {'coverage', 'slen', 'group'}, optional
             Per-track colour: snap coverage, sarcomere length at this frame, or
-            ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`). Default 'coverage'.
+            ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`). Default is 'coverage'.
         cmap : str, optional
-            Colormap. Default 'viridis'.
+            Colormap. Default is 'viridis'.
         s : float, optional
-            Marker size. Default 4.
+            Marker size. Default is 4.
         only_snapped : bool, optional
-            Only draw tracks that actually snapped at this frame (vs flow-predicted). Default True.
-        show_image, cmap_z_bands, alpha_z_bands, scalebar, colorbar, title
-            Background / styling, matching the other SarcAsM plots.
+            Only draw tracks that actually snapped at this frame (vs flow-predicted). Default is True.
+        show_image : bool, optional
+            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
+        cmap_z_bands : str, optional
+            Colormap of the background Z-bands or image. Default is 'Greys'.
+        alpha_z_bands : float, optional
+            Opacity of the background. Default is 1.
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Default is True.
+        colorbar : bool, optional
+            Whether to add a colorbar to the plot. Default is False.
+        title : str, optional
+            The title for the plot. Default is None.
         """
         if 'tracks_positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
@@ -1887,12 +1909,39 @@ class Plots:
                           s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
                           show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                           scalebar: bool = True, title: Optional[str] = None):
-        """QC view of a track grouping: colour each tracked centre by its group.
+        """
+        QC view of a track grouping: colour each tracked centre by its group.
 
         Lets a user eyeball the partition (and the tracks dropped by
-        ``min_coverage``, drawn in grey) BEFORE running the expensive
-        :meth:`SarcAsM.analyze_track_motion`. Prerequisite:
-        :meth:`SarcAsM.group_tracks`.
+        ``min_coverage``, drawn in grey) before running the expensive
+        :meth:`SarcAsM.analyze_track_motion`. Requires :meth:`SarcAsM.group_tracks`.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : SarcAsM
+            SarcAsM with a track grouping (:meth:`SarcAsM.group_tracks`).
+        frame : int, optional
+            Movie frame to draw. Default is 0.
+        cmap : str, optional
+            Colormap used to colour the groups. Default is 'gist_rainbow'.
+        s : float, optional
+            Marker size. Default is 5.
+        show_dropped : bool, optional
+            Whether to draw tracks dropped by ``min_coverage``. Default is True.
+        dropped_color : str, optional
+            Colour of the dropped tracks. Default is 'lightgrey'.
+        show_image : bool, optional
+            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
+        cmap_z_bands : str, optional
+            Colormap of the background Z-bands or image. Default is 'Greys'.
+        alpha_z_bands : float, optional
+            Opacity of the background. Default is 1.
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Default is True.
+        title : str, optional
+            The title for the plot. If None, a default title is used. Default is None.
         """
         if 'track_group_id' not in sarc_obj.data:
             raise ValueError('No track grouping found. Run group_tracks(...) first.')
@@ -2014,6 +2063,7 @@ class Plots:
 
     @staticmethod
     def _resolve_kind(sarc_obj, kind):
+        """Resolve and validate the grouping kind, defaulting to the last analyzed one."""
         sarc_obj._assert_track_motion_fresh()
         if kind is None:
             kind = sarc_obj.data.get('track_motion_kind')
@@ -2027,21 +2077,33 @@ class Plots:
                        t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False):
-        """Stacked per-group MEAN sarcomere-length time-series from :meth:`SarcAsM.analyze_track_motion`.
+        """
+        Plot stacked per-group MEAN sarcomere-length time-series from :meth:`SarcAsM.analyze_track_motion`.
 
         One row per group, each showing that group's aggregated (mean, or median if
         ``use_median``) sarcomere length over time — the signal the contraction
-        engine analyses. For ``by='pool'`` this is a single whole-cell trace.
-        Renamed from ``plot_track_group_timeseries``; see :meth:`plot_slen` for the
-        individual member sarcomeres.
+        engine analyses. For ``by='pool'`` this is a single whole-cell trace. See
+        :meth:`plot_slen` for the individual member sarcomeres.
 
         Parameters
         ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : SarcAsM
+            The SarcAsM object with track motion analysis results.
         kind : str, optional
-            Grouping prefix ('pool', 'mband', ...). Defaults to the last analyzed
-            grouping (``track_motion_kind``).
-        t_lim, y_lim, n_rows, show_contr, use_median
-            Same semantics as :meth:`plot_domain_timeseries`.
+            Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
+            grouping (``track_motion_kind``) is used. Default is None.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Default is (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for sarcomere length in µm. Default is (1.6, 2.2).
+        n_rows : int, optional
+            Number of groups to display. If None, all groups are shown. Default is None.
+        show_contr : bool, optional
+            Whether to shade contraction periods. Default is True.
+        use_median : bool, optional
+            If True, use median sarcomere length instead of mean. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
         key = f'{kind}_slen_median_timeseries' if use_median else f'{kind}_slen_timeseries'
@@ -2055,12 +2117,33 @@ class Plots:
                              t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
                              n_rows: Optional[int] = None, show_contr: bool = True,
                              use_median: bool = False):
-        """Stacked per-group MEAN sarcomere-length *change* (ΔSL) time-series.
+        """
+        Plot stacked per-group MEAN sarcomere-length *change* (ΔSL) time-series.
 
         Like :meth:`plot_slen_mean` but plotting ΔSL(t) = SL(t) − equ, where the
         equilibrium ``equ`` is the median group length over the non-contracting
         frames (``<kind>_contr == 0``), matching the legacy LOI ``delta_slen``.
         See :meth:`plot_delta_slen` for the individual member sarcomeres.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        sarc_obj : SarcAsM
+            The SarcAsM object with track motion analysis results.
+        kind : str, optional
+            Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
+            grouping (``track_motion_kind``) is used. Default is None.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Default is (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for ΔSL in µm. Default is (-0.4, 0.4).
+        n_rows : int, optional
+            Number of groups to display. If None, all groups are shown. Default is None.
+        show_contr : bool, optional
+            Whether to shade contraction periods. Default is True.
+        use_median : bool, optional
+            If True, use median sarcomere length instead of mean. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
         key = f'{kind}_slen_median_timeseries' if use_median else f'{kind}_slen_timeseries'
@@ -2169,7 +2252,8 @@ class Plots:
                   t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
                   show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                   color: Optional[str] = None, mean_color: str = 'k'):
-        """Individual sarcomere-length traces with the mean overlaid.
+        """
+        Plot individual sarcomere-length traces with the mean overlaid.
 
         Polymorphic — pass either object:
 
@@ -2181,6 +2265,32 @@ class Plots:
         * **Motion** (legacy LOI): overlays the per-sarcomere lengths along the LOI
           plus the average (``t_lim``/``y_lim``/``show_contr``/``show_mean``/``color``/
           ``mean_color`` apply; ``group``/``kind``/``max_lines`` are ignored).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        obj : SarcAsM or Motion
+            The object to plot (see polymorphic behaviour above).
+        group : int, optional
+            Track group index to plot (SarcAsM only). Default is 0.
+        kind : str, optional
+            Grouping prefix (SarcAsM only). If None, the last analyzed grouping is
+            used. Default is None.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Default is (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for sarcomere length in µm. Default is (1.4, 2.2).
+        show_contr : bool, optional
+            Whether to shade contraction periods. Default is True.
+        show_mean : bool, optional
+            Whether to overlay the bold mean trace. Default is True.
+        max_lines : int, optional
+            Maximum number of member traces to draw (SarcAsM only). Default is 300.
+        color : str, optional
+            Colour of the individual traces. If None, a grey is used. Default is None.
+        mean_color : str, optional
+            Colour of the mean trace. Default is 'k'.
         """
         if isinstance(obj, Motion):
             return Plots._plot_slen_loi(ax, obj, t_lim=t_lim if t_lim != (0, 12) else (None, None),
@@ -2194,7 +2304,8 @@ class Plots:
 
     @staticmethod
     def plot_delta_slen(ax: Axes, obj: Union[SarcAsM, Motion], **kwargs):
-        """Individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
+        """
+        Plot individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
 
         Polymorphic dispatch on ``obj``:
 
@@ -2207,6 +2318,16 @@ class Plots:
         * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view.
           Accepts ``frame``, ``t_lim``, ``y_lim``, ``n_rows``, ``n_start``,
           ``show_contr`` (unchanged behaviour).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the plot on.
+        obj : SarcAsM or Motion
+            The object to plot (see polymorphic behaviour above).
+        **kwargs
+            Keyword arguments forwarded to the dispatched implementation, depending
+            on the type of ``obj`` (see above).
         """
         if isinstance(obj, Motion):
             return Plots._plot_delta_slen_loi(ax, obj, **kwargs)
@@ -2219,7 +2340,8 @@ class Plots:
                               only_snapped: bool = False, show_image: bool = False,
                               cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                               scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
-        """Draw each tracked myofibril (fibre) as a connected polyline over the image.
+        """
+        Draw each tracked myofibril (fibre) as a connected polyline over the image.
 
         The tracker analogue of :meth:`plot_myofibril_lines`: each fibre's member
         sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
@@ -2231,20 +2353,37 @@ class Plots:
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            Axes to draw on.
+            The axes to draw the plot on.
         sarc_obj : SarcAsM
             SarcAsM with a myofibril grouping.
         frame : int, optional
-            Movie frame to draw. Default 0.
+            Movie frame to draw. Default is 0.
         color_by : {'group', 'slen', 'beating_rate'}, optional
             Per-fibre colour: fibre id, the fibre's median sarcomere length at this
             frame, or its beating rate (requires ``analyze_track_motion(by='myofibril')``).
-            Default 'group'.
+            Default is 'group'.
         cmap : str, optional
-            Colormap. Default 'gist_rainbow'.
-        linewidth, show_points, markersize, only_snapped, show_image, cmap_z_bands,
-        alpha_z_bands, scalebar, colorbar, title
-            Styling / background, matching the other SarcAsM plots.
+            Colormap. Default is 'gist_rainbow'.
+        linewidth : float, optional
+            Width of the fibre polylines. Default is 1.5.
+        show_points : bool, optional
+            Whether to mark the member sarcomeres as points. Default is True.
+        markersize : float, optional
+            Size of the member sarcomere markers. Default is 6.
+        only_snapped : bool, optional
+            Only draw members that actually snapped at this frame. Default is False.
+        show_image : bool, optional
+            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
+        cmap_z_bands : str, optional
+            Colormap of the background Z-bands or image. Default is 'Greys'.
+        alpha_z_bands : float, optional
+            Opacity of the background. Default is 1.
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Default is True.
+        colorbar : bool, optional
+            Whether to add a colorbar to the plot (only for metric colourings). Default is False.
+        title : str, optional
+            The title for the plot. If None, a default title is used. Default is None.
         """
         if sarc_obj.data.get('group_kind') != 'myofibril':
             raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "

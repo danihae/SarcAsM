@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Base class with file paths, metadata handling and lazy image/mask loading from the OME-Zarr store."""
 
 import json
 import logging
@@ -37,36 +38,35 @@ class SarcAsMBase:
 
     Parameters
     ----------
-    file_path : str | os.PathLike
+    file_path : str or os.PathLike
         Path to the TIFF file for analysis.
     restart : bool, optional
-        If True, deletes existing analysis and starts fresh (default: False).
+        If True, deletes existing analysis and starts fresh. Default is False.
     pixelsize : float or None, optional
-        Physical pixel size in micrometres (µm). If None, the class tries to
-        extract it from file metadata; otherwise it must be provided manually.
+        Physical pixel size in micrometres (µm). If None, extracted from file
+        metadata; otherwise provided manually. Default is None.
     frametime : float or None, optional
-        Time between frames in seconds. If None, the class tries to extract it
-        from file metadata; otherwise it must be provided manually.
+        Time between frames in seconds. If None, extracted from file metadata;
+        otherwise provided manually. Default is None.
     channel : int or None, optional
-        Channel index that contains the sarcomere signal in multicolour stacks
-        (default: None).
+        Channel index holding the sarcomere signal in multi-channel stacks.
+        Default is None.
     axes : str or None, optional
         Explicit order of image dimensions (e.g. ``'TXYC'`` or ``'YX'``).
-        If None, the order is auto-detected from OME-XML, ImageJ tags or shape
-        heuristics; this is the recommended mode when the GUI offers a
-        drop-down override.
+        If None, auto-detected from OME-XML, ImageJ tags or shape heuristics.
+        Default is None.
     auto_save : bool, optional
-        Automatically save analysis results when True (default: True).
+        Automatically save analysis results when True. Default is True.
     use_gui : bool, optional
-        Enable GUI-mode behaviour (default: False).
-    device : Union[torch.device, Literal['auto']], optional
-        PyTorch computation device. ``'auto'`` selects CUDA/MPS if available
-        (default: 'auto').
+        Enable GUI-mode behaviour. Default is False.
+    device : torch.device or {'auto', 'mps', 'cuda', 'cpu'}, optional
+        PyTorch computation device. ``'auto'`` selects CUDA/MPS if available.
+        Default is 'auto'.
     log_level : str or int, optional
-        Logging level for the sarcasm package. Can be a string ('DEBUG', 'INFO', 'WARNING', 
-        'ERROR', 'CRITICAL') or an integer (logging.DEBUG, logging.INFO, etc.).
-        Default is 'INFO'. Use 'DEBUG' for verbose output or 'WARNING' to suppress info messages.
-    **info : Any
+        Logging level for the sarcasm package, either a string ('DEBUG',
+        'INFO', 'WARNING', 'ERROR', 'CRITICAL') or an integer (e.g.
+        ``logging.DEBUG``). Default is 'INFO'.
+    **info
         Additional user-supplied metadata key-value pairs
         (e.g. ``cell_line='wt'``).
 
@@ -81,24 +81,21 @@ class SarcAsMBase:
     analysis_dir : str
         Sub-directory for final analysis results.
     metadata : ImageMetadata
-        Image metadata
+        Image metadata.
     device : torch.device
         PyTorch device on which computations are performed.
-
-    Dynamic Attributes (loaded on demand)
-    -------------------------------------
-    zbands : ndarray
-        Binary Z-band mask.
-    zbands_fast_movie : ndarray
-        Binary Z-band mask for the high-temporal-resolution movie.
-    mbands : ndarray
-        Binary M-band mask.
-    orientation : ndarray
-        Sarcomere orientation map.
-    cell_mask : ndarray
-        Binary cell mask.
-    sarcomere_mask : ndarray
-        Binary sarcomere mask.
+    zbands : np.ndarray
+        Binary Z-band mask (loaded on demand from the OME-Zarr store).
+    zbands_fast_movie : np.ndarray
+        Binary Z-band mask for the high-temporal-resolution movie (loaded on demand).
+    mbands : np.ndarray
+        Binary M-band mask (loaded on demand).
+    orientation : np.ndarray
+        Sarcomere orientation map (loaded on demand).
+    cell_mask : np.ndarray
+        Binary cell mask (loaded on demand).
+    sarcomere_mask : np.ndarray
+        Binary sarcomere mask (loaded on demand).
     """
 
     def __init__(
@@ -207,16 +204,16 @@ class SarcAsMBase:
     def _setup_logging(self, log_level: Union[str, int]) -> None:
         """
         Configure logging for the sarcasm package and all its submodules.
-        
-        This method sets up a console handler for the 'sarcasm' logger. If the GUI
-        has already attached a handler (e.g., QTextEditHandler), it will be preserved.
-        
+
+        Sets up a console handler for the 'sarcasm' logger. An existing GUI
+        handler (e.g. ``QTextEditHandler``) is preserved.
+
         Parameters
         ----------
         log_level : str or int
-            Logging level. Can be a string ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
-            or an integer (logging.DEBUG=10, logging.INFO=20, etc.).
-        
+            Logging level, either a string ('DEBUG', 'INFO', 'WARNING',
+            'ERROR', 'CRITICAL') or an integer (e.g. ``logging.DEBUG``).
+
         Examples
         --------
         >>> sarc = SarcAsM(file_path, log_level='DEBUG')  # Verbose output
@@ -322,9 +319,7 @@ class SarcAsMBase:
         return "\n".join(summary)
 
     def open_base_dir(self):
-        """
-        Open the base directory of the tiff file in the file explorer.
-        """
+        """Open the base directory of the TIFF file in the file explorer."""
         Utils.open_folder(self.base_dir)
 
     def save_metadata(self):
@@ -337,13 +332,14 @@ class SarcAsMBase:
         """
         Extract metadata from the TIFF file without loading the full image data.
 
-        This method is optimized for large files (e.g., 15+ GB) on slow storage (HDD),
-        as it only reads the file headers and metadata, not the pixel data.
+        Optimized for large files (e.g. 15+ GB) on slow storage (HDD): only the
+        file headers and metadata are read, not the pixel data.
 
         Parameters
         ----------
-        axes : str, optional
-            Dimension order override (e.g., 'TXYC'). Auto-detected if None.
+        axes : str or None, optional
+            Dimension order override (e.g. 'TXYC'). Auto-detected if None.
+            Default is None.
         """
         with tifffile.TiffFile(self.file_path) as tif:
             series = tif.series[0]
@@ -403,19 +399,20 @@ class SarcAsMBase:
 
     def read_imgs(self, frames=None, axes=None):
         """
-        Load and process TIFF data with metadata extraction.
+        Load image data from the OME-Zarr store (ingesting the source TIFF on first use).
 
         Parameters
         ----------
         frames : int, list, slice, or None, optional
-            Frame selection for stacks. None loads all frames (default).
-        axes : str, optional
-            Dimension order override (e.g., 'TXYC'). Auto-detected if None.
+            Frame selection for stacks. None loads all frames. Default is None.
+        axes : str or None, optional
+            Dimension order override (e.g. 'TXYC'). Auto-detected if None.
+            Default is None.
 
         Returns
         -------
         np.ndarray
-            Image data in internal format: (Y, X) or (Stack, Y, X).
+            Image data in internal format ``(Y, X)`` or ``(Stack, Y, X)``.
         """
         with tifffile.TiffFile(self.file_path) as tif:
             series = tif.series[0]
@@ -463,10 +460,22 @@ class SarcAsMBase:
         """
         Return an upper-case axis string such as 'TCZYX', 'YXC', 'YX', …
 
+        Parameters
+        ----------
+        series : tifffile.TiffPageSeries
+            Image series whose axis order is inferred.
+        tif : tifffile.TiffFile
+            Open TIFF file, used to read OME/ImageJ metadata.
+
+        Returns
+        -------
+        str
+            Upper-case axis string.
+
         Raises
         ------
         ValueError
-            if no reasonable guess is possible and the caller must supply
+            If no reasonable guess is possible and the caller must supply
             the order manually.
         """
         # OME-TIFF
@@ -567,14 +576,14 @@ class SarcAsMBase:
                         data: np.ndarray,
                         axes: str) -> tuple[np.ndarray, str]:
         """
-        Isolate the channel requested by ``self.channel`` and remove the
-        channel axis from the array.
+        Isolate the channel requested by ``self.metadata.channel`` and remove
+        the channel axis from the array.
 
         Parameters
         ----------
-        data
-            Numpy array as it was read from disk (still in *source* order).
-        axes
+        data : np.ndarray
+            Array as read from disk (still in source order).
+        axes : str
             Corresponding axis string (upper-case, e.g. ``'TYXC'``).
 
         Returns
@@ -587,8 +596,8 @@ class SarcAsMBase:
         Raises
         ------
         ValueError
-            • if the requested channel index is out of range
-            • if ``self.metadata.channel`` is given but the image has no ``C`` axis
+            If the requested channel index is out of range, or if
+            ``self.metadata.channel`` is given but the image has no ``C`` axis.
         """
         # file actually contains a channel axis
         if 'C' in axes:
@@ -633,7 +642,23 @@ class SarcAsMBase:
         return data, axes
 
     def _harvest_metadata(self, series, tif, axes) -> ImageMetadata:
-        """Collect metadata from tif and update the instance metadata object."""
+        """
+        Collect metadata from the TIFF and update the instance metadata object.
+
+        Parameters
+        ----------
+        series : tifffile.TiffPageSeries
+            Image series providing the data shape.
+        tif : tifffile.TiffFile
+            Open TIFF file, used to read OME/ImageJ/resolution tags.
+        axes : str
+            Upper-case axis string for the source data.
+
+        Returns
+        -------
+        ImageMetadata
+            The updated instance metadata object.
+        """
 
         # pixel size
         px = None
@@ -770,7 +795,12 @@ class SarcAsMBase:
     @staticmethod
     def _validate_axes(axes: str) -> None:
         """
-        Raise if `axes` is not a unique subset of {X, Y, T, C, Z}.
+        Raise if ``axes`` is not a unique subset of {X, Y, T, C, Z}.
+
+        Parameters
+        ----------
+        axes : str
+            Axis string to validate.
         """
         allowed = set("XYTCZ")
         illegal = set(axes) - allowed
@@ -790,17 +820,19 @@ class SarcAsMBase:
     @staticmethod
     def _permute_to_internal(data: np.ndarray, source_axes: str) -> np.ndarray:
         """
+        Permute image data to the internal axis order.
+
         Parameters
         ----------
         data : np.ndarray
             The image data as stored on disk.
         source_axes : str
-            Axis string returned by `_determine_axes`.
+            Axis string returned by :meth:`_determine_axes`.
 
         Returns
         -------
         np.ndarray
-            Array permuted to (Stack, Y, X) or (Y, X).
+            Array permuted to ``(Stack, Y, X)`` or ``(Y, X)``.
         """
         # Decide which dimension, if any, is treated as the stack
         stack_axis = 'T' if 'T' in source_axes else ('Z' if 'Z' in source_axes else None)
@@ -832,9 +864,7 @@ class SarcAsMBase:
         return data
 
     def remove_intermediate_tiffs(self) -> None:
-        """
-        Removes intermediate TIFF files while preserving the original input.
-        """
+        """Remove intermediate TIFF files while preserving the original input."""
         targets = [
             self.file_zbands,
             self.file_mbands,

@@ -70,7 +70,18 @@ _VERSION = "_format_version"
 # routing schema: flat result key -> (group path, member name)
 # --------------------------------------------------------------------------- #
 def _route(key: str) -> Tuple[str, str]:
-    """Map a legacy flat key to its (group, member) home in the store."""
+    """Map a legacy flat key to its home in the store.
+
+    Parameters
+    ----------
+    key : str
+        Legacy flat result key (e.g. ``'tracks_slen'``, ``'sarcomere_oop'``).
+
+    Returns
+    -------
+    tuple of (str, str)
+        The ``(group_path, member_name)`` where the value is stored.
+    """
     if key.startswith("params."):
         parts = key.split(".")
         step = parts[1]
@@ -104,6 +115,19 @@ def _route(key: str) -> Tuple[str, str]:
 # attr (JSON-shaped) encoding for small / non-array values
 # --------------------------------------------------------------------------- #
 def _to_attr(v: Any) -> Any:
+    """Encode a small/non-array value as a JSON-shaped Zarr attribute.
+
+    Parameters
+    ----------
+    v : Any
+        Value to encode (ndarray, np.generic, dict, list/tuple, or plain type).
+
+    Returns
+    -------
+    Any
+        JSON-serializable representation, tagging ndarrays and numpy scalars
+        for round-trip.
+    """
     if sparse.issparse(v):
         raise TypeError("sparse matrix reached the attr path; handle as a bulk type")
     if isinstance(v, np.ndarray):
@@ -118,6 +142,18 @@ def _to_attr(v: Any) -> Any:
 
 
 def _from_attr(v: Any) -> Any:
+    """Decode a value produced by :func:`_to_attr`.
+
+    Parameters
+    ----------
+    v : Any
+        Encoded attribute value.
+
+    Returns
+    -------
+    Any
+        Reconstructed value, restoring ndarrays and numpy scalars.
+    """
     if isinstance(v, dict):
         if v.get("__nd__"):
             return np.array(v["data"], dtype=v["dtype"])
@@ -133,6 +169,18 @@ def _from_attr(v: Any) -> Any:
 # array / ragged / sparse helpers
 # --------------------------------------------------------------------------- #
 def _chunks(shape: tuple) -> Optional[tuple]:
+    """Row-chunk a shape along axis 0 for lazy per-row reads.
+
+    Parameters
+    ----------
+    shape : tuple
+        Array shape.
+
+    Returns
+    -------
+    tuple or None
+        Chunk shape with axis 0 capped at ``_ROW_CHUNK``, or None for scalars.
+    """
     if len(shape) == 0:
         return None
     c = list(shape)
@@ -142,9 +190,21 @@ def _chunks(shape: tuple) -> Optional[tuple]:
 
 def _write_array(grp: "zarr.Group", member: str, arr: np.ndarray,
                  row_chunk: bool = False) -> None:
-    """Write an array. ``row_chunk`` row-chunks along axis 0 (for the
-    ``(n_tracks, T)`` member arrays, so a single track reads one chunk);
-    internal ragged/sparse arrays auto-chunk to avoid tiny-file blow-up."""
+    """Write a numpy array into a Zarr group.
+
+    Parameters
+    ----------
+    grp : zarr.Group
+        Target group.
+    member : str
+        Array name.
+    arr : np.ndarray
+        Array to write.
+    row_chunk : bool, optional
+        If True, row-chunk along axis 0 (for ``(n_tracks, T)`` arrays so a
+        single track reads one chunk); otherwise internal ragged/sparse arrays
+        auto-chunk to avoid tiny-file blow-up. Default is False.
+    """
     if arr.size and row_chunk:
         chunks = _chunks(arr.shape)
     elif arr.size:
@@ -157,13 +217,32 @@ def _write_array(grp: "zarr.Group", member: str, arr: np.ndarray,
 
 
 def _is_ragged(v: Any) -> bool:
+    """Return True if ``v`` is a non-empty list/tuple containing any ndarray."""
     return isinstance(v, (list, tuple)) and len(v) > 0 and any(
         isinstance(x, np.ndarray) for x in v
     )
 
 
 def _write_ragged(parent: "zarr.Group", member: str, frames: list) -> None:
-    """Per-frame list of arrays -> values + offsets + none_mask (rank-preserving)."""
+    """Write a per-frame list of arrays as a flat CSR-like subgroup.
+
+    Stored as ``values`` + ``offsets`` + ``none_mask`` (rank-preserving),
+    tagged ``_kind = 'ragged'``.
+
+    Parameters
+    ----------
+    parent : zarr.Group
+        Parent group.
+    member : str
+        Subgroup name.
+    frames : list
+        Per-frame list of ndarrays (or None) with homogeneous element ndim.
+
+    Raises
+    ------
+    ValueError
+        If elements have heterogeneous ndim.
+    """
     arrs = [None if f is None else np.asarray(f) for f in frames]
     present = [a for a in arrs if a is not None]
     ndims = {a.ndim for a in present}
@@ -193,6 +272,18 @@ def _write_ragged(parent: "zarr.Group", member: str, frames: list) -> None:
 
 
 def _read_ragged(g: "zarr.Group") -> List[Optional[np.ndarray]]:
+    """Read a ragged subgroup back into a per-frame list of arrays.
+
+    Parameters
+    ----------
+    g : zarr.Group
+        Subgroup written by :func:`_write_ragged`.
+
+    Returns
+    -------
+    list of (np.ndarray or None)
+        Per-frame arrays, with None in the slots flagged by ``none_mask``.
+    """
     values = g["values"][...]
     offsets = g["offsets"][...]
     none_mask = g["none_mask"][...]
@@ -209,6 +300,17 @@ def _read_ragged(g: "zarr.Group") -> List[Optional[np.ndarray]]:
 
 
 def _write_sparse(parent: "zarr.Group", member: str, mat) -> None:
+    """Write a sparse matrix as a COO subgroup tagged ``_kind = 'sparse'``.
+
+    Parameters
+    ----------
+    parent : zarr.Group
+        Parent group.
+    member : str
+        Subgroup name.
+    mat : scipy.sparse.spmatrix
+        Matrix to store.
+    """
     coo = mat.tocoo()
     g = parent.create_group(member)
     g.attrs[_KIND] = "sparse"
@@ -219,6 +321,18 @@ def _write_sparse(parent: "zarr.Group", member: str, mat) -> None:
 
 
 def _read_sparse(g: "zarr.Group"):
+    """Read a sparse subgroup back into a ``scipy.sparse.coo_matrix``.
+
+    Parameters
+    ----------
+    g : zarr.Group
+        Subgroup written by :func:`_write_sparse`.
+
+    Returns
+    -------
+    scipy.sparse.coo_matrix
+        Reconstructed matrix.
+    """
     return sparse.coo_matrix(
         (g["data"][...], (g["row"][...], g["col"][...])),
         shape=tuple(g.attrs["shape"]),
@@ -226,13 +340,27 @@ def _read_sparse(g: "zarr.Group"):
 
 
 def _is_sparse_seq(v: Any) -> bool:
+    """Return True if ``v`` is a non-empty list/tuple containing any sparse matrix."""
     return isinstance(v, (list, tuple)) and len(v) > 0 and any(
         sparse.issparse(x) for x in v
     )
 
 
 def _write_sparse_seq(parent: "zarr.Group", member: str, seq: list) -> None:
-    """Per-frame list of sparse matrices -> one flat COO tagged by frame index."""
+    """Write a per-frame list of sparse matrices as one flat COO.
+
+    Stored as concatenated ``data``/``row``/``col`` plus a ``frame`` index and
+    ``none_mask``, tagged ``_kind = 'sparse_seq'``.
+
+    Parameters
+    ----------
+    parent : zarr.Group
+        Parent group.
+    member : str
+        Subgroup name.
+    seq : list
+        Per-frame list of sparse matrices (or None).
+    """
     coos = [None if x is None else x.tocoo() for x in seq]
     present = [c for c in coos if c is not None]
     shape = present[0].shape if present else (0, 0)
@@ -260,6 +388,18 @@ def _write_sparse_seq(parent: "zarr.Group", member: str, seq: list) -> None:
 
 
 def _read_sparse_seq(g: "zarr.Group") -> List[Optional[Any]]:
+    """Read a sparse_seq subgroup back into a per-frame list of matrices.
+
+    Parameters
+    ----------
+    g : zarr.Group
+        Subgroup written by :func:`_write_sparse_seq`.
+
+    Returns
+    -------
+    list of (scipy.sparse.coo_matrix or None)
+        Per-frame matrices, with None in the slots flagged by ``none_mask``.
+    """
     data, row, col = g["data"][...], g["row"][...], g["col"][...]
     frame, none_mask = g["frame"][...], g["none_mask"][...]
     shape = tuple(g.attrs["shape"])
@@ -274,6 +414,20 @@ def _read_sparse_seq(g: "zarr.Group") -> List[Optional[Any]]:
 
 
 def _ensure_group(root: "zarr.Group", path: str) -> "zarr.Group":
+    """Get or create the subgroup at ``path`` (slash-separated) under ``root``.
+
+    Parameters
+    ----------
+    root : zarr.Group
+        Root group.
+    path : str
+        Slash-separated subgroup path.
+
+    Returns
+    -------
+    zarr.Group
+        The (possibly newly created) group.
+    """
     g = root
     for seg in path.split("/"):
         try:
@@ -287,7 +441,24 @@ def _ensure_group(root: "zarr.Group", path: str) -> "zarr.Group":
 # writer
 # --------------------------------------------------------------------------- #
 def _write_value(grp: "zarr.Group", member: str, val: Any) -> str:
-    """Write one value into ``grp`` under ``member``; return its kind tag."""
+    """Write one value into a group, dispatching on its type.
+
+    Parameters
+    ----------
+    grp : zarr.Group
+        Target group.
+    member : str
+        Member name.
+    val : Any
+        Value to store (large ndarray, sparse matrix, sparse_seq, ragged list,
+        or small attr-encodable value).
+
+    Returns
+    -------
+    str
+        Kind tag: one of ``'array'``, ``'sparse'``, ``'sparse_seq'``,
+        ``'ragged'`` or ``'attr'``.
+    """
     if isinstance(val, np.ndarray) and val.size > _INLINE_MAX:
         _write_array(grp, member, val, row_chunk=True)
         return "array"
@@ -308,7 +479,15 @@ def _write_value(grp: "zarr.Group", member: str, val: Any) -> str:
 
 
 def _remove_member(grp: "zarr.Group", member: str) -> None:
-    """Delete an existing array/subgroup/attr member, if present (for overwrite)."""
+    """Delete an existing array/subgroup/attr member, if present (for overwrite).
+
+    Parameters
+    ----------
+    grp : zarr.Group
+        Group to remove from.
+    member : str
+        Member name.
+    """
     try:
         del grp[member]
     except (KeyError, AttributeError):
@@ -320,6 +499,23 @@ def _remove_member(grp: "zarr.Group", member: str) -> None:
 def _write_key(root: "zarr.Group", key: str, val: Any,
                manifest: Dict[str, list], used: Dict[str, set],
                overwrite: bool = False) -> None:
+    """Route, write and register one flat key in the store and manifest.
+
+    Parameters
+    ----------
+    root : zarr.Group
+        Store root.
+    key : str
+        Legacy flat result key.
+    val : Any
+        Value to store.
+    manifest : dict of str to list
+        Flat-key -> ``[group, member, kind]`` map, updated in place.
+    used : dict of str to set
+        Per-group set of taken member names, to avoid clashes; updated in place.
+    overwrite : bool, optional
+        If True, remove any existing member before writing. Default is False.
+    """
     group, member = _route(key)
     if key in manifest:                            # keep a stable overwrite target
         group, member = manifest[key][0], manifest[key][1]
@@ -335,6 +531,21 @@ def _write_key(root: "zarr.Group", key: str, val: Any,
 
 
 def _read_entry(root: "zarr.Group", entry: list) -> Any:
+    """Materialise one manifest entry into its python/numpy value.
+
+    Parameters
+    ----------
+    root : zarr.Group
+        Store root.
+    entry : list
+        Manifest entry ``[group, member, kind]``.
+
+    Returns
+    -------
+    Any
+        The materialised value (ndarray, ragged list, sparse matrix,
+        sparse_seq list, or attr value), depending on ``kind``.
+    """
     group, member, kind = entry
     if kind == "array":
         return root[f"{group}/{member}"][...]
@@ -353,6 +564,13 @@ def write_results(data: Dict[str, Any], store_path: Union[str, Path]) -> None:
     Arrays/ragged/sparse go to Zarr; scalars/params/strings to group attributes.
     A manifest in the root attrs records each flat key's home for exact,
     O(1) dict-style read-back. Round-trips dtype and NaN.
+
+    Parameters
+    ----------
+    data : dict of str to Any
+        Flat results mapping (legacy keys) to serialize.
+    store_path : str or Path
+        Destination ``data.zarr`` path; overwritten if it exists.
     """
     root = zarr.open_group(str(Path(store_path)), mode="w")
     manifest: Dict[str, list] = {}
@@ -366,8 +584,19 @@ def write_results(data: Dict[str, Any], store_path: Union[str, Path]) -> None:
 
 def update_results(store_path: Union[str, Path], mapping: Dict[str, Any],
                    deleted: Iterable[str] = ()) -> None:
-    """Incrementally write ``mapping`` and drop ``deleted`` in an existing (or
-    new) store, rewriting only the affected members + the root manifest."""
+    """Incrementally update an existing (or new) store.
+
+    Rewrites only the affected members plus the root manifest.
+
+    Parameters
+    ----------
+    store_path : str or Path
+        Path to the ``data.zarr`` store; created if missing.
+    mapping : dict of str to Any
+        Flat keys to write or overwrite.
+    deleted : iterable of str, optional
+        Flat keys to drop. Default is ``()``.
+    """
     store_path = Path(store_path)
     root = zarr.open_group(str(store_path), mode="a" if store_path.exists() else "w")
     manifest = dict(root.attrs.get(_MANIFEST, {}))
@@ -392,9 +621,26 @@ def export_to_json(data, path: Union[str, Path], *,
     """Project a results mapping to a legacy-format JSON file.
 
     Reuses :meth:`IOUtils.json_serialize`, so the output is byte-compatible with
-    the old ``structure.json`` and reloadable by old code. Includes everything by
-    default; ``include_arrays=False`` skips large arrays (handy for a readable
-    params/scalars dump). ``keys`` selects a subset (e.g. one group's keys)."""
+    the old ``structure.json`` and reloadable by old code.
+
+    Parameters
+    ----------
+    data : Mapping
+        Results mapping (e.g. :class:`Results` or :class:`ResultsDict`).
+    path : str or Path
+        Output JSON path.
+    keys : iterable of str or None, optional
+        Subset of keys to export (e.g. one group's keys). Default is None
+        (all keys).
+    include_arrays : bool, optional
+        If False, skip large arrays (readable params/scalars dump). Default
+        is True.
+
+    Returns
+    -------
+    Path
+        The written JSON path.
+    """
     from sarcasm.io.ioutils import IOUtils
     keys = list(data.keys()) if keys is None else list(keys)
     out = {}
@@ -411,7 +657,26 @@ def export_to_json(data, path: Union[str, Path], *,
 # accessor
 # --------------------------------------------------------------------------- #
 def _resolve_member(grp: "zarr.Group", name: str):
-    """Return a value/namespace for ``name`` within ``grp``, or raise KeyError."""
+    """Resolve a member name within a group to a value or namespace.
+
+    Parameters
+    ----------
+    grp : zarr.Group
+        Group to look in.
+    name : str
+        Member name (array, subgroup or attr).
+
+    Returns
+    -------
+    Any
+        A lazy zarr array, a materialised ragged/sparse value, a nested
+        :class:`_GroupView`, or an attr value.
+
+    Raises
+    ------
+    KeyError
+        If no member ``name`` exists.
+    """
     if name in grp.array_keys():
         return grp[name]                          # lazy zarr array
     if name in grp.group_keys():
@@ -430,8 +695,16 @@ def _resolve_member(grp: "zarr.Group", name: str):
 
 
 class _GroupView:
-    """Attribute view over one Zarr group: subgroups -> namespaces, arrays ->
-    lazy handles, attrs -> values."""
+    """Attribute view over one Zarr group.
+
+    Subgroups resolve to nested namespaces, arrays to lazy handles, and attrs
+    to values.
+
+    Parameters
+    ----------
+    grp : zarr.Group
+        The group to wrap.
+    """
 
     __slots__ = ("_grp",)
 
@@ -460,7 +733,17 @@ class _GroupView:
 
 
 class Results:
-    """Lazy attribute-and-dict accessor over a ``data.zarr`` results store."""
+    """Lazy attribute-and-dict accessor over a ``data.zarr`` results store.
+
+    Read-only. Supports both grouped attribute access (``r.tracks.slen``,
+    nested namespaces, lazy zarr arrays) and legacy flat-key dict access
+    (``r['tracks_slen']``, materialised numpy).
+
+    Parameters
+    ----------
+    store_path : str or Path
+        Path to the ``data.zarr`` store.
+    """
 
     def __init__(self, store_path: Union[str, Path]):
         self._root = zarr.open_group(str(Path(store_path)), mode="r")
@@ -469,6 +752,23 @@ class Results:
 
     # -- dict interface (legacy flat keys, materialised numpy) ------------- #
     def __getitem__(self, key: str) -> Any:
+        """Materialise the value for a legacy flat ``key``.
+
+        Parameters
+        ----------
+        key : str
+            Legacy flat result key.
+
+        Returns
+        -------
+        Any
+            The materialised value.
+
+        Raises
+        ------
+        KeyError
+            If ``key`` is not in the manifest.
+        """
         if key not in self._manifest:
             raise KeyError(key)
         return _read_entry(self._root, self._manifest[key])
@@ -480,15 +780,38 @@ class Results:
         return _from_attr(meta) if meta is not None else None
 
     def __contains__(self, key: str) -> bool:
+        """Return True if ``key`` is a known legacy flat key."""
         return key in self._manifest
 
     def keys(self):
+        """Return the list of legacy flat keys in the store."""
         return list(self._manifest.keys())
 
     def get(self, key: str, default=None):
+        """Return the value for ``key``, or ``default`` if absent.
+
+        Parameters
+        ----------
+        key : str
+            Legacy flat key.
+        default : Any, optional
+            Value returned if ``key`` is absent. Default is None.
+
+        Returns
+        -------
+        Any
+            The materialised value or ``default``.
+        """
         return self[key] if key in self._manifest else default
 
     def to_dict(self) -> Dict[str, Any]:
+        """Materialise the whole store into a plain flat-key dict.
+
+        Returns
+        -------
+        dict of str to Any
+            All keys mapped to their materialised values.
+        """
         return {k: self[k] for k in self._manifest}
 
     # -- attribute / namespace interface (native group tree) --------------- #
@@ -517,6 +840,13 @@ class ResultsDict(MutableMapping):
     uses (``[]``, ``get``, ``update``, ``keys``, ``pop``, ``in``, iteration), so
     it is a drop-in for the old plain dict. For the ergonomic grouped/lazy view
     use :meth:`view` (``SarcAsM.results``).
+
+    Parameters
+    ----------
+    store_path : str or Path
+        Path to the ``data.zarr`` store (may not yet exist on disk).
+    initial : dict or None, optional
+        Initial key/value pairs to stage on construction. Default is None.
     """
 
     def __init__(self, store_path: Union[str, Path], *, initial: Optional[dict] = None):
@@ -531,6 +861,7 @@ class ResultsDict(MutableMapping):
                 self[k] = v
 
     def _open(self) -> None:
+        """(Re)open the backing store read-only and load its manifest."""
         if self._path.exists():
             self._root = zarr.open_group(str(self._path), mode="r")
             self._manifest = dict(self._root.attrs.get(_MANIFEST, {}))
@@ -539,6 +870,7 @@ class ResultsDict(MutableMapping):
             self._manifest = {}
 
     def _live_keys(self) -> set:
+        """Return the currently visible keys (persisted + staged, minus deleted)."""
         return (set(self._manifest) | set(self._staged)) - self._deleted
 
     # -- MutableMapping abstract methods ----------------------------------- #
@@ -599,13 +931,27 @@ class ResultsDict(MutableMapping):
             self._open()
 
     def set_root_attr(self, name: str, value: Any) -> None:
-        """Write a root-level attribute (e.g. mirrored metadata)."""
+        """Write a root-level store attribute (e.g. mirrored metadata).
+
+        Parameters
+        ----------
+        name : str
+            Attribute name.
+        value : Any
+            JSON-serializable attribute value.
+        """
         self.ensure_store()
         root = zarr.open_group(str(self._path), mode="a")
         root.attrs[name] = value
 
     def view(self) -> "Results":
-        """Flush and return a read-only grouped/lazy :class:`Results` view."""
+        """Flush and return a read-only grouped/lazy :class:`Results` view.
+
+        Returns
+        -------
+        Results
+            A read-only view of the current store contents.
+        """
         self.ensure_store()
         return Results(self._path)
 

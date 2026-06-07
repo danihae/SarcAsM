@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-
+"""Plotting helpers: shared figure parameters and Axes-styling utilities (:class:`PlotUtils`)."""
 
 from typing import Union
 
@@ -26,7 +26,28 @@ from sarcasm import SarcAsMBase, Motion
 
 
 class PlotUtils:
-    """Helper function and parameters for plotting"""
+    """
+    Helper functions and shared parameters for plotting.
+
+    Attributes
+    ----------
+    fontsize : int
+        Base font size in points.
+    markersize : int
+        Default marker size.
+    labelpad : int
+        Axis label padding.
+    dpi : int
+        Default figure resolution.
+    save_format : str
+        Default image save format.
+    width_1cols : float
+        Figure width for a single-column panel (inches).
+    width_1p5cols : float
+        Figure width for a 1.5-column panel (inches).
+    width_2cols : float
+        Figure width for a two-column panel (inches).
+    """
 
     # Plot parameters
     fontsize = 8
@@ -51,12 +72,16 @@ class PlotUtils:
     @staticmethod
     def label_all_panels(axs: dict, offset=(-0.1, 1.1), color='k'):
         """
-        Labels all panels in a given dictionary of Axes objects.
+        Label all panels in a dictionary of Axes objects.
 
-        Parameters:
-            axs (dict): A dictionary of Axes objects.
-            offset (tuple, optional): The x and y offset for the labels. Defaults to (-0.1, 1.1).
-            color (str, optional): The color of the labels. Defaults to 'k' (black).
+        Parameters
+        ----------
+        axs : dict
+            Dictionary of Axes objects; keys are used as panel labels.
+        offset : tuple, optional
+            (x, y) offset for the labels. Default is (-0.1, 1.1).
+        color : str, optional
+            Color of the labels. Default is 'k'.
         """
         for key in axs.keys():
             PlotUtils.label_panel(axs[key], key, offset=offset, color=color)
@@ -64,13 +89,18 @@ class PlotUtils:
     @staticmethod
     def label_panel(ax: Axes, label: str, offset=(-0.1, 1.1), color='k'):
         """
-        Labels a single panel with the specified label.
+        Label a single panel with the specified label.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel to be labeled.
-            label (str): The label to be displayed.
-            offset (tuple, optional): The x and y offset for the label. Defaults to (-0.1, 1.1).
-            color (str, optional): The color of the label. Defaults to 'k' (black).
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel to be labeled.
+        label : str
+            Label to be displayed.
+        offset : tuple, optional
+            (x, y) offset for the label. Default is (-0.1, 1.1).
+        color : str, optional
+            Color of the label. Default is 'k'.
         """
         ax.text(offset[0], offset[1], label, transform=ax.transAxes,
                 fontsize=PlotUtils.fontsize + 1, fontweight='black', va='top', ha='right', color=color)
@@ -78,10 +108,12 @@ class PlotUtils:
     @staticmethod
     def remove_all_spines(axs: dict):
         """
-        Removes the spines from all panels in a given dictionary of Axes objects.
+        Remove the spines from all panels in a dictionary of Axes objects.
 
-        Parameters:
-            axs (dict): A dictionary of Axes objects.
+        Parameters
+        ----------
+        axs : dict
+            Dictionary of Axes objects.
         """
         for key in axs.keys():
             PlotUtils.remove_spines(axs[key])
@@ -89,10 +121,12 @@ class PlotUtils:
     @staticmethod
     def remove_spines(ax):
         """
-        Removes the spines from a single panel.
+        Remove the right and top spines from a single panel.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
         """
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
@@ -100,11 +134,16 @@ class PlotUtils:
     @staticmethod
     def change_color_spines(ax, c='w', linewidth=1):
         """
-        Changes the color of the spines (borders) of a single panel.
+        Change the color and linewidth of the spines (borders) of a single panel.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
-            c (str, optional): The color of the spines. Defaults to 'w' (white).
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
+        c : str, optional
+            Color of the spines. Default is 'w'.
+        linewidth : float, optional
+            Linewidth of the spines. Default is 1.
         """
         for spine in ax.spines.values():
             spine.set_linewidth(linewidth)
@@ -113,10 +152,12 @@ class PlotUtils:
     @staticmethod
     def remove_ticks(ax):
         """
-        Removes the ticks (markings) from both x-axis and y-axis of a single panel.
+        Remove the ticks from both the x-axis and y-axis of a single panel.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
         """
         ax.set_xticks([])
         ax.set_yticks([])
@@ -124,14 +165,20 @@ class PlotUtils:
     @staticmethod
     def polish_xticks(ax, major, minor, pad=3, radian=False):
         """
-        Formats and polishes the x-ticks (markings) of a single panel.
+        Format and polish the x-ticks of a single panel.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
-            major (float): The major tick spacing.
-            minor (float): The minor tick spacing.
-            pad (float, optional): The padding between the x-axis and the tick labels. Defaults to 3.
-            radian (bool, optional): Flag to format ticks in radians. Defaults to False.
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
+        major : float
+            Major tick spacing.
+        minor : float
+            Minor tick spacing.
+        pad : float, optional
+            Padding between the x-axis and the tick labels. Default is 3.
+        radian : bool, optional
+            If True, format ticks as multiples of pi. Default is False.
         """
         ax.xaxis.set_major_locator(MultipleLocator(major))
         ax.xaxis.set_minor_locator(MultipleLocator(minor))
@@ -167,13 +214,18 @@ class PlotUtils:
     @staticmethod
     def polish_yticks(ax, major, minor, pad=3):
         """
-        Formats and polishes the y-ticks (markings) of a single panel.
+        Format and polish the y-ticks of a single panel.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
-            major (float): The major tick spacing.
-            minor (float): The minor tick spacing.
-            pad (float, optional): The padding between the y-axis and the tick labels. Defaults to 3.
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
+        major : float
+            Major tick spacing.
+        minor : float
+            Minor tick spacing.
+        pad : float, optional
+            Padding between the y-axis and the tick labels. Default is 3.
         """
         ax.yaxis.set_major_locator(MultipleLocator(major))
         ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
@@ -183,15 +235,22 @@ class PlotUtils:
     @staticmethod
     def plot_box(ax, xlim, ylim, c='w', lw=1, linestyle='-'):
         """
-        Plots a box around a given area defined by the x-axis and y-axis limits.
+        Plot a box around the area defined by the x-axis and y-axis limits.
 
-        Parameters:
-            ax (matplotlib.axes.Axes): The Axes object representing the panel.
-            xlim (tuple): The x-axis limits of the box.
-            ylim (tuple): The y-axis limits of the box.
-            c (str, optional): The color of the box. Defaults to 'w' (white).
-            lw (float, optional): The linewidth of the box. Defaults to 1.
-            linestyle (str, optional): The linestyle of the box. Defaults to '-' (solid line).
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object representing the panel.
+        xlim : tuple
+            (min, max) x-axis limits of the box.
+        ylim : tuple
+            (min, max) y-axis limits of the box.
+        c : str, optional
+            Color of the box. Default is 'w'.
+        lw : float, optional
+            Linewidth of the box. Default is 1.
+        linestyle : str, optional
+            Linestyle of the box. Default is '-'.
         """
         ax.plot((xlim[0], xlim[1]), (ylim[0], ylim[0]), c=c, lw=lw, linestyle=linestyle)
         ax.plot((xlim[0], xlim[1]), (ylim[1], ylim[1]), c=c, lw=lw, linestyle=linestyle)
@@ -209,7 +268,7 @@ class PlotUtils:
         y : array-like
             The y-coordinates of the points.
         width : float, optional
-            The maximum width of the random noise. Defaults to 0.02.
+            The maximum width of the random noise. Default is 0.02.
 
         Returns
         -------
@@ -227,30 +286,26 @@ class PlotUtils:
 
     def boxplot_with_points(ax, data, labels, width=0.1, alpha=0.5, s=10, whis=(5, 95), rotation=90):
         """
-        Creates a boxplot with scattered points.
+        Create a boxplot with scattered points.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            The axes to draw the plot on.
+            Axes to draw the plot on.
         data : array-like
-            The data to plot.
+            Data to plot, one sequence per box.
         labels : list of str
-            The labels for the boxplots.
+            Labels for the boxplots.
         width : float, optional
-            The width of the boxplots. Defaults to 1.25.
+            Width of the point jitter. Default is 0.1.
         alpha : float, optional
-            The alpha value for the points. Defaults to 0.005.
+            Alpha value for the points. Default is 0.5.
         s : int, optional
-            The size of the points. Defaults to 10.
+            Size of the points. Default is 10.
         whis : tuple of float, optional
-            The whisker range for the boxplots. Defaults to (5, 95).
+            Whisker range (percentiles) for the boxplots. Default is (5, 95).
         rotation : int, optional
-            The rotation angle for the x-axis labels. Defaults to 90.
-
-        Returns
-        -------
-        None
+            Rotation angle for the x-axis labels. Default is 90.
         """
         # make boxplot
         ax.boxplot(data, showfliers=False, labels=labels, zorder=1, whis=whis)
@@ -271,19 +326,19 @@ class PlotUtils:
 
         Parameters
         ----------
-        sarc_obj : object
-            The object containing data to be plotted, which can be an instance of SarcAsM or Motion
-        plot_func : function
-            The plotting function that takes an Axes object, a sarcomere object, and a boolean indicating
-            whether to include a scalebar. It should plot the data onto the provided Axes object.
+        sarc_obj : SarcAsMBase or Motion
+            Object containing the data to be plotted.
+        plot_func : callable
+            Plotting function called as ``plot_func(ax=, sarc_obj=, scalebar=)``;
+            it draws the data onto the provided Axes object.
         img_file_path : str
-            The file path where the image will be saved.
+            File path where the image will be saved.
         figsize : tuple of int or float, optional
-            The size of the figure (width, height) in inches. Default is (6, 6).
+            Figure size (width, height) in inches. Default is (6, 6).
         scalebar : bool, optional
-            Indicates whether a scalebar should be included in the plot. Default is False.
+            Whether to include a scalebar in the plot. Default is False.
         dpi : int, optional
-            Quality of the plot. Default is 300.
+            Figure resolution. Default is 300.
         """
 
         # create matplotlib figure

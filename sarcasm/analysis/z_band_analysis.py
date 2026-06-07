@@ -35,7 +35,7 @@ def segment_z_bands(image: np.ndarray, threshold: float = 0.15) -> Tuple[np.ndar
     image : np.ndarray
         Input image from U-Net.
     threshold : float, optional
-        Threshold value for binarizing the image. Defaults to 0.15.
+        Threshold for binarizing the image. Default is 0.15.
 
     Returns
     -------
@@ -65,40 +65,42 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
     Parameters
     ----------
     zbands : np.ndarray
-        The segmented map of z-bands.
+        Segmented z-band map.
     labels : np.ndarray
-        The labeled image of z-bands.
+        Labeled image of z-bands.
     labels_skel : np.ndarray
-        The skeletonized labels of z-bands.
+        Skeletonized labels of z-bands.
     image_raw : np.ndarray
-        The raw image.
+        Raw image.
     orientation_field : np.ndarray
         Sarcomere orientation field.
     pixelsize : float
-        The size of pixels in the image.
+        Pixel size in µm.
     min_length : float, optional
-        The minimum length threshold for z-bands. Default is 1.0.
+        Minimum z-band length in µm; shorter z-bands are removed. Default is 1.0.
     threshold : float, optional
-        The threshold value for intensity. Default is 0.1.
+        Intensity threshold for the z-band mask. Default is 0.5.
     median_filter_radius : float, optional
-        Radius of kernel to smooth orientation field. Default is 0.2 µm.
+        Radius in µm of the kernel smoothing the orientation field. Default is 0.25.
     a_min : float, optional
-        The minimum value for alignment. Default is 0.25. Links with smaller alignment are set to np.nan.
+        Minimum lateral alignment; links with smaller alignment are set to NaN. Default is 0.3.
     theta_phi_min : float, optional
-        The minimum dot product/cosine between the direction of a Z-band end and the direction of line from end to other Z-band end.
+        Minimum cosine between a z-band end's direction and the line from that end to
+        the other z-band's end. Default is 0.2.
     d_max : float, optional
-        The maximum distance between z-band ends. Default is 5.0 µm. Larger distances are set to np.nan.
+        Maximum distance between z-band ends in µm; larger distances are set to NaN. Default is 4.0.
     d_min : float, optional
-        The minimum distance between z-band ends. Default is 0 µm. Smaller distances are set to np.nan.
+        Minimum distance between z-band ends in µm; smaller distances are set to NaN. Default is 0.25.
 
     Returns
     -------
     tuple
-        A comprehensive tuple containing arrays and values describing the analyzed properties of z-bands:
-        - Lengths, intensities, straightness, ratio of intensities, average intensity, orientations,
-          orientational order parameter, list of z-band labels, processed labels image, number of lateral neighbors,
-          lateral distances, lateral alignments, links between z-band ends, coordinates of z-band ends,
-          linked groups of z-bands, and their respective sizes, lengths, and alignments.
+        Arrays and values describing the analyzed z-band properties, in order:
+        lengths, intensities, straightness, average mask intensity, mask area,
+        orientations, orientational order parameter, list of z-band labels, processed
+        labels image, number of lateral neighbors, lateral distances, lateral
+        alignments, links between z-band ends, coordinates of z-band ends, linked
+        groups of z-bands, and their sizes, lengths, and alignments.
     """
     # analyze skeletonized labels to determine z-band backbone length
     props_skel = regionprops_table(labels_skel, properties=['label', ],
@@ -247,24 +249,20 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
 
         def compute_cost_matrix(D, A, penalty=1e6):
             """
-            Compute the cost matrix for linking Z-band ends based on a cost 1 - A favoring optimal alignment.
+            Compute the cost matrix (1 - A) for linking Z-band ends, favoring optimal alignment.
 
-            Parameters:
+            Parameters
             ----------
-            D : ndarray
+            D : np.ndarray
                 Distance matrix between Z-band ends.
-            A : ndarray
+            A : np.ndarray
                 Alignment matrix between Z-band ends.
-            w_dist : float
-                Weight for distance in the cost function.
-            w_align : float
-                Weight for alignment in the cost function.
-            penalty : float
-                Penalty for invalid links (e.g., NaN or out-of-range values).
+            penalty : float, optional
+                Cost assigned to invalid links (NaN in ``D``). Default is 1e6.
 
-            Returns:
+            Returns
             -------
-            C : ndarray
+            np.ndarray
                 Cost matrix for linking Z-band ends.
             """
             # Ensure alignment values are valid (replace NaNs with 0)
@@ -282,16 +280,16 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
             """
             Solve the optimal linking problem using the Hungarian algorithm.
 
-            Parameters:
+            Parameters
             ----------
-            C : ndarray
+            C : np.ndarray
                 Cost matrix for linking Z-band ends.
 
-            Returns:
+            Returns
             -------
-            row_ind : ndarray
+            row_ind : np.ndarray
                 Row indices of the optimal assignment.
-            col_ind : ndarray
+            col_ind : np.ndarray
                 Column indices of the optimal assignment.
             """
             # Use scipy's linear_sum_assignment to solve the assignment problem

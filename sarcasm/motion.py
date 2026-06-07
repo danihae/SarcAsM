@@ -11,6 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
+"""Tracking and analysis of sarcomere motion along a line of interest (LOI)."""
 
 import os
 import logging
@@ -34,19 +35,25 @@ logger = logging.getLogger(__name__)
 
 
 class Motion(SarcAsMBase):
-    """Class for tracking and analysis of sarcomere motion at line of interest LOI"""
+    """
+    Tracking and analysis of sarcomere motion along a line of interest (LOI).
+
+    Subclasses :class:`~sarcasm.core.SarcAsMBase` and accepts the same
+    constructor arguments.
+    """
 
     @classmethod
     def from_loi_data(cls, file_path: str, loi_name: str, loi_data: dict,
                       auto_save: bool = False, frametime: Union[float, None] = None) -> "Motion":
-        """Build a :class:`Motion` from pre-computed ``loi_data`` without reading a
-        kymograph / LOI profile file.
+        """
+        Build a :class:`Motion` from pre-computed ``loi_data``.
 
-        Used to wrap a *synthesized* myofibril chain (an ordered ``z_pos`` / ``slen``
+        Wraps a synthesized myofibril chain (an ordered ``z_pos`` / ``slen``
         built from 2D tracks, see
         :meth:`sarcasm.structure.SarcAsM.get_track_motion`) so the full LOI
-        analysis and every existing LOI plot work unchanged. ``loi_data`` is marked
-        ``synthetic=True``. Nothing is written to disk unless ``auto_save=True``.
+        analysis and every existing LOI plot work unchanged. ``loi_data`` is
+        marked ``synthetic=True``. Nothing is written to disk unless
+        ``auto_save=True``.
 
         Parameters
         ----------
@@ -55,14 +62,20 @@ class Motion(SarcAsMBase):
         loi_name : str
             Logical name for this (virtual) LOI.
         loi_data : dict
-            Must contain at least ``z_pos`` ``(n_z, T)``, ``slen`` ``(n_z-1, T)`` and
-            ``time`` ``(T,)``.
+            Must contain at least ``z_pos`` ``(n_z, T)``, ``slen`` ``(n_z-1, T)``
+            and ``time`` ``(T,)``.
         auto_save : bool, optional
-            If True, create the LOI folder and persist ``{loi_name}_loi_data.json``.
-            Default False (purely in-memory view).
+            If True, create the LOI folder and persist
+            ``{loi_name}_loi_data.json``. Default is False (purely in-memory view).
         frametime : float or None, optional
-            Frame time (s) override, forwarded to the metadata loader. Needed when
-            the movie has no embedded frametime (e.g. high-speed single-cell tifs).
+            Frame time (s) override, forwarded to the metadata loader. Needed
+            when the movie has no embedded frametime (e.g. high-speed
+            single-cell tifs). Default is None.
+
+        Returns
+        -------
+        Motion
+            A :class:`Motion` instance wrapping ``loi_data``.
         """
         obj = cls.__new__(cls)
         SarcAsMBase.__init__(obj, file_path, frametime=frametime)
@@ -81,9 +94,35 @@ class Motion(SarcAsMBase):
 
     @staticmethod
     def get_loi_name_from_file_name(file_name) -> str:
+        """
+        Strip temp/LOI/extension suffixes to derive the LOI name from a file name.
+
+        Parameters
+        ----------
+        file_name : str
+            File name to normalize.
+
+        Returns
+        -------
+        str
+            The bare LOI name.
+        """
         return file_name.replace(".temp", "").replace("_loi", "").replace(".json", "").replace(".csv", "")
 
     def __get_loi_data_file_name(self, is_temp_file=False) -> str:
+        """
+        Build the path of the LOI data JSON file.
+
+        Parameters
+        ----------
+        is_temp_file : bool, optional
+            If True, return the temporary file path. Default is False.
+
+        Returns
+        -------
+        str
+            Absolute path of the LOI data file.
+        """
         if is_temp_file:
             return os.path.join(self.data_dir, self.loi_name + "_loi_data.temp.json")
         else:
@@ -107,20 +146,27 @@ class Motion(SarcAsMBase):
 
         Parameters
         ----------
-        model : str
-            Neural network parameters (.pt file)
-        threshold : float
-            Binary threshold for contraction state (0, 1) after prediction
-        slen_lims : tuple(float, float)
-            Minimal and maximal sarcomere lengths, sarcomere outside interval are set to NaN
-        n_sarcomeres_min : int
-            Minimal number of sarcomeres, if lower, contraction state is set to 0.
-        buffer_frames : int
-            Remove contraction cycles / contractions within "buffer_frames" frames to start and end of time-series
-        contr_time_min : float
-            Minimal time of contraction in seconds. If smaller, contraction is removed.
-        merge_time_max : float
-            Maximal time between two contractions. If smaller, two contractions are merged to one.
+        model : str or None, optional
+            Path to the neural network weights (.pt file). None or 'default'
+            uses the bundled ContractionNet model. Default is None.
+        threshold : float, optional
+            Binary threshold for contraction state (0, 1) after prediction.
+            Default is 0.3.
+        slen_lims : tuple of float, optional
+            Minimal and maximal sarcomere lengths (µm); values outside the
+            interval are set to NaN. Default is (1.2, 3).
+        n_sarcomeres_min : int, optional
+            Minimal number of sarcomeres; if fewer, contraction state is set
+            to 0. Default is 4.
+        buffer_frames : int, optional
+            Remove contraction cycles within this many frames of the start and
+            end of the time-series. Default is 3.
+        contr_time_min : float, optional
+            Minimal contraction time in seconds; shorter contractions are
+            removed. Default is 0.2.
+        merge_time_max : float, optional
+            Maximal time between two contractions in seconds; closer
+            contractions are merged. Default is 0.05.
         """
 
         # select weights for convolutional neural network
@@ -197,16 +243,20 @@ class Motion(SarcAsMBase):
 
         Parameters
         ----------
-        slen_lims : tuple(float, float)
-            Lower and upper limits of sarcomere lengths, values outside are set to nan
-        filter_params_vel : tuple(int, int)
-            Window length and poly order for Savitky-Golay filter for smoothing of delta_slen prior to differentiation
-            to obtain sarcomere velocities
-        dilate_contr : float
-            Dilation time (in seconds) of contraction time-series to shorten time-interval during diastole at which the sarcomere
-            equilibrium lengths are determined
-        equ_lims : tuple(float, float)
-            Lower and upper limits of sarcomere equilibrium lengths, values outside are set to nan
+        slen_lims : tuple of float, optional
+            Lower and upper limits of sarcomere lengths (µm); values outside
+            are set to NaN. Default is (1.2, 3.).
+        filter_params_vel : tuple of int, optional
+            Window length and polynomial order for the Savitzky-Golay filter
+            used to smooth lengths prior to velocity differentiation.
+            Default is (13, 5).
+        dilate_contr : float, optional
+            Dilation time (s) of the contraction time-series, shortening the
+            diastolic interval used to determine equilibrium lengths.
+            Default is 0.
+        equ_lims : tuple of float, optional
+            Lower and upper limits of sarcomere equilibrium lengths (µm);
+            values outside are set to NaN. Default is (1.5, 2.3).
         """
         # calculate sarcomere lengths
         slen = np.diff(self.loi_data['z_pos'], axis=0)
@@ -259,12 +309,11 @@ class Motion(SarcAsMBase):
 
         Parameters
         ----------
-        custom_perc : List[Tuple[float, float]] or None, optional
-            A list of tuples where each tuple contains two percentages (p0, p1) representing custom percentage
-            points to analyze contraction, e.g., the time from p0% to p1% contraction of individual and average
-            sarcomere length change.
-            If p0<p1, the shortening is analyzed, if p1<p0, the elongation is analyzed.
-            If not provided, defaults to None.
+        custom_perc : list of tuple of float, or None, optional
+            List of ``(p0, p1)`` percentage pairs defining custom intervals to
+            analyze, e.g. the time from p0% to p1% of individual and average
+            sarcomere length change. If ``p0 < p1`` shortening is analyzed; if
+            ``p1 < p0`` elongation is analyzed. Default is None.
         """
         # initialize arrays
         # maximal contraction
@@ -430,8 +479,9 @@ class Motion(SarcAsMBase):
 
         Parameters
         ----------
-        thres_popping : float
-            Threshold above which sarcomere is identified as popping, in µm beyond equilibrium length
+        thres_popping : float, optional
+            Threshold above which a sarcomere is identified as popping, in µm
+            beyond equilibrium length. Default is 0.25.
         """
         # identify popping events
         elong_max = self.loi_data['elong_max']
@@ -490,26 +540,26 @@ class Motion(SarcAsMBase):
 
     def analyze_correlations(self):
         """
-        Computes the Pearson correlation coefficients for sarcomere motion patterns (∆SL and V) across different contraction
-        cycles and between sarcomeres within the same cycle to analyze static and stochastic heterogeneity in sarcomere dynamics.
+        Compute Pearson correlation coefficients for sarcomere motion patterns
+        (∆SL and V) across contraction cycles and between sarcomeres within the
+        same cycle to analyze static and stochastic heterogeneity.
 
-        It calculates the average serial (r_s) and mutual (r_m) correlation coefficients, and introduces the ratio R of serial
-        to mutual correlations to distinguish between static and stochastic heterogeneity. The function updates the instance's
-        loi_data with correlation data, including the calculated R values, and stores the data if auto_save is enabled.
+        Calculates the average serial (r_s) and mutual (r_m) correlation
+        coefficients and the ratio R of serial to mutual correlations, then
+        updates ``self.loi_data`` and stores it if ``auto_save`` is enabled.
 
-        Returns
-        -------
-        None
-            Updates `self.loi_data` with the following keys:
-                - 'corr_delta_slen' (ndarray or None): Correlation matrix for sarcomere length changes.
-                - 'corr_vel' (ndarray or None): Correlation matrix for sarcomere velocities.
-                - 'corr_delta_slen_serial' (float or NaN): Average serial correlation for sarcomere length changes.
-                - 'corr_delta_slen_mutual' (float or NaN): Average mutual correlation for sarcomere length changes.
-                - 'corr_vel_serial' (float or NaN): Average serial correlation for sarcomere velocities.
-                - 'corr_vel_mutual' (float or NaN): Average mutual correlation for sarcomere velocities.
-                - 'ratio_delta_slen_mutual_serial' (float or NaN): Ratio of mutual to serial correlation for sarcomere length changes.
-                - 'ratio_vel_mutual_serial' (float or NaN): Ratio of mutual to serial correlation for sarcomere velocities.
+        Notes
+        -----
+        Updates ``self.loi_data`` with the following keys:
 
+        - ``'corr_delta_slen'`` (np.ndarray or None): Correlation matrix for length changes.
+        - ``'corr_vel'`` (np.ndarray or None): Correlation matrix for velocities.
+        - ``'corr_delta_slen_serial'`` (float): Average serial correlation for length changes.
+        - ``'corr_delta_slen_mutual'`` (float): Average mutual correlation for length changes.
+        - ``'corr_vel_serial'`` (float): Average serial correlation for velocities.
+        - ``'corr_vel_mutual'`` (float): Average mutual correlation for velocities.
+        - ``'ratio_delta_slen_mutual_serial'`` (float): Mutual/serial ratio for length changes.
+        - ``'ratio_vel_mutual_serial'`` (float): Mutual/serial ratio for velocities.
         """
         if self.loi_data['n_contr'] > 0:
             time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata.frametime)
@@ -577,22 +627,18 @@ class Motion(SarcAsMBase):
         Parameters
         ----------
         min_scale : float, optional
-            Minimum scale to use for the wavelet transform (default is 6).
+            Minimum scale for the wavelet transform. Default is 6.
         max_scale : float, optional
-            Maximum scale to use for the wavelet transform (default is 150).
+            Maximum scale for the wavelet transform. Default is 180.
         num_scales : int, optional
-            Number of scales to use for the wavelet transform (default is 100).
+            Number of scales for the wavelet transform. Default is 60.
         wavelet : str, optional
-            Type of wavelet to use for the wavelet transform (default is 'morl' = Morlet wavelet).
+            Wavelet type for the transform ('morl' = Morlet). Default is 'morl'.
         freq_thres : float, optional
-            Frequency threshold in Hz for distinguishing low-freq. oscillations at beating rate, and high-freq.
-            oscillations.
+            Frequency threshold (Hz) separating low-frequency oscillations at
+            the beating rate from high-frequency oscillations. Default is 2.
         plot : bool, optional
-            If True, a plot illustrating the analysis is shown.
-
-        Returns
-        -------
-        None
+            If True, show a plot illustrating the analysis. Default is False.
         """
 
         # Analyze oscillation frequencies of average sarcomere length change
@@ -683,19 +729,27 @@ class Motion(SarcAsMBase):
 
     @staticmethod
     def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str, threshold: float = 0.33):
-        """Predict contractions from motion of z-bands and sarcomere lengths, then calculate mean state and threshold to
-        get more accurate estimation of contractions
+        """
+        Predict contractions from Z-band motion and sarcomere lengths.
+
+        Predicts per-trace contraction state, then averages and thresholds it
+        for a more accurate contraction estimate.
 
         Parameters
         ----------
-        z_pos : ndarray
-            Time-series of Z-band positions
-        slen : ndarray
-            Time-series of sarcomere lengths
+        z_pos : np.ndarray
+            Time-series of Z-band positions.
+        slen : np.ndarray
+            Time-series of sarcomere lengths.
         weights : str
-            Neural network parameters (.pt file)
-        threshold : float
-            Binary threshold for contraction state (0, 1)
+            Path to the neural network weights (.pt file).
+        threshold : float, optional
+            Binary threshold for contraction state (0, 1). Default is 0.33.
+
+        Returns
+        -------
+        np.ndarray
+            Boolean contraction state per frame (True where contracting).
         """
         data = np.concatenate([z_pos, slen])
         contr_all = np.asarray([predict_contractions(d, weights)[0] for d in data])
@@ -713,21 +767,21 @@ class Motion(SarcAsMBase):
         data : array_like
             1-D input signal.
         frametime : float
-            Sampling period of the signal.
+            Sampling period of the signal in seconds.
         min_scale : float, optional
-            Minimum scale to use for the wavelet transform (default is 6).
+            Minimum scale for the wavelet transform. Default is 6.
         max_scale : float, optional
-            Maximum scale to use for the wavelet transform (default is 150).
+            Maximum scale for the wavelet transform. Default is 150.
         num_scales : int, optional
-            Number of scales to use for the wavelet transform (default is 200).
+            Number of scales for the wavelet transform. Default is 100.
         wavelet : str, optional
-            Type of wavelet to use for the wavelet transform (default is 'morl').
+            Wavelet type for the transform. Default is 'morl'.
 
         Returns
         -------
-        cfs : ndarray
+        cfs : np.ndarray
             Continuous wavelet transform coefficients.
-        frequencies : ndarray
+        frequencies : np.ndarray
             Corresponding frequencies for each scale.
 
         """

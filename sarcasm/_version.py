@@ -12,6 +12,8 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+"""Package version resolution for SarcAsM."""
+
 import importlib.metadata
 
 try:
