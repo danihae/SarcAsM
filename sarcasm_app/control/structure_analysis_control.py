@@ -19,7 +19,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import Structure
+from sarcasm import SarcAsM
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from .file_selection_control import _INVALID_INPUT_QSS
@@ -71,7 +71,7 @@ class StructureAnalysisControl:
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        cell: Structure = TypeUtils.unbox(model.cell)
+        cell: SarcAsM = TypeUtils.unbox(model.cell)
         size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
                                         model.parameters.get_parameter('structure.predict.size_height').get_value())
 
@@ -92,7 +92,7 @@ class StructureAnalysisControl:
         network_model = model.parameters.get_parameter('structure.predict_fast_movie.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
-        cell: Structure = TypeUtils.unbox(model.cell)
+        cell: SarcAsM = TypeUtils.unbox(model.cell)
         size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter(
             'structure.predict_fast_movie.n_frames').get_value(),
                                              model.parameters.get_parameter(
@@ -142,8 +142,8 @@ class StructureAnalysisControl:
             return
         if not self.__chk_prediction_network():
             return
-        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Sarcomeres detected and saved in {cell.base_dir}'
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        message_finished = f'Sarcomeres detected and saved in {cell.store_path}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call,
                                                    start_message='Start prediction of sarcomere z-bands',
@@ -158,8 +158,8 @@ class StructureAnalysisControl:
             return
         if not self.__chk_prediction_network_fast_movie():
             return
-        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Z-bands in fast movies detected and saved in {cell.base_dir}'
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
+        message_finished = f'Z-bands in fast movies detected and saved in {cell.store_path}'
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__predict_call_fast_movie,
                                                    start_message='Start prediction of sarcomere z-bands fast movies',
@@ -172,7 +172,7 @@ class StructureAnalysisControl:
     def __on_btn_analyze_cell_mask(self):
         if not self.__chk_initialized():
             return
-        cell: Structure = TypeUtils.unbox(self.__main_control.model.cell)
+        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         message_finished = 'Cell mask analysis completed.'
 
         def __internal_call(w, m: ApplicationModel):
@@ -211,7 +211,7 @@ class StructureAnalysisControl:
 
         def __internal_call(w, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: Structure = TypeUtils.unbox(m.cell)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
                                  threshold=m.parameters.get_parameter(
                                      'structure.z_band_analysis.threshold').get_value(),
@@ -247,7 +247,7 @@ class StructureAnalysisControl:
 
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: Structure = TypeUtils.unbox(m.cell)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.analyze_sarcomere_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 slen_lims=(
@@ -257,6 +257,8 @@ class StructureAnalysisControl:
                 median_filter_radius=m.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=m.parameters.get_parameter('structure.vectors.line_width').get_value(),
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
+                smooth_orientation_sigma=m.parameters.get_parameter(
+                    'structure.vectors.smooth_orientation_sigma').get_value(),
                 progress_notifier=progress_notifier
             )
             pass
@@ -287,7 +289,7 @@ class StructureAnalysisControl:
         # estimate myofibril lengths using line-growth algorithm
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: Structure = TypeUtils.unbox(m.cell)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.analyze_myofibrils(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 ratio_seeds=m.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
@@ -319,7 +321,7 @@ class StructureAnalysisControl:
 
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
-            cell: Structure = TypeUtils.unbox(m.cell)
+            cell: SarcAsM = TypeUtils.unbox(m.cell)
             cell.analyze_sarcomere_domains(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 d_max=m.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
@@ -473,6 +475,8 @@ class StructureAnalysisControl:
             widget.sb_vectors_interpolation_factor)
         parameters.get_parameter(name='structure.vectors.length_limit_lower').connect(widget.dsb_vectors_len_lims_min)
         parameters.get_parameter(name='structure.vectors.length_limit_upper').connect(widget.dsb_vectors_len_lims_max)
+        parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').connect(
+            widget.dsb_vectors_smooth_orientation_sigma)
 
         parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)

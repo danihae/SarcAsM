@@ -16,7 +16,7 @@ per-key descriptions (shown as tooltips).
 
 from typing import Dict, List
 
-from sarcasm.feature_dict import structure_feature_dict, motion_feature_dict
+from sarcasm._internal.feature_dict import structure_feature_dict, motion_feature_dict
 
 
 TierSections = Dict[str, Dict[str, List[str]]]
@@ -89,41 +89,23 @@ STRUCTURE_TIERS: TierSections = {
 }
 
 
+# Track-based grouped motion: one value per group. Keys are the feature
+# suffixes resolved to ``<kind>_<suffix>`` per grouping kind by Export.
+# (group_id / group_member_count / metadata are always exported.)
 MOTION_TIERS: TierSections = {
     'Primary': {
-        'Beating kinematics': [
-            'beating_rate', 'beating_rate_variability',
-            'time_contr', 'time_quiet',
+        'Beating': [
+            'beating_rate', 'beating_rate_variability', 'n_contr',
         ],
-        'Contractile features': [
-            'contr_max_avg', 'elong_max_avg',
-            'vel_contr_max_avg', 'vel_elong_max_avg',
-            'time_to_peak_avg',
-            'equ',
-        ],
-        'Counts & QC': [
-            'n_sarcomeres', 'n_contr', 'ratio_nans',
+        'Contractile (per group, mean over cycles)': [
+            'contr_max', 'elong_max',
+            'vel_contr_max', 'vel_elong_max',
+            'time_to_peak', 'equ',
         ],
     },
     'Advanced': {
-        'Per-cycle (non-averaged)': [
-            'contr_max', 'elong_max',
-            'vel_contr_max', 'vel_elong_max',
-            'time_to_peak', 'time_to_relax',
-            'time_contr_avg', 'time_quiet_avg', 'time_to_relax_avg',
-        ],
-        'Popping': [
-            'popping_rate', 'popping_rate_contr', 'popping_rate_sarcomeres',
-            'popping_events', 'popping_dist', 'popping_tau',
-            'popping_ks_dist_pvalue', 'popping_ks_dist_statistic',
-            'popping_p_dist', 'popping_p_tau',
-            'popping_ks_tau_pvalue', 'popping_ks_tau_statistic',
-        ],
-        'Correlations': [
-            'corr_delta_slen', 'corr_vel',
-            'corr_delta_slen_serial', 'corr_delta_slen_mutual',
-            'corr_vel_serial', 'corr_vel_mutual',
-            'ratio_delta_slen_mutual_serial', 'ratio_vel_mutual_serial',
+        'Timing': [
+            'time_to_relax', 'time_contr',
         ],
     },
 }

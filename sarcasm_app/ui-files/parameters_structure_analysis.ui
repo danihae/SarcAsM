@@ -817,7 +817,36 @@
         </item>
        </layout>
       </item>
-      <item row="4" column="0" colspan="2">
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_vectors_smooth_sigma">
+        <property name="toolTip">
+         <string>Temporal smoothing of the orientation field across frames (Gaussian sigma, in frames). Only useful for high-speed movies of beating cells (improves per-frame temporal consistency). 0 = off.</string>
+        </property>
+        <property name="text">
+         <string>Temporal orient. smoothing [frames]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_vectors_smooth_orientation_sigma">
+        <property name="toolTip">
+         <string>Temporal smoothing of the orientation field across frames (Gaussian sigma, in frames). Only useful for high-speed movies of beating cells (improves per-frame temporal consistency). 0 = off.</string>
+        </property>
+        <property name="decimals">
+         <number>2</number>
+        </property>
+        <property name="maximum">
+         <double>100.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.500000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_vectors">
         <property name="toolTip">
          <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>

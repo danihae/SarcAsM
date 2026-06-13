@@ -885,8 +885,8 @@ def _merge_short_tracks(
                     't_a': float(t_a),
                     't_b': float(t_b),
                     'gap': float(gap_used),
-                    'along_resid_px': float(along_r),
-                    'perp_resid_px': float(perp_r),
+                    'along_resid_um': float(along_r) * pixelsize,
+                    'perp_resid_um': float(perp_r) * pixelsize,
                     'slen_diff_um': float(dslen_um),
                     'cost': float(best_cost),
                 })
@@ -905,9 +905,9 @@ def track_sarcomere_vectors(
     frametime: Optional[float] = None,
     threshold_mbands: float = 0.25,
     threshold_zbands: float = 0.5,
-    dt_clip: float = 20.0,
-    max_disp_along_px: float = 15.0,
-    max_disp_perp_px: float = 2.0,
+    dt_clip_um: float = 2.0,
+    max_disp_along_um: float = 1.0,
+    max_disp_perp_um: float = 0.2,
     ori_tol_deg: float = 45.0,
     memory: int = 5,
     min_track_length: int = 5,
@@ -916,8 +916,8 @@ def track_sarcomere_vectors(
     reacquire_along_cap2_factor: float = 2.0,
     max_gap_interpolation: int = 5,
     merge_tracks: bool = True,
-    merge_max_disp_along_px: float = 25.0,
-    merge_max_disp_perp_px: float = 4.0,
+    merge_max_disp_along_um: float = 1.0,
+    merge_max_disp_perp_um: float = 0.3,
     merge_ori_tol_deg: float = 45.0,
     merge_slen_tol_um: float = 0.30,
     merge_min_bridge_snaps: int = 1,
@@ -985,12 +985,17 @@ def track_sarcomere_vectors(
         Threshold binarizing the M-band masks for flow. Default is 0.25.
     threshold_zbands : float, optional
         Threshold binarizing the Z-band masks for flow. Default is 0.5.
-    dt_clip : float, optional
-        Distance-transform clip in px. Default is 20.0.
-    max_disp_along_px : float, optional
-        Snap gate along the sarcomere axis in px. Default is 15.0.
-    max_disp_perp_px : float, optional
-        Snap gate perpendicular to the sarcomere axis in px. Default is 2.0.
+    dt_clip_um : float, optional
+        Distance-transform clip for the optical flow, in µm. Default is 2.0.
+    max_disp_along_um : float, optional
+        Snap gate along the sarcomere axis, in µm — i.e. the maximum distance a
+        track may move along its axis between consecutive frames. This is the
+        per-frame "max step": at the default 1.0 µm a track can never jump more
+        than ~1 µm regardless of pixel size. Default is 1.0.
+    max_disp_perp_um : float, optional
+        Snap gate perpendicular to the sarcomere axis, in µm; kept far tighter
+        than the along gate (perpendicular jumps onto a neighbouring myofibril
+        are the dangerous swap). Default is 0.2.
     ori_tol_deg : float, optional
         Orientation tolerance for snapping in degrees. Default is 45.0.
     memory : int, optional
@@ -1010,10 +1015,10 @@ def track_sarcomere_vectors(
         Maximum gap (frames) bridgeable by the merge step. Default is 5.
     merge_tracks : bool, optional
         Whether to run the fragment-stitching pass. Default is True.
-    merge_max_disp_along_px : float, optional
-        Per-frame along merge gate in px (scaled by gap). Default is 25.0.
-    merge_max_disp_perp_px : float, optional
-        Per-frame perpendicular merge gate in px (scaled by gap). Default is 4.0.
+    merge_max_disp_along_um : float, optional
+        Per-frame along merge gate, in µm (scaled by gap). Default is 1.0.
+    merge_max_disp_perp_um : float, optional
+        Per-frame perpendicular merge gate, in µm (scaled by gap). Default is 0.3.
     merge_ori_tol_deg : float, optional
         Orientation tolerance for merging in degrees. Default is 45.0.
     merge_slen_tol_um : float, optional
@@ -1061,13 +1066,28 @@ def track_sarcomere_vectors(
     T = len(zbands_stack)
     if T < 2:
         raise ValueError("Need at least 2 frames.")
+    if not pixelsize or pixelsize <= 0:
+        raise ValueError(
+            f"pixelsize must be > 0 for tracking (gates are specified in µm), "
+            f"got {pixelsize!r}.")
     H, W = zbands_stack.shape[-2:]
     ori_tol_rad = float(np.deg2rad(ori_tol_deg))
     ori_similarity_threshold = float(np.cos(2.0 * ori_tol_rad))
 
-    # Scale-invariance: cap the snap gates relative to the sarcomere length (px)
-    # so a snap can never cross to a neighbour, regardless of pixel size. No-op
-    # at the calibration scale; only binds at coarse pixel sizes (small slen_px).
+    # Pixel-size invariance: all public gates are specified in micrometres so the
+    # same defaults track correctly at any pixel size out of the box. Convert the
+    # physical gates to pixels here, once, with the calibration.
+    px = float(pixelsize)
+    dt_clip = float(dt_clip_um) / px
+    max_disp_along_px = float(max_disp_along_um) / px
+    max_disp_perp_px = float(max_disp_perp_um) / px
+    merge_max_disp_along_px = float(merge_max_disp_along_um) / px
+    merge_max_disp_perp_px = float(merge_max_disp_perp_um) / px
+
+    # Secondary scale-invariance safety net: also cap the snap gates relative to
+    # the measured sarcomere length so a snap can never cross to a neighbour even
+    # if the µm gate is set unusually large for the local sarcomere spacing. No-op
+    # at the default gates / typical sarcomere lengths.
     median_slen_px = _median_slen_px(sarcomere_lengths_all, pixelsize)
     if median_slen_px is not None and median_slen_px > 0:
         along_cap = _ALONG_SLEN_FRAC * median_slen_px
@@ -1544,7 +1564,7 @@ def compute_motion_field(
     pixelsize: float,
     frametime: Optional[float] = None,
     threshold: float = 0.5,
-    dt_clip: float = 20.0,
+    dt_clip_um: float = 2.0,
     farneback_kwargs: Optional[dict] = None,
     progress_notifier: Optional[object] = None,
 ) -> Dict[str, object]:
@@ -1568,8 +1588,8 @@ def compute_motion_field(
         Frame time in s, used for velocity. Default is None.
     threshold : float, optional
         Threshold binarizing both masks for flow. Default is 0.5.
-    dt_clip : float, optional
-        Distance-transform clip in px. Default is 20.0.
+    dt_clip_um : float, optional
+        Distance-transform clip for the flow, in µm. Default is 2.0.
     farneback_kwargs : dict or None, optional
         Extra keyword arguments forwarded to :func:`compute_flow_farneback`.
         Default is None.
@@ -1582,9 +1602,11 @@ def compute_motion_field(
     dict
         ``'flow_at_vectors'`` plus the :func:`compute_motion_field_stats` keys.
     """
+    if not pixelsize or pixelsize <= 0:
+        raise ValueError(f"pixelsize must be > 0, got {pixelsize!r}.")
     flows = compute_flow_sequence(
         zbands_stack, mbands_stack,
-        threshold=threshold, clip=dt_clip,
+        threshold=threshold, clip=float(dt_clip_um) / float(pixelsize),
         farneback_kwargs=farneback_kwargs,
         progress_notifier=progress_notifier,
     )

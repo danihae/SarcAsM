@@ -16,7 +16,7 @@ import napari
 
 from .parameters import Parameters
 from .parameter import Parameter
-from sarcasm import SarcAsM, Motion, TypeUtils, Structure
+from sarcasm import SarcAsM, TypeUtils
 from typing import Optional
 
 
@@ -32,7 +32,6 @@ class ApplicationModel:
         self.currentlyProcessing = Parameter("currentlyProcessing", False)
         self.__file_extension = ".json"
         self.__line_dictionary = {}  # todo: remove the line dictionary
-        self.__sarcomere: Optional[Motion] = None
         self.__scheme = '%d_%d_%d_%d_%.2f'
         self.__parameters = Parameters()
         self.__create_parameters()
@@ -46,7 +45,6 @@ class ApplicationModel:
         self._cell = None
         self.__cell_file_name = None
         self.__line_dictionary = {}
-        self.__sarcomere = None
 
     @property
     def line_dictionary(self):
@@ -60,11 +58,7 @@ class ApplicationModel:
         return self.__parameters
 
     @property
-    def sarcomere(self) -> Optional[Motion]:
-        return self.__sarcomere
-
-    @property
-    def cell(self) -> Optional[Structure]:
+    def cell(self) -> Optional[SarcAsM]:
         return self._cell
 
     @property
@@ -73,12 +67,7 @@ class ApplicationModel:
 
     def init_cell(self, cell_file):
         self.__cell_file_name = cell_file
-        # this is no longer of type SarcAsM but of Type Structure
-        self._cell = Structure(cell_file, use_gui=True)
-
-    def init_sarcomere(self, loi_name):
-        cell_file_name = TypeUtils.unbox(self.__cell_file_name)
-        self.__sarcomere = Motion(cell_file_name, loi_name=loi_name)
+        self._cell = SarcAsM(cell_file, use_gui=True)
 
     def is_initialized(self):
         # check if file is loaded, check if viewer is active(not closed)
@@ -94,7 +83,6 @@ class ApplicationModel:
     def set_to_default(self):
         self._set_defaults_file_load()
         self._set_defaults_structure()
-        self._set_defaults_loi()
         self._set_defaults_motion()
         self._set_defaults_batch()
 
@@ -137,6 +125,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
+        self.__parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').set_value(0.0)
 
 
         self.__parameters.get_parameter(name='structure.myofibril.ratio_seeds').set_value(0.1)
@@ -154,8 +143,38 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.domain.analysis.area_min').set_value(20.0)
         self.__parameters.get_parameter(name='structure.domain.analysis.dilation_radius').set_value(0.3)
 
-    def _set_defaults_loi(self):
-        self.__parameters.get_parameter(name='loi.detect.frame').set_value(0)
+    def _set_defaults_motion(self):
+        # Track sarcomere vectors
+        self.__parameters.get_parameter(name='motion.track.threshold_mbands').set_value(0.25)
+        self.__parameters.get_parameter(name='motion.track.threshold_zbands').set_value(0.5)
+        self.__parameters.get_parameter(name='motion.track.max_disp_along').set_value(1.0)
+        self.__parameters.get_parameter(name='motion.track.max_disp_perp').set_value(0.2)
+        self.__parameters.get_parameter(name='motion.track.ori_tol').set_value(45.0)
+        self.__parameters.get_parameter(name='motion.track.memory').set_value(5)
+        self.__parameters.get_parameter(name='motion.track.min_length').set_value(5)
+        self.__parameters.get_parameter(name='motion.track.max_gap_interp').set_value(5)
+        self.__parameters.get_parameter(name='motion.track.merge').set_value(True)
+        self.__parameters.get_parameter(name='motion.track.slen_lower').set_value(1.0)
+        self.__parameters.get_parameter(name='motion.track.slen_upper').set_value(3.0)
+
+        # Group tracks
+        self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
+        self.__parameters.get_parameter(name='motion.group.reference_frame').set_value(0)
+        self.__parameters.get_parameter(name='motion.group.min_coverage').set_value(0.5)
+
+        # Analyze track motion (ContractionNet)
+        self.__parameters.get_parameter(name='motion.analyze.aggregate').set_value('auto')
+        self.__parameters.get_parameter(name='motion.analyze.threshold').set_value(0.3)
+        self.__parameters.get_parameter(name='motion.analyze.contr_time_min').set_value(0.2)
+        self.__parameters.get_parameter(name='motion.analyze.merge_time_max').set_value(0.05)
+        self.__parameters.get_parameter(name='motion.analyze.buffer_frames').set_value(3)
+        self.__parameters.get_parameter(name='motion.analyze.min_valid_frames').set_value(0.5)
+        self.__parameters.get_parameter(name='motion.analyze.filter_wl').set_value(13)
+        self.__parameters.get_parameter(name='motion.analyze.filter_po').set_value(5)
+        self.__parameters.get_parameter(name='motion.analyze.slen_lower').set_value(1.0)
+        self.__parameters.get_parameter(name='motion.analyze.slen_upper').set_value(3.0)
+
+        # LOI auto-detection (used when grouping by 'loi' without drawn lines)
         self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
         self.__parameters.get_parameter(name='loi.detect.ratio_seeds').set_value(0.1)
         self.__parameters.get_parameter(name='loi.detect.persistence').set_value(4)
@@ -165,50 +184,8 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='loi.detect.number_limits_upper').set_value(50)
         self.__parameters.get_parameter(name='loi.detect.length_limits_lower').set_value(0.0)
         self.__parameters.get_parameter(name='loi.detect.length_limits_upper').set_value(200.0)
-        self.__parameters.get_parameter(name='loi.detect.sarcomere_mean_length_limits_lower').set_value(1.0)
-        self.__parameters.get_parameter(name='loi.detect.sarcomere_mean_length_limits_upper').set_value(3.0)
-        self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.sarcomere_std_length_limits_upper').set_value(1.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_mean_length_limits_upper').set_value(50.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_std_length_limits_upper').set_value(50.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_lower').set_value(0.0)
-        self.__parameters.get_parameter(name='loi.detect.midline_min_length_limits_upper').set_value(50.0)
         self.__parameters.get_parameter(name='loi.detect.cluster_threshold_lois').set_value(40.0)
         self.__parameters.get_parameter(name='loi.detect.linkage').set_value('single')
-        self.__parameters.get_parameter(name='loi.detect.line_width').set_value(0.65)
-        self.__parameters.get_parameter(name='loi.detect.order').set_value(0)
-        self.__parameters.get_parameter(name='loi.detect.plot').set_value(False)
-
-    def _set_defaults_motion(self):
-        self.__parameters.get_parameter(name='motion.detect_peaks.threshold').set_value(0.2)
-        self.__parameters.get_parameter(name='motion.detect_peaks.min_distance').set_value(1.4)
-        self.__parameters.get_parameter(name='motion.detect_peaks.width').set_value(0.5)
-
-        self.__parameters.get_parameter(name='motion.track_z_bands.search_range').set_value(2.0)
-        self.__parameters.get_parameter(name='motion.track_z_bands.memory').set_value(10)
-        self.__parameters.get_parameter(name='motion.track_z_bands.memory_interpolation').set_value(3)
-
-        self.__parameters.get_parameter(name='motion.systoles.weights').set_value('default')  # weights is a network file
-        self.__parameters.get_parameter(name='motion.systoles.threshold').set_value(0.3)
-        self.__parameters.get_parameter(name='motion.systoles.slen_limits.lower').set_value(1.2)
-        self.__parameters.get_parameter(name='motion.systoles.slen_limits.upper').set_value(3.0)
-        self.__parameters.get_parameter(name='motion.systoles.n_sarcomeres_min').set_value(4)
-        self.__parameters.get_parameter(name='motion.systoles.buffer_frames').set_value(3)
-        self.__parameters.get_parameter(name='motion.systoles.contr_time_min').set_value(0.2)
-        self.__parameters.get_parameter(name='motion.systoles.merge_time_max').set_value(0.05)
-
-
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_lower').set_value(1.2)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_upper').set_value(3.0)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.dilate_systoles').set_value(0.0)
-        self.__parameters.get_parameter(
-            name='motion.get_sarcomere_trajectories.filter_params_vel.window_length').set_value(13)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.filter_params_vel.polyorder').set_value(
-            5)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower').set_value(1.5)
-        self.__parameters.get_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper').set_value(2.3)
 
     def _set_defaults_batch(self):
         self.__parameters.get_parameter(name='batch.pixel.size').set_value(0.1)
@@ -263,6 +240,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.vectors.interpolation_factor')
         self.__parameters.set_parameter(name='structure.vectors.length_limit_lower')
         self.__parameters.set_parameter(name='structure.vectors.length_limit_upper')
+        self.__parameters.set_parameter(name='structure.vectors.smooth_orientation_sigma')
 
 
         self.__parameters.set_parameter(name='structure.myofibril.ratio_seeds')
@@ -280,60 +258,38 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.domain.analysis.dilation_radius')
         # endregion
 
-        # region loi parameters
-        self.__parameters.set_parameter(name='loi.detect.frame')
-        self.__parameters.set_parameter(name='loi.detect.n_lois')
-        self.__parameters.set_parameter(name='loi.detect.ratio_seeds')
-        self.__parameters.set_parameter(name='loi.detect.persistence')
-        self.__parameters.set_parameter(name='loi.detect.threshold_distance')
-        self.__parameters.set_parameter(name='loi.detect.mode')
-        self.__parameters.set_parameter(name='loi.detect.number_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.number_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.sarcomere_mean_length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.sarcomere_mean_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.sarcomere_std_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.midline_mean_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.midline_std_length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.midline_std_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.midline_min_length_limits_lower')
-        self.__parameters.set_parameter(name='loi.detect.midline_min_length_limits_upper')
-        self.__parameters.set_parameter(name='loi.detect.cluster_threshold_lois')
-        self.__parameters.set_parameter(name='loi.detect.linkage')
-        self.__parameters.set_parameter(name='loi.detect.line_width')
-        self.__parameters.set_parameter(name='loi.detect.order')
-        self.__parameters.set_parameter(name='loi.detect.plot')
-        # endregion
+        # region motion parameters (track-based)
+        self.__parameters.set_parameter(name='motion.track.threshold_mbands')
+        self.__parameters.set_parameter(name='motion.track.threshold_zbands')
+        self.__parameters.set_parameter(name='motion.track.max_disp_along')
+        self.__parameters.set_parameter(name='motion.track.max_disp_perp')
+        self.__parameters.set_parameter(name='motion.track.ori_tol')
+        self.__parameters.set_parameter(name='motion.track.memory')
+        self.__parameters.set_parameter(name='motion.track.min_length')
+        self.__parameters.set_parameter(name='motion.track.max_gap_interp')
+        self.__parameters.set_parameter(name='motion.track.merge')
+        self.__parameters.set_parameter(name='motion.track.slen_lower')
+        self.__parameters.set_parameter(name='motion.track.slen_upper')
 
-        # region motion parameters
-        self.__parameters.set_parameter(name='motion.detect_peaks.threshold')
-        self.__parameters.set_parameter(name='motion.detect_peaks.min_distance')
-        self.__parameters.set_parameter(name='motion.detect_peaks.width')
+        self.__parameters.set_parameter(name='motion.group.by')
+        self.__parameters.set_parameter(name='motion.group.reference_frame')
+        self.__parameters.set_parameter(name='motion.group.min_coverage')
 
-        self.__parameters.set_parameter(name='motion.track_z_bands.search_range')
-        self.__parameters.set_parameter(name='motion.track_z_bands.memory')
-        self.__parameters.set_parameter(name='motion.track_z_bands.memory_interpolation')
+        self.__parameters.set_parameter(name='motion.analyze.aggregate')
+        self.__parameters.set_parameter(name='motion.analyze.threshold')
+        self.__parameters.set_parameter(name='motion.analyze.contr_time_min')
+        self.__parameters.set_parameter(name='motion.analyze.merge_time_max')
+        self.__parameters.set_parameter(name='motion.analyze.buffer_frames')
+        self.__parameters.set_parameter(name='motion.analyze.min_valid_frames')
+        self.__parameters.set_parameter(name='motion.analyze.filter_wl')
+        self.__parameters.set_parameter(name='motion.analyze.filter_po')
+        self.__parameters.set_parameter(name='motion.analyze.slen_lower')
+        self.__parameters.set_parameter(name='motion.analyze.slen_upper')
 
-        self.__parameters.set_parameter(name='motion.systoles.weights')  # weights is a network file
-        self.__parameters.set_parameter(name='motion.systoles.threshold')
-        self.__parameters.set_parameter(name='motion.systoles.slen_limits.lower')
-        self.__parameters.set_parameter(name='motion.systoles.slen_limits.upper')
-        self.__parameters.set_parameter(name='motion.systoles.n_sarcomeres_min')
-        self.__parameters.set_parameter(name='motion.systoles.buffer_frames')
-        self.__parameters.set_parameter(name='motion.systoles.contr_time_min')
-        self.__parameters.set_parameter(name='motion.systoles.merge_time_max')
-
-
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_lower')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.s_length_limits_upper')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.dilate_systoles')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.filter_params_vel.window_length')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.filter_params_vel.polyorder')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.equ_limits_lower')
-        self.__parameters.set_parameter(name='motion.get_sarcomere_trajectories.equ_limits_upper')
+        for _n in ('n_lois', 'ratio_seeds', 'persistence', 'threshold_distance', 'mode',
+                   'number_limits_lower', 'number_limits_upper', 'length_limits_lower',
+                   'length_limits_upper', 'cluster_threshold_lois', 'linkage'):
+            self.__parameters.set_parameter(name=f'loi.detect.{_n}')
         # endregion
 
         # region batch processing parameters

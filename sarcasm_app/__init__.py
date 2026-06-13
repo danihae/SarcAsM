@@ -124,13 +124,11 @@ from .control.application_control import ApplicationControl
 from .control.logging_handler import setup_gui_logging
 from .control.file_selection_control import FileSelectionControl
 from .control.motion_analysis_control import MotionAnalysisControl
-from .control.loi_analysis_control import LOIAnalysisControl
 from .control.structure_analysis_control import StructureAnalysisControl
 from .control.batch_processing_control import BatchProcessingControl
 from .model import ApplicationModel
 from .view.file_selection import Ui_Form as FileSelectionWidget
 from .view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
-from .view.parameters_loi_analysis import Ui_Form as LoiAnalysisWidget
 from .view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
 from .view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
@@ -183,7 +181,6 @@ class Application:
 
         self.__file_selection = FileSelectionWidget()
         self.__structure_analysis_parameters = StructureAnalysisWidget()
-        self.__loi_analysis = LoiAnalysisWidget()
         self.__motion_analysis = MotionAnalysisWidget()
         self.__batch_processing = BatchProcessingWidget()
         self.__progress_bar = QProgressBar()
@@ -203,7 +200,6 @@ class Application:
         self.__file_selection_control = FileSelectionControl(self.__file_selection, self.__control)
         self.__structure_analysis_control = StructureAnalysisControl(self.__structure_analysis_parameters,
                                                                      self.__control)
-        self.__loi_analysis_control = LOIAnalysisControl(self.__loi_analysis, self.__control)
         self.__motion_analysis_control = MotionAnalysisControl(self.__motion_analysis, self.__control)
         self.__batch_processing_control = BatchProcessingControl(self.__batch_processing, self.__control)
 
@@ -380,10 +376,6 @@ class Application:
         self.__structure_analysis_parameters.setupUi(widget_structure_parameters)
         _mark_accent(self.__structure_analysis_parameters.btn_analyze_structure)
 
-        widget_loi_analysis = QWidget()
-        self.__loi_analysis.setupUi(widget_loi_analysis)
-        _mark_accent(self.__loi_analysis.btn_detect_lois)
-
         widget_motion_analysis = QWidget()
         self.__motion_analysis.setupUi(widget_motion_analysis)
         _mark_accent(self.__motion_analysis.btn_analyze_motion)
@@ -394,7 +386,7 @@ class Application:
         self.__install_override_radio()
 
         # B5: unit suffixes (after setupUi so the labels exist).
-        for w in (widget_structure_parameters, widget_loi_analysis,
+        for w in (widget_structure_parameters,
                   widget_motion_analysis, widget_batch_processing):
             _apply_spinbox_unit_suffixes(w)
 
@@ -404,13 +396,9 @@ class Application:
              'Structure Analysis',
              'Analyze sarcomere morphology: Z-bands, vectors, myofibrils, and domains.',
              model._set_defaults_structure),
-            (widget_loi_analysis,
-             'LOI Detection',
-             'Detect lines of interest (LOIs) along myofibrils for motion tracking.',
-             model._set_defaults_loi),
             (widget_motion_analysis,
-             'Motion Analysis',
-             'Analyze sarcomere contraction and motion along detected LOIs.',
+             'Motion',
+             'Track sarcomeres across frames, group into fibres/domains, and analyze contraction per group.',
              model._set_defaults_motion),
             (widget_batch_processing,
              'Batch Processing',
@@ -432,7 +420,6 @@ class Application:
         self.__control.set_debug_action(self.debug)
         self.__file_selection_control.bind_events()
         self.__structure_analysis_control.bind_events()
-        self.__loi_analysis_control.bind_events()
         self.__motion_analysis_control.bind_events()
         self.__batch_processing_control.bind_events()
 

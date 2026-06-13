@@ -38,7 +38,7 @@ Access (see :class:`Results`)::
     r.tracks.slen               # lazy zarr array — nothing read yet
     r.tracks.slen[5]            # one track, reads a single chunk
     r.structure.sarcomere.oop   # eager value
-    r.params.track_sarcomere_vectors.max_disp_along_px
+    r.params.track_sarcomere_vectors.max_disp_along_um
     r['tracks_slen']            # legacy flat-key dict access (materialised)
 
 Scope of this POC: analysis + track data (the contents of the old

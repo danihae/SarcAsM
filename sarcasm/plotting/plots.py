@@ -21,16 +21,16 @@ from typing import Union, Tuple, Optional, Literal
 import numpy as np
 from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
-from tifffile import tifffile
 
 from sarcasm._internal.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plotting.plot_utils import PlotUtils
 from sarcasm.structure import SarcAsM
-from sarcasm.analysis import domain_clustering, myofibril_analysis
+from sarcasm.analysis import domain_clustering, grouped_motion, myofibril_analysis
 from sarcasm.utils import Utils
 
 # Canonical axis labels (kept consistent with the symbols used across the
@@ -310,9 +310,9 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
-        assert os.path.exists(sarc_obj.file_zbands), ('Z-band mask not found. Run predict_z_bands first.')
+        assert sarc_obj._mask_exists('zbands'), ('Z-band mask not found. Run detect_sarcomeres first.')
 
-        img = tifffile.imread(sarc_obj.file_zbands, key=frame)
+        img = sarc_obj._read_mask('zbands', frames=frame)
         if zero_transparent:
             img = np.ma.masked_where(img < 0.05, img)
         ax.imshow(img, cmap=cmap, alpha=alpha)
@@ -372,11 +372,11 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
-        if not os.path.exists(sarc_obj.file_zbands):
-            raise FileNotFoundError(f"Z-bands file not found: {sarc_obj.file_zbands}")
+        if not sarc_obj._mask_exists('zbands'):
+            raise FileNotFoundError("Z-band mask not found. Run detect_sarcomeres first.")
 
-        zbands = tifffile.imread(sarc_obj.file_zbands, key=frame)
-        midlines = tifffile.imread(sarc_obj.file_mbands, key=frame)
+        zbands = sarc_obj._read_mask('zbands', frames=frame)
+        midlines = sarc_obj._read_mask('mbands', frames=frame)
         joined = midlines - zbands
 
         ax.imshow(joined, cmap=cmap, alpha=alpha)
@@ -435,9 +435,9 @@ class Plots:
         title : str, optional
             The title for the plot. Default is None.
         """
-        assert os.path.exists(sarc_obj.file_cell_mask), ('Cell mask not found. Run predict_cell_mask first.')
+        assert sarc_obj._mask_exists('cell_mask'), ('Cell mask not found. Run detect_sarcomeres first.')
 
-        img = tifffile.imread(sarc_obj.file_cell_mask, key=frame) > threshold
+        img = sarc_obj._read_mask('cell_mask', frames=frame) > threshold
         ax.imshow(img, cmap=cmap, alpha=alpha)
 
         if scalebar:
@@ -616,33 +616,37 @@ class Plots:
                                          zoom_region: Tuple[int, int, int, int] = None,
                                          inset_bounds=(0.6, 0.6, 0.4, 0.4),):
         """
-            Plots sarcomere orientation field of the sarcomere object.
+        Plot the sarcomere orientation field (X- and Y-components) of the sarcomere object.
 
-            Parameters
-            ----------
-            ax1 : matplotlib.axes.Axes
-                The axes to draw the plot on.
-            sarc_obj : object
-                The instance of SarcAsM class to plot.
-            frame : int, optional
-                The frame to plot. Defaults to 0.
-            scalebar : bool, optional
-                Whether to add a scalebar to the plot. Defaults to True.
-            colorbar : bool, optional
-                Whether to add a colorbar to the plot. Defaults to True.
-            shrink_colorbar : float, optional
-                The factor by which to shrink the colorbar. Defaults to 0.7.
-            orient_colorbar : str, optional
-                The orientation of the colorbar ('horizontal' or 'vertical'). Defaults to 'vertical'.
-            zoom_region : tuple of int, optional
-                The region to zoom in on, specified as (x1, x2, y1, y2). Defaults to None.
-            inset_bounds : tuple of float, optional
-                Bounds of inset axis, specified as (x0, y0, width, height). Defaults to (0.6, 0.6, 0.4, 0.4).
-            """
-        assert os.path.exists(
-            sarc_obj.file_orientation), 'Sarcomere orientation map does not exist! Run predict_sarcomeres first.'
+        Parameters
+        ----------
+        ax1 : matplotlib.axes.Axes
+            The axes to draw the X-field component on.
+        ax2 : matplotlib.axes.Axes
+            The axes to draw the Y-field component on.
+        sarc_obj : SarcAsM
+            The instance of SarcAsM class to plot.
+        frame : int, optional
+            The frame to plot. Default is 0.
+        cmap : str, optional
+            The colormap to use. Default is 'vanimo'.
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Default is True.
+        colorbar : bool, optional
+            Whether to add a colorbar to the plot. Default is True.
+        shrink_colorbar : float, optional
+            The factor by which to shrink the colorbar. Default is 0.7.
+        orient_colorbar : {'vertical', 'horizontal'}, optional
+            The orientation of the colorbar. Default is 'vertical'.
+        zoom_region : tuple of int, optional
+            The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
+        inset_bounds : tuple of float, optional
+            Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
+        """
+        assert sarc_obj._mask_exists('orientation'), \
+            'Sarcomere orientation map does not exist! Run detect_sarcomeres first.'
 
-        orientation_field = tifffile.imread(sarc_obj.file_orientation, key=[frame * 2, frame * 2 + 1])
+        orientation_field = sarc_obj._read_mask('orientation', frames=frame)
 
         plot1 = ax1.imshow(orientation_field[0], cmap=cmap)
         plot2 = ax2.imshow(orientation_field[1], cmap=cmap)
@@ -737,15 +741,15 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
-        assert os.path.exists(sarc_obj.file_sarcomere_mask), ('No sarcomere masks stored. '
-                                                              'Run sarc_obj.analyze_sarcomere_vectors ')
+        assert sarc_obj._mask_exists('sarcomere_mask'), ('No sarcomere masks stored. '
+                                                         'Run detect_sarcomeres first.')
 
         if show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, alpha=alpha_z_bands, frame=frame)
         else:
             Plots.plot_image(ax, sarc_obj, frame=frame, clip_thrs=clip_thrs)
 
-        sarcomere_mask = tifffile.imread(sarc_obj.file_sarcomere_mask, key=frame)
+        sarcomere_mask = sarc_obj._read_mask('sarcomere_mask', frames=frame)
 
         # binarize sarcomere mask
         if threshold is None:
@@ -1827,11 +1831,17 @@ class Plots:
 
     @staticmethod
     def plot_tracks(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'coverage',
-                    cmap: str = 'viridis', s: float = 4, only_snapped: bool = True,
+                    cmap: str = 'viridis', linewidth: float = 0.8, only_snapped: bool = True,
+                    max_tracks: Optional[int] = 2000, alpha: float = 0.8,
                     show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
                     scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
         """
-        Scatter the tracked sarcomere centres at one frame, coloured per track.
+        Draw each tracked sarcomere as a trajectory line (its centre's path over time).
+
+        One thin polyline per track links the sarcomere-centre positions across
+        frames, coloured per track. Because sarcomere centres oscillate by only a
+        fraction of a micron, each line is a small local squiggle — together they
+        show where the tissue moves and how the tracks are grouped.
 
         Parameters
         ----------
@@ -1840,16 +1850,25 @@ class Plots:
         sarc_obj : SarcAsM
             SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
         frame : int, optional
-            Movie frame to draw. Default is 0.
+            Movie frame used for the **background** image/Z-bands only (the
+            trajectories always span the full movie). Default is 0.
         color_by : {'coverage', 'slen', 'group'}, optional
-            Per-track colour: snap coverage, sarcomere length at this frame, or
+            Per-track colour: snap coverage, the track's mean sarcomere length, or
             ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`). Default is 'coverage'.
         cmap : str, optional
-            Colormap. Default is 'viridis'.
-        s : float, optional
-            Marker size. Default is 4.
+            Colormap for the 'coverage'/'slen' colourings ('group' always uses a
+            discrete ``gist_rainbow``). Default is 'viridis'.
+        linewidth : float, optional
+            Width of the trajectory lines. Default is 0.8.
         only_snapped : bool, optional
-            Only draw tracks that actually snapped at this frame (vs flow-predicted). Default is True.
+            Only link frames where the track actually snapped to a detection
+            (vs flow-coasted/gap); the line bridges across the skipped frames.
+            Default is True.
+        max_tracks : int or None, optional
+            Draw at most this many tracks (longest-coverage first) for legibility.
+            None draws all. Default is 2000.
+        alpha : float, optional
+            Line opacity. Default is 0.8.
         show_image : bool, optional
             Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
         cmap_z_bands : str, optional
@@ -1859,24 +1878,22 @@ class Plots:
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         colorbar : bool, optional
-            Whether to add a colorbar to the plot. Default is False.
+            Whether to add a colorbar to the plot (only for 'coverage'/'slen'). Default is False.
         title : str, optional
             The title for the plot. Default is None.
         """
         if 'tracks_positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         n_tracks = int(sarc_obj.data.get('n_tracks', 0))
-        t = sarc_obj._tracked_frame_index(frame)
-
         pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)
         snapped = np.asarray(sarc_obj.data['tracks_snapped']).reshape(n_tracks, -1).astype(bool)
-        yx = pos[:, t]  # (n_tracks, 2)
-        valid = np.isfinite(yx[:, 0]) & np.isfinite(yx[:, 1])
-        if only_snapped:
-            valid &= snapped[:, t]
+        n_t = pos.shape[1]
 
+        # Per-track colour scalar (computed once per track, not per frame).
         if color_by == 'slen':
-            c = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[:, t]
+            slen = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
+            with np.errstate(invalid='ignore'):
+                c = np.nanmean(np.where(snapped, slen, np.nan), axis=1)
             clabel = 'Sarcomere length [µm]'
         elif color_by == 'group':
             if 'track_group_id' not in sarc_obj.data:
@@ -1884,18 +1901,57 @@ class Plots:
             c = np.asarray(sarc_obj.data['track_group_id']).reshape(-1).astype(float)
             clabel = 'Group id'
         else:  # coverage
-            length = np.asarray(sarc_obj.data['track_lengths'])
-            c = length / float(snapped.shape[1])
+            c = np.asarray(sarc_obj.data['track_lengths'], dtype=float) / float(n_t)
             clabel = 'Track coverage'
+
+        # Build one (x, y) polyline per track from its finite (and, if requested,
+        # snapped) centre positions in time order; gaps are dropped, not split.
+        segments, seg_vals = [], []
+        for k in range(n_tracks):
+            if color_by != 'group' and not np.isfinite(c[k]):
+                continue          # no colour value (e.g. an all-gap track for 'slen')
+            if color_by == 'group' and c[k] < 0:
+                continue          # dropped by min_coverage / unassigned
+            keep = np.isfinite(pos[k, :, 0]) & np.isfinite(pos[k, :, 1])
+            if only_snapped:
+                keep &= snapped[k]
+            if keep.sum() < 2:
+                continue          # need >= 2 vertices to draw a line
+            p = pos[k][keep]      # (m, 2) yx in time order
+            segments.append(np.column_stack([p[:, 1], p[:, 0]]))  # -> (m, 2) as (x, y)
+            seg_vals.append(c[k])
+
+        # Keep the longest (most-covered) trajectories first for legibility.
+        if max_tracks is not None and len(segments) > max_tracks:
+            order = np.argsort([-seg.shape[0] for seg in segments])[:max_tracks]
+            segments = [segments[i] for i in order]
+            seg_vals = [seg_vals[i] for i in order]
 
         if show_image:
             Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
         else:
             Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
 
-        sc = ax.scatter(yx[valid, 1], yx[valid, 0], c=c[valid], cmap=cmap, s=s, edgecolors='none')
-        if colorbar:
-            cb = ax.figure.colorbar(sc, ax=ax, fraction=0.035, pad=0.02)
+        lc = None
+        norm = None
+        if segments:
+            vals = np.asarray(seg_vals, dtype=float)
+            if color_by == 'group':
+                n_groups = max(int(sarc_obj.data.get('n_groups', 0)), 1)
+                gcm = plt.get_cmap('gist_rainbow')
+                colors = gcm((vals.astype(int) % n_groups) / n_groups)
+                lc = LineCollection(segments, colors=colors, linewidths=linewidth, alpha=alpha)
+            else:
+                finite = vals[np.isfinite(vals)]
+                if finite.size:
+                    norm = plt.Normalize(vmin=float(finite.min()), vmax=float(finite.max()))
+                lc = LineCollection(segments, cmap=plt.get_cmap(cmap), norm=norm,
+                                    linewidths=linewidth, alpha=alpha)
+                lc.set_array(vals)
+            ax.add_collection(lc)
+
+        if colorbar and lc is not None and color_by != 'group' and norm is not None:
+            cb = ax.figure.colorbar(lc, ax=ax, fraction=0.035, pad=0.02)
             cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
@@ -1978,34 +2034,6 @@ class Plots:
                      fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def _equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
-        """Equilibrium (resting) sarcomere length per trace, Motion-class semantics.
-
-        ``equ = median(SL over frames where the contraction state is 0)`` — the
-        contraction intervals come from ContractionNet and the equilibrium is the
-        length wherever the trace is *not* contracting (see
-        :meth:`Motion.get_trajectories`). Falls back to the median over all frames
-        for a trace with no quiet frame. Accepts a 1D ``(T,)`` trace (returns a
-        scalar) or a 2D ``(k, T)`` stack (returns ``(k,)``)."""
-        slen = np.asarray(slen, dtype=float)
-        quiet = ~np.asarray(contr, dtype=bool)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', category=RuntimeWarning)
-            if slen.ndim == 1:
-                vals = slen[quiet]
-                if not np.any(np.isfinite(vals)):
-                    vals = slen
-                return float(np.nanmedian(vals)) if np.any(np.isfinite(vals)) else np.nan
-            equ = np.full(slen.shape[0], np.nan)
-            for i in range(slen.shape[0]):
-                vals = slen[i, quiet]
-                if not np.any(np.isfinite(vals)):
-                    vals = slen[i]
-                if np.any(np.isfinite(vals)):
-                    equ[i] = np.nanmedian(vals)
-            return equ
-
-    @staticmethod
     def _plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, ylabel,
                             t_lim, y_lim, n_rows, show_contr, hline='equ'):
         """Stacked per-group time-series (shared by plot_slen_mean / plot_delta_slen_mean).
@@ -2038,7 +2066,7 @@ class Plots:
                 ax_i.axhline(0, linewidth=0.5, linestyle=':', c='k')
             elif hline == 'equ':
                 c = group_contr[g] if group_contr is not None else np.zeros(n_frames, dtype=bool)
-                equ_g = Plots._equilibrium_over_quiet(matrix[g], c)
+                equ_g = grouped_motion.equilibrium_over_quiet(matrix[g], c)
                 if np.isfinite(equ_g):
                     ax_i.axhline(equ_g, linewidth=0.5, linestyle=':', c='k')
             if show_contr and group_contr is not None:
@@ -2152,7 +2180,7 @@ class Plots:
         delta = np.full_like(slen_ts, np.nan)
         for g in range(slen_ts.shape[0]):
             c = contr[g] if contr is not None else np.zeros(slen_ts.shape[1], dtype=bool)
-            delta[g] = slen_ts[g] - Plots._equilibrium_over_quiet(slen_ts[g], c)
+            delta[g] = slen_ts[g] - grouped_motion.equilibrium_over_quiet(slen_ts[g], c)
         Plots._plot_group_stacked(ax, sarc_obj, kind, delta, contr, _LABEL_DELTA_SL,
                                   t_lim, y_lim, n_rows, show_contr, hline='zero')
 
@@ -2194,9 +2222,9 @@ class Plots:
         member_slen = slen_tracks[members]  # (k, T)
 
         if mode == 'delta':
-            equ_m = Plots._equilibrium_over_quiet(member_slen, contr)
+            equ_m = grouped_motion.equilibrium_over_quiet(member_slen, contr)
             member_y = member_slen - equ_m[:, None]
-            mean_y = agg - Plots._equilibrium_over_quiet(agg, contr)
+            mean_y = agg - grouped_motion.equilibrium_over_quiet(agg, contr)
             ylabel = _LABEL_DELTA_SL
         else:
             member_y = member_slen
@@ -2249,7 +2277,7 @@ class Plots:
 
     @staticmethod
     def plot_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
-                  t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
+                  t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.4, 2.2),
                   show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                   color: Optional[str] = None, mean_color: str = 'k'):
         """

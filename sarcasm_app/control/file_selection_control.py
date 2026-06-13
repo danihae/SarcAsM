@@ -20,7 +20,6 @@ import subprocess
 
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
-from sarcasm import SarcAsM
 from sarcasm.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
@@ -49,7 +48,12 @@ class FileSelectionControl:
         return self.__main_control.model.cell
 
     def bind_events(self):
+        # Let files dropped on the embedded napari viewer go through the same
+        # import flow as the buttons (full analysis layers + metadata panel).
+        self.__main_control.set_open_file_handler(self.open_file)
+
         self.__file_selection_widget.btn_search.clicked.connect(self.on_search)
+        self.__file_selection_widget.btn_open_zarr.clicked.connect(self.on_open_zarr)
         self.__file_selection_widget.btn_set_to_default.clicked.connect(self.on_set_to_default)
         self.__file_selection_widget.btn_open_folder.clicked.connect(self.on_open_cell_folder)
         self.__file_selection_widget.btn_store_metadata.clicked.connect(self.on_store_meta_data)
@@ -146,10 +150,30 @@ class FileSelectionControl:
 
     def on_search(self):
         # f_name is a tuple
-        f_name = QFileDialog.getOpenFileName(caption='Open Cell file', filter="Tiff Images (*.tif *.tiff)")
-        if f_name is not None:
+        f_name = QFileDialog.getOpenFileName(caption='Open .tif movie', filter="Tiff Images (*.tif *.tiff)")
+        if f_name is not None and f_name[0]:
             self.__file_selection_widget.le_cell_file.setText(f_name[0])
             self.on_return_pressed_cell_file()
+
+    def on_open_zarr(self):
+        # .ome.zarr is a directory, so select it with a directory picker
+        path = QFileDialog.getExistingDirectory(caption='Open .ome.zarr store')
+        if not path:
+            return
+        if not path.endswith('.zarr') and not os.path.exists(os.path.join(path, 'zarr.json')):
+            logger.warning(f"'{path}' does not look like a .ome.zarr store; trying anyway.")
+        self.open_file(path)
+
+    def open_file(self, path):
+        """Load *path* via the standard import flow, updating the file field.
+
+        Shared entry point for the buttons and for files dropped on the embedded
+        napari viewer. A trailing separator (Qt hands directory drops back with
+        one) is stripped so the path round-trips through the importer cleanly.
+        """
+        path = path.rstrip('/\\') if path else path
+        self.__file_selection_widget.le_cell_file.setText(path)
+        self.on_return_pressed_cell_file()
 
     def on_return_pressed_cell_file(self, event=None):
         if len(self.__file_selection_widget.le_cell_file.text()) == 0:
@@ -210,32 +234,16 @@ class FileSelectionControl:
         self.__main_control.init_sarcomere_domain_stack(visible=False)
         self.__main_control.viewer.dims.set_current_step(0, 0)
 
-        self.init_line_layer()  # initializes the layer for drawing loi's
-
-        # init or update dictionary
-        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
-
-        if cell.file_path not in self.__main_control.model.line_dictionary:
-            self.__main_control.model.line_dictionary[cell.file_path] = {}
-            pass
+        self.__main_control.init_tracks_stack(visible=False)
+        self.__main_control.init_track_groups_stack(visible=False)
 
         self._init_meta_data()
-        self._init_loi_from_file()
         self.__main_control.set_viewer_title(file)
         self.__main_control.raise_viewer()
         logger.info(f'Initialized: {file}')
         self.__main_control.update_progress(100)
         self.__main_control.model.currentlyProcessing.set_value(False)
 
-    def init_line_layer(self):
-        if self.__main_control.viewer.layers.__contains__('LOIs'):
-            layer = self.__main_control.viewer.layers.__getitem__('LOIs')
-            self.__main_control.viewer.layers.remove(layer)
-        # set the pre-selected color to red
-        _scale = self.__main_control.model.cell.scale[-2:]
-        self.__main_control.init_loi_layer(self.__main_control.viewer.add_shapes(name='LOIs', edge_color='#FF0000', scale=_scale))
-
-        pass
 
     def on_open_cell_folder(self):
         if len(self.__file_selection_widget.le_cell_file.text()) == 0:
@@ -330,7 +338,3 @@ class FileSelectionControl:
             self.__file_selection_widget.spinbox_channel.setMinimum(0)
             self.__file_selection_widget.spinbox_channel.setMaximum(cell.metadata.shape_orig[-1] - 1)
 
-    def _init_loi_from_file(self):
-        # read loi files, store the line data in dictionary and in ui loi list
-        self.__main_control.init_lois()
-        pass

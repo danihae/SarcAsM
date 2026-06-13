@@ -774,206 +774,51 @@ structure_feature_dict = {
 }
 
 motion_feature_dict = {
-    'contr_max': {
-        'description': 'Maximal contraction/shortening of each individual sarcomeres in each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Contr. $\Delta SL_-$ [µm]'
-    },
-    'contr_max_avg': {
-        'description': 'Maximal contraction/shortening of sarcomere average in LOI. '
-                       'Array with shape (c_contractions)',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Contr. $\overline{\Delta SL}_-$ [µm]'
-    },
-    'elong_max': {
-        'description': 'Maximal elongation of each individual sarcomeres in each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Elong. $\Delta SL_+$ [µm]'
-    },
-    'elong_max_avg': {
-        'description': 'Maximal elongation of sarcomere average in LOI. '
-                       'Array with shape (c_contractions)',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Elong. $\overline{\Delta SL}_+$ [µm]'
-    },
-    'vel_contr_max': {
-        'description': 'Maximal shortening velocity each individual sarcomeres in each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Vel. Contr. $V_-$ [µm/s]'
-    },
-    'vel_contr_max_avg': {
-        'description': 'Maximal shortening velocity of sarcomere average in LOI. '
-                       'Array with shape (n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Vel. Contr. $\overline{V}_-$ [µm/s]'
-    },
-    'vel_elong_max': {
-        'description': 'Maximal elongation velocity of each individual sarcomeres in each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Vel. Elong. $V_+$ [µm/s]'
-    },
-    'vel_elong_max_avg': {
-        'description': 'Maximal elongation velocity of sarcomere average in LOI. '
-                       'Array with shape (n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Vel. Elong. $\overline{V}_+$ [µm/s]'
-    },
-    'equ': {
-        'description': 'Resting length of each individual sarcomere. '
-                       'Array with shape (n_sarcomeres).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Rest. Length $RL$ [µm]'
-    },
+    # Track-based grouped motion (one value per group). Suffix keys are resolved
+    # to <kind>_<suffix> per grouping kind by SarcAsM.analyze_track_motion.
+    'kind': {
+        'description': 'Grouping used for track-based motion analysis (pool, mband, myofibril, domain, loi).',
+        'data type': str, 'function': 'SarcAsM.group_tracks', 'name': 'Grouping kind'},
+    'group_id': {
+        'description': 'Group index within the chosen grouping (0 .. n_groups-1).',
+        'data type': int, 'function': 'SarcAsM.group_tracks', 'name': 'Group id'},
+    'group_member_count': {
+        'description': 'Number of tracks assigned to the group.',
+        'data type': int, 'function': 'SarcAsM.group_tracks', 'name': 'Members'},
     'beating_rate': {
-        'description': 'Beating rate of LOI.',
-        'data type': float,
-        'function': 'Motion.detect_analyze_contractions',
-        'name': 'Beating Rate $BR$ [Hz]'
-    },
+        'description': 'Beating rate of the group (Hz); 1 / mean inter-beat interval.',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Beating rate [Hz]'},
     'beating_rate_variability': {
-        'description': 'Beating rate variability. Standard deviation of time between contraction starts.',
-        'data type': float,
-        'function': 'Motion.detect_analyze_contractions',
-        'name': 'BR Variability $BRV$ [s]'
-    },
-    'time_contr': {
-        'description': 'Duration of each individual contraction cycle.'
-                       'Array with shape (n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Time Contr. $T_C$ [s]'
-    },
-    'time_contr_avg': {
-        'description': 'Average duration of contraction cycles.',
-        'data type': float,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Time Contr. $\overline{T}_C$ [s]'
-    },
-    'time_quiet': {
-        'description': 'Duration of each quiescent period between contraction cycles. '
-                       'Array with shape (n_contractions-1).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Time quiet. $T_Q$ [s]'
-    },
-    'time_quiet_avg': {
-        'description': 'Average duration of quiescent periods between contraction cycles. ',
-        'data type': float,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Time quiet. $T_Q$ [s]'
-    },
+        'description': 'Standard deviation of inter-beat intervals of the group (s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Beating rate variability [s]'},
+    'n_contr': {
+        'description': 'Number of detected contraction cycles in the group.',
+        'data type': int, 'function': 'SarcAsM.analyze_track_motion', 'name': 'N contractions'},
+    'equ': {
+        'description': 'Equilibrium (resting) sarcomere length of the group (µm).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Equ. SL [µm]'},
+    'contr_max': {
+        'description': 'Maximal contraction (shortening) per cycle, mean over cycles (µm).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contr. dSL- [µm]'},
+    'elong_max': {
+        'description': 'Maximal elongation per cycle, mean over cycles (µm).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Elong. dSL+ [µm]'},
+    'vel_contr_max': {
+        'description': 'Maximal shortening velocity per cycle, mean over cycles (µm/s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contr. velocity [µm/s]'},
+    'vel_elong_max': {
+        'description': 'Maximal elongation velocity per cycle, mean over cycles (µm/s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Elong. velocity [µm/s]'},
     'time_to_peak': {
-        'description': 'Time to maximal contraction of each individual sarcomere for each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Time to Peak $T_P$ [s]'
-    },
-    'time_to_peak_avg': {
-        'description': 'Time to maximal contraction of sarcomere average in LOI. '
-                       'Array with shape (n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Time to Peak $\overline{T}_P$ [s]'
-    },
+        'description': 'Time from contraction onset to maximum shortening, mean over cycles (s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to peak [s]'},
     'time_to_relax': {
-        'description': 'Time from maximal to end of contraction of each individual sarcomere for each contraction cycle. '
-                       'Array with shape (n_sarcomeres, n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Time to Relax $T_R$ [s]'
-    },
-    'time_to_relax_avg': {
-        'description': 'Time from maximal to end of contraction of sarcomere average in LOI. '
-                       'Array with shape (n_contractions).',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_trajectories',
-        'name': 'Avg. Time to Relax $\overline{T}_R$ [s]'
-    },
-    'popping_events': {
-        'description': 'Sarcomere popping events, extensions of sarcomeres far beyond resting length (e.g. 0.25 µm). '
-                       'Binary array with shape (n_sarcomeres, n_contractions) with 0 for no popping and 1 for popping.',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_popping',
-        'name': 'Popping Events'
-    },
-    'popping_rate': {
-        'description': 'Average popping rate in LOI.',
-        'data type': float,
-        'function': 'Motion.analyze_popping',
-        'name': 'Popping Rate $P$'
-    },
-    'popping_rate_sarcomeres': {
-        'description': 'Popping rate of each individual sarcomere.',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_popping',
-        'name': 'Sarcomere Popping Rate $P_s$'
-    },
-    'popping_rate_contr': {
-        'description': 'Popping rate at each contraction cycle.',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_popping',
-        'name': 'Contraction Popping Rate $P_c$'
-    },
-    'ratio_delta_slen_mutual_serial': {
-        'description': 'Ratio of mutual to serial correlation for sarcomere length changes.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Ratio Mutual Serial $R_{\Delta SL}$'
-    },
-    'ratio_vel_mutual_serial': {
-        'description': 'Ratio of mutual to serial correlation for sarcomere velocities.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Ratio Mutual Serial $R_{V}$'
-    },
-    'corr_delta_slen_serial': {
-        'description': 'Average serial correlation for sarcomere length changes.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Serial Corr. $\Delta SL$'
-    },
-    'corr_delta_slen_mutual': {
-        'description': 'Average mutual correlation for sarcomere length changes.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Mutual Corr. $\Delta SL$'
-    },
-    'corr_vel_serial': {
-        'description': 'Average serial correlation for sarcomere velocities.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Serial Corr. $V$'
-    },
-    'corr_vel_mutual': {
-        'description': 'Average mutual correlation for sarcomere velocities.',
-        'data type': float,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Mutual Corr. $V$'
-    },
-    'corr_delta_slen': {
-        'description': 'Correlation matrix for sarcomere length changes.',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Corr. $\Delta SL$'
-    },
-    'corr_vel': {
-        'description': 'Correlation matrix for sarcomere velocities.',
-        'data type': np.ndarray,
-        'function': 'Motion.analyze_sarcomere_correlations',
-        'name': 'Corr. $V$'
-    }
+        'description': 'Time from peak shortening to end of contraction, mean over cycles (s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to relax [s]'},
+    'time_contr': {
+        'description': 'Total contraction duration per cycle, mean over cycles (s).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contraction time [s]'},
+    'slen_timeseries': {
+        'description': 'Aggregated per-group sarcomere length over time, shape (n_groups, T).',
+        'data type': np.ndarray, 'function': 'SarcAsM.analyze_track_motion', 'name': 'SL(t) [µm]'},
 }

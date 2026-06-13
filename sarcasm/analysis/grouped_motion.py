@@ -118,6 +118,48 @@ def aggregate_group_slen(
     }
 
 
+def equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
+    """Equilibrium (resting) sarcomere length over the non-contracting frames.
+
+    The equilibrium is the median sarcomere length wherever the contraction
+    state is ``0`` (the trace is *not* contracting), matching the
+    :meth:`sarcasm.motion.Motion.get_trajectories` semantics. Traces with no
+    quiet frame fall back to the median over all frames.
+
+    Parameters
+    ----------
+    slen : np.ndarray
+        Sarcomere length trace(s). A 1D ``(T,)`` array returns a scalar; a 2D
+        ``(k, T)`` stack returns one value per row, shape ``(k,)``.
+    contr : np.ndarray
+        Boolean contraction state per frame, shape ``(T,)``; ``True`` marks a
+        contracting frame, which is excluded from the equilibrium.
+
+    Returns
+    -------
+    float or np.ndarray
+        Equilibrium length: a scalar for a 1D input, or shape ``(k,)`` for a 2D
+        input. NaN where no finite length is available.
+    """
+    slen = np.asarray(slen, dtype=float)
+    quiet = ~np.asarray(contr, dtype=bool)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)
+        if slen.ndim == 1:
+            vals = slen[quiet]
+            if not np.any(np.isfinite(vals)):
+                vals = slen
+            return float(np.nanmedian(vals)) if np.any(np.isfinite(vals)) else np.nan
+        equ = np.full(slen.shape[0], np.nan)
+        for i in range(slen.shape[0]):
+            vals = slen[i, quiet]
+            if not np.any(np.isfinite(vals)):
+                vals = slen[i]
+            if np.any(np.isfinite(vals)):
+                equ[i] = np.nanmedian(vals)
+        return equ
+
+
 def run_cycle_engine(
     group_slen: np.ndarray,
     frametime: float,
@@ -214,15 +256,25 @@ def run_cycle_engine(
 
 
 def _interp_nan_1d(a: np.ndarray) -> np.ndarray:
-    """Linear-interpolate interior NaNs of a 1D array; edges held constant.
-    An all-NaN input returns zeros (a member with no usable data)."""
+    """Linear-interpolate only the *interior* NaNs of a 1D array.
+
+    Interior NaNs — those anchored by a finite value on both sides — are filled
+    by linear interpolation. Leading and trailing NaNs (frames before the track
+    first appears or after it is lost) are left as NaN: a track must NEVER carry
+    a constant, fabricated length where it has no observation, as a held-constant
+    edge corrupts every downstream contraction metric (equilibrium, delta-slen,
+    velocity). An all-NaN input is returned unchanged (still all NaN)."""
     a = np.asarray(a, dtype=float).copy()
     mask = np.isnan(a)
-    if mask.all():
-        return np.zeros_like(a)
-    if mask.any():
-        idx = np.arange(a.shape[0])
-        a[mask] = np.interp(idx[mask], idx[~mask], a[~mask])
+    if not mask.any() or mask.all():
+        return a
+    idx = np.arange(a.shape[0])
+    finite = ~mask
+    first, last = idx[finite][0], idx[finite][-1]
+    # Interior = NaN strictly between the first and last finite sample.
+    interior = mask & (idx > first) & (idx < last)
+    if interior.any():
+        a[interior] = np.interp(idx[interior], idx[finite], a[finite])
     return a
 
 
@@ -244,12 +296,19 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float):
     Returns
     -------
     z_pos : np.ndarray
-        ``(K+1, T)`` cumulative arc-length of the K+1 Z-band boundaries (µm). NaNs
-        are interpolated per sarcomere across time *before* the cumulative sum so a
-        single bad member cannot poison the tail. By construction
-        ``np.diff(z_pos, axis=0) == slen``.
+        ``(K+1, T)`` cumulative arc-length of the K+1 Z-band boundaries (µm).
+        Only *interior* member NaNs (anchored on both sides) are interpolated
+        before the cumulative sum, so a brief mid-track dropout does not poison
+        the tail. Leading/trailing member NaNs are kept as NaN — a member is
+        never extended with a held-constant length — and therefore propagate
+        through the cumulative sum into the boundaries below an undefined member
+        for those frames. ``np.diff(z_pos, axis=0)`` recovers ``slen`` down to
+        the first undefined member in each frame.
     slen : np.ndarray
-        ``(K, T)`` NaN-filled member lengths (the diff of ``z_pos``).
+        ``(K, T)`` member lengths with interior gaps interpolated and
+        leading/trailing gaps left as NaN (never held constant). This is the
+        honest per-member length series: ``slen[k]`` is NaN exactly where member
+        ``k`` has no observation, independent of the other members.
     time : np.ndarray
         ``(T,)`` time axis in seconds.
     """

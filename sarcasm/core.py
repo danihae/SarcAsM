@@ -27,6 +27,12 @@ import torch
 
 from sarcasm.exceptions import MetaDataError
 from sarcasm._internal.meta_data_handler import ImageMetadata
+from sarcasm.io.ome_store import (
+    OmeZarrStore,
+    detect_legacy_layout,
+    legacy_layout_message,
+    store_path_for,
+)
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
@@ -126,8 +132,16 @@ class SarcAsMBase:
         # Configure logging for the sarcasm package
         self._setup_logging(log_level)
 
-        # Directory structure: use the filename without extension as the base directory
-        base_name = os.path.splitext(self.file_path)[0]
+        # Directory structure: use the filename without extension as the base directory.
+        # Strip compound suffixes so a '<name>.ome.zarr' input reuses the same '<name>/'
+        # scratch dir as the original '<name>.tif' (not a spurious '<name>.ome/').
+        _fname = os.path.basename(self.file_path)
+        for _suf in ('.ome.zarr', '.zarr', '.ome.tif', '.ome.tiff', '.tif', '.tiff'):
+            if _fname.lower().endswith(_suf):
+                base_name = os.path.join(os.path.dirname(self.file_path), _fname[:-len(_suf)])
+                break
+        else:
+            base_name = os.path.splitext(self.file_path)[0]
         self.base_dir = base_name + '/'  # This is a directory path as a string.
         self.data_dir = os.path.join(self.base_dir, "data/")
         self.analysis_dir = os.path.join(self.base_dir, "analysis/")
@@ -148,7 +162,17 @@ class SarcAsMBase:
         self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
         self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
         self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
-        self.file_flow = os.path.join(self.base_dir, "flow.tif")
+
+        # --- single-store backing: everything lives in <name>.ome.zarr ---
+        self.store_path = store_path_for(self.file_path)
+        # Pre-1.0 (base_dir/structure.json) analyses are not read by >=1.0. Don't fail:
+        # warn and start fresh in the new .ome.zarr store (the old analysis is left in place).
+        legacy = detect_legacy_layout(self.file_path)
+        if legacy is not None and not os.path.exists(self.store_path) and not self.restart:
+            logger.warning(legacy_layout_message(legacy))
+        if self.restart and os.path.exists(self.store_path):
+            shutil.rmtree(self.store_path)
+        self.store = OmeZarrStore(self.store_path)
 
         # Initialize metadata
         self.metadata = ImageMetadata(
@@ -160,24 +184,30 @@ class SarcAsMBase:
             axes = axes,
         )
 
-        # Load existing or create new metadata
-        self.meta_file = Path(self.data_dir) / "metadata.json"
-        if self.meta_file.exists() and not self.restart:
+        # Load existing metadata from the store, else carry over the calibration from a
+        # legacy analysis (results are not migrated, only pixelsize/frametime/axes/channel),
+        # else harvest from the source image.
+        self.meta_file = Path(self.data_dir) / "metadata.json"  # legacy metadata.json
+        stored_meta = self.store.read_metadata() if self.store.exists else None
+        if stored_meta and not self.restart:
+            try:
+                self.metadata = ImageMetadata.from_dict(stored_meta)
+            except Exception as e:
+                logger.error(f"Loading metadata from store failed: {e}")
+                if not self.use_gui:
+                    raise MetaDataError("Loading metadata from store failed.") from e
+        elif legacy is not None and not self.restart and self.meta_file.exists():
             try:
                 self.metadata = ImageMetadata.load_from_file(self.meta_file)
+                logger.info("Carried over calibration metadata from the legacy analysis.")
             except Exception as e:
-                logger.error(f"Loading metadata failed: {e}. This can happen when the metadata file was "
-                           "created with an older version (<0.2.0). Restart the analysis by setting restart=True.")
-                if not self.use_gui:
-                    raise MetaDataError(
-                        "Loading metadata failed. This can happen when the metadata file was "
-                        "created with an older version (<0.2.0). Restart the analysis by setting restart=True.") from e
-                else:
-                    pass
-        else:
-            # Extract metadata without loading full image data (fast, even for large files on HDD)
-            self._extract_metadata_only()
-            pass
+                logger.warning(f"Could not read legacy metadata ({e}); harvesting from the image.")
+                if str(self.file_path).lower().endswith((".tif", ".tiff")):
+                    self._extract_metadata_only(axes=axes)
+        elif str(self.file_path).lower().endswith((".tif", ".tiff")):
+            # Extract metadata without loading full image data (fast, even for large files on HDD).
+            # Honour an explicit axes argument (e.g. 'TYX') so stacks aren't misread as channels.
+            self._extract_metadata_only(axes=axes)
 
         # Dictionary of models
         self.model_dir = Utils.get_models_dir()
@@ -262,36 +292,69 @@ class SarcAsMBase:
         'orientation': 'file_orientation',
         'cell_mask': 'file_cell_mask',
         'sarcomere_mask': 'file_sarcomere_mask',
-        'flow': 'file_flow',
     }
 
+    # Mask attributes served lazily from the OME-Zarr store.
+    _STORE_MASKS = (
+        'zbands', 'zbands_fast_movie', 'mbands',
+        'orientation', 'cell_mask', 'sarcomere_mask',
+    )
+
     def __getattr__(self, name: str) -> Any:
-        """Dynamic loading of analysis result TIFFs"""
-        file_attr = type(self)._DYNAMIC_TIFF_ATTRS.get(name)
-        if file_attr is None:
-            raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
-
-        # Read directly from __dict__ to avoid re-entering __getattr__ if the
-        # underlying file_* attribute hasn't been set yet (e.g., on an instance
-        # constructed before this attribute was added to __init__).
-        try:
-            file_path = self.__dict__[file_attr]
-        except KeyError as e:
-            raise AttributeError(
-                f"'{self.__class__.__name__}' instance is missing '{file_attr}'. "
-                f"Re-instantiate the object to populate it."
-            ) from e
-
+        """Dynamic loading of the image / masks / flow from the OME-Zarr store."""
         if name == 'image':
             return self.read_imgs()
 
-        import tifffile
-        if not os.path.exists(file_path):
+        store = self.__dict__.get('store')
+        if store is None:
+            raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+
+        if name == 'flow':
+            flow = store.read_flow()
+            if flow is None:
+                raise FileNotFoundError(
+                    "No optical-flow field stored. Run "
+                    "track_sarcomere_vectors(store_flow_fields=True) first.")
+            return flow
+
+        if name in type(self)._STORE_MASKS:
+            if not store.has_mask(name):
+                raise FileNotFoundError(
+                    f"Required analysis mask '{name}' not found in the store.\n"
+                    f"Run 'detect_sarcomeres' to create it.")
+            return store.read_mask(name)
+
+        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+
+    def _mask_exists(self, name: str) -> bool:
+        """True if mask ``name`` is present in the store."""
+        store = self.__dict__.get('store')
+        return store is not None and store.has_mask(name)
+
+    def _read_mask(self, name: str, frames=None) -> np.ndarray:
+        """Read a mask from the store, optionally selecting ``frames`` (int / list /
+        slice), mirroring the old ``tifffile.imread(..., key=frames)`` behaviour."""
+        if not self._mask_exists(name):
             raise FileNotFoundError(
-                f"Required analysis file missing: {os.path.basename(file_path)}\n"
-                f"Run the 'detect_sarcomeres' to create this file."
-            )
-        return tifffile.imread(file_path)
+                f"Required analysis mask '{name}' not found in the store.\n"
+                f"Run 'detect_sarcomeres' to create it.")
+        if frames is None:
+            return self.store.read_mask(name)
+        # When only a single frame was detected (or the movie is single-frame),
+        # masks are stored without a leading frame axis, so a scalar frame index
+        # refers to the whole stored mask, not a pixel row (mirrors read_imgs).
+        data = getattr(self, 'data', None)
+        detected = data.get('params.detect_sarcomeres.frames', 'all') if data is not None else 'all'
+        single_frame_store = (
+            self.metadata.n_stack in (None, 1)
+            or (isinstance(detected, (list, tuple, np.ndarray)) and len(detected) == 1))
+        if single_frame_store and isinstance(frames, (int, np.integer)):
+            return self.store.read_mask(name)
+        if isinstance(frames, np.ndarray):
+            frames = list(frames)
+        # Slice inside the store so only the requested chunks (one frame each)
+        # load, instead of materialising the whole stack and slicing in numpy.
+        return self.store.read_mask(name, frames=frames)
 
     def __dir__(self) -> list[str]:
         """Augment autocomplete with dynamic attributes"""
@@ -322,11 +385,22 @@ class SarcAsMBase:
         """Open the base directory of the TIFF file in the file explorer."""
         Utils.open_folder(self.base_dir)
 
+    def _metadata_jsonable(self) -> dict:
+        """Metadata as a JSON/attr-safe dict (numpy time array -> list)."""
+        meta = self.metadata.to_dict()
+        if isinstance(meta.get('time'), np.ndarray):
+            meta['time'] = meta['time'].tolist()
+        return meta
+
     def save_metadata(self):
-        """
-        Save the current metadata object to self.meta_file as JSON.
-        """
-        ImageMetadata.save_to_file(self.metadata, self.meta_file)
+        """Persist the current metadata into the OME-Zarr store (when it exists)."""
+        store = self.__dict__.get('store')
+        if store is None or not store.exists:
+            return  # store is created on first image ingest / analysis write
+        try:
+            store.write_metadata(self._metadata_jsonable())
+        except Exception as e:
+            logger.debug(f"metadata save to store skipped: {e}")
 
     def _extract_metadata_only(self, axes: Union[str, None] = None) -> None:
         """
@@ -397,6 +471,13 @@ class SarcAsMBase:
             if self.auto_save:
                 self.save_metadata()
 
+    def _internal_axes(self, ndim: int) -> str:
+        """OME axes string for the internal (channel-selected, permuted) image."""
+        if ndim <= 2:
+            return "yx"
+        stack = "t" if (self.metadata.axes and "T" in self.metadata.axes.upper()) else "z"
+        return stack + "yx"
+
     def read_imgs(self, frames=None, axes=None):
         """
         Load image data from the OME-Zarr store (ingesting the source TIFF on first use).
@@ -414,13 +495,34 @@ class SarcAsMBase:
         np.ndarray
             Image data in internal format ``(Y, X)`` or ``(Stack, Y, X)``.
         """
+        # Fast path: pixels already ingested into the store -> lazy zarr slice.
+        if self.store.has_image():
+            arr = self.store.image_handle()
+            if (frames is None or (isinstance(frames, str) and frames == 'all')
+                    or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
+                return arr[...]
+            if isinstance(frames, np.ndarray):
+                frames = list(frames)
+            return arr[frames]
+
+        # First open of a TIFF: read it, ingest into the store, then slice.
+        data = self._read_source_tif(axes=axes)
+        if (frames is None or (isinstance(frames, str) and frames == 'all')
+                or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
+            return data
+        if isinstance(frames, np.ndarray):
+            frames = list(frames)
+        return data[frames]
+
+    def _read_source_tif(self, axes=None):
+        """Read the full source TIFF into internal format and ingest it into the store."""
         with tifffile.TiffFile(self.file_path) as tif:
             series = tif.series[0]
             raw_data = series.asarray()
 
-            # Determine or use provided axes order
+            # Determine axes: explicit arg > axes recorded at init (metadata) > auto-detect.
             if axes is None:
-                axes = self._determine_axes(series, tif)
+                axes = self.metadata.axes or self._determine_axes(series, tif)
             else:
                 axes = axes.upper()
 
@@ -438,22 +540,16 @@ class SarcAsMBase:
 
             # Normalize to internal format (Stack, Y, X) or (Y, X)
             data = self._permute_to_internal(raw_data, processed_axes)
-
-            # Apply frame selection if specified
-            if isinstance(frames, np.ndarray):
-                frames = list(frames)
-            if isinstance(frames, str) and frames != 'all':
-                raise ValueError("'frames' has to be list, ndarray, int or 'all'.")
-            if frames is not None and not frames == 'all' and meta.n_stack is not None and meta.n_stack > 1:
-                data = data[frames]
-
-            # Final cleanup and metadata updates
             data = data.squeeze()
             self.metadata.shape = data.shape  # shape after all processing
             self.metadata.size = (data.shape[-2], data.shape[-1]) if data.ndim >= 2 else None  # (height, width)
-            self.save_metadata()
 
-            return data
+        # Ingest the pixels into the OME-Zarr store (copy-in) + persist metadata.
+        self.store.ingest_image(
+            data, axes=self._internal_axes(data.ndim),
+            pixelsize=self.metadata.pixelsize, frametime=self.metadata.frametime,
+            metadata=self._metadata_jsonable())
+        return data
 
     @staticmethod
     def _determine_axes(series, tif: tifffile.TiffFile) -> str:
@@ -786,9 +882,9 @@ class SarcAsMBase:
         # Add user info
         self.metadata.add_user_info(**self.info)
 
-        # Save metadata if auto_save is enabled
+        # Persist metadata into the store (no-op until the store exists)
         if self.auto_save:
-            ImageMetadata.save_to_file(self.metadata, self.meta_file)
+            self.save_metadata()
 
         return self.metadata
 
@@ -872,7 +968,6 @@ class SarcAsMBase:
             self.file_cell_mask,
             self.file_sarcomere_mask,
             self.file_zbands_fast_movie,
-            self.file_flow,
         ]
 
         for path in targets:

@@ -109,7 +109,7 @@ class BatchExport:
         self.data = pd.DataFrame.from_records(self.data)
         self.save_data()
 
-    def save_data(self):
+    def get_motion_data(self, motion_keys=None):
         """
         Iterate files and collect per-group track-based motion features.
 
@@ -122,6 +122,23 @@ class BatchExport:
             Feature suffixes to extract; uses
             :attr:`Export.motion_keys_default` when None. Default is None.
         """
+        records = []
+        for tif_file in tqdm(self.files):
+            try:
+                sarc_obj = SarcAsM(file_path=tif_file)
+                if sarc_obj.data.get('track_motion_kind') is None:
+                    logger.warning(f'{tif_file}: no track motion analyzed, skipping')
+                    continue
+                records.extend(Export.get_motion_dict_per_group(
+                    sarc_obj, motion_keys=motion_keys, experiment=self.experiment, **self.conditions))
+            except Exception as e:
+                logger.error(f'{tif_file} failed!')
+                logger.exception(f'Exception: {repr(e)}')
+        self.data = pd.DataFrame.from_records(records)
+        self.data.to_pickle(self.folder + 'data_motion.pd')
+
+    def save_data(self):
+        """Save the DataFrame to ``<folder>data_structure.pd``."""
         self.data.to_pickle(self.folder + 'data_structure.pd')
 
     def load_data(self):
@@ -187,17 +204,12 @@ class Export:
                               'z_length_mean', 'z_length_std', 'z_oop', 'z_mask_area', 'z_mask_area_ratio',
                               'z_mask_intensity', 'z_straightness_mean', 'z_straightness_std']
 
-    motion_keys_default = ['beating_rate', 'beating_rate_variability', 'contr_max', 'contr_max_avg', 'elong_max',
-                           'elong_max_avg', 'equ', 'time', 'vel_contr_max', 'vel_contr_max_avg', 'vel_elong_max',
-                           'vel_elong_max_avg', 'n_sarcomeres', 'n_contr', 'ratio_nans',
-                           'popping_rate_contr', 'popping_rate_sarcomeres', 'popping_rate',
-                           'popping_events', 'popping_dist', 'popping_tau',
-                           'popping_ks_dist_pvalue', 'popping_ks_dist_statistic', 'popping_p_dist', 'popping_p_tau',
-                           'popping_ks_tau_pvalue', 'popping_ks_tau_statistic', 'time_to_peak', 'time_to_peak_avg',
-                           'time_contr', 'time_quiet',
-                           'corr_delta_slen', 'corr_vel',
-                           'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'corr_vel_serial', 'corr_vel_mutual',
-                           'ratio_delta_slen_mutual_serial', 'ratio_vel_mutual_serial']
+    # Track-based grouped-motion feature suffixes (resolved per grouping kind to
+    # ``<kind>_<suffix>`` keys written by SarcAsM.analyze_track_motion). One value
+    # per group; per-cycle arrays are collapsed to a per-group nanmean.
+    motion_keys_default = ['beating_rate', 'beating_rate_variability', 'equ', 'n_contr',
+                           'contr_max', 'elong_max', 'vel_contr_max', 'vel_elong_max',
+                           'time_to_peak', 'time_to_relax', 'time_contr']
 
     @staticmethod
     def get_structure_dict(sarc_obj, structure_keys=None, **conditions):
@@ -274,7 +286,7 @@ class Export:
         return x
 
     @staticmethod
-    def get_motion_dict(motion_obj, loi_keys=None, concat=False, **conditions):
+    def get_motion_dict_per_group(sarc_obj, motion_keys=None, kind=None, **conditions):
         """
         Build one record per group of track-based motion features from a SarcAsM object.
 
@@ -301,26 +313,46 @@ class Export:
         list of dict
             One record per group (metadata + group_id + selected features).
         """
-        metadata_dict = motion_obj.metadata.to_dict()
-        if loi_keys is None:
-            loi_keys = Export.motion_keys_default
-        missing_loi_keys = [key for key in loi_keys if key not in motion_obj.loi_data]
-        if missing_loi_keys:
-            logger.warning(f'Missing loi keys: {missing_loi_keys}')
-        dict_loi_select = {key: motion_obj.loi_data[key] if key in motion_obj.loi_data else np.nan for key in loi_keys}
-        dict_ = {**metadata_dict, **dict_loi_select, 'loi_name': motion_obj.loi_name}
+        data = sarc_obj.data
+        kind = kind or data.get('track_motion_kind')
+        if kind is None:
+            raise ValueError("No track motion found ('track_motion_kind' missing). "
+                             "Run analyze_track_motion() first.")
+        if motion_keys is None:
+            motion_keys = Export.motion_keys_default
+        metadata_dict = sarc_obj.metadata.to_dict()
+        n_groups = int(data.get('n_groups', 0))
+        member_counts = np.asarray(data.get('group_member_counts', np.full(n_groups, np.nan)))
+
+        cond = {}
         for condition, value in conditions.items():
-            if isinstance(value, types.FunctionType):
-                dict_[condition] = value(motion_obj.file_path)
-            else:
-                dict_[condition] = value
-        if concat:
-            for key, value in dict_.items():
-                if isinstance(value, np.ndarray):
-                    if len(value.shape) == 2:
-                        dict_[key] = np.concatenate(value)
-        dict_['tif_name'] = motion_obj.file_path
-        return dict_
+            cond[condition] = value(sarc_obj.file_path) if isinstance(value, types.FunctionType) else value
+
+        records = []
+        for g in range(n_groups):
+            row = {**metadata_dict, 'kind': kind, 'group_id': g,
+                   'group_member_count': float(member_counts[g]) if g < member_counts.size else np.nan}
+            for suffix in motion_keys:
+                arr = data.get(f'{kind}_{suffix}')
+                row[suffix] = Export._group_feature_value(arr, g)
+            row.update(cond)
+            row['tif_name'] = sarc_obj.file_path
+            records.append(row)
+        return records
+
+    @staticmethod
+    def _group_feature_value(arr, g):
+        """Per-group scalar for feature array ``arr``; per-cycle arrays -> nanmean."""
+        if arr is None:
+            return np.nan
+        arr = np.asarray(arr)
+        if arr.ndim == 0 or g >= arr.shape[0]:
+            return np.nan
+        vg = arr[g]
+        if isinstance(vg, np.ndarray):
+            vg = vg.astype(float)
+            return float(np.nanmean(vg)) if vg.size and np.isfinite(vg).any() else np.nan
+        return vg
 
     @staticmethod
     def to_json_friendly(d: dict) -> dict:
@@ -481,16 +513,29 @@ class Export:
         df.to_csv(file_path)
 
     @staticmethod
-    def export_motion_data(mot_obj: Motion, file_path, motion_keys=None, fileformat='.xlsx',
-                           raw: bool = False):
-        """
-        Export motion data to a file.
+    def write_records(file_path: str, records: list, fileformat: str) -> None:
+        """Write per-group records as a tidy table (one row per group).
 
-        Summary mode (``raw=False``, default) writes one value per metric per
-        frame as a single table with one column per frame (``frame_0``,
-        ``frame_1``, ...). Full mode (``raw=True``) preserves per-object
-        distributions and requires ``fileformat='.json'``. See
-        :meth:`Export.write_dict` for the full layout.
+        ``fileformat`` is ``'csv'``, ``'xlsx'`` or ``'json'`` (leading dot optional).
+        """
+        fmt = fileformat.lower().lstrip('.')
+        if fmt == 'json':
+            with open(file_path, 'w') as f:
+                json.dump([Export.to_json_friendly(r) for r in records], f, indent=2, allow_nan=False)
+            return
+        if fmt not in ('xlsx', 'csv'):
+            raise ValueError(f'Unsupported file format: {fileformat}')
+        df = pd.DataFrame.from_records(records).applymap(Export.flatten_single)
+        if fmt == 'xlsx':
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='data', index=False)
+        else:
+            df.to_csv(file_path, index=False)
+
+    @staticmethod
+    def export_motion_data(sarc_obj, file_path, motion_keys=None, fileformat='.xlsx'):
+        """
+        Export per-group track-based motion features (one row per group).
 
         Parameters
         ----------
@@ -504,5 +549,5 @@ class Export:
         fileformat : {'.xlsx', '.csv', '.json'}, optional
             Format of the output file. Default is '.xlsx'.
         """
-        motion_dict = Export.get_motion_dict(mot_obj, loi_keys=motion_keys)
-        Export.write_dict(file_path, motion_dict, fileformat, raw=raw)
+        records = Export.get_motion_dict_per_group(sarc_obj, motion_keys=motion_keys)
+        Export.write_records(file_path, records, fileformat)

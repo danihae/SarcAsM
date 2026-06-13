@@ -22,18 +22,38 @@
      <layout class="QHBoxLayout" name="horizontalLayout_2">
       <item>
        <widget class="QLabel" name="label">
+        <property name="toolTip">
+         <string>A .tif/.tiff movie or an already-analyzed .ome.zarr store.</string>
+        </property>
         <property name="text">
-         <string>Tif-File</string>
+         <string>Input</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="le_cell_file"/>
+       <widget class="QLineEdit" name="le_cell_file">
+        <property name="toolTip">
+         <string>Path to a .tif/.tiff file or a .ome.zarr store (press Enter to open).</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_search">
+        <property name="toolTip">
+         <string>Browse for a .tif/.tiff movie.</string>
+        </property>
         <property name="text">
-         <string>Browse…</string>
+         <string>Browse .tif…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_open_zarr">
+        <property name="toolTip">
+         <string>Open an already-analyzed .ome.zarr store (select the .ome.zarr folder).</string>
+        </property>
+        <property name="text">
+         <string>Open .ome.zarr…</string>
         </property>
        </widget>
       </item>

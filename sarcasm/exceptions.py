@@ -12,7 +12,9 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-# exception if extraction of metadata from tif-file fails
+"""Custom exceptions for SarcAsM."""
+
+
 class MetaDataError(Exception):
     """Raised when metadata extraction from a TIFF file fails."""
     pass

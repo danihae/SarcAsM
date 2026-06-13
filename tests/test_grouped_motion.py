@@ -304,11 +304,33 @@ def test_synthesize_loi_chain_diff_and_nan():
     z, slen, time = grouped_motion.synthesize_loi_chain(member, frametime=0.01)
     assert z.shape == (4, 5)
     assert slen.shape == (3, 5)
-    # by construction diff(z_pos) == slen, and NaNs are interpolated away
+    # all gaps here are interior, so they interpolate away and diff(z) == slen
     assert np.allclose(np.diff(z, axis=0), slen)
     assert not np.isnan(slen).any()
     assert np.allclose(z[0], 0.0)
     assert np.allclose(time, np.arange(5) * 0.01)
+
+
+def test_synthesize_loi_chain_edge_nan_never_constant():
+    # A member must never be extended with a held-constant length where it has
+    # no observation: leading/trailing gaps stay NaN, only interior gaps fill.
+    member = np.array([
+        [np.nan, np.nan, 1.8, 1.8, 1.8],   # appears at t=2 -> leading-edge NaN
+        [2.0, 2.0, 2.0, np.nan, np.nan],   # lost after t=2 -> trailing-edge NaN
+        [1.9, 1.9, np.nan, 1.9, 1.9],      # interior gap -> interpolated
+    ])
+    z, slen, time = grouped_motion.synthesize_loi_chain(member, frametime=0.01)
+    # leading/trailing edges are NaN, not the constant last value
+    assert np.isnan(slen[0, 0]) and np.isnan(slen[0, 1])
+    assert np.isnan(slen[1, 3]) and np.isnan(slen[1, 4])
+    # interior gap interpolated (here both anchors are 1.9)
+    assert not np.isnan(slen[2, 2]) and np.isclose(slen[2, 2], 1.9)
+    # a member keeps its own length even when a sibling is undefined that frame
+    assert np.isclose(slen[0, 2], 1.8)
+    # z_pos boundary 0 is always the origin; undefined members propagate NaN into
+    # the boundaries below them (no fabricated arc-length).
+    assert np.allclose(z[0], 0.0)
+    assert np.isnan(z[1, 0])  # member 0 undefined at t=0 -> all boundaries below NaN
 
 
 def test_group_tracks_myofibril_ordering():
@@ -360,6 +382,40 @@ def test_plot_track_myofibrils_smoke():
         sarc.group_tracks(by='pool')
         with pytest.raises(ValueError):
             Plots.plot_track_myofibrils(plt.figure().gca(), sarc)
+    finally:
+        Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
+        plt.close('all')
+
+
+def test_plot_tracks_lines_smoke():
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from sarcasm.plotting.plots import Plots
+    # stub the image background (needs file IO)
+    orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
+    Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
+    Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
+    try:
+        sarc = _fake_structure(n_tracks=6)
+        # give the trajectories a little motion so the lines are non-degenerate
+        pos = np.asarray(sarc.data['tracks_positions_px'], dtype=np.float32)
+        pos[:, :, 1] += np.linspace(0, 2, pos.shape[1])[None, :]
+        sarc.data['tracks_positions_px'] = pos
+        # color_by='group' requires a grouping first
+        with pytest.raises(ValueError):
+            Plots.plot_tracks(plt.figure().gca(), sarc, color_by='group')
+        # 'coverage' / 'slen' draw one trajectory LineCollection
+        for cb in ('coverage', 'slen'):
+            ax = plt.figure().gca()
+            Plots.plot_tracks(ax, sarc, color_by=cb, scalebar=False)
+            assert any(isinstance(c, LineCollection) for c in ax.collections)
+        # 'group' colouring works once grouped
+        sarc.group_tracks(by='pool')
+        ax = plt.figure().gca()
+        Plots.plot_tracks(ax, sarc, color_by='group', scalebar=False)
+        assert any(isinstance(c, LineCollection) for c in ax.collections)
     finally:
         Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
         plt.close('all')

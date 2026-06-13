@@ -69,7 +69,7 @@ def compute_domain_timeseries(
         Pixel size in µm.
     n_domains : int
         Number of domains in the mask (excluding background).
-    
+
     Returns
     -------
     dict

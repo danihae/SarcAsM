@@ -476,9 +476,9 @@ def test_merge_off_preserves_legacy_behavior():
 def test_merge_respects_perp_gate():
     """A respawned track far enough transverse to the original must NOT merge.
 
-    With the default ``merge_max_disp_perp_px=4`` (gap-scaled to ``perp² ≤
-    16·gap``), an 8-px transverse offset across a 2-frame gap exceeds the
-    gate (perp²=64 vs 16·2=32) and the merge should be rejected.
+    With the default ``merge_max_disp_perp_um=0.3`` (= 3 px at pixelsize 0.1,
+    gap-scaled to ``perp² ≤ 9·gap``), an 8-px transverse offset across a 2-frame
+    gap exceeds the gate (perp²=64 vs 9·2=18) and the merge should be rejected.
     """
     T = 6
     zstack, mstack = _identical_band_stack(T)
@@ -629,9 +629,9 @@ def test_merge_log_records_each_merge():
     assert int(entry['gap']) == 2
     assert int(entry['t_a']) == 1
     assert int(entry['t_b']) == 3
-    # Residuals on flat synthetic flow should be tiny.
-    assert abs(entry['perp_resid_px']) < 1.0
-    assert abs(entry['along_resid_px']) < 1.0
+    # Residuals on flat synthetic flow should be tiny (reported in µm).
+    assert abs(entry['perp_resid_um']) < 0.1
+    assert abs(entry['along_resid_um']) < 0.1
 
 
 # ---------------------------------------------------------------------------
@@ -689,16 +689,17 @@ def test_gap_scaled_reacquisition_recovers_offset_snap():
 
     Flow ~0 (identical masks). Track sits at (25,40), detected at frames 0,1;
     frame 2 has no detection (track coasts, frames_since_snap→1); frames 3-5
-    have a detection 18 px along-axis away. The fresh along gate is 15 px (legacy
-    rejects → new track spawns), but after one gap frame the widened along gate
-    is 15·sqrt(2) ≈ 21 px (re-acquisition accepts). merge is OFF to isolate the
-    live loop. pixelsize=0.05 → slen ≈ 36 px, so the scale-aware along cap
-    (0.6·slen ≈ 21.6 px) is inactive and does not interfere with this test.
+    have a detection 24 px (= 1.2 µm at pixelsize 0.05) along-axis away. The
+    fresh along gate is max_disp_along_um=1.0 µm (= 20 px → rejects → new track
+    spawns), but after one gap frame the widened along gate is 1.0·sqrt(2) ≈
+    1.41 µm (≈ 28 px → re-acquisition accepts). merge is OFF to isolate the live
+    loop. pixelsize=0.05 → slen ≈ 36 px, so the scale-aware along cap
+    (0.6·slen ≈ 21.6 px) does not interfere with the widened reach.
     """
     T = 6
     zstack, mstack = _identical_band_stack(T)
     p0 = np.array([[25.0, 40.0]], dtype=np.float32)
-    p1 = np.array([[25.0, 58.0]], dtype=np.float32)   # 18 px along cols
+    p1 = np.array([[25.0, 64.0]], dtype=np.float32)   # 24 px (=1.2 µm) along cols
     empty = np.zeros((0, 2), dtype=np.float32)
     sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
     sl0 = np.zeros(0, np.float32)
@@ -721,15 +722,15 @@ def test_gap_scaled_reacquisition_recovers_offset_snap():
 
 
 def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
-    """The along snap gate is capped relative to sarcomere length (in px), so it
-    is scale-invariant: a fixed pixel offset that the raw 15 px gate would accept
-    is rejected at coarse pixel size (where it equals ~1 sarcomere = a swap), but
-    accepted at fine pixel size. Same masks/positions/offset — only pixelsize
-    (hence slen_px and the cap) differs.
+    """The along snap gate is a fixed physical distance (max_disp_along_um), so
+    tracking is pixel-size invariant: the SAME 12 px offset is accepted at fine
+    pixel size (where 12 px is well under 1 µm) and rejected at coarse pixel size
+    (where 12 px exceeds the 1 µm gate and would reach a neighbour). Same
+    masks/positions/offset — only pixelsize (hence the gate in px) differs.
 
-    offset = 12 px. fine: slen=1.8/0.05=36 px → cap 0.6·36=21.6 (no-op, gate 15)
-    → 12<15 snapped → 1 track. coarse: slen=1.8/0.12=15 px → cap 0.6·15=9 → 12>9
-    rejected → fragments into 2 tracks (12 px ≈ 0.8 sarcomere = a neighbour).
+    offset = 12 px. fine (pixelsize 0.05): gate 1.0 µm = 20 px → 12<20 snapped →
+    1 track. coarse (pixelsize 0.12): gate 1.0 µm = 8.3 px → 12>8.3 rejected →
+    fragments into 2 tracks (12 px ≈ 1.4 µm = a neighbouring sarcomere).
     """
     T = 5
     zstack, mstack = _identical_band_stack(T)

@@ -752,9 +752,31 @@ class Motion(SarcAsMBase):
             Boolean contraction state per frame (True where contracting).
         """
         data = np.concatenate([z_pos, slen])
-        contr_all = np.asarray([predict_contractions(d, weights)[0] for d in data])
+        # ContractionNet needs a finite trace. z_pos/slen legitimately carry
+        # NaN (e.g. synthesized track chains keep gap/edge frames as NaN rather
+        # than holding a constant length), so gap-fill each trace transiently for
+        # the prediction only — the stored z_pos/slen keep their NaNs.
+        contr_all = np.asarray([predict_contractions(Motion._fill_trace_nans(d), weights)[0] for d in data])
         contr_mean = np.nanmean(contr_all, axis=0)
         return contr_mean > threshold
+
+    @staticmethod
+    def _fill_trace_nans(trace: np.ndarray) -> np.ndarray:
+        """Make a 1D trace finite for the contraction network.
+
+        Interior NaNs are linearly interpolated and leading/trailing NaNs are
+        held at the nearest finite sample (acceptable here because the result is
+        transient model input, never stored). An all-NaN trace becomes zeros."""
+        trace = np.asarray(trace, dtype=float)
+        mask = np.isnan(trace)
+        if not mask.any():
+            return trace
+        if mask.all():
+            return np.zeros_like(trace)
+        idx = np.arange(trace.shape[0])
+        out = trace.copy()
+        out[mask] = np.interp(idx[mask], idx[~mask], trace[~mask])
+        return out
 
     @staticmethod
     def wavelet_analysis_oscillations(data: np.ndarray, frametime: float, min_scale: float = 6, max_scale: float = 150,
@@ -783,7 +805,6 @@ class Motion(SarcAsMBase):
             Continuous wavelet transform coefficients.
         frequencies : np.ndarray
             Corresponding frequencies for each scale.
-
         """
         # Generate a range of scales that are logarithmically spaced
         scales = np.geomspace(min_scale, max_scale, num=num_scales)

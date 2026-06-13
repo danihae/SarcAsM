@@ -29,7 +29,37 @@ from sarcasm.utils import Utils
 logger = logging.getLogger(__name__)
 
 
-def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, model_dir: str,
+def _resize_xy_back(arr: np.ndarray, target_xy: Tuple[int, int]) -> np.ndarray:
+    """
+    Resize an array's trailing (Y, X) dims to ``target_xy``.
+
+    Uses nearest-neighbour interpolation and preserves range, restoring a
+    rescaled mask to its original XY resolution.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array whose trailing two dimensions are (Y, X).
+    target_xy : tuple of int
+        Target ``(Y, X)`` shape.
+
+    Returns
+    -------
+    np.ndarray
+        Array resized along its trailing (Y, X) dimensions.
+    """
+    from skimage.transform import resize
+    if tuple(arr.shape[-2:]) == tuple(target_xy):
+        return arr
+    flat = arr.reshape(-1, *arr.shape[-2:])
+    out = np.empty((flat.shape[0],) + tuple(target_xy), dtype=arr.dtype)
+    for i in range(flat.shape[0]):
+        out[i] = resize(flat[i], target_xy, order=0, preserve_range=True,
+                        anti_aliasing=False).astype(arr.dtype)
+    return out.reshape(arr.shape[:-2] + tuple(target_xy))
+
+
+def detect_sarcomeres_unet(images: np.ndarray, model_path: str, model_dir: str,
                           pixelsize: float, max_patch_size: Tuple[int, int] = (1024, 1024),
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           rescale_factor: float = 1.0, device: Union[torch.device, str] = 'auto',
@@ -76,7 +106,7 @@ def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, m
         original XY resolution. The caller writes these into the OME-Zarr store.
     """
     max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
-    
+
     if images.ndim < 2:
         raise ValueError("Images must be at least 2D (Y,X) to have XY dimensions for rescaling.")
     original_xy_shape = images.shape[-2:]
@@ -117,41 +147,29 @@ def detect_sarcomeres_unet(images: np.ndarray, model_path: str, base_dir: str, m
                 f"Pixel size ({round(pixelsize, 3)} µm) is larger than the optimal range "
                 f"(0.1-0.35 µm) for generalist model. Pixelsize might be too large. Consider decreasing rescale_factor for optimal results.")
         logger.info(f"Using default model: {model_path}")
-    _ = Predict_UNet(images, model_params=model_path, result_path=base_dir,
-                     max_patch_size=max_patch_size, normalization_mode=normalization_mode,
-                     network=MultiOutputNestedUNet_3Levels,
-                     clip_threshold=clip_thres, device=device,
-                     progress_notifier=progress_notifier)
-    del _
+    # Predict in-memory (result_path=None) -> result dict; no TIFFs are written.
+    pred = Predict_UNet(images, model_params=model_path, result_path=None,
+                        max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                        network=MultiOutputNestedUNet_3Levels,
+                        clip_threshold=clip_thres, device=device,
+                        progress_notifier=progress_notifier)
+    result = pred.result
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     if rescale_factor != 1.0:
-        # Get output file paths
-        output_files = [
-            os.path.join(base_dir, 'zbands.tif'),
-            os.path.join(base_dir, 'mbands.tif'),
-            os.path.join(base_dir, 'orientation.tif'),
-            os.path.join(base_dir, 'cell_mask.tif'),
-            os.path.join(base_dir, 'sarcomere_mask.tif')
-        ]
+        # Upscale predicted masks back to the original XY resolution (in-memory).
+        result = {k: _resize_xy_back(v, original_xy_shape) for k, v in result.items()}
 
-        output_dir = os.path.dirname(output_files[0])  # Save in same directory
-
-        Utils.scale_back(
-            paths=output_files,
-            original_xy_shape=original_xy_shape,
-            output_dir=output_dir,
-            mask_data=False
-        )
+    return result
 
 
-def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, base_dir: str, model_dir: str,
+def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, model_dir: str,
                                   max_patch_size: Tuple[int, int, int] = (32, 256, 256),
                                   normalization_mode: str = 'all',
                                   clip_thres: Tuple[float, float] = (0., 99.8),
                                   device: Union[torch.device, str] = 'auto',
-                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> dict:
     """
     Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.
 
@@ -192,12 +210,12 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, base_dir
     max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
     if len(max_patch_size) != 3:
         raise ValueError('patch size for prediction has to be be (frames, x, y)')
-    _ = unet3d.Predict(images, model_params=model_path, result_path=base_dir,
-                       max_patch_size=max_patch_size, normalization_mode=normalization_mode,
-                       device=device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
-    del _
+    pred = unet3d.Predict(images, model_params=model_path, result_path=None,
+                          max_patch_size=max_patch_size, normalization_mode=normalization_mode,
+                          device=device, clip_threshold=clip_thres, progress_notifier=progress_notifier)
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    return pred.result
 
 
 def analyze_cell_mask_from_file(file_cell_mask: str, images: np.ndarray, pixelsize: float,

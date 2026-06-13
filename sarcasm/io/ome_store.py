@@ -135,10 +135,9 @@ def legacy_layout_message(base_dir: Union[str, os.PathLike]) -> str:
         A user-facing warning that analysis starts fresh in the new store.
     """
     return (
-        f"Pre-1.0 SarcAsM analysis detected at '{base_dir}'. SarcAsM >=1.0 reads only "
-        f"a single '<name>.ome.zarr' store. Install the last pre-1.0 release to open it "
-        f"(`pip install \"sarcasm==0.5.*\"`), or re-run the analysis to create a fresh "
-        f".ome.zarr store."
+        f"Pre-1.0 SarcAsM analysis detected at '{base_dir}'. SarcAsM >=1.0 does not read it; "
+        f"starting fresh in the new '<name>.ome.zarr' store (the old analysis is left untouched). "
+        f"To open the old results, install the last pre-1.0 release (`pip install \"sarcasm==0.5.*\"`)."
     )
 
 
@@ -314,16 +313,50 @@ class OmeZarrStore:
         store = cls(path)
         if store.exists and not overwrite:
             raise FileExistsError(f"store already exists: {store.path}")
-        root = zarr.open_group(str(store.path), mode="w")
+        if store.exists and overwrite:
+            import shutil
+            shutil.rmtree(store.path)
+        store.ingest_image(image, axes, pixelsize=pixelsize, frametime=frametime,
+                           metadata=metadata)
+        return store
+
+    def ingest_image(self, image: np.ndarray, axes: str, *,
+                     pixelsize: Optional[float] = None, frametime: Optional[float] = None,
+                     metadata: Optional[dict] = None) -> None:
+        """Write an image as the level-0 OME-Zarr image (additive write).
+
+        Existing ``labels/`` / ``sarcasm/`` siblings are left intact.
+
+        Parameters
+        ----------
+        image : np.ndarray
+            Raw image pixels.
+        axes : str
+            Axis letters matching ``image.ndim``.
+        pixelsize : float or None, optional
+            Spatial pixel size. Default is None.
+        frametime : float or None, optional
+            Time step between frames. Default is None.
+        metadata : dict or None, optional
+            Extra metadata to store. Default is None.
+
+        Raises
+        ------
+        ValueError
+            If ``len(axes)`` does not match ``image.ndim``.
+        """
         if len(axes) != image.ndim:
             raise ValueError(f"axes {axes!r} does not match image ndim {image.ndim}")
+        root = self._root("a")
+        if IMAGE in set(root.array_keys()):
+            del root[IMAGE]
         arr = root.create_array(IMAGE, shape=image.shape, dtype=image.dtype,
                                 chunks=_image_chunks(image.shape))
         arr[...] = image
         root.attrs["ome"] = {
             "version": OME_VERSION,
             "multiscales": [{
-                "name": Path(path).name,
+                "name": self.path.name,
                 "axes": _ome_axes(axes),
                 "datasets": [{
                     "path": IMAGE,
@@ -332,11 +365,19 @@ class OmeZarrStore:
                 }],
             }],
         }
-        store.write_metadata({"axes": axes, "pixelsize": pixelsize,
-                              "frametime": frametime, **(metadata or {})})
-        return store
+        self.write_metadata({"axes": axes, "pixelsize": pixelsize,
+                             "frametime": frametime, **(metadata or {})})
 
     # -- raw image -------------------------------------------------------- #
+    def has_image(self) -> bool:
+        """Return True if a level-0 raw image is stored."""
+        if not self.exists:
+            return False
+        try:
+            return IMAGE in set(self._root("r").array_keys())
+        except (KeyError, FileNotFoundError):
+            return False
+
     def read_image(self, frames=None) -> np.ndarray:
         """Read the raw image (optionally a subset of frames).
 
@@ -401,13 +442,17 @@ class OmeZarrStore:
                                  chunks=_image_chunks(arr.shape), overwrite=True)
             a[...] = arr
 
-    def read_mask(self, name: str) -> np.ndarray:
+    def read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a derived mask by name (from ``labels/`` or ``sarcasm/masks/``).
 
         Parameters
         ----------
         name : str
             Mask name.
+        frames : int, list, slice, or None, optional
+            Frame selection along axis 0. Indexing the zarr array directly loads
+            only the requested chunks (masks are chunked one frame per chunk)
+            rather than materialising the whole stack. None reads all frames.
 
         Returns
         -------
@@ -416,8 +461,10 @@ class OmeZarrStore:
         """
         root = self._root("r")
         if name in list(_ensure_group_ro(root, LABELS)):
-            return root[f"{LABELS}/{name}/{IMAGE}"][...]
-        return root[f"{MASKS}/{name}"][...]
+            arr = root[f"{LABELS}/{name}/{IMAGE}"]
+        else:
+            arr = root[f"{MASKS}/{name}"]
+        return arr[...] if frames is None else arr[frames]
 
     def has_mask(self, name: str) -> bool:
         """Return True if a mask ``name`` exists in either mask group.
@@ -433,10 +480,15 @@ class OmeZarrStore:
             Whether the mask is present.
         """
         root = self._root("r")
-        try:
-            return (name in list(root[LABELS].group_keys())) or (name in list(root[MASKS].array_keys()))
-        except KeyError:
-            return False
+        # Check each group independently: a missing labels/ or masks/ group must
+        # not short-circuit the other (e.g. when only float prob maps are stored).
+        for grp, getter in ((LABELS, "group_keys"), (MASKS, "array_keys")):
+            try:
+                if name in list(getattr(root[grp], getter)()):
+                    return True
+            except KeyError:
+                continue
+        return False
 
     def mask_names(self) -> List[str]:
         """List all stored mask names across ``labels/`` and ``sarcasm/masks/``.
@@ -466,8 +518,14 @@ class OmeZarrStore:
             in pixels/frame.
         """
         grp = _ensure_group(self._root("a"), SARCASM)
+        # One full frame (incl. both [dy, dx] components) per chunk. The 4D flow
+        # is (T-1, H, W, 2); _image_chunks treats only the last two axes as the
+        # plane, so it would chunk per-row ((1, 1, W, 2)) and explode the chunk
+        # count ~H-fold. sample_flow_bilinear / the advection loop read a whole
+        # frame at a time, so frame-granular chunks are also the right read unit.
+        chunks = (1,) + tuple(flow.shape[1:])
         a = grp.create_array("flow", shape=flow.shape, dtype=flow.dtype,
-                             chunks=_image_chunks(flow.shape), overwrite=True)
+                             chunks=chunks, overwrite=True)
         a[...] = flow
 
     def read_flow(self) -> Optional[np.ndarray]:
@@ -484,7 +542,7 @@ class OmeZarrStore:
         """
         try:
             return self._root("r")[FLOW][...]
-        except KeyError:
+        except (KeyError, FileNotFoundError):
             return None
 
     # -- analysis results (nested results_store) -------------------------- #

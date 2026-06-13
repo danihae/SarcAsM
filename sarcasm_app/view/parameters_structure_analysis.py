@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file './sarcasm_app/ui-files/parameters_structure_analysis.ui'
+# Form implementation generated from reading ui file 'sarcasm_app/ui-files/parameters_structure_analysis.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -321,9 +321,19 @@ class Ui_Form(object):
         self.dsb_vectors_len_lims_max.setObjectName("dsb_vectors_len_lims_max")
         self.horizontalLayout_5.addWidget(self.dsb_vectors_len_lims_max)
         self.formLayout_4.setLayout(3, QtWidgets.QFormLayout.FieldRole, self.horizontalLayout_5)
+        self.label_vectors_smooth_sigma = QtWidgets.QLabel(self.groupBox_3)
+        self.label_vectors_smooth_sigma.setObjectName("label_vectors_smooth_sigma")
+        self.formLayout_4.setWidget(4, QtWidgets.QFormLayout.LabelRole, self.label_vectors_smooth_sigma)
+        self.dsb_vectors_smooth_orientation_sigma = QtWidgets.QDoubleSpinBox(self.groupBox_3)
+        self.dsb_vectors_smooth_orientation_sigma.setDecimals(2)
+        self.dsb_vectors_smooth_orientation_sigma.setMaximum(100.0)
+        self.dsb_vectors_smooth_orientation_sigma.setSingleStep(0.5)
+        self.dsb_vectors_smooth_orientation_sigma.setProperty("value", 0.0)
+        self.dsb_vectors_smooth_orientation_sigma.setObjectName("dsb_vectors_smooth_orientation_sigma")
+        self.formLayout_4.setWidget(4, QtWidgets.QFormLayout.FieldRole, self.dsb_vectors_smooth_orientation_sigma)
         self.btn_structure_vectors = QtWidgets.QPushButton(self.groupBox_3)
         self.btn_structure_vectors.setObjectName("btn_structure_vectors")
-        self.formLayout_4.setWidget(4, QtWidgets.QFormLayout.SpanningRole, self.btn_structure_vectors)
+        self.formLayout_4.setWidget(5, QtWidgets.QFormLayout.SpanningRole, self.btn_structure_vectors)
         self.formLayout.setWidget(8, QtWidgets.QFormLayout.SpanningRole, self.groupBox_3)
         self.groupBox_5 = QtWidgets.QGroupBox(Form)
         self.groupBox_5.setObjectName("groupBox_5")
@@ -548,6 +558,9 @@ class Ui_Form(object):
         self.label_24.setToolTip(_translate("Form", "Limits of lengths / wavelet distances in µm, range of sarcomere lengths"))
         self.label_24.setText(_translate("Form", "Max:"))
         self.dsb_vectors_len_lims_max.setToolTip(_translate("Form", "Limits of lengths / wavelet distances in µm, range of sarcomere lengths"))
+        self.label_vectors_smooth_sigma.setToolTip(_translate("Form", "Temporal smoothing of the orientation field across frames (Gaussian sigma, in frames). Only useful for high-speed movies of beating cells (improves per-frame temporal consistency). 0 = off."))
+        self.label_vectors_smooth_sigma.setText(_translate("Form", "Temporal orient. smoothing [frames]"))
+        self.dsb_vectors_smooth_orientation_sigma.setToolTip(_translate("Form", "Temporal smoothing of the orientation field across frames (Gaussian sigma, in frames). Only useful for high-speed movies of beating cells (improves per-frame temporal consistency). 0 = off."))
         self.btn_structure_vectors.setToolTip(_translate("Form", "executes wavelet analysis, check frames, with \"all\" it will take a while"))
         self.btn_structure_vectors.setText(_translate("Form", "4. Analyze sarcomere vectors"))
         self.groupBox_5.setTitle(_translate("Form", "Myofibril analysis"))

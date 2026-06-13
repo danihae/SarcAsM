@@ -42,7 +42,7 @@ def _sample_data():
         "domain_mask": [sparse.random(15, 15, density=0.2, random_state=1).tocoo(), None,
                         sparse.eye(15).tocoo()],          # per-frame sparse
         "params.track_sarcomere_vectors.frames": list(range(30)),
-        "params.track_sarcomere_vectors.max_disp_along_px": 15.0,
+        "params.track_sarcomere_vectors.max_disp_along_um": 1.0,
         "params.detect_sarcomeres.model": "model_v3",
     }
 
@@ -131,7 +131,7 @@ def test_attribute_access(store):
     r = Results(store)
     assert _equal(r.tracks.slen[:], r["tracks_slen"])
     assert r.structure.sarcomere.oop == r["sarcomere_oop"]
-    assert r.params.track_sarcomere_vectors.max_disp_along_px == 15.0
+    assert r.params.track_sarcomere_vectors.max_disp_along_um == 1.0
     assert r.params.detect_sarcomeres.model == "model_v3"
 
 

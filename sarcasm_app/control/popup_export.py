@@ -207,9 +207,7 @@ class ExportPopup(QDialog):
 
     def _default_save_dir(self) -> str:
         try:
-            if self._popup_type == 'structure':
-                return self._model.cell.data_dir
-            return self._model.sarcomere.data_dir
+            return self._model.cell.data_dir
         except Exception:
             return str(Path.home())
 
@@ -240,7 +238,10 @@ class ExportPopup(QDialog):
             return
 
         try:
-            Export.write_dict(path, data, fmt, raw=self._rb_full.isChecked())
+            if self._popup_type == 'motion':
+                Export.write_records(path, data, fmt)
+            else:
+                Export.write_dict(path, data, fmt, raw=self._rb_full.isChecked())
         except Exception as exc:
             logger.exception('Failed to write export file')
             QMessageBox.critical(self, 'Export failed',
@@ -250,12 +251,12 @@ class ExportPopup(QDialog):
         QMessageBox.information(self, 'Export complete',
                                 f'Wrote {len(data)} entries to\n{path}')
 
-    def _build_export_dict(self, keys: List[str]) -> dict:
+    def _build_export_dict(self, keys: List[str]):
         if self._popup_type == 'structure':
             return Export.get_structure_dict(sarc_obj=self._model.cell,
                                              structure_keys=keys)
-        return Export.get_motion_dict(motion_obj=self._model.sarcomere,
-                                      loi_keys=keys)
+        return Export.get_motion_dict_per_group(sarc_obj=self._model.cell,
+                                                motion_keys=keys)
 
     # -------------------------------------------------------- public API
 

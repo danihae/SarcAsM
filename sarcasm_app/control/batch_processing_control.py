@@ -23,7 +23,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import Utils, Motion, Structure, MultiStructureAnalysis
+from sarcasm import SarcAsM, BatchExport
 from .application_control import ApplicationControl
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 
@@ -209,7 +209,7 @@ class BatchProcessingControl:
         folder = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
 
         try:
-            msa = MultiStructureAnalysis(tif_files, folder=folder)
+            msa = BatchExport(tif_files, folder=folder)
             # progress bar while gathering data
             for _ in progress_notifier.iterator([0]):
                 msa.get_data()
@@ -255,9 +255,9 @@ class BatchProcessingControl:
 
     @staticmethod
     def __get_sarc_object(file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
-                          force_override: bool) -> Structure:
+                          force_override: bool) -> SarcAsM:
 
-        sarc_obj = Structure(file, use_gui=True)
+        sarc_obj = SarcAsM(file, use_gui=True)
         if force_override:
             sarc_obj.metadata.pixelsize = pixel_size
             sarc_obj.metadata.frametime = frame_time
@@ -268,7 +268,7 @@ class BatchProcessingControl:
         return sarc_obj
 
     @staticmethod
-    def __calculate_requirements_of_motion(sarc_obj: Structure, model):
+    def __calculate_requirements_of_motion(sarc_obj: SarcAsM, model):
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
         if network_model == 'generalist':
             network_model = None
@@ -304,110 +304,50 @@ class BatchProcessingControl:
                                  force_override: bool, model):
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             channel=channel, axes=axes, force_override=force_override)
-        # add some flag if those calculations should be done or not
-        if model.parameters.get_parameter('batch.recalculate.for.motion').get_value():
+
+        def _p(name):
+            return model.parameters.get_parameter(name).get_value()
+
+        by = _p('motion.group.by')
+        if _p('batch.recalculate.for.motion'):
             self.__calculate_requirements_of_motion(sarc_obj, model)
-            pass
+            if by == 'myofibril':
+                sarc_obj.analyze_myofibrils()
+            elif by == 'domain':
+                sarc_obj.analyze_sarcomere_domains()
 
-        sarc_obj.detect_lois(frame=model.parameters.get_parameter(name='loi.detect.frame').get_value(),
-                             n_lois=model.parameters.get_parameter(name='loi.detect.n_lois').get_value(),
-                             ratio_seeds=model.parameters.get_parameter(name='loi.detect.ratio_seeds').get_value(),
-                             persistence=model.parameters.get_parameter(name='loi.detect.persistence').get_value(),
-                             threshold_distance=model.parameters.get_parameter(
-                                 name='loi.detect.threshold_distance').get_value(),
-                             mode=model.parameters.get_parameter(name='loi.detect.mode').get_value(),
-                             number_lims=(
-                                 model.parameters.get_parameter(name='loi.detect.number_limits_lower').get_value(),
-                                 model.parameters.get_parameter(name='loi.detect.number_limits_upper').get_value()),
-                             length_lims=(
-                                 model.parameters.get_parameter(name='loi.detect.length_limits_lower').get_value(),
-                                 model.parameters.get_parameter(name='loi.detect.length_limits_upper').get_value()),
-                             sarcomere_mean_length_lims=(model.parameters.get_parameter(
-                                 name='loi.detect.sarcomere_mean_length_limits_lower').get_value(),
-                                                         model.parameters.get_parameter(
-                                                             name='loi.detect.sarcomere_mean_length_limits_upper').get_value()),
-                             sarcomere_std_length_lims=(model.parameters.get_parameter(
-                                 name='loi.detect.sarcomere_std_length_limits_lower').get_value(),
-                                                        model.parameters.get_parameter(
-                                                            name='loi.detect.sarcomere_std_length_limits_upper').get_value()),
-                             midline_mean_length_lims=(model.parameters.get_parameter(
-                                 name='loi.detect.midline_mean_length_limits_lower').get_value(),
-                                                       model.parameters.get_parameter(
-                                                           name='loi.detect.midline_mean_length_limits_upper').get_value()),
-                             midline_std_length_lims=(model.parameters.get_parameter(
-                                 name='loi.detect.midline_std_length_limits_lower').get_value(),
-                                                      model.parameters.get_parameter(
-                                                          name='loi.detect.midline_std_length_limits_upper').get_value()),
-                             midline_min_length_lims=(model.parameters.get_parameter(
-                                 name='loi.detect.midline_min_length_limits_lower').get_value(),
-                                                      model.parameters.get_parameter(
-                                                          name='loi.detect.midline_min_length_limits_upper').get_value()),
-                             distance_threshold_lois=model.parameters.get_parameter(
-                                 name='loi.detect.cluster_threshold_lois').get_value(),
-                             linkage=model.parameters.get_parameter(name='loi.detect.linkage').get_value(),
-                             linewidth=model.parameters.get_parameter(name='loi.detect.line_width').get_value(),
-                             order=model.parameters.get_parameter(name='loi.detect.order').get_value())
+        sarc_obj.track_sarcomere_vectors(
+            frames='all',
+            threshold_mbands=_p('motion.track.threshold_mbands'),
+            threshold_zbands=_p('motion.track.threshold_zbands'),
+            max_disp_along_um=_p('motion.track.max_disp_along'),
+            max_disp_perp_um=_p('motion.track.max_disp_perp'),
+            ori_tol_deg=_p('motion.track.ori_tol'),
+            memory=int(_p('motion.track.memory')),
+            min_track_length=int(_p('motion.track.min_length')),
+            max_gap_interpolation=int(_p('motion.track.max_gap_interp')),
+            merge_tracks=bool(_p('motion.track.merge')),
+            slen_lims=(_p('motion.track.slen_lower'), _p('motion.track.slen_upper')))
 
-        lois = Utils.get_lois_of_file(file)
-        for file, loi in lois:
-            try:
-                motion_obj = Motion(file, loi)
-                self.__single_motion_loi_analysis(motion_obj, model)
-                pass
-            except Exception as e:
-                # this part has to be added to qt thread
-                qtutils.inmain(self.__main_control.debug,
-                               message='Exception happened during processing of file:' + file)
-                qtutils.inmain(self.__main_control.debug, message='message:' + repr(e))
-                qtutils.inmain(self.__main_control.debug, message='')
-                # todo: add log file to batch processing
-                pass
-            pass
+        ref = int(_p('motion.group.reference_frame'))
+        if by == 'loi' and 'loi_data' not in sarc_obj.data:
+            sarc_obj.detect_lois(frame=ref)
+        sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'))
 
-        if model.parameters.get_parameter('batch.delete_intermediary_tiffs').get_value():
+        agg = _p('motion.analyze.aggregate')
+        agg = None if agg in (None, '', 'auto') else agg
+        sarc_obj.analyze_track_motion(
+            aggregate=agg,
+            slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
+            threshold=_p('motion.analyze.threshold'),
+            contr_time_min=_p('motion.analyze.contr_time_min'),
+            merge_time_max=_p('motion.analyze.merge_time_max'),
+            buffer_frames=int(_p('motion.analyze.buffer_frames')),
+            min_valid_frames=_p('motion.analyze.min_valid_frames'),
+            filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
+
+        if _p('batch.delete_intermediary_tiffs'):
             sarc_obj.remove_intermediate_tiffs()
-
-        pass
-
-    def __single_motion_loi_analysis(self, motion_obj: Motion, model):
-        auto_save_ = motion_obj.auto_save
-        motion_obj.auto_save = False
-        motion_obj.detekt_peaks(thres=model.parameters.get_parameter('motion.detect_peaks.threshold').get_value(),
-                                min_dist=model.parameters.get_parameter('motion.detect_peaks.min_distance').get_value(),
-                                width=model.parameters.get_parameter('motion.detect_peaks.width').get_value())
-
-        motion_obj.track_z_bands(
-            search_range=model.parameters.get_parameter('motion.track_z_bands.search_range').get_value(),
-            memory_tracking=model.parameters.get_parameter('motion.track_z_bands.memory').get_value(),
-            memory_interpol=model.parameters.get_parameter('motion.track_z_bands.memory_interpolation').get_value())
-
-        motion_obj.detect_analyze_contractions(
-            model=model.parameters.get_parameter('motion.systoles.weights').get_value(),
-            threshold=model.parameters.get_parameter('motion.systoles.threshold').get_value(),
-            slen_lims=(model.parameters.get_parameter('motion.systoles.slen_limits.lower').get_value(),
-                       model.parameters.get_parameter('motion.systoles.slen_limits.upper').get_value()),
-            n_sarcomeres_min=model.parameters.get_parameter('motion.systoles.n_sarcomeres_min').get_value(),
-            buffer_frames=model.parameters.get_parameter('motion.systoles.buffer_frames').get_value(),
-            contr_time_min=model.parameters.get_parameter('motion.systoles.contr_time_min').get_value(),
-            merge_time_max=model.parameters.get_parameter('motion.systoles.merge_time_max').get_value())
-
-        motion_obj.get_trajectories(
-            slen_lims=(
-                model.parameters.get_parameter('motion.get_sarcomere_trajectories.s_length_limits_lower').get_value(),
-                model.parameters.get_parameter('motion.get_sarcomere_trajectories.s_length_limits_upper').get_value()),
-            dilate_contr=model.parameters.get_parameter(
-                'motion.get_sarcomere_trajectories.dilate_systoles').get_value(),
-            filter_params_vel=(model.parameters.get_parameter(
-                'motion.get_sarcomere_trajectories.filter_params_vel.window_length').get_value(),
-                               model.parameters.get_parameter(
-                                   'motion.get_sarcomere_trajectories.filter_params_vel.polyorder').get_value()),
-            equ_lims=(model.parameters.get_parameter('motion.get_sarcomere_trajectories.equ_limits_lower').get_value(),
-                      model.parameters.get_parameter('motion.get_sarcomere_trajectories.equ_limits_upper').get_value()))
-        motion_obj.analyze_trajectories()
-        motion_obj.analyze_popping()  # todo: implement on ui?
-        motion_obj.auto_save = auto_save_
-        motion_obj.store_loi_data()
-        pass
 
     def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
                                     force_override: bool, model):

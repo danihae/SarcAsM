@@ -23,13 +23,11 @@ from typing import Optional, Tuple, Union, List, Literal, Any
 
 import numpy as np
 import pandas as pd
-import tifffile
 import torch
 from bio_image_unet.progress import ProgressNotifier
 from scipy import stats, sparse
 
 from sarcasm.core import SarcAsMBase
-from sarcasm.io.ioutils import IOUtils
 from sarcasm.io.results_store import ResultsDict, Results, export_to_json
 from sarcasm.utils import Utils
 
@@ -119,8 +117,8 @@ class SarcAsM(SarcAsMBase):
         self._load_structure_data()
 
     def __get_store_path(self) -> str:
-        """Path to the Zarr results store (``data.zarr``); replaces structure.json."""
-        return os.path.join(self.data_dir, "data.zarr")
+        """Path to the analysis subgroup of the OME-Zarr store (``<name>.ome.zarr/sarcasm``)."""
+        return str(self.store.results_path)
 
     def __get_structure_data_file(self, is_temp_file: bool = False) -> str:
         """
@@ -162,17 +160,7 @@ class SarcAsM(SarcAsMBase):
             # defensive: a caller replaced self.data with a plain dict
             self.data = ResultsDict(self.__get_store_path(), initial=self.data)
         self.data.flush()
-        self._mirror_metadata_to_store()
-
-    def _mirror_metadata_to_store(self) -> None:
-        """Mirror image metadata into the store root attrs (for export / single store)."""
-        try:
-            meta = self.metadata.to_dict()
-            if isinstance(meta.get("time"), np.ndarray):
-                meta["time"] = meta["time"].tolist()
-            self.data.set_root_attr("metadata", meta)
-        except Exception as e:
-            logger.debug(f"metadata mirror to store skipped: {e}")
+        self.save_metadata()  # mirror metadata into the OME-Zarr store root
 
     @property
     def results(self) -> Results:
@@ -213,24 +201,8 @@ class SarcAsM(SarcAsMBase):
         return str(export_to_json(self.data, path, keys=keys, include_arrays=include_arrays))
 
     def _load_structure_data(self) -> None:
-        """Open the Zarr results store, migrating a legacy ``structure.json`` if found."""
-        store = self.__get_store_path()
-        if os.path.exists(store):
-            self.data = ResultsDict(store)
-        else:
-            legacy = self.__get_structure_data_file(is_temp_file=False)
-            legacy_tmp = self.__get_structure_data_file(is_temp_file=True)
-            src = legacy if os.path.exists(legacy) else (
-                legacy_tmp if os.path.exists(legacy_tmp) else None)
-            initial = None
-            if src is not None:
-                try:
-                    initial = IOUtils.json_deserialize(src)
-                    logger.info(f"Migrating legacy structure data ({os.path.basename(src)}) "
-                                f"-> data.zarr")
-                except Exception as e:
-                    logger.warning(f"Failed to load legacy structure data: {e}")
-            self.data = ResultsDict(store, initial=initial)
+        """Bind the lazy results store (the ``sarcasm/`` group of the OME-Zarr store)."""
+        self.data = ResultsDict(self.__get_store_path())
 
         # ensure compatibility with data from early version
         keys_old = {'points': 'pos_vectors', 'sarcomere_length_points': 'sarcomere_length_vectors',
@@ -331,11 +303,10 @@ class SarcAsM(SarcAsMBase):
         if self.metadata.pixelsize is None:
             raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
         
-        # Delegate to detection module
-        detection.detect_sarcomeres_unet(
+        # Delegate to detection module — returns float prob-map masks in-memory.
+        masks = detection.detect_sarcomeres_unet(
             images=images,
             model_path=model_path,
-            base_dir=self.base_dir,
             model_dir=str(self.model_dir),
             pixelsize=self.metadata.pixelsize,
             max_patch_size=max_patch_size,
@@ -345,6 +316,9 @@ class SarcAsM(SarcAsMBase):
             device=self.device,
             progress_notifier=progress_notifier
         )
+        # Write masks straight into the OME-Zarr store (no intermediate TIFFs).
+        for name, arr in masks.items():
+            self.store.write_mask(name, np.asarray(arr))
 
         _dict = {
             'params.detect_sarcomeres.frames': list_frames,
@@ -380,7 +354,7 @@ class SarcAsM(SarcAsMBase):
                 f"{detected_list}. Run detect_sarcomeres on these frames first.")
         return keys[0] if len(keys) == 1 else keys
 
-    def load_mask_full_stack(self, file_path: str) -> Optional[np.ndarray]:
+    def load_mask_full_stack(self, name: str) -> Optional[np.ndarray]:
         """
         Load a mask from the store by name and expand it to full stack length for display.
 
@@ -390,9 +364,9 @@ class SarcAsM(SarcAsMBase):
         (e.g. ``'zbands'``, ``'mbands'``, ``'cell_mask'``, ``'zbands_fast_movie'``). Returns
         None if the mask is not present.
         """
-        if not os.path.exists(file_path):
+        if not self._mask_exists(name):
             return None
-        arr = tifffile.imread(file_path)
+        arr = self._read_mask(name)
         n_stack = self.metadata.n_stack
         if n_stack <= 1:
             return arr
@@ -450,10 +424,9 @@ class SarcAsM(SarcAsMBase):
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
         
         # Delegate to detection module
-        detection.detect_z_bands_fast_movie_unet(
+        masks = detection.detect_z_bands_fast_movie_unet(
             images=self.read_imgs(),
             model_path=model_path,
-            base_dir=self.base_dir,
             model_dir=str(self.model_dir),
             max_patch_size=max_patch_size,
             normalization_mode=normalization_mode,
@@ -461,6 +434,8 @@ class SarcAsM(SarcAsMBase):
             device=self.device,
             progress_notifier=progress_notifier
         )
+        for name, arr in masks.items():
+            self.store.write_mask(name, np.asarray(arr))
         _dict = {'params.detect_z_bands_fast_movie.model': model_path,
                  'params.detect_z_bands_fast_movie.max_patch_size': max_patch_size,
                  'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,
@@ -483,11 +458,11 @@ class SarcAsM(SarcAsMBase):
             Threshold for binarizing the cell mask; pixels above it are cell.
             Default is 0.1.
         """
-        if not os.path.exists(self.file_cell_mask):
+        if not self._mask_exists('cell_mask'):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
         if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
-            cell_mask = tifffile.imread(self.file_cell_mask)
+            cell_mask = self._read_mask('cell_mask')
             images = self.read_imgs()
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
@@ -496,7 +471,7 @@ class SarcAsM(SarcAsMBase):
             else:
                 list_frames = [int(f) for f in frames]
             mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            cell_mask = tifffile.imread(self.file_cell_mask, key=mask_key)
+            cell_mask = self._read_mask('cell_mask', frames=mask_key)
             images = self.read_imgs(frames=frames)
         else:
             raise ValueError('frames argument not valid')
@@ -571,12 +546,13 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        if not os.path.exists(self.file_zbands):
+        if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
-            zbands = tifffile.imread(self.file_zbands)
-            orientation_field = tifffile.imread(self.file_orientation)
+        if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
+                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
+            zbands = self._read_mask('zbands')
+            orientation_field = self._read_mask('orientation')
             images = self.read_imgs()
             list_frames = list(range(len(images)))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
@@ -585,12 +561,9 @@ class SarcAsM(SarcAsMBase):
             else:
                 list_frames = [int(f) for f in frames]
             mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            zbands = tifffile.imread(self.file_zbands, key=mask_key)
-            # orientation.tif stores 2 pages (channels) per detected frame.
-            _ori_keys = ([int(mask_key)] if isinstance(mask_key, (int, np.integer))
-                         else [int(k) for k in mask_key])
-            _ori_pages = [p for k in _ori_keys for p in (k * 2, k * 2 + 1)]
-            orientation_field = tifffile.imread(self.file_orientation, key=_ori_pages)
+            zbands = self._read_mask('zbands', frames=mask_key)
+            # orientation is stored (frames, 2, H, W) — index by frame like zbands.
+            orientation_field = self._read_mask('orientation', frames=mask_key)
             orientation_field = orientation_field.reshape(-1, 2, *orientation_field.shape[-2:])
             images = self.read_imgs(frames=frames)
         else:
@@ -790,19 +763,15 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        if not os.path.exists(self.file_zbands):
+        if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
         # Decide which Z-band stack to use (fast-movie 3D U-Net vs per-frame 2D).
-        if use_fast_movie_zbands and os.path.exists(self.file_zbands_fast_movie):
-            zbands_file = self.file_zbands_fast_movie
+        if use_fast_movie_zbands and self._mask_exists('zbands_fast_movie'):
+            zbands_name = 'zbands_fast_movie'
             zbands_source = 'fast_movie_3d'
-            logger.info(
-                'analyze_sarcomere_vectors: using 3D U-Net Z-bands (zbands_fast_movie.tif) — '
-                'temporally consistent, recommended for smoother per-frame slen.'
-            )
         else:
-            zbands_file = self.file_zbands
+            zbands_name = 'zbands'
             if use_fast_movie_zbands:
                 zbands_source = 'per_frame_2d'
                 logger.info(
@@ -821,15 +790,15 @@ class SarcAsM(SarcAsMBase):
         if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata.n_stack))
-            z_bands = tifffile.imread(zbands_file)
-            mbands = tifffile.imread(self.file_mbands)
-            orientation_field = tifffile.imread(self.file_orientation)
-            sarcomere_mask = tifffile.imread(self.file_sarcomere_mask)
+            z_bands = self._read_mask(zbands_name)
+            mbands = self._read_mask('mbands')
+            orientation_field = self._read_mask('orientation')
+            sarcomere_mask = self._read_mask('sarcomere_mask')
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
-            z_bands = tifffile.imread(zbands_file, key=frames)
-            mbands = tifffile.imread(self.file_mbands, key=frames)
-            orientation_field = tifffile.imread(self.file_orientation)[frames]
-            sarcomere_mask = tifffile.imread(self.file_sarcomere_mask, key=frames)
+            z_bands = self._read_mask(zbands_name, frames=frames)
+            mbands = self._read_mask('mbands', frames=frames)
+            orientation_field = self._read_mask('orientation', frames=frames)
+            sarcomere_mask = self._read_mask('sarcomere_mask', frames=frames)
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [frames]
             else:
@@ -848,7 +817,7 @@ class SarcAsM(SarcAsMBase):
         # Optional temporal smoothing of the orientation field.
         if smooth_orientation_sigma > 0 and orientation_field.shape[0] > 1:
             logger.info(
-                f'Temporally smoothing orientation field with sigma={smooth_orientation_sigma:.2f} frames...'
+                f'Temporally smoothing orientation field with sigma={smooth_orientation_sigma:.3f} frames...'
             )
             orientation_field = sarcomere_vectors.smooth_orientation_field_temporal(
                 orientation_field, sigma=smooth_orientation_sigma,
@@ -870,8 +839,11 @@ class SarcAsM(SarcAsMBase):
         # lets the filter run over the full (N, 2, H, W) tensor and avoids
         # redundant work when ``precomputed_angle_map`` is passed below.
         radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
+        logger.info(f'Smoothing orientation field (median filter, radius={radius_pixels} px) '
+                    f'across {n_frames} frame(s)…')
         angle_maps = Utils.get_orientation_angle_map(
             orientation_field, use_median_filter=True, radius=radius_pixels,
+            progress_notifier=progress_notifier,
         )
         # ``get_orientation_angle_map`` squeezes a single-frame stack down to
         # (H, W); re-expand so ``angle_maps[i]`` is always valid.
@@ -1483,17 +1455,17 @@ class SarcAsM(SarcAsMBase):
         frames: Union[str, int, List[int], np.ndarray] = 'all',
         threshold_mbands: float = 0.25,
         threshold_zbands: float = 0.5,
-        dt_clip: float = 20.0,
-        max_disp_along_px: float = 15.0,
-        max_disp_perp_px: float = 2.0,
+        dt_clip_um: float = 2.0,
+        max_disp_along_um: float = 1.0,
+        max_disp_perp_um: float = 0.2,
         ori_tol_deg: float = 45.0,
         memory: int = 5,
         min_track_length: int = 5,
         reacquire_gap_cap: int = 4,
         max_gap_interpolation: int = 5,
         merge_tracks: bool = True,
-        merge_max_disp_along_px: float = 25.0,
-        merge_max_disp_perp_px: float = 4.0,
+        merge_max_disp_along_um: float = 1.0,
+        merge_max_disp_perp_um: float = 0.3,
         merge_ori_tol_deg: float = 45.0,
         merge_slen_tol_um: float = 0.30,
         slen_lims: Tuple[float, float] = (1.0, 3.0),
@@ -1525,14 +1497,17 @@ class SarcAsM(SarcAsMBase):
         threshold_zbands : float, optional
             Threshold to binarize the Z-band mask before distance-transform
             computation. Default is 0.5.
-        dt_clip : float, optional
-            Distance-transform clipping distance, in px. Default is 20.0.
-        max_disp_along_px : float, optional
-            Snap-gate tolerance for motion along the sarcomere axis, in px;
-            contraction-direction motion can be large. Default is 15.0.
-        max_disp_perp_px : float, optional
+        dt_clip_um : float, optional
+            Distance-transform clipping distance for the flow, in µm. Default is 2.0.
+        max_disp_along_um : float, optional
+            Snap-gate tolerance for motion along the sarcomere axis, in µm — the
+            maximum a track may move along its axis per frame. At the default
+            1.0 µm tracks cannot jump more than ~1 µm regardless of pixel size.
+            Default is 1.0.
+        max_disp_perp_um : float, optional
             Snap-gate tolerance for motion perpendicular to the sarcomere axis,
-            in px; should be small. Default is 2.0.
+            in µm; far tighter than the along gate (a perpendicular jump is a
+            swap onto a neighbouring myofibril). Default is 0.2.
         ori_tol_deg : float, optional
             Orientation tolerance for the snap gate, in degrees (compared
             modulo π). Default is 45.0.
@@ -1554,12 +1529,12 @@ class SarcAsM(SarcAsMBase):
             fragments back to their parent when the flow-predicted tail of one
             matches the head of another, reducing fragmentation from transient
             U-Net misses. Default is True.
-        merge_max_disp_along_px : float, optional
-            Along-axis position-residual tolerance for the merge step, in px
-            (scales with the bridged gap). Default is 25.0.
-        merge_max_disp_perp_px : float, optional
-            Perpendicular position-residual tolerance for the merge step, in px
-            (scales with the bridged gap). Default is 4.0.
+        merge_max_disp_along_um : float, optional
+            Along-axis position-residual tolerance for the merge step, in µm
+            (scales with the bridged gap). Default is 1.0.
+        merge_max_disp_perp_um : float, optional
+            Perpendicular position-residual tolerance for the merge step, in µm
+            (scales with the bridged gap). Default is 0.3.
         merge_ori_tol_deg : float, optional
             Orientation tolerance for merging, in degrees (axial / mod π).
             Default is 45.0.
@@ -1613,8 +1588,8 @@ class SarcAsM(SarcAsMBase):
                 or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata.n_stack))
-            z_bands = tifffile.imread(self.file_zbands)
-            mbands = tifffile.imread(self.file_mbands)
+            z_bands = self._read_mask('zbands')
+            mbands = self._read_mask('mbands')
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [int(frames)]
@@ -1623,8 +1598,8 @@ class SarcAsM(SarcAsMBase):
             # Masks are stored sparsely (one page per detected frame); translate
             # absolute movie-frame indices to mask-TIFF page indices.
             mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            z_bands = tifffile.imread(self.file_zbands, key=mask_key)
-            mbands = tifffile.imread(self.file_mbands, key=mask_key)
+            z_bands = self._read_mask('zbands', frames=mask_key)
+            mbands = self._read_mask('mbands', frames=mask_key)
         else:
             raise ValueError('frames argument not valid')
         if z_bands.ndim == 2:
@@ -1691,17 +1666,17 @@ class SarcAsM(SarcAsMBase):
             frametime=self.metadata.frametime,
             threshold_mbands=threshold_mbands,
             threshold_zbands=threshold_zbands,
-            dt_clip=dt_clip,
-            max_disp_along_px=max_disp_along_px,
-            max_disp_perp_px=max_disp_perp_px,
+            dt_clip_um=dt_clip_um,
+            max_disp_along_um=max_disp_along_um,
+            max_disp_perp_um=max_disp_perp_um,
             ori_tol_deg=ori_tol_deg,
             memory=memory,
             min_track_length=min_track_length,
             reacquire_gap_cap=reacquire_gap_cap,
             max_gap_interpolation=max_gap_interpolation,
             merge_tracks=merge_tracks,
-            merge_max_disp_along_px=merge_max_disp_along_px,
-            merge_max_disp_perp_px=merge_max_disp_perp_px,
+            merge_max_disp_along_um=merge_max_disp_along_um,
+            merge_max_disp_perp_um=merge_max_disp_perp_um,
             merge_ori_tol_deg=merge_ori_tol_deg,
             merge_slen_tol_um=merge_slen_tol_um,
             slen_lims=slen_lims,
@@ -1727,17 +1702,17 @@ class SarcAsM(SarcAsMBase):
             'params.track_sarcomere_vectors.frames': list_frames,
             'params.track_sarcomere_vectors.threshold_mbands': threshold_mbands,
             'params.track_sarcomere_vectors.threshold_zbands': threshold_zbands,
-            'params.track_sarcomere_vectors.dt_clip': dt_clip,
-            'params.track_sarcomere_vectors.max_disp_along_px': max_disp_along_px,
-            'params.track_sarcomere_vectors.max_disp_perp_px': max_disp_perp_px,
+            'params.track_sarcomere_vectors.dt_clip_um': dt_clip_um,
+            'params.track_sarcomere_vectors.max_disp_along_um': max_disp_along_um,
+            'params.track_sarcomere_vectors.max_disp_perp_um': max_disp_perp_um,
             'params.track_sarcomere_vectors.ori_tol_deg': ori_tol_deg,
             'params.track_sarcomere_vectors.memory': memory,
             'params.track_sarcomere_vectors.min_track_length': min_track_length,
             'params.track_sarcomere_vectors.reacquire_gap_cap': reacquire_gap_cap,
             'params.track_sarcomere_vectors.max_gap_interpolation': max_gap_interpolation,
             'params.track_sarcomere_vectors.merge_tracks': merge_tracks,
-            'params.track_sarcomere_vectors.merge_max_disp_along_px': merge_max_disp_along_px,
-            'params.track_sarcomere_vectors.merge_max_disp_perp_px': merge_max_disp_perp_px,
+            'params.track_sarcomere_vectors.merge_max_disp_along_um': merge_max_disp_along_um,
+            'params.track_sarcomere_vectors.merge_max_disp_perp_um': merge_max_disp_perp_um,
             'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
             'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
             'params.track_sarcomere_vectors.slen_lims': list(slen_lims),
@@ -1761,13 +1736,21 @@ class SarcAsM(SarcAsMBase):
             tracking_data.update({f'motionfield_tracker_{k}': v for k, v in mf.items()})
             tracking_data['motionfield_source'] = 'tracker'
         if store_flow_fields:
-            tifffile.imwrite(
-                self.file_flow,
-                np.asarray(out['flow_fields'], dtype=np.float32),
-                compression='zlib',
-            )
+            self.store.write_flow(np.asarray(out['flow_fields'], dtype=np.float32))
 
         self.data.update(tracking_data)
+        # Re-tracking changes track identities, so any prior grouping no longer
+        # matches the new tracks. Drop the stale grouping keys (grouped-motion
+        # getters are additionally guarded by _assert_track_motion_fresh via the
+        # grouping_hash / track_ids_snapshot) so the tracks dataframe and napari
+        # overlays never mix an old grouping with the new tracks. Re-run
+        # group_tracks (+ analyze_track_motion) to regroup.
+        for _stale in ('track_group_id', 'track_group_order', 'group_kind',
+                       'n_groups', 'group_member_counts', 'group_n_vectors_total',
+                       'group_n_vectors_in_long_tracks', 'track_ids_snapshot',
+                       'grouping_hash'):
+            if _stale in self.data:
+                del self.data[_stale]
         logger.info(f'Tracked {out["n_tracks"]} sarcomere query points over {len(list_frames)} frames.')
         if self.auto_save:
             self.store_structure_data()
@@ -1776,7 +1759,7 @@ class SarcAsM(SarcAsMBase):
         self,
         frames: Union[str, int, List[int], np.ndarray] = 'all',
         threshold: float = 0.5,
-        dt_clip: float = 20.0,
+        dt_clip_um: float = 2.0,
         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
     ) -> None:
         """Compute optical flow + per-vector motion field without tracking.
@@ -1797,8 +1780,8 @@ class SarcAsM(SarcAsMBase):
         threshold : float, optional
             Threshold to binarize the probability masks before distance-transform
             computation. Default is 0.5.
-        dt_clip : float, optional
-            Distance-transform clipping distance, in px. Default is 20.0.
+        dt_clip_um : float, optional
+            Distance-transform clipping distance for the flow, in µm. Default is 2.0.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
@@ -1811,8 +1794,8 @@ class SarcAsM(SarcAsMBase):
                 or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata.n_stack))
-            z_bands = tifffile.imread(self.file_zbands)
-            mbands = tifffile.imread(self.file_mbands)
+            z_bands = self._read_mask('zbands')
+            mbands = self._read_mask('mbands')
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [int(frames)]
@@ -1820,8 +1803,8 @@ class SarcAsM(SarcAsMBase):
                 list_frames = [int(f) for f in frames]
             # Translate absolute movie-frame indices to sparse mask-TIFF pages.
             mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            z_bands = tifffile.imread(self.file_zbands, key=mask_key)
-            mbands = tifffile.imread(self.file_mbands, key=mask_key)
+            z_bands = self._read_mask('zbands', frames=mask_key)
+            mbands = self._read_mask('mbands', frames=mask_key)
         else:
             raise ValueError('frames argument not valid')
         if z_bands.ndim == 2:
@@ -1859,7 +1842,7 @@ class SarcAsM(SarcAsMBase):
             z_bands, mbands, pos_px_all, ori_all,
             pixelsize=self.metadata.pixelsize,
             frametime=self.metadata.frametime,
-            threshold=threshold, dt_clip=dt_clip,
+            threshold=threshold, dt_clip_um=dt_clip_um,
             progress_notifier=progress_notifier,
         )
 
@@ -1878,7 +1861,7 @@ class SarcAsM(SarcAsMBase):
             'motionfield_source': 'standalone',
             'params.compute_motion_field.frames': list_frames,
             'params.compute_motion_field.threshold': threshold,
-            'params.compute_motion_field.dt_clip': dt_clip,
+            'params.compute_motion_field.dt_clip_um': dt_clip_um,
         })
         self.data.update(motion_field_data)
         if self.auto_save:

@@ -122,7 +122,7 @@ class TrainingDataGenerator:
                          device: torch.device = torch.device('cpu')):
         """
         AND-gated double wavelet analysis of sarcomere length and orientation.
-    
+
         Parameters
         ----------
         kernel : {'gaussian', 'half_gaussian', 'binary'}, optional

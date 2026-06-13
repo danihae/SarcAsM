@@ -54,6 +54,9 @@ Changelog = "https://github.com/danihae/SarcAsM/releases"
 [project.scripts]
 sarcasm = "sarcasm_app.__main__:main"
 
+[project.entry-points."napari.manifest"]
+sarc-asm = "sarcasm_napari_viewer:napari.yaml"
+
 [project.optional-dependencies]
 app = ["pyinstaller>=6.0.0"]
 docs = [
@@ -110,7 +113,8 @@ ignore = [
 [tool.hatch.build.targets.sdist]
 include = [
   "sarcasm/",
-  "sarcasm_app/", 
+  "sarcasm_app/",
+  "sarcasm_napari_viewer/",
   "contraction_net/",
   "LICENSE",
   "README.md",
@@ -118,7 +122,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["sarcasm", "sarcasm_app", "contraction_net"]
+packages = ["sarcasm", "sarcasm_app", "contraction_net", "sarcasm_napari_viewer"]
 
 [tool.readthedocs]
 version = 2

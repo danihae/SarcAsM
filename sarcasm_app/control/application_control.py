@@ -15,26 +15,59 @@
 import logging
 import os
 import traceback
-from typing import Tuple, Optional
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from sarcasm import Utils, Structure
+from sarcasm import Utils
 from sarcasm.type_utils import TypeUtils
-from sarcasm.structure_modules.domain_clustering import analyze_domains
+from sarcasm.analysis.domain_clustering import analyze_domains
 
 import napari
 import numpy as np
-import tifffile
 import torch
-from PyQt5.QtCore import QObject, pyqtSignal, QThread
+from PyQt5.QtCore import QObject, QEvent, QTimer, pyqtSignal, QThread
 from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit, QApplication
 from bio_image_unet.progress import ProgressNotifier
-from napari.layers import Shapes
 
 from ..model import ApplicationModel
 
 logger = logging.getLogger(__name__)
+
+
+class _ViewerFileDropFilter(QObject):
+    """Route file drops on the app's embedded napari viewer to the SarcAsM
+    importer (full analysis layers) instead of napari's generic reader plugin.
+
+    Installed as a Qt event filter on the viewer's QtViewer widget, so it sees
+    the drop *before* napari's own ``dropEvent`` and can consume it. Non-image
+    drops (or anything we don't recognise) fall through to napari's default
+    handling — which, with the ``sarcasm_napari_viewer`` reader installed, opens
+    the raw movie + masks rather than crashing.
+    """
+
+    # Suffixes the SarcAsM importer can open (movies + analysed stores).
+    _EXTS = (".ome.zarr", ".zarr", ".ome.tif", ".ome.tiff", ".tif", ".tiff")
+
+    def __init__(self, open_handler):
+        super().__init__()
+        self._open_handler = open_handler
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Drop:
+            md = event.mimeData()
+            if md is not None and md.hasUrls():
+                paths = [u.toLocalFile() for u in md.urls() if u.toLocalFile()]
+                target = next((p for p in paths
+                               if p.lower().rstrip("/").endswith(self._EXTS)), None)
+                if target is not None:
+                    event.acceptProposedAction()
+                    # Defer the (heavy, synchronous) import out of the event
+                    # handler so the drop returns immediately and Qt isn't
+                    # blocked mid-event.
+                    QTimer.singleShot(0, lambda p=target: self._open_handler(p))
+                    return True  # consume — don't fall through to napari
+        return False
 
 
 class ApplicationControl:
@@ -53,10 +86,12 @@ class ApplicationControl:
         self._window = window
         self._model: ApplicationModel = model
         self._viewer = None  # napari.Viewer(title='Image Window(napari)')  # the napari viewer object
-        self.__layer_loi: Optional[Shapes] = None
         self.__debug_action = None
         self.__worker_thread: Optional[QThread] = None
-        self.__callback_loi_list_updated = None
+        # Drop-to-import on the embedded viewer: a handler registered by the
+        # file-selection control + the Qt event filter that calls it.
+        self.__open_file_handler = None
+        self.__drop_filter: Optional[_ViewerFileDropFilter] = None
 
         self.progress_notifier = ProgressNotifier()
         self.progress_notifier.set_progress_report(lambda p: self.update_progress(p * 100))
@@ -84,16 +119,6 @@ class ApplicationControl:
     def set_debug_action(self, debug_action):
         self.__debug_action = debug_action
 
-    def set_callback_loi_list_updated(self, callback):
-        self.__callback_loi_list_updated = callback
-
-    @property
-    def layer_loi(self):
-        return self.__layer_loi
-
-    def init_loi_layer(self, layer):
-        self.__layer_loi = layer
-
     @property
     def model(self) -> ApplicationModel:
         return self._model
@@ -101,6 +126,14 @@ class ApplicationControl:
     @property
     def viewer(self) -> napari.Viewer:
         return self._viewer
+
+    def set_open_file_handler(self, handler):
+        """Register the callback used to import a file dropped on the viewer.
+
+        ``handler`` is called with a single path string (on the Qt main thread)
+        and should run the same import flow as the file-selection buttons.
+        """
+        self.__open_file_handler = handler
 
     @staticmethod
     def is_gpu_available():
@@ -137,6 +170,18 @@ class ApplicationControl:
         except AttributeError:
             return None
 
+    def __viewer_qt_viewer(self):
+        """Return the napari QtViewer widget (the drop target), or None if napari
+        changed its private API. Guarded like ``__viewer_qt_window``."""
+        if self._viewer is None:
+            return None
+        win = getattr(self._viewer, 'window', None)
+        for attr in ('_qt_viewer', 'qt_viewer'):
+            obj = getattr(win, attr, None)
+            if obj is not None:
+                return obj
+        return None
+
     def __configure_viewer_window(self, viewer):
         """Apply icon, paired placement, and close-coupling to a freshly created
         napari viewer. Uses napari's private `_qt_window` attribute, so each access
@@ -166,6 +211,15 @@ class ApplicationControl:
         # When the user closes the napari window, also close the main window so
         # the app exits cleanly instead of stranding a controller with no viewer.
         qt_window.destroyed.connect(self.__on_viewer_destroyed)
+
+        # Route file drops on this viewer to the SarcAsM importer (full analysis
+        # layers) instead of napari's generic reader. A fresh filter per viewer
+        # (each new viewer is a new QtViewer); kept referenced so it isn't GC'd.
+        qt_viewer = self.__viewer_qt_viewer()
+        if qt_viewer is not None and self.__open_file_handler is not None:
+            self.__drop_filter = _ViewerFileDropFilter(self.__open_file_handler)
+            qt_viewer.setAcceptDrops(True)
+            qt_viewer.installEventFilter(self.__drop_filter)
 
     def __on_viewer_destroyed(self, *_):
         self._viewer = None
@@ -211,101 +265,135 @@ class ApplicationControl:
         if progress_bar is not None:
             progress_bar.setValue(int(value))
 
-    def __add_line_to_napari(self, line_to_draw,edge_width:float=0.65):
-        # note that first coordinate in the point tuples is Y and second is X
-        # np.array([[[100, 100], [200, 200]], [[300, 300], [400, 300]]])
+    def init_tracks_stack(self, visible=True):
+        """Draw sarcomere trajectories as lines plus a dot at each timepoint.
 
-        #2025-03-31: previously [[line_to_draw[0][1], line_to_draw[0][0]], [line_to_draw[1][1], line_to_draw[1][0]]]
-        #pos_vectors = np.array([[line_to_draw[0][0], line_to_draw[0][1]], [line_to_draw[1][0], line_to_draw[1][1]]])
-        self.layer_loi.add_paths(line_to_draw,edge_width=edge_width,edge_color='red')
-
-        #self.layer_loi.add_lines(line_to_draw, edge_width=edge_width, edge_color='red')
-        # self.__main_control.layer_loi.add_lines(np.array([[100,200],[100,400]]),edge_color='red',edge_width=15)
-        # data=self.__main_control.layer_loi.data
-        # widths=self.__main_control.layer_loi.edge_width
-        # print(data)
-        # print(widths)
-        # [array([[100., 100.],[200., 200.]]), array([[300., 300.],[400., 300.]]), array([[100., 200.],[100., 400.]])]
-        # [10, 5, 15]
-
-
-    def init_lois(self):
-        cell: Structure = TypeUtils.unbox(self.model.cell)
-        line_width = self.model.parameters.get_parameter('loi.detect.line_width').get_value()
-        loi_lines = None
-
-        if hasattr(cell, 'loi_data'):
-            # Extract line data directly from sarc_obj.loi_data
-            loi_lines = [cell.loi_data['line']]
-        elif hasattr(cell, 'data') and 'loi_data' in self.model.cell.data:
-            # Extract lines from sarc_obj.data['loi_data']
-            loi_lines = cell.data['loi_data'].get('loi_lines', [])
-
-        if loi_lines is not None:
-            # Plot each line
-            for line in loi_lines:
-                # todo: need to check how multi segment line could be added
-                # ax.plot(line.T[1], line.T[0], color=color, linewidth=linewidth, alpha=alpha)
-                start = [line[0][0], line[0][1]]
-                end = [line[-1][0], line[-1][1]]
-                self.on_update_loi_list(line_start=start, line_end=end,line=line, line_thickness=line_width)
-                logger.debug(f"LOI: {start} -> {end}")
-                pass
-            pass
+        Each track becomes one polyline (its full trajectory) in a Shapes
+        layer, and a sibling Points layer marks the sampled position at every
+        timepoint. Coloured per track id, or by group once
+        :meth:`SarcAsM.group_tracks` has run (matching the ``TrackGroups``
+        point colours). Both are static 2D overlays, so each trajectory reads
+        as a continuous line across the whole movie rather than a fading tail."""
+        cell = self.model.cell
+        if cell is None or 'tracks_positions_px' not in cell.data:
+            return
+        if cell.metadata.n_stack is None or cell.metadata.n_stack <= 1:
+            return  # tracking requires a time series
+        for name in ('Tracks', 'TrackPoints'):
+            if name in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers[name])
+        pos = np.asarray(cell.data['tracks_positions_px'], dtype=float)  # (N, T, 2) yx, px
+        if pos.ndim != 3 or pos.shape[0] == 0:
+            return
+        n_tracks = pos.shape[0]
+        mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])
+        snapped = cell.data.get('tracks_snapped')
+        if snapped is not None:
+            snapped = np.asarray(snapped)
+            if snapped.shape == mask.shape:
+                mask &= snapped.astype(bool)
+        # colour by group when a grouping exists; drop unassigned (gid < 0) tracks
+        gid = cell.data.get('track_group_id')
+        gid = None if gid is None else np.asarray(gid).reshape(-1)
+        if gid is not None and gid.shape[0] == n_tracks:
+            mask &= (gid >= 0)[:, None]
         else:
-            logger.info("No LOI's found for current image")
+            gid = None
+
+        import matplotlib.pyplot as plt
+        if gid is not None:
+            # match TrackGroups colouring so lines and group dots agree
+            n_groups = max(1, int(cell.data.get('n_groups', int(gid.max()) + 1)))
+            track_colors = plt.get_cmap('gist_rainbow')((gid % n_groups) / n_groups)
+        else:
+            track_colors = plt.get_cmap('turbo')(np.arange(n_tracks) / max(1.0, n_tracks - 1))
+
+        paths, path_colors, dot_pts, dot_colors = [], [], [], []
+        for i in range(n_tracks):
+            ts = np.nonzero(mask[i])[0]  # timepoints present, ascending
+            if ts.size == 0:
+                continue
+            yx = pos[i, ts, :2]
+            if ts.size >= 2:  # a path needs at least two vertices
+                paths.append(yx)
+                path_colors.append(track_colors[i])
+            dot_pts.append(yx)
+            dot_colors.append(np.broadcast_to(track_colors[i], (ts.size, 4)))
+        if not dot_pts:
+            return
+
+        scale2d = cell.scale[-2:]  # static y/x overlay, broadcast across all frames
+        if paths:
+            self.viewer.add_shapes(paths, name='Tracks', shape_type='path',
+                                   edge_color=np.asarray(path_colors), edge_width=1.5,
+                                   opacity=0.8, visible=visible, scale=scale2d, ndim=2)
+        self.viewer.add_points(np.concatenate(dot_pts), name='TrackPoints',
+                               face_color=np.concatenate(dot_colors), border_width=0,
+                               size=max(1.5, 0.2 / cell.metadata.pixelsize),
+                               opacity=0.9, visible=visible, scale=scale2d)
+
+    def init_track_groups_stack(self, visible=True):
+        """napari Points layer of tracked sarcomeres colored by their group."""
+        cell = self.model.cell
+        if cell is None or 'tracks_positions_px' not in cell.data or 'track_group_id' not in cell.data:
+            return
+        if 'TrackGroups' in self.viewer.layers:
+            self.viewer.layers.remove(self.viewer.layers['TrackGroups'])
+        pos = np.asarray(cell.data['tracks_positions_px'], dtype=float)  # (N, T, 2) yx, px
+        gid = np.asarray(cell.data['track_group_id'])                    # (N,)
+        if pos.ndim != 3 or pos.shape[0] == 0:
+            return
+        if gid.shape[0] != pos.shape[0]:
+            return  # stale grouping (track count changed); skip until re-grouped
+        multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
+        mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])       # (N, T)
+        snapped = cell.data.get('tracks_snapped')
+        if snapped is not None:
+            snapped = np.asarray(snapped)
+            if snapped.shape == mask.shape:
+                mask &= snapped.astype(bool)
+        mask &= (gid >= 0)[:, None]
+        ii, tt = np.nonzero(mask)
+        if ii.size == 0:
+            return
+        ys, xs = pos[ii, tt, 0], pos[ii, tt, 1]
+        points = np.column_stack([tt.astype(float), ys, xs]) if multi_frame else np.column_stack([ys, xs])
+        n_groups = max(1, int(cell.data.get('n_groups', int(gid.max()) + 1)))
+        import matplotlib.pyplot as plt
+        face = plt.get_cmap('gist_rainbow')((gid[ii] % n_groups) / n_groups)
+        self.viewer.add_points(points, name='TrackGroups', face_color=face,
+                               size=max(2.0, 0.3 / cell.metadata.pixelsize), visible=visible)
+        self.viewer.layers['TrackGroups'].scale = cell.scale
+
+    def init_draw_loi_layer(self):
+        """Add (or focus) a Shapes layer for drawing LOI lines on the movie.
+
+        With 'Group by = loi', any drawn polylines are grouped + ordered along the
+        line exactly like auto-detected LOIs (see SarcAsM.group_tracks by='loi')."""
+        cell = self.model.cell
+        if cell is None:
+            return
+        if 'DrawnLOIs' in self.viewer.layers:
+            layer = self.viewer.layers['DrawnLOIs']
+        else:
+            layer = self.viewer.add_shapes(name='DrawnLOIs', edge_color='#FF0000',
+                                           scale=cell.scale[-2:])
+        layer.mode = 'add_path'
+        try:
+            self.viewer.layers.selection.active = layer
+        except Exception:
             pass
-        pass
 
-    def on_update_loi_list(self,line_start,line_end,line,line_thickness):
-        if self.model.cell is None or line_start is None or line_end is None or len(line_start) != 2 or len(
-                line_end) != 2 or line_thickness is None or line is None:
-            logger.warning('Line updated but wrong data-type')
-            return
+    def get_drawn_lois(self):
+        """Drawn LOI polylines as a list of (M, 2) yx-pixel arrays, or None if none.
 
-        line_key_points = (line_start, line_end, line_thickness,line) # add line data to key points entry
-        list_entry = self.get_entry_key_for_line(line_key_points)
-        if list_entry in self.model.line_dictionary[self.model.cell.file_path]:  # if element already contained, ignore
-            # if its inside and its currently selected, reload the sarcomere (for up to date loi info)
-            if 'last' in self.model.line_dictionary[self.model.cell.file_path] and line_key_points == \
-                    self.model.line_dictionary[self.model.cell.file_path]['last']:
-                file_name, scan_line = self.get_file_name_from_scheme(self.model.cell.file_path, 'last')
-                self.model.init_sarcomere(file_name)
-            return
-
-        # add line and line_ux to dictionary for later usage
-        self.model.line_dictionary[self.model.cell.file_path][list_entry] = line_key_points
-        # add line to napari
-        self.__add_line_to_napari(line)
-
-        # todo: update combo box on motion analysis parameters page
-        # todo: should be done via callback method
-
-        if self.__callback_loi_list_updated is not None:
-            dictionary_entry=self.model.line_dictionary[self.model.cell.file_path]
-            self.__callback_loi_list_updated(dictionary_entry)
-
-        pass
-
-
-    @staticmethod
-    def get_entry_key_for_line(line) -> str:
-        return '(%d,%d)->(%d,%d):%.2f' % (line[0][0],
-                                        line[0][1],
-                                        line[1][0],
-                                        line[1][1],
-                                        line[2])
-
-    def get_file_name_from_scheme(self, cell_file, line) -> Tuple[str, object]:
-        scheme = self.model.scheme
-        scan_line = self.model.line_dictionary[cell_file][line]
-        file_name = scheme % (scan_line[0][0],
-                              scan_line[0][1],
-                              scan_line[1][0],
-                              scan_line[1][1],
-                              scan_line[2])
-        file_name += "_loi" + self.model.file_extension
-        return file_name, scan_line
+        Must be called on the Qt main thread (reads the napari Shapes layer)."""
+        if 'DrawnLOIs' not in self.viewer.layers:
+            return None
+        layer = self.viewer.layers['DrawnLOIs']
+        lines = [np.asarray(p, dtype=float).reshape(-1, 2) for p in layer.data
+                 if len(p) >= 2]
+        return lines or None
 
     def init_scale_bar(self):
         # Extract metadata
@@ -350,15 +438,16 @@ class ApplicationControl:
         self.viewer.layers.move(current_index, 0)
 
     def init_z_band_stack(self, visible=True, fastmovie=False):
-        if fastmovie and not os.path.exists(self.model.cell.file_zbands_fast_movie):
+        if fastmovie and not self.model.cell._mask_exists('zbands_fast_movie'):
             fastmovie = False
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_zbands if not fastmovie
-                                                          else self.model.cell.file_zbands_fast_movie):
+        if self.model.cell is not None:
+            tmp = self.model.cell.load_mask_full_stack(
+                'zbands_fast_movie' if fastmovie else 'zbands')
+            if tmp is None:
+                return
             if self.viewer.layers.__contains__('ZbandMask'):
                 layer = self.viewer.layers.__getitem__('ZbandMask')
                 self.viewer.layers.remove(layer)
-            tmp = self.model.cell.load_mask_full_stack(
-                self.model.cell.file_zbands if not fastmovie else self.model.cell.file_zbands_fast_movie)
             tmp[tmp < 0.3] = np.nan  # Higher threshold for crisper edges
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -366,11 +455,13 @@ class ApplicationControl:
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_m_band_stack(self, visible=True):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_mbands):
+        if self.model.cell is not None:
+            tmp = self.model.cell.load_mask_full_stack('mbands')
+            if tmp is None:
+                return
             if self.viewer.layers.__contains__('MbandMask'):
                 layer = self.viewer.layers.__getitem__('MbandMask')
                 self.viewer.layers.remove(layer)
-            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_mbands)
             tmp[tmp < 0.1] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -378,11 +469,13 @@ class ApplicationControl:
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_cell_mask_stack(self, visible=True):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_cell_mask):
+        if self.model.cell is not None:
+            tmp = self.model.cell.load_mask_full_stack('cell_mask')
+            if tmp is None:
+                return
             if self.viewer.layers.__contains__('CellMask'):
                 layer = self.viewer.layers.__getitem__('CellMask')
                 self.viewer.layers.remove(layer)
-            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_cell_mask)
             tmp[tmp < 0.5] = np.nan
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
@@ -516,12 +609,14 @@ class ApplicationControl:
             self.viewer.layers['MidlinePoints'].scale = self.model.cell.scale
 
     def init_sarcomere_mask_stack(self, visible=True):
-        if self.model.cell is not None and os.path.exists(self.model.cell.file_sarcomere_mask):
+        if self.model.cell is not None:
+            tmp = self.model.cell.load_mask_full_stack('sarcomere_mask')
+            if tmp is None:
+                return
             if 'SarcomereMask' in self.viewer.layers:
                 layer = self.viewer.layers['SarcomereMask']
                 self.viewer.layers.remove(layer)
 
-            tmp = self.model.cell.load_mask_full_stack(self.model.cell.file_sarcomere_mask)
             if self.model.cell.metadata.n_stack > 1 and tmp.ndim==2:
                 tmp = np.expand_dims(tmp, axis=0)
 

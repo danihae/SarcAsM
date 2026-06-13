@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file './sarcasm_app/ui-files/file_selection.ui'
+# Form implementation generated from reading ui file 'sarcasm_app/ui-files/file_selection.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -30,6 +30,9 @@ class Ui_Form(object):
         self.btn_search = QtWidgets.QPushButton(self.groupBox)
         self.btn_search.setObjectName("btn_search")
         self.horizontalLayout_2.addWidget(self.btn_search)
+        self.btn_open_zarr = QtWidgets.QPushButton(self.groupBox)
+        self.btn_open_zarr.setObjectName("btn_open_zarr")
+        self.horizontalLayout_2.addWidget(self.btn_open_zarr)
         self.btn_open_folder = QtWidgets.QPushButton(self.groupBox)
         self.btn_open_folder.setObjectName("btn_open_folder")
         self.horizontalLayout_2.addWidget(self.btn_open_folder)
@@ -109,8 +112,13 @@ class Ui_Form(object):
         _translate = QtCore.QCoreApplication.translate
         Form.setWindowTitle(_translate("Form", "Form"))
         self.groupBox.setTitle(_translate("Form", "File Selection"))
-        self.label.setText(_translate("Form", "Tif-File"))
-        self.btn_search.setText(_translate("Form", "Browse…"))
+        self.label.setToolTip(_translate("Form", "A .tif/.tiff movie or an already-analyzed .ome.zarr store."))
+        self.label.setText(_translate("Form", "Input"))
+        self.le_cell_file.setToolTip(_translate("Form", "Path to a .tif/.tiff file or a .ome.zarr store (press Enter to open)."))
+        self.btn_search.setToolTip(_translate("Form", "Browse for a .tif/.tiff movie."))
+        self.btn_search.setText(_translate("Form", "Browse .tif…"))
+        self.btn_open_zarr.setToolTip(_translate("Form", "Open an already-analyzed .ome.zarr store (select the .ome.zarr folder)."))
+        self.btn_open_zarr.setText(_translate("Form", "Open .ome.zarr…"))
         self.btn_open_folder.setText(_translate("Form", "Open folder"))
         self.groupBox_2.setTitle(_translate("Form", "Metadata"))
         self.label_2.setText(_translate("Form", "Frame time [s]"))
