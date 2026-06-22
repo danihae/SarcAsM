@@ -42,8 +42,7 @@ class _ViewerFileDropFilter(QObject):
     Installed as a Qt event filter on the viewer's QtViewer widget, so it sees
     the drop *before* napari's own ``dropEvent`` and can consume it. Non-image
     drops (or anything we don't recognise) fall through to napari's default
-    handling — which, with the ``sarcasm_napari_viewer`` reader installed, opens
-    the raw movie + masks rather than crashing.
+    handling.
     """
 
     # Suffixes the SarcAsM importer can open (movies + analysed stores).
