@@ -114,7 +114,7 @@ class BatchExport:
         Iterate files and collect per-group track-based motion features.
 
         One row per group per file; files without track motion are skipped.
-        Saves to ``<folder>data_motion.pd``.
+        Saves to ``<folder>data_motion.pkl``.
 
         Parameters
         ----------
@@ -135,26 +135,33 @@ class BatchExport:
                 logger.error(f'{tif_file} failed!')
                 logger.exception(f'Exception: {repr(e)}')
         self.data = pd.DataFrame.from_records(records)
-        self.data.to_pickle(self.folder + 'data_motion.pd')
+        self.data.to_pickle(self.folder + 'data_motion.pkl')
 
     def save_data(self):
-        """Save the DataFrame to ``<folder>data_structure.pd``."""
-        self.data.to_pickle(self.folder + 'data_structure.pd')
+        """Save the DataFrame to ``<folder>data_structure.pkl``."""
+        self.data.to_pickle(self.folder + 'data_structure.pkl')
 
     def load_data(self):
         """
-        Load the DataFrame from ``<folder>data_structure.pd``.
+        Load the DataFrame from ``<folder>data_structure.pkl``.
+
+        Falls back to the legacy ``data_structure.pd`` file when the ``.pkl``
+        file is absent.
 
         Raises
         ------
         FileExistsError
             If the data file does not exist in the specified folder.
         """
-        if os.path.exists(self.folder + 'data_structure.pd'):
-            self.data = pd.read_pickle(self.folder + 'data_structure.pd')
-        else:
-            raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
-                                  'Set load_data=False.')
+        path = self.folder + 'data_structure.pkl'
+        if not os.path.exists(path):
+            # backward compatibility with the legacy '.pd' extension
+            legacy_path = self.folder + 'data_structure.pd'
+            if not os.path.exists(legacy_path):
+                raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
+                                      'Set load_data=False.')
+            path = legacy_path
+        self.data = pd.read_pickle(path)
 
     def export_data(self, file_path, format='.xlsx'):
         """
