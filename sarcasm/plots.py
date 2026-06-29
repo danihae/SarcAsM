@@ -29,6 +29,7 @@ from sarcasm.feature_dict import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plot_utils import PlotUtils
 from sarcasm.structure import Structure
+from sarcasm.structure_modules import myofibril_analysis
 from sarcasm.utils import Utils
 
 
@@ -1088,7 +1089,7 @@ class Plots:
         orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
         length_vectors = sarc_obj.data['sarcomere_length_vectors'][frame]
         median_filter_radius = sarc_obj.data['params.analyze_myofibrils.median_filter_radius']
-        myof_length_map = sarc_obj.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
+        myof_length_map = myofibril_analysis.create_myofibril_length_map(myof_lines=myof_lines, myof_length=myof_lengths,
                                                       pos_vectors=pos_vectors,
                                                       sarcomere_orientation_vectors=orientation_vectors,
                                                       sarcomere_length_vectors=length_vectors,
