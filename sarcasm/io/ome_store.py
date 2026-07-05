@@ -507,6 +507,40 @@ class OmeZarrStore:
                 pass
         return out
 
+    def delete_mask(self, name: str) -> bool:
+        """Delete a stored mask (from ``labels/`` or ``sarcasm/masks/``) if present.
+
+        Parameters
+        ----------
+        name : str
+            Mask name.
+
+        Returns
+        -------
+        bool
+            True if a mask was removed, False if it was not present.
+        """
+        if not self.exists:
+            return False
+        root = self._root("a")
+        try:
+            labels_grp = root[LABELS]
+        except KeyError:
+            labels_grp = None
+        if labels_grp is not None and name in list(labels_grp.group_keys()):
+            del labels_grp[name]
+            labels_grp.attrs["labels"] = [
+                n for n in labels_grp.attrs.get("labels", []) if n != name]
+            return True
+        try:
+            masks_grp = root[MASKS]
+        except KeyError:
+            masks_grp = None
+        if masks_grp is not None and name in list(masks_grp.array_keys()):
+            del masks_grp[name]
+            return True
+        return False
+
     # -- flow ------------------------------------------------------------- #
     def write_flow(self, flow: np.ndarray) -> None:
         """Store the dense optical-flow stack under ``sarcasm/flow``.

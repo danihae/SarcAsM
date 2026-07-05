@@ -11,11 +11,13 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Single Zarr store for SarcAsM analysis + track results (proof of concept).
+"""Single Zarr store for SarcAsM analysis + track results.
 
-This replaces the giant text ``structure.json`` with one self-describing Zarr
-store, ``<data_dir>/data.zarr``. The physical layout mirrors the logical
-structure, so the store is browsable with any Zarr tool::
+This replaces the giant text ``structure.json`` with a self-describing Zarr
+group tree — used standalone as ``data.zarr`` (e.g. in tests) and, in
+production, re-parented under the ``sarcasm/`` group of the OME-Zarr container
+(see :mod:`sarcasm.io.ome_store`). The physical layout mirrors the logical
+structure, so it is browsable with any Zarr tool::
 
     data.zarr/
       params/<step>/        (attrs)   analysis parameters, one subgroup per step
@@ -41,8 +43,11 @@ Access (see :class:`Results`)::
     r.params.track_sarcomere_vectors.max_disp_along_um
     r['tracks_slen']            # legacy flat-key dict access (materialised)
 
-Scope of this POC: analysis + track data (the contents of the old
-``structure.json``). Image masks / flow / metadata migrate in later phases.
+This store holds the analysis, tracking and motion results plus their
+parameters (the contents of the old ``structure.json``), with image metadata
+mirrored into the root attrs. Image pixel data, segmentation masks and
+optical-flow fields live alongside these groups in the same OME-Zarr container
+(:mod:`sarcasm.io.ome_store`).
 """
 
 from __future__ import annotations
@@ -649,6 +654,9 @@ def export_to_json(data, path: Union[str, Path], *,
         if not include_arrays and isinstance(v, np.ndarray) and v.size > _INLINE_MAX:
             continue
         out[k] = v
+    parent = Path(path).parent
+    if parent and not parent.exists():
+        parent.mkdir(parents=True, exist_ok=True)
     IOUtils.json_serialize(out, str(path))
     return Path(path)
 

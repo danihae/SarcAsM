@@ -28,7 +28,7 @@ def detect_lois(file):
     sarc.detect_lois(n_lois=4)
 
     # remove intermediate tiff files to save storage, optional
-    # sarc.remove_intermediate_tiffs()
+    # sarc.remove_intermediate_masks()
 
 
 # analyze all LOIs of one tif-file

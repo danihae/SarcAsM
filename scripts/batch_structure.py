@@ -23,7 +23,7 @@ def analyze_tif(file):
     sarc.full_analysis_structure(frames='all')
 
     # remove intermediate tiff files to save storage, optional
-    # sarc.remove_intermediate_tiffs()
+    # sarc.remove_intermediate_masks()
 
     print(f'{file} successfully analyzed!')
 

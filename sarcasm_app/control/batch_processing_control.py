@@ -347,7 +347,7 @@ class BatchProcessingControl:
             filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
 
         if _p('batch.delete_intermediary_tiffs'):
-            sarc_obj.remove_intermediate_tiffs()
+            sarc_obj.remove_intermediate_masks()
 
     def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
                                     force_override: bool, model):
@@ -423,7 +423,7 @@ class BatchProcessingControl:
 
         sarc_obj.store_structure_data()
         if model.parameters.get_parameter('batch.delete_intermediary_tiffs').get_value():
-            sarc_obj.remove_intermediate_tiffs()
+            sarc_obj.remove_intermediate_masks()
 
         pass
 

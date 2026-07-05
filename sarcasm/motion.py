@@ -130,6 +130,7 @@ class Motion(SarcAsMBase):
 
     def store_loi_data(self):
         """Save LOI data"""
+        os.makedirs(self.data_dir, exist_ok=True)  # data_dir is created on demand (>=1.0)
         IOUtils.json_serialize(self.loi_data, self.__get_loi_data_file_name())
 
     def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,

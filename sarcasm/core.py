@@ -146,22 +146,16 @@ class SarcAsMBase:
         self.data_dir = os.path.join(self.base_dir, "data/")
         self.analysis_dir = os.path.join(self.base_dir, "analysis/")
 
-        # Handle restart: if restart is True and base_dir exists, remove it
+        # Handle restart: if restart is True and a legacy base_dir exists, remove it
         if restart and os.path.exists(self.base_dir):
             shutil.rmtree(self.base_dir)
 
-        # Ensure directories exist
-        os.makedirs(self.base_dir, exist_ok=True)
-        os.makedirs(self.data_dir, exist_ok=True)
-        os.makedirs(self.analysis_dir, exist_ok=True)
-
-        # File paths
-        self.file_zbands = os.path.join(self.base_dir, "zbands.tif")
-        self.file_zbands_fast_movie = os.path.join(self.base_dir, "zbands_fast_movie.tif")
-        self.file_mbands = os.path.join(self.base_dir, "mbands.tif")
-        self.file_orientation = os.path.join(self.base_dir, "orientation.tif")
-        self.file_cell_mask = os.path.join(self.base_dir, "cell_mask.tif")
-        self.file_sarcomere_mask = os.path.join(self.base_dir, "sarcomere_mask.tif")
+        # NB: base_dir/data_dir/analysis_dir are the pre-1.0 layout and are no
+        # longer created here. In >=1.0 all artefacts live in the sibling
+        # '<name>.ome.zarr' store (created lazily on first analysis write), so
+        # merely constructing an object must not spawn an empty '<name>/' tree.
+        # The few remaining consumers (legacy LOI data, export_json,
+        # open_base_dir) create their target directory on demand.
 
         # --- single-store backing: everything lives in <name>.ome.zarr ---
         self.store_path = store_path_for(self.file_path)
@@ -281,19 +275,6 @@ class SarcAsMBase:
         # Prevent propagation to root logger to avoid duplicate messages
         root_logger.propagate = False
 
-    # Map of dynamic attribute name -> instance attribute holding the file path.
-    # Used by __getattr__ via self.__dict__ to avoid recursion when an entry
-    # in the mapping isn't yet set on the instance.
-    _DYNAMIC_TIFF_ATTRS = {
-        'image': 'file_path',
-        'zbands': 'file_zbands',
-        'zbands_fast_movie': 'file_zbands_fast_movie',
-        'mbands': 'file_mbands',
-        'orientation': 'file_orientation',
-        'cell_mask': 'file_cell_mask',
-        'sarcomere_mask': 'file_sarcomere_mask',
-    }
-
     # Mask attributes served lazily from the OME-Zarr store.
     _STORE_MASKS = (
         'zbands', 'zbands_fast_movie', 'mbands',
@@ -382,8 +363,13 @@ class SarcAsMBase:
         return "\n".join(summary)
 
     def open_base_dir(self):
-        """Open the base directory of the TIFF file in the file explorer."""
-        Utils.open_folder(self.base_dir)
+        """Open the folder holding this file's analysis in the file explorer.
+
+        In >=1.0 the analysis lives in the sibling ``<name>.ome.zarr`` store, so
+        this reveals the directory that contains the input image and its store
+        (the legacy ``base_dir`` is no longer created).
+        """
+        Utils.open_folder(os.path.dirname(self.store_path))
 
     def _metadata_jsonable(self) -> dict:
         """Metadata as a JSON/attr-safe dict (numpy time array -> list)."""
@@ -959,17 +945,18 @@ class SarcAsMBase:
 
         return data
 
-    def remove_intermediate_tiffs(self) -> None:
-        """Remove intermediate TIFF files while preserving the original input."""
-        targets = [
-            self.file_zbands,
-            self.file_mbands,
-            self.file_orientation,
-            self.file_cell_mask,
-            self.file_sarcomere_mask,
-            self.file_zbands_fast_movie,
-        ]
+    def remove_intermediate_masks(self, masks=None) -> None:
+        """Delete derived masks from the store to free disk space.
 
-        for path in targets:
-            if os.path.exists(path):
-                os.remove(path)
+        All removed masks are regenerable by re-running ``detect_sarcomeres``;
+        the raw image and the analysis results are kept.
+
+        Parameters
+        ----------
+        masks : sequence of str or None, optional
+            Mask names to remove. None (default) removes all derived masks
+            (:attr:`_STORE_MASKS`).
+        """
+        names = self._STORE_MASKS if masks is None else masks
+        for name in names:
+            self.store.delete_mask(name)
