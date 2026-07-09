@@ -151,11 +151,12 @@ class SarcAsMBase:
             shutil.rmtree(self.base_dir)
 
         # NB: base_dir/data_dir/analysis_dir are the pre-1.0 layout and are no
-        # longer created here. In >=1.0 all artefacts live in the sibling
-        # '<name>.ome.zarr' store (created lazily on first analysis write), so
-        # merely constructing an object must not spawn an empty '<name>/' tree.
-        # The few remaining consumers (legacy LOI data, export_json,
-        # open_base_dir) create their target directory on demand.
+        # longer created here — merely constructing an object must not spawn an
+        # empty '<name>/' tree. The few remaining consumers (legacy LOI data,
+        # export_json, open_base_dir) create their target directory on demand.
+        # In >=1.0 all artefacts live in the sibling '<name>.ome.zarr' store,
+        # which IS created eagerly at construction (metadata only — the raw image
+        # pixels are still ingested lazily on first read; see end of __init__).
 
         # --- single-store backing: everything lives in <name>.ome.zarr ---
         self.store_path = store_path_for(self.file_path)
@@ -202,6 +203,16 @@ class SarcAsMBase:
             # Extract metadata without loading full image data (fast, even for large files on HDD).
             # Honour an explicit axes argument (e.g. 'TYX') so stacks aren't misread as channels.
             self._extract_metadata_only(axes=axes)
+
+        # Create the sibling '<name>.ome.zarr' store eagerly so it exists (and is
+        # inspectable) right after construction. Only the small metadata is written
+        # now; the raw image pixels are still ingested lazily on the first
+        # read_imgs()/analysis, keeping construction fast for large files.
+        if not self.store.exists:
+            try:
+                self.store.write_metadata(self._metadata_jsonable())
+            except Exception as e:
+                logger.warning(f"Could not create the .ome.zarr store at construction: {e}")
 
         # Dictionary of models
         self.model_dir = Utils.get_models_dir()
