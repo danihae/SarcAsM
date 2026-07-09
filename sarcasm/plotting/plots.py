@@ -211,7 +211,7 @@ class Plots:
     @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap: str = 'gray',
                    alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
-                   title: Union[None, str] = None, show_loi: bool = False,
+                   title: Union[None, str] = None, show_loi: bool = False, invert: bool = False,
                    zoom_region: Tuple[int, int, int, int] = None,
                    inset_bounds: Tuple[float, float, float, float] = (0.6, 0.6, 0.4, 0.4)):
         """
@@ -237,6 +237,9 @@ class Plots:
             The title for the plot. Default is None.
         show_loi : bool, optional
             Whether to show the line of interest (LOI). Default is False.
+        invert : bool, optional
+            If True, reverse the colormap (e.g. 'gray' -> 'gray_r') so bright
+            pixels render dark and vice versa. Default is False.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
@@ -246,7 +249,8 @@ class Plots:
         img = sarc_obj.read_imgs(frames=frame)
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
 
-        _ = ax.imshow(img, cmap=cmap, alpha=alpha)
+        cmap_use = plt.get_cmap(cmap).reversed() if invert else cmap
+        _ = ax.imshow(img, cmap=cmap_use, alpha=alpha)
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
@@ -262,7 +266,7 @@ class Plots:
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
-            ax_inset.imshow(img[y1:y2, x1:x2], cmap='gray')
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap_use)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -276,9 +280,69 @@ class Plots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
+    def _draw_background(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, *,
+                         show_image: bool = False, show_z_bands: bool = False,
+                         invert_image: bool = False, invert_z_bands: bool = False,
+                         cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
+                         alpha_image: float = 1, alpha_z_bands: float = 1,
+                         clip_thrs: Optional[Tuple[float, float]] = None,
+                         scalebar: bool = False):
+        """Draw the background of a structure overlay plot.
+
+        Centralises the choice between raw microscopy image and Z-band mask so
+        that every overlay plot (:meth:`plot_sarcomere_mask`,
+        :meth:`plot_sarcomere_vectors`, ...) renders its background the same
+        way, on both the main panel and the zoom inset. By default nothing is
+        drawn — the caller opts in via ``show_image`` or ``show_z_bands``.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw the background on.
+        sarc_obj : SarcAsM or Motion
+            The sarcomere object to read the image/Z-bands from.
+        frame : int, optional
+            The frame to draw. Default is 0.
+        show_image : bool, optional
+            If True, draw the raw microscopy image. Default is False.
+        show_z_bands : bool, optional
+            If True, draw the Z-band mask. Default is False. Mutually exclusive
+            with ``show_image``.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-bands. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-bands. Default is 1.
+        clip_thrs : tuple of float, optional
+            Clipping percentiles forwarded to :meth:`plot_image`. If None,
+            ``plot_image``'s default ``(1, 99)`` is used. Default is None.
+        scalebar : bool, optional
+            Whether to add a scalebar via the background call. Default is False
+            (overlay plots add their own scalebar afterwards).
+        """
+        if show_image and show_z_bands:
+            raise ValueError("show_image and show_z_bands are mutually exclusive.")
+        if show_image:
+            kw = dict(cmap=cmap_image, alpha=alpha_image, invert=invert_image, scalebar=scalebar)
+            if clip_thrs is not None:
+                kw['clip_thrs'] = clip_thrs
+            Plots.plot_image(ax, sarc_obj, frame=frame, **kw)
+        elif show_z_bands:
+            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands,
+                               invert=invert_z_bands, scalebar=scalebar)
+
+    @staticmethod
     def plot_z_bands(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
                      alpha=1, scalebar=True, title=None, color_scalebar='w',
-                     show_loi=False, zoom_region: Tuple[int, int, int, int] = None,
+                     show_loi=False, invert=False,
+                     zoom_region: Tuple[int, int, int, int] = None,
                      inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plot the Z-bands of the sarcomere object.
@@ -305,6 +369,9 @@ class Plots:
             The color of the scalebar. Default is 'w'.
         show_loi : bool, optional
             Whether to show the line of interest (LOI). Default is False.
+        invert : bool, optional
+            If True, reverse the colormap (e.g. 'Greys_r' -> 'Greys') so the
+            Z-band rendering is flipped. Default is False.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
@@ -315,7 +382,8 @@ class Plots:
         img = sarc_obj._read_mask('zbands', frames=frame)
         if zero_transparent:
             img = np.ma.masked_where(img < 0.05, img)
-        ax.imshow(img, cmap=cmap, alpha=alpha)
+        cmap_use = plt.get_cmap(cmap).reversed() if invert else cmap
+        ax.imshow(img, cmap=cmap_use, alpha=alpha)
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
@@ -332,7 +400,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             PlotUtils.change_color_spines(ax_inset, 'w')
-            ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
+            ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap_use, alpha=alpha)
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -705,7 +773,11 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_mask(ax: Axes, sarc_obj: SarcAsM, frame=0, cmap='viridis', threshold=0.1,
-                            show_z_bands=False, alpha=0.5, cmap_z_bands='gray', alpha_z_bands=1, clip_thrs=(1, 99.9),
+                            alpha=0.5, clip_thrs=(1, 99.9), scalebar=True,
+                            show_image=False, show_z_bands=False,
+                            invert_image=False, invert_z_bands=False,
+                            cmap_image='gray', cmap_z_bands='Greys_r',
+                            alpha_image=1, alpha_z_bands=1,
                             title=None, zoom_region: Tuple[int, int, int, int] = None,
                             inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -720,20 +792,34 @@ class Plots:
         frame : int, optional
             The frame to plot. Default is 0.
         cmap : str, optional
-            The colormap to use. Default is 'viridis'.
+            The colormap to use for the sarcomere mask. Default is 'viridis'.
         threshold : float, optional
             Binarization threshold for the sarcomere mask. If None, the threshold
             from the sarcomere vector analysis is used. Default is 0.1.
-        show_z_bands : bool, optional
-            Whether to show Z-bands. If False, the raw image is shown. Default is False.
         alpha : float, optional
             The opacity of the sarcomere mask. Default is 0.5.
-        cmap_z_bands : str, optional
-            Colormap for Z-bands. Default is 'gray'.
-        alpha_z_bands : float, optional
-            Opacity of Z-bands. Default is 1.
         clip_thrs : tuple of float, optional
-            Clipping thresholds for the background image (only if show_z_bands is False). Default is (1, 99.9).
+            Clipping thresholds (in percentiles) for the background image, forwarded
+            to :meth:`plot_image` when ``show_image=True``. Default is (1, 99.9).
+        scalebar : bool, optional
+            Whether to add a scalebar to the plot. Default is True.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         title : str, optional
             The title for the plot. Default is None.
         zoom_region : tuple of int, optional
@@ -744,10 +830,11 @@ class Plots:
         assert sarc_obj._mask_exists('sarcomere_mask'), ('No sarcomere masks stored. '
                                                          'Run detect_sarcomeres first.')
 
-        if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, alpha=alpha_z_bands, frame=frame)
-        else:
-            Plots.plot_image(ax, sarc_obj, frame=frame, clip_thrs=clip_thrs)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands,
+                               clip_thrs=clip_thrs, scalebar=False)
 
         sarcomere_mask = sarc_obj._read_mask('sarcomere_mask', frames=frame)
 
@@ -762,16 +849,23 @@ class Plots:
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
         ax.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
+                                   height_fraction=0.035, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
 
         # Add inset axis if zoom_region is specified
         if zoom_region:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
-            if show_z_bands:
-                Plots.plot_z_bands(ax_inset, sarc_obj, alpha=alpha_z_bands, cmap=cmap_z_bands, frame=frame)
-            else:
-                Plots.plot_image(ax_inset, sarc_obj, frame=frame, clip_thrs=clip_thrs)
+            Plots._draw_background(ax_inset, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                                   invert_image=invert_image, invert_z_bands=invert_z_bands,
+                                   cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                                   alpha_image=alpha_image, alpha_z_bands=alpha_z_bands,
+                                   clip_thrs=clip_thrs, scalebar=False)
             ax_inset.set_ylim(y2, y1)
             ax_inset.set_xlim(x1, x2)
             ax_inset.set_xticks([])
@@ -785,7 +879,11 @@ class Plots:
     def plot_sarcomere_vectors(ax: Axes, sarc_obj: SarcAsM, frame=0, color_arrows='k',
                                color_points='darkgreen', s_points=0.5, linewidths=0.5,
                                s_points_inset=0.5, linewidths_inset=0.5, scalebar=True,
-                               legend=False, show_image=False, cmap_z_bands='Purples', alpha_z_bands=1, title=None,
+                               legend=False, title=None,
+                               show_image=False, show_z_bands=False,
+                               invert_image=False, invert_z_bands=False,
+                               cmap_image='gray', cmap_z_bands='Greys_r',
+                               alpha_image=1, alpha_z_bands=1,
                                zoom_region: Tuple[int, int, int, int] = None,
                                inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
@@ -817,11 +915,22 @@ class Plots:
         legend : bool, optional
             Whether to add a legend to the plot. Default is False.
         show_image : bool, optional
-            Whether to show the raw image (True) or the Z-bands (False). Default is False.
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
         cmap_z_bands : str, optional
-            Colormap of Z-bands (or image). Default is 'Purples'.
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
         alpha_z_bands : float, optional
-            Opacity of Z-bands. Default is 1.
+            Opacity of the Z-band background. Default is 1.
         title : str, optional
             The title for the plot. Default is None.
         zoom_region : tuple of int, optional
@@ -839,10 +948,10 @@ class Plots:
         orientation_vectors = np.asarray(
             [np.cos(sarcomere_orientation_vectors), -np.sin(sarcomere_orientation_vectors)])
 
-        if show_image:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         ax.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
 
@@ -878,10 +987,10 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
 
-            if show_image:
-                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-            else:
-                Plots.plot_z_bands(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+            Plots._draw_background(ax_inset, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                                   invert_image=invert_image, invert_z_bands=invert_z_bands,
+                                   cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                                   alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
             ax_inset.plot([0, 1], [0, 1], c='k', label='Z-bands', lw=0.5)
             ax_inset.scatter(pos_vectors[:, 1], pos_vectors[:, 0], marker='.', c=color_points, edgecolors='none',
@@ -911,7 +1020,11 @@ class Plots:
 
     @staticmethod
     def plot_sarcomere_domains(ax: Axes, sarc_obj: SarcAsM, frame=0, alpha=0.5, cmap='gist_rainbow',
-                               scalebar=True, plot_raw_data=False, cmap_z_bands='Greys', alpha_z_bands=1, title=None):
+                               scalebar=True, title=None,
+                               show_image=False, show_z_bands=False,
+                               invert_image=False, invert_z_bands=False,
+                               cmap_image='gray', cmap_z_bands='Greys_r',
+                               alpha_image=1, alpha_z_bands=1):
         """
         Plot the sarcomere domains of the sarcomere object.
 
@@ -926,22 +1039,33 @@ class Plots:
         alpha : float, optional
             The opacity of the domain masks. Default is 0.5.
         cmap : str, optional
-            The colormap to use. Default is 'gist_rainbow'.
+            The colormap to use for the domain mask. Default is 'gist_rainbow'.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
-        plot_raw_data : bool, optional
-            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
-        cmap_z_bands : str, optional
-            Colormap for Z-bands. Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of Z-bands. Default is 1.
         title : str, optional
             The title for the plot. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         """
         assert 'n_domains' in sarc_obj.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
         assert frame in sarc_obj.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
-                                                                          f'analyzed.')
+                                                                           f'analyzed.')
         domains = sarc_obj.data['domains'][frame]
         pos_vectors = sarc_obj.data['pos_vectors'][frame]
         sarcomere_orientation_vectors = sarc_obj.data['sarcomere_orientation_vectors'][frame]
@@ -957,12 +1081,14 @@ class Plots:
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
 
-        if plot_raw_data:
-            Plots.plot_image(ax, sarc_obj, frame=frame, scalebar=False, alpha=alpha_z_bands, cmap=cmap_z_bands)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, alpha=alpha_z_bands, frame=frame, scalebar=False)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
+        ax.set_xticks([])
+        ax.set_yticks([])
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
@@ -971,9 +1097,13 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
-    def plot_myofibril_lines(ax: Axes, sarc_obj: SarcAsM , frame=0, show_z_bands=True, linewidth=1, color_lines='r',
-                             linewidth_inset=3, alpha=0.2, cmap_z_bands='Greys', alpha_z_bands=1,
-                             scalebar=True, title=None, zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
+    def plot_myofibril_lines(ax: Axes, sarc_obj: SarcAsM, frame=0, linewidth=1, color_lines='r',
+                             linewidth_inset=3, alpha=0.2, scalebar=True, title=None,
+                             show_image=False, show_z_bands=False,
+                             invert_image=False, invert_z_bands=False,
+                             cmap_image='gray', cmap_z_bands='Greys_r',
+                             alpha_image=1, alpha_z_bands=1,
+                             zoom_region=None, inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plot the result of the myofibril line growth algorithm of the sarcomere object.
 
@@ -985,8 +1115,6 @@ class Plots:
             The instance of SarcAsM class to plot.
         frame : int, optional
             The frame to plot. Default is 0.
-        show_z_bands : bool, optional
-            Whether to show the Z-bands (True) or the raw image (False) in the background. Default is True.
         linewidth : float, optional
             The width of the lines. Default is 1.
         color_lines : str, optional
@@ -995,14 +1123,27 @@ class Plots:
             The width of the lines in the inset plot. Default is 3.
         alpha : float, optional
             The opacity of the lines. Default is 0.2.
-        cmap_z_bands : str, optional
-            Colormap of Z-bands. Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of Z-bands. Default is 1.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         title : str, optional
             The title for the plot. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
@@ -1012,10 +1153,10 @@ class Plots:
                                                                 'Run analyze_myofibrils first.')
         assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
-        if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, cmap=cmap_z_bands, frame=frame, alpha=alpha_z_bands)
-        else:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         lines = sarc_obj.data['myof_lines'][frame]
         pos_vectors = sarc_obj.data['pos_vectors_px'][frame]
@@ -1034,10 +1175,10 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
 
-            if show_z_bands:
-                Plots.plot_z_bands(ax_inset, sarc_obj, cmap=cmap_z_bands, frame=frame)
-            else:
-                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands)
+            Plots._draw_background(ax_inset, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                                   invert_image=invert_image, invert_z_bands=invert_z_bands,
+                                   cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                                   alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
             if scalebar:
                 ax_inset.add_artist(
@@ -1058,9 +1199,13 @@ class Plots:
 
     @staticmethod
     def plot_myofibril_length_map(ax: Axes, sarc_obj: SarcAsM, frame=0, vmax=None, alpha=1,
-                                  show_z_bands=False, cmap_z_bands='Greys', alpha_z_bands=1,
                                   colorbar=True, shrink_colorbar=0.7, orient_colorbar='vertical',
-                                  scalebar=True, title=None, zoom_region: Tuple[int, int, int, int] = None,
+                                  scalebar=True, title=None,
+                                  show_image=False, show_z_bands=False,
+                                  invert_image=False, invert_z_bands=False,
+                                  cmap_image='gray', cmap_z_bands='Greys_r',
+                                  alpha_image=1, alpha_z_bands=1,
+                                  zoom_region: Tuple[int, int, int, int] = None,
                                   inset_bounds=(0.6, 0.6, 0.4, 0.4)):
         """
         Plot the spatial map of myofibril lengths for a given frame.
@@ -1077,12 +1222,6 @@ class Plots:
             Maximum value for the colormap. If None, the maximum value in the data is used. Default is None.
         alpha : float, optional
             Opacity of the length map. Default is 1.
-        show_z_bands : bool, optional
-            Whether to show the Z-band mask (True) or the raw image (False) in the background. Default is False.
-        cmap_z_bands : str, optional
-            Colormap of Z-bands (or image). Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of Z-bands or raw image. Default is 1.
         colorbar : bool, optional
             Whether to show the colorbar. Default is True.
         shrink_colorbar : float, optional
@@ -1093,10 +1232,33 @@ class Plots:
             Whether to add a scalebar to the plot. Default is True.
         title : str, optional
             The title for the plot. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         zoom_region : tuple of int, optional
             The region to zoom in on, specified as (x1, x2, y1, y2). Default is None.
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
+
+        Notes
+        -----
+        Previously this plot showed an inverted raw image as the background by
+        default. That implicit inversion has been removed — opt in with
+        ``show_image=True, invert_image=True`` to reproduce the old look.
         """
         # create myofibril length map
         assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
@@ -1118,10 +1280,10 @@ class Plots:
             pixelsize=sarc_obj.metadata.pixelsize,
             median_filter_radius=median_filter_radius)
 
-        if show_z_bands:
-            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-        else:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         masked_myof_length_map = np.ma.masked_array(myof_length_map, mask=(myof_length_map == 0))
         cmap = plt.cm.inferno
@@ -1144,10 +1306,10 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
 
-            if show_z_bands:
-                Plots.plot_z_bands(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-            else:
-                Plots.plot_image(ax_inset, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+            Plots._draw_background(ax_inset, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                                   invert_image=invert_image, invert_z_bands=invert_z_bands,
+                                   cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                                   alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
             ax_inset.imshow(masked_myof_length_map, cmap=cmap, alpha=alpha, vmin=vmin, vmax=vmax)
 
@@ -1576,7 +1738,7 @@ class Plots:
         """
         # Validate prerequisites
         if 'domain_slen_timeseries' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call analyze_domain_motion() first.")
+            raise ValueError("Domain motion analysis not run. Call analyze_track_motion(by='domain') first.")
 
         # Get data
         if use_median:
@@ -1680,7 +1842,7 @@ class Plots:
         """
         # Validate prerequisites
         if 'domain_slen_timeseries' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call analyze_domain_motion() first.")
+            raise ValueError("Domain motion analysis not run. Call analyze_track_motion(by='domain') first.")
 
         # Get data
         if use_median:
@@ -1833,8 +1995,11 @@ class Plots:
     def plot_tracks(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'coverage',
                     cmap: str = 'viridis', linewidth: float = 0.8, only_snapped: bool = True,
                     max_tracks: Optional[int] = 2000, alpha: float = 0.8,
-                    show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
-                    scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
+                    scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
+                    show_image: bool = False, show_z_bands: bool = False,
+                    invert_image: bool = False, invert_z_bands: bool = False,
+                    cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
+                    alpha_image: float = 1, alpha_z_bands: float = 1):
         """
         Draw each tracked sarcomere as a trajectory line (its centre's path over time).
 
@@ -1869,18 +2034,29 @@ class Plots:
             None draws all. Default is 2000.
         alpha : float, optional
             Line opacity. Default is 0.8.
-        show_image : bool, optional
-            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
-        cmap_z_bands : str, optional
-            Colormap of the background Z-bands or image. Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of the background. Default is 1.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         colorbar : bool, optional
             Whether to add a colorbar to the plot (only for 'coverage'/'slen'). Default is False.
         title : str, optional
             The title for the plot. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         """
         if 'tracks_positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
@@ -1927,10 +2103,10 @@ class Plots:
             segments = [segments[i] for i in order]
             seg_vals = [seg_vals[i] for i in order]
 
-        if show_image:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         lc = None
         norm = None
@@ -1963,8 +2139,11 @@ class Plots:
     @staticmethod
     def plot_track_groups(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, cmap: str = 'gist_rainbow',
                           s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
-                          show_image: bool = False, cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
-                          scalebar: bool = True, title: Optional[str] = None):
+                          scalebar: bool = True, title: Optional[str] = None,
+                          show_image: bool = False, show_z_bands: bool = False,
+                          invert_image: bool = False, invert_z_bands: bool = False,
+                          cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
+                          alpha_image: float = 1, alpha_z_bands: float = 1):
         """
         QC view of a track grouping: colour each tracked centre by its group.
 
@@ -1988,16 +2167,27 @@ class Plots:
             Whether to draw tracks dropped by ``min_coverage``. Default is True.
         dropped_color : str, optional
             Colour of the dropped tracks. Default is 'lightgrey'.
-        show_image : bool, optional
-            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
-        cmap_z_bands : str, optional
-            Colormap of the background Z-bands or image. Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of the background. Default is 1.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         title : str, optional
             The title for the plot. If None, a default title is used. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         """
         if 'track_group_id' not in sarc_obj.data:
             raise ValueError('No track grouping found. Run group_tracks(...) first.')
@@ -2010,10 +2200,10 @@ class Plots:
         yx = pos[:, t]
         finite = np.isfinite(yx[:, 0]) & np.isfinite(yx[:, 1])
 
-        if show_image:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         if show_dropped:
             drop = finite & (gid < 0)
@@ -2365,9 +2555,12 @@ class Plots:
     def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0,
                               color_by: str = 'group', cmap: str = 'gist_rainbow',
                               linewidth: float = 1.5, show_points: bool = True, markersize: float = 6,
-                              only_snapped: bool = False, show_image: bool = False,
-                              cmap_z_bands: str = 'Greys', alpha_z_bands: float = 1,
-                              scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None):
+                              only_snapped: bool = False,
+                              scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
+                              show_image: bool = False, show_z_bands: bool = False,
+                              invert_image: bool = False, invert_z_bands: bool = False,
+                              cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
+                              alpha_image: float = 1, alpha_z_bands: float = 1):
         """
         Draw each tracked myofibril (fibre) as a connected polyline over the image.
 
@@ -2400,18 +2593,29 @@ class Plots:
             Size of the member sarcomere markers. Default is 6.
         only_snapped : bool, optional
             Only draw members that actually snapped at this frame. Default is False.
-        show_image : bool, optional
-            Whether to show the raw image (True) or the Z-bands (False) in the background. Default is False.
-        cmap_z_bands : str, optional
-            Colormap of the background Z-bands or image. Default is 'Greys'.
-        alpha_z_bands : float, optional
-            Opacity of the background. Default is 1.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         colorbar : bool, optional
             Whether to add a colorbar to the plot (only for metric colourings). Default is False.
         title : str, optional
             The title for the plot. If None, a default title is used. Default is None.
+        show_image : bool, optional
+            Whether to show the raw microscopy image as background. Default is False.
+        show_z_bands : bool, optional
+            Whether to show the Z-band mask as background. Mutually exclusive with
+            ``show_image``. Default is False.
+        invert_image : bool, optional
+            Reverse the raw-image colormap (e.g. 'gray' -> 'gray_r'). Default is False.
+        invert_z_bands : bool, optional
+            Reverse the Z-band colormap (e.g. 'Greys_r' -> 'Greys'). Default is False.
+        cmap_image : str, optional
+            Colormap of the raw image background. Default is 'gray'.
+        cmap_z_bands : str, optional
+            Colormap of the Z-band background. Default is 'Greys_r'.
+        alpha_image : float, optional
+            Opacity of the raw image background. Default is 1.
+        alpha_z_bands : float, optional
+            Opacity of the Z-band background. Default is 1.
         """
         if sarc_obj.data.get('group_kind') != 'myofibril':
             raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "
@@ -2438,10 +2642,10 @@ class Plots:
                                    for g in range(n_groups)])
             clabel = 'Sarcomere length [µm]'
 
-        if show_image:
-            Plots.plot_image(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
-        else:
-            Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands)
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         cm = plt.get_cmap(cmap)
         norm = None
