@@ -479,6 +479,8 @@ class OmeZarrStore:
         bool
             Whether the mask is present.
         """
+        if not self.exists:
+            return False
         root = self._root("r")
         # Check each group independently: a missing labels/ or masks/ group must
         # not short-circuit the other (e.g. when only float prob maps are stored).
@@ -498,6 +500,8 @@ class OmeZarrStore:
         list of str
             Mask names.
         """
+        if not self.exists:
+            return []
         root = self._root("r")
         out = []
         for grp, getter in ((LABELS, "group_keys"), (MASKS, "array_keys")):
@@ -628,7 +632,7 @@ class OmeZarrStore:
         """
         try:
             return dict(self._root("r")[SARCASM].attrs.get(_META, {})) or None
-        except KeyError:
+        except (KeyError, FileNotFoundError):
             return None
 
     def __repr__(self):
