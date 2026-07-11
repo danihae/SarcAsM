@@ -251,6 +251,7 @@ class Plots:
 
         cmap_use = plt.get_cmap(cmap).reversed() if invert else cmap
         _ = ax.imshow(img, cmap=cmap_use, alpha=alpha)
+        ax.set_aspect('equal')
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
@@ -267,6 +268,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap_use)
+            ax_inset.set_aspect('equal')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -337,6 +339,7 @@ class Plots:
         elif show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands,
                                invert=invert_z_bands, scalebar=scalebar)
+        ax.set_aspect('equal')
 
     @staticmethod
     def plot_z_bands(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
@@ -384,6 +387,7 @@ class Plots:
             img = np.ma.masked_where(img < 0.05, img)
         cmap_use = plt.get_cmap(cmap).reversed() if invert else cmap
         ax.imshow(img, cmap=cmap_use, alpha=alpha)
+        ax.set_aspect('equal')
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
@@ -401,6 +405,7 @@ class Plots:
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(img[y1:y2, x1:x2], cmap=cmap_use, alpha=alpha)
+            ax_inset.set_aspect('equal')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -448,6 +453,7 @@ class Plots:
         joined = midlines - zbands
 
         ax.imshow(joined, cmap=cmap, alpha=alpha)
+        ax.set_aspect('equal')
 
         if show_loi:
             Plots.plot_lois(ax, sarc_obj)
@@ -466,6 +472,7 @@ class Plots:
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             PlotUtils.change_color_spines(ax_inset, 'w')
             ax_inset.imshow(joined[y1:y2, x1:x2], cmap=cmap, alpha=alpha)
+            ax_inset.set_aspect('equal')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -507,6 +514,7 @@ class Plots:
 
         img = sarc_obj._read_mask('cell_mask', frames=frame) > threshold
         ax.imshow(img, cmap=cmap, alpha=alpha)
+        ax.set_aspect('equal')
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
@@ -552,6 +560,7 @@ class Plots:
         cmap = plt.cm.prism
         cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
         ax.imshow(masked_labels, cmap=cmap)
+        ax.set_aspect('equal')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
@@ -565,6 +574,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(masked_labels[y1:y2, x1:x2], cmap=cmap)
+            ax_inset.set_aspect('equal')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
 
@@ -638,6 +648,7 @@ class Plots:
         cmap = plt.cm.prism
         cmap.set_bad(color=(0, 0, 0, 0))
         ax.imshow(masked_labels, cmap=cmap)
+        ax.set_aspect('equal')
         for (i, k, j, l) in z_links.T:
             ax.plot([z_ends[i, k, 1], z_ends[j, l, 1]],
                     [z_ends[i, k, 0], z_ends[j, l, 0]],
@@ -657,6 +668,7 @@ class Plots:
             x1, x2, y1, y2 = zoom_region
             ax_inset = ax.inset_axes(bounds=inset_bounds)
             ax_inset.imshow(masked_labels, cmap=cmap)
+            ax_inset.set_aspect('equal')
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
             for (i, k, j, l) in z_links.T:
@@ -718,6 +730,8 @@ class Plots:
 
         plot1 = ax1.imshow(orientation_field[0], cmap=cmap)
         plot2 = ax2.imshow(orientation_field[1], cmap=cmap)
+        ax1.set_aspect('equal')
+        ax2.set_aspect('equal')
 
         if scalebar:
             ax1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
@@ -751,6 +765,8 @@ class Plots:
 
             ax_inset1.imshow(orientation_field[0][y1:y2, x1:x2], cmap=cmap)
             ax_inset2.imshow(orientation_field[1][y1:y2, x1:x2], cmap=cmap)
+            ax_inset1.set_aspect('equal')
+            ax_inset2.set_aspect('equal')
             ax_inset1.set_xticks([])
             ax_inset1.set_yticks([])
             ax_inset2.set_xticks([])
@@ -849,6 +865,7 @@ class Plots:
         cmap = plt.get_cmap(cmap)
         cmap.set_bad(color=(0, 0, 0, 0))
         ax.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+        ax.set_aspect('equal')
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
@@ -871,6 +888,7 @@ class Plots:
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
             ax_inset.imshow(sarcomere_mask, vmin=0, vmax=1, alpha=alpha, cmap=cmap)
+            ax_inset.set_aspect('equal')
             # Mark the zoomed region on the main plot
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
             PlotUtils.change_color_spines(ax_inset, 'w')
@@ -1087,6 +1105,7 @@ class Plots:
                                alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
         ax.imshow(domain_mask_masked, cmap=cmap, alpha=alpha, vmin=0, vmax=np.nanmax(domain_mask))
+        ax.set_aspect('equal')
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -1290,6 +1309,7 @@ class Plots:
         cmap.set_bad(color=(0, 0, 0, 0))  # Set color for masked values to transparent
         vmin, vmax = 0, np.nanmax(myof_length_map) if vmax is None else vmax
         plot = ax.imshow(masked_myof_length_map, cmap=cmap, vmin=vmin, vmax=vmax, alpha=alpha)
+        ax.set_aspect('equal')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
                                    height_fraction=0.02, location='lower right', scale_loc='top',
@@ -1312,6 +1332,7 @@ class Plots:
                                    alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
 
             ax_inset.imshow(masked_myof_length_map, cmap=cmap, alpha=alpha, vmin=vmin, vmax=vmax)
+            ax_inset.set_aspect('equal')
 
             ax_inset.set_xticks([])
             ax_inset.set_yticks([])
