@@ -529,9 +529,14 @@ class SarcAsM:
 
         # tifffile's own guess
         if series.axes:
-            axes = series.axes.upper().replace('S', 'C')  # S → C (samples)
-            if 'Q' not in axes:  # ignore unknown axis
-                return axes
+            axes = series.axes.upper().replace('S', 'C')  # S (samples) → C
+            # tifffile labels a stack axis it cannot classify as 'I' (sequence)
+            # or 'Q' (other) — e.g. a generic multi-page TIFF, or an OME/ImageJ
+            # file whose metadata it could not fully resolve. Treat that extra
+            # axis as time (a movie), consistent with the bare-stack heuristic
+            # below; a genuine z-stack can still be forced via axes='ZYX'.
+            axes = axes.replace('I', 'T').replace('Q', 'T')
+            return axes
 
         # heuristics on raw shape
         shape = series.shape
