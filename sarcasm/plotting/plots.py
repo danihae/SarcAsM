@@ -256,7 +256,7 @@ class Plots:
             Plots.plot_lois(ax, sarc_obj)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.035, location='lower right', scale_loc='top',
+                                   width_fraction=0.035, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -278,8 +278,59 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w',
-                                             sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
+                                             sep=1, width_fraction=0.035, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1}))
+
+    @staticmethod
+    def _shade_contr_loi(ax: Axes, motion_obj: Motion, t_offset: float = 0.0,
+                         color: str = 'lavender', alpha_incomplete: float = 0.45) -> None:
+        """Shade the contraction intervals of a LOI/``Motion`` trace on ``ax``.
+
+        Driven by the boolean ``loi_data['contr']`` mask rather than
+        ``zip(start_contr, time_contr)``: the durations are NaN for cycles that are
+        incomplete at the recording edges, and ``start_contr`` (one entry per rising
+        edge) and ``time_contr`` (one entry per labelled cycle) do not correspond
+        one-to-one when a cycle begins on the very first frame. Incomplete cycles are
+        drawn at reduced alpha so a truncated cycle is not mistaken for a full one.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes to shade. The shading spans the full height via a blended transform.
+        motion_obj : Motion
+            Motion object holding ``loi_data['time'] / ['contr']``.
+        t_offset : float, optional
+            Subtracted from the time axis, for the single-contraction views that
+            re-zero time on the selected cycle. Default is 0.0.
+        color : str, optional
+            Shading colour. Default is 'lavender'.
+        alpha_incomplete : float, optional
+            Alpha for cycles that are incomplete at the recording edges. Default is 0.45.
+        """
+        contr = motion_obj.loi_data.get('contr')
+        time = motion_obj.loi_data.get('time')
+        if contr is None or time is None:
+            return
+        contr = np.asarray(contr, dtype=bool)
+        time = np.asarray(time, dtype=float) - t_offset
+        if contr.shape[0] != time.shape[0] or not contr.any():
+            return
+        blended = transforms.blended_transform_factory(ax.transData, ax.transAxes)
+
+        # Split the mask into complete / incomplete cycles when the flags are present.
+        labels = motion_obj.loi_data.get('labels_contr')
+        complete_flags = motion_obj.loi_data.get('contr_complete')
+        incomplete = np.zeros_like(contr)
+        if labels is not None and complete_flags is not None:
+            labels = np.asarray(labels)
+            for i, ok in enumerate(np.asarray(complete_flags, dtype=bool)):
+                if not ok:
+                    incomplete |= labels == i + 1
+        ax.fill_between(time, 0, 1, where=contr & ~incomplete, color=color,
+                        transform=blended, linewidth=0)
+        if incomplete.any():
+            ax.fill_between(time, 0, 1, where=incomplete, color=color,
+                            alpha=alpha_incomplete, transform=blended, linewidth=0)
 
     @staticmethod
     def _draw_background(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, *,
@@ -339,6 +390,17 @@ class Plots:
         elif show_z_bands:
             Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands,
                                invert=invert_z_bands, scalebar=scalebar)
+        else:
+            # No background image: nothing establishes image coordinates, so set them
+            # here. Without this the overlay inherits matplotlib's y-up default and
+            # renders vertically mirrored w.r.t. the image (and w.r.t. the zoom insets,
+            # which invert explicitly), while collection-only plots (plot_tracks) never
+            # autoscale at all and come out blank.
+            size = getattr(sarc_obj.metadata, 'size', None)
+            if size is not None and len(size) >= 2:
+                h, w = int(size[-2]), int(size[-1])
+                ax.set_xlim(-0.5, w - 0.5)
+                ax.set_ylim(h - 0.5, -0.5)
         ax.set_aspect('equal')
 
     @staticmethod
@@ -393,7 +455,7 @@ class Plots:
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
-                         sep=1, height_fraction=0.035, location='lower right', scale_loc='top',
+                         sep=1, width_fraction=0.035, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -460,7 +522,7 @@ class Plots:
         if scalebar:
             ax.add_artist(
                 ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
-                         sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                         sep=1, width_fraction=0.02, location='lower right', scale_loc='top',
                          font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -482,7 +544,7 @@ class Plots:
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color=color_scalebar,
-                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                             sep=1, width_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
@@ -518,7 +580,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -563,7 +625,7 @@ class Plots:
         ax.set_aspect('equal')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -580,7 +642,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                       height_fraction=0.02, location='lower right', scale_loc='top',
+                                       width_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
@@ -657,7 +719,7 @@ class Plots:
         ax.scatter(z_ends[:, 1, 1], z_ends[:, 1, 0], c='k', marker='.', s=markersize, zorder=3, edgecolors='none')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -684,7 +746,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                       height_fraction=0.02, location='lower right', scale_loc='top',
+                                       width_fraction=0.02, location='lower right', scale_loc='top',
                                        font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
@@ -735,10 +797,10 @@ class Plots:
 
         if scalebar:
             ax1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                    height_fraction=0.02, location='lower right', scale_loc='top',
+                                    width_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
             ax2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                    height_fraction=0.02, location='lower right', scale_loc='top',
+                                    width_fraction=0.02, location='lower right', scale_loc='top',
                                     font_properties={'size': PlotUtils.fontsize - 1}))
 
         ax1.set_xticks([])
@@ -751,10 +813,10 @@ class Plots:
 
         if scalebar:
             ax1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
             ax2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
 
         # Add inset axis if zoom_region is specified
@@ -781,10 +843,10 @@ class Plots:
 
             if scalebar:
                 ax_inset1.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                        height_fraction=0.02, location='lower right', scale_loc='top',
+                                        width_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
                 ax_inset2.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                        height_fraction=0.02, location='lower right', scale_loc='top',
+                                        width_fraction=0.02, location='lower right', scale_loc='top',
                                         font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
@@ -871,7 +933,7 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
-                                   height_fraction=0.035, location='lower right', scale_loc='top',
+                                   width_fraction=0.035, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
 
         # Add inset axis if zoom_region is specified
@@ -992,7 +1054,7 @@ class Plots:
             ax.legend(loc=3, fontsize=PlotUtils.fontsize - 2)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1033,7 +1095,7 @@ class Plots:
 
             if scalebar:
                 ax_inset.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k',
-                                             sep=1, height_fraction=0.02, location='lower right', scale_loc='top',
+                                             sep=1, width_fraction=0.02, location='lower right', scale_loc='top',
                                              font_properties={'size': PlotUtils.fontsize - 1, }))
 
     @staticmethod
@@ -1111,7 +1173,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
@@ -1181,7 +1243,7 @@ class Plots:
         pos_vectors = sarc_obj.data['pos_vectors_px'][frame]
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([])
         ax.set_yticks([])
@@ -1202,7 +1264,7 @@ class Plots:
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                             height_fraction=0.02, location='lower right', scale_loc='top',
+                             width_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
             for i, line_i in enumerate(lines):
                 ax_inset.plot(pos_vectors[line_i, 1], pos_vectors[line_i, 0], c='r', alpha=alpha,
@@ -1312,7 +1374,7 @@ class Plots:
         ax.set_aspect('equal')
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         if colorbar:
             plt.colorbar(mappable=plot, ax=ax, shrink=shrink_colorbar, orientation=orient_colorbar,
@@ -1342,7 +1404,7 @@ class Plots:
             if scalebar:
                 ax_inset.add_artist(
                     ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                             height_fraction=0.02, location='lower right', scale_loc='top',
+                             width_fraction=0.02, location='lower right', scale_loc='top',
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
             # Mark the zoomed region on the main plot
@@ -1508,14 +1570,8 @@ class Plots:
         z_pos = motion_obj.loi_data['z_pos']
         # plot contraction cycles
         if show_contr:
-            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
-                                       motion_obj.loi_data['time_contr']):
-                end_i = start_i + time_i
-                if number_contr is not None:
-                    start_i -= tlim[0]
-                    end_i -= tlim[0]
-                ax.fill_betweenx([0, 1], [start_i, start_i], [end_i, end_i], color='lavender',
-                                 transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
+            Plots._shade_contr_loi(ax, motion_obj,
+                                   t_offset=tlim[0] if number_contr is not None else 0.0)
 
         # plot trajectories
         if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
@@ -1566,10 +1622,7 @@ class Plots:
             ax_i.plot(motion_obj.loi_data['time'], delta_slen[i + n_start], c='k', lw=0.6)
             ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
             if show_contr:
-                for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
-                                           motion_obj.loi_data['time_contr']):
-                    end_i = start_i + time_i
-                    ax_i.fill_betweenx([-1, 1], [start_i, start_i], [end_i, end_i], color='lavender')
+                Plots._shade_contr_loi(ax_i, motion_obj)
 
             if i > 0:
                 ax_i.set_xticks([])
@@ -1591,7 +1644,7 @@ class Plots:
         ax.tick_params(axis='y', colors='w')
 
     @staticmethod
-    def plot_overlay_delta_slen(ax: Axes, motion_obj: Motion, number_contr=None, t_lim=(0, 1), y_lim=(-0.35, 0.5),
+    def plot_overlay_delta_slen(ax: Axes, motion_obj: Motion, number_contr=None, t_lim=(0, None), y_lim=(-0.35, 0.5),
                                 show_contr=True):
         """
         Plot the sarcomere length change over time for a motion object, overlaying multiple trajectories.
@@ -1625,14 +1678,8 @@ class Plots:
         delta_slen_avg = motion_obj.loi_data['delta_slen_avg']
         # plot contraction cycles
         if show_contr:
-            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
-                                       motion_obj.loi_data['time_contr']):
-                end_i = start_i + time_i
-                if number_contr is not None:
-                    start_i -= tlim[0]
-                    end_i -= tlim[0]
-                ax.fill_betweenx([0, 1], [start_i, start_i], [end_i, end_i], color='lavender',
-                                 transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
+            Plots._shade_contr_loi(ax, motion_obj,
+                                   t_offset=tlim[0] if number_contr is not None else 0.0)
 
         # colormap
         cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(delta_slen)))
@@ -1691,14 +1738,8 @@ class Plots:
 
         # plot contraction cycles
         if show_contr:
-            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
-                                       motion_obj.loi_data['time_contr']):
-                end_i = start_i + time_i
-                if number_contr is not None:
-                    start_i -= tlim[0]
-                    end_i -= tlim[0]
-                ax.fill_betweenx([0, 1], [start_i, start_i], [end_i, end_i], color='lavender',
-                                 transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
+            Plots._shade_contr_loi(ax, motion_obj,
+                                   t_offset=tlim[0] if number_contr is not None else 0.0)
 
         # colormap
         cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(vel)))
@@ -2152,7 +2193,7 @@ class Plots:
             cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(title, fontsize=PlotUtils.fontsize)
@@ -2237,7 +2278,7 @@ class Plots:
 
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([]); ax.set_yticks([])
         kind = sarc_obj.data.get('group_kind', '')
@@ -2470,11 +2511,7 @@ class Plots:
         slen = np.asarray(motion_obj.loi_data['slen'], dtype=float)
         slen_avg = motion_obj.loi_data['slen_avg']
         if show_contr:
-            for start_i, time_i in zip(motion_obj.loi_data['start_contr'],
-                                       motion_obj.loi_data['time_contr']):
-                ax.fill_betweenx([0, 1], [start_i, start_i], [start_i + time_i, start_i + time_i],
-                                 color='lavender',
-                                 transform=transforms.blended_transform_factory(ax.transData, ax.transAxes))
+            Plots._shade_contr_loi(ax, motion_obj)
         col = color if color is not None else '0.6'
         alpha = float(max(0.04, min(0.5, 30.0 / max(len(slen), 1))))
         ax.plot(time, slen.T, c=col, lw=0.4, alpha=alpha)
@@ -2533,7 +2570,7 @@ class Plots:
         """
         if isinstance(obj, Motion):
             return Plots._plot_slen_loi(ax, obj, t_lim=t_lim if t_lim != (0, 12) else (None, None),
-                                        y_lim=y_lim if y_lim != (1.6, 2.2) else (None, None),
+                                        y_lim=y_lim if y_lim != (1.4, 2.2) else (None, None),
                                         show_contr=show_contr, show_mean=show_mean,
                                         color=color, mean_color=mean_color)
         return Plots._track_group_overlay(ax, obj, mode='slen', group=group, kind=kind,
@@ -2701,7 +2738,7 @@ class Plots:
             cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
         if scalebar:
             ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='k', sep=1,
-                                   height_fraction=0.02, location='lower right', scale_loc='top',
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(title if title is not None else f'Tracked myofibrils (n={n_groups})',
