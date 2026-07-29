@@ -15,10 +15,9 @@
 
 import logging
 import os
-from typing import Tuple, Union, List
+from typing import Tuple, Union
 import numpy as np
 import torch
-import tifffile
 from bio_image_unet import multi_output_unet3d as unet3d
 from bio_image_unet.multi_output_unet.multi_output_nested_unet import MultiOutputNestedUNet_3Levels
 from bio_image_unet.multi_output_unet.predict import Predict as Predict_UNet
@@ -216,66 +215,3 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, model_di
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return pred.result
-
-
-def analyze_cell_mask_from_file(file_cell_mask: str, images: np.ndarray, pixelsize: float,
-                                frames: Union[str, int, List[int], np.ndarray] = 'all',
-                                threshold: float = 0.1) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Analyze the area occupied by cells and compute average cell intensity and cell area ratio.
-
-    Parameters
-    ----------
-    file_cell_mask : str
-        Path to the cell mask file.
-    images : np.ndarray
-        Raw images.
-    pixelsize : float
-        Pixel size in micrometers.
-    frames : {'all'}, int, list of int or np.ndarray, optional
-        Frames to analyze ('all' for all frames, int for a single frame, list
-        or ndarray for selected frames). Default is 'all'.
-    threshold : float, optional
-        Threshold for binarizing the cell mask; pixels above it are cell.
-        Default is 0.1.
-
-    Returns
-    -------
-    cell_area : np.ndarray
-        Cell area in square micrometers.
-    cell_area_ratio : np.ndarray
-        Ratio of cell area to total image area.
-    cell_mask_intensity : np.ndarray
-        Average intensity in the cell mask.
-    """
-    if not os.path.exists(file_cell_mask):
-        raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
-        
-    if isinstance(frames, str) and frames == 'all':
-        cell_mask = tifffile.imread(file_cell_mask)
-    else:
-        cell_mask = tifffile.imread(file_cell_mask, key=frames)
-
-    if len(cell_mask.shape) == 2:
-        cell_mask = np.expand_dims(cell_mask, 0)
-    if len(images.shape) == 2:
-        images = np.expand_dims(images, 0)
-
-    n_imgs = len(images)
-
-    # create empty arrays
-    cell_area, cell_area_ratio = np.full(n_imgs, fill_value=np.nan), np.full(n_imgs, fill_value=np.nan)
-    cell_mask_intensity = np.full(n_imgs, fill_value=np.nan)
-
-    for i, (img_i, cell_mask_i) in enumerate(zip(images, cell_mask)):
-        # binarize mask
-        mask_i = cell_mask_i > threshold
-
-        # average cell intensity
-        cell_mask_intensity[i] = np.mean(img_i[mask_i])
-
-        # total cell area and ratio to total image area
-        cell_area[i] = np.sum(mask_i) * pixelsize ** 2
-        cell_area_ratio[i] = cell_area[i] / (img_i.shape[0] * img_i.shape[1] * pixelsize ** 2)
-
-    return cell_area, cell_area_ratio, cell_mask_intensity
