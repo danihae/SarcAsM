@@ -10,6 +10,7 @@ from sarcasm.io.ome_store import (
     OmeZarrStore,
     detect_legacy_layout,
     legacy_layout_message,
+    remove_tree,
     store_path_for,
 )
 
@@ -28,6 +29,81 @@ def test_store_path_for():
     assert store_path_for("/x/movie.tiff").name == "movie.ome.zarr"
     # an .ome.zarr input is its own store (analyze in place)
     assert str(store_path_for("/x/movie.ome.zarr")) == "/x/movie.ome.zarr"
+
+
+def test_remove_tree_basic_and_missing(tmp_path):
+    d = tmp_path / "store.ome.zarr"
+    (d / "sarcasm" / "masks").mkdir(parents=True)
+    (d / "sarcasm" / "masks" / "zbands").write_bytes(b"x")
+    remove_tree(d)
+    assert not d.exists()
+    remove_tree(d)  # a missing tree is not an error
+
+
+def test_remove_tree_stages_the_tree_out_of_the_watchers_path(tmp_path, monkeypatch):
+    """The macOS Finder failure mode: something keeps writing .DS_Store into the tree
+    while rmtree walks it. The tree must be renamed away *before* deletion, so the
+    delete runs on a path nothing else is touching."""
+    from sarcasm.io import ome_store
+
+    d = tmp_path / "store.ome.zarr"
+    (d / "sarcasm").mkdir(parents=True)
+    (d / "sarcasm" / "data").write_bytes(b"x")
+
+    # record the path rmtree is called with, then delete for real
+    seen = {}
+    real = ome_store.shutil.rmtree
+
+    def recording_rmtree(path, *a, **kw):
+        seen["path"] = str(path)
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(ome_store.shutil, "rmtree", recording_rmtree)
+    remove_tree(d)
+    assert not d.exists()
+    # deleted via a staging name, not the original path the watcher is holding
+    assert seen["path"].endswith(".deleting")
+    assert seen["path"] != str(d)
+    assert not list(tmp_path.glob("*.deleting*"))
+
+
+def test_remove_tree_retries_when_staging_is_impossible(tmp_path, monkeypatch):
+    """If the rename cannot happen, fall back to deleting in place with retries."""
+    from sarcasm.io import ome_store
+
+    d = tmp_path / "store.ome.zarr"
+    (d / "sarcasm").mkdir(parents=True)
+    (d / "sarcasm" / "data").write_bytes(b"x")
+
+    monkeypatch.setattr(ome_store.os, "replace",
+                        lambda *a, **kw: (_ for _ in ()).throw(OSError("no rename here")))
+    real = ome_store.shutil.rmtree
+    calls = {"n": 0}
+
+    def flaky_rmtree(path, *a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(66, "Directory not empty", str(path))
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(ome_store.shutil, "rmtree", flaky_rmtree)
+    remove_tree(d)
+    assert not d.exists()
+    assert calls["n"] == 2          # retried exactly once, in place
+
+
+def test_remove_tree_raises_a_clear_error_when_it_never_succeeds(tmp_path, monkeypatch):
+    from sarcasm.io import ome_store
+
+    d = tmp_path / "store.ome.zarr"
+    d.mkdir()
+
+    def always_fail(path, *a, **kw):
+        raise OSError(66, "Directory not empty", str(path))
+
+    monkeypatch.setattr(ome_store.shutil, "rmtree", always_fail)
+    with pytest.raises(OSError, match="close any program"):
+        remove_tree(d, attempts=2)
 
 
 def test_detect_legacy_layout(tmp_path):

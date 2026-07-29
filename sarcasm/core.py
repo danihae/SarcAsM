@@ -16,7 +16,6 @@
 import json
 import logging
 import os
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Union, Literal, Dict, Any, List
@@ -31,6 +30,7 @@ from sarcasm.io.ome_store import (
     OmeZarrStore,
     detect_legacy_layout,
     legacy_layout_message,
+    remove_tree,
     store_path_for,
 )
 from sarcasm.utils import Utils
@@ -148,7 +148,7 @@ class SarcAsMBase:
 
         # Handle restart: if restart is True and a legacy base_dir exists, remove it
         if restart and os.path.exists(self.base_dir):
-            shutil.rmtree(self.base_dir)
+            remove_tree(self.base_dir)
 
         # NB: base_dir/data_dir/analysis_dir are the pre-1.0 layout and are no
         # longer created here — merely constructing an object must not spawn an
@@ -166,7 +166,7 @@ class SarcAsMBase:
         if legacy is not None and not os.path.exists(self.store_path) and not self.restart:
             logger.warning(legacy_layout_message(legacy))
         if self.restart and os.path.exists(self.store_path):
-            shutil.rmtree(self.store_path)
+            remove_tree(self.store_path)
         self.store = OmeZarrStore(self.store_path)
 
         # Initialize metadata

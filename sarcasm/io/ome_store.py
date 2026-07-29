@@ -42,6 +42,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import time
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Union
 
@@ -92,6 +94,83 @@ def store_path_for(input_path: Union[str, os.PathLike]) -> Path:
         if name.lower().endswith(suffix):
             return p.with_name(name[: -len(suffix)] + ".ome.zarr")
     return p.with_name(p.stem + ".ome.zarr")
+
+
+def remove_tree(path: Union[str, os.PathLike], attempts: int = 3) -> None:
+    """Delete a directory tree, even while another program writes into it.
+
+    ``shutil.rmtree`` walks a directory and then ``rmdir``s it, so an entry created
+    in between makes the final step fail with ``OSError: [Errno 66] Directory not
+    empty`` even though nothing is in use. The trigger in practice is macOS Finder
+    writing ``.DS_Store`` into a folder the user has open, which made
+    ``SarcAsM(..., restart=True)`` crash on a store the user was merely *looking* at.
+
+    Retrying alone does not fix this — a watcher that keeps writing wins every race
+    (measured: a continuous writer defeats 3 retries 15/15 times). So the tree is
+    first **renamed out of the way**: ``os.replace`` is atomic, so the moment it
+    returns, whatever is watching the original name can no longer reach the tree we
+    are deleting, and the delete proceeds unopposed. Retries remain as a fallback for
+    the case where the rename itself is not possible.
+
+    Deliberately never uses ``ignore_errors=True``: that would leave a partially
+    deleted store behind and let it be silently reused as if it were fresh.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Directory to remove. A missing directory is not an error.
+    attempts : int, optional
+        How many delete attempts before giving up. Default is 3.
+
+    Raises
+    ------
+    OSError
+        If the tree could not be deleted, with a message naming the likely cause.
+
+    Notes
+    -----
+    The original path may be *recreated* (empty) by the watcher right after the
+    rename — harmless, since a fresh store is written into it anyway.
+    """
+    path = Path(path)
+    if not path.exists():
+        return
+
+    # Move the tree aside first (atomic), so the watcher's writes no longer land in it.
+    target = path
+    staged = path.with_name(path.name + ".deleting")
+    suffix = 0
+    while staged.exists():
+        suffix += 1
+        staged = path.with_name(f"{path.name}.deleting{suffix}")
+    try:
+        os.replace(path, staged)
+        target = staged
+    except OSError:
+        pass  # can't stage (permissions, exotic FS) — delete in place with retries
+
+    last_exc: Optional[OSError] = None
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(target)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            last_exc = exc
+            if attempt + 1 < attempts:
+                # Let whatever recreated the entry finish before the next walk.
+                time.sleep(0.05)
+    if not target.exists():
+        return
+    staged_note = (f" A partial copy was moved to '{target}' and can be deleted manually."
+                   if target != path else "")
+    raise OSError(
+        f"Could not delete '{path}' after {attempts} attempts ({last_exc}). "
+        f"Something is recreating files inside it or holding it open — close any "
+        f"program using the folder (Finder, a file browser, napari, Fiji) and retry."
+        f"{staged_note}"
+    ) from last_exc
 
 
 def detect_legacy_layout(input_path: Union[str, os.PathLike]) -> Optional[Path]:
@@ -314,8 +393,7 @@ class OmeZarrStore:
         if store.exists and not overwrite:
             raise FileExistsError(f"store already exists: {store.path}")
         if store.exists and overwrite:
-            import shutil
-            shutil.rmtree(store.path)
+            remove_tree(store.path)
         store.ingest_image(image, axes, pixelsize=pixelsize, frametime=frametime,
                            metadata=metadata)
         return store
