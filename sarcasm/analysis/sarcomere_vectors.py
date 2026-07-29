@@ -159,7 +159,7 @@ def get_sarcomere_vectors(
         interp_factor: int = 4,
         linewidth: float = 0.3,
         interpolation_method: str = 'linear',
-        peak_prominence: float = 0.5,
+        peak_prominence: float = 0.3,
         peak_algorithm: str = 'default',
         precomputed_angle_map: Union[np.ndarray, None] = None,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
@@ -191,7 +191,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     peak_prominence : float, optional
         ``scipy.signal.find_peaks`` prominence threshold used inside
         :func:`Utils.process_profiles_batch`; only used when
-        ``peak_algorithm='default'``. Default is 0.5.
+        ``peak_algorithm='default'``. Default is 0.3.
     peak_algorithm : {'default', 'loi'}, optional
         Peak-detection routine applied to each profile. ``'default'`` uses
         :func:`Utils.process_profiles_batch` (fast, batched, honours
@@ -302,6 +302,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         pos_vectors_px = pos_vectors_px[~nan_mask]
         pos_vectors = pos_vectors[~nan_mask]
         midline_id_vectors = midline_id_vectors[~nan_mask]
+        midline_length_vectors = midline_length_vectors[~nan_mask]
         sarcomere_orientation_vectors = sarcomere_orientation_vectors[~nan_mask]
         sarcomere_length_vectors = sarcomere_length_vectors[~nan_mask]
 
