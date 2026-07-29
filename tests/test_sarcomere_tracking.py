@@ -111,46 +111,6 @@ def test_compute_motion_field_stats_velocity_scaling():
 
 
 # ---------------------------------------------------------------------------
-# Snap gate — anisotropic + orientation
-# ---------------------------------------------------------------------------
-
-def test_anisotropic_snap_rejects_perpendicular_outliers():
-    # sarcomere orientation = 0 → along = col direction, perp = row direction
-    query_pos = (10.0, 10.0); query_ori = 0.0
-    dets = np.array([
-        [10.0, 20.0],   # 10 px along-sarcomere — accept
-        [18.0, 10.0],   # 8 px perpendicular — reject (max_perp=6)
-        [11.0, 11.0],   # close on both — accept, should win (closest)
-    ], dtype=np.float32)
-    det_ori = np.zeros(3, dtype=np.float32)
-    best = st._anisotropic_snap(
-        query_pos, query_ori, dets, det_ori,
-        candidate_indices=np.array([0, 1, 2]),
-        max_along=15.0, max_perp=6.0, ori_tol_rad=np.deg2rad(45),
-    )
-    assert best == 2
-
-
-def test_anisotropic_snap_rejects_bad_orientation():
-    query_pos = (10.0, 10.0); query_ori = 0.0
-    dets = np.array([[10.5, 10.5]], dtype=np.float32)
-    det_ori = np.array([np.pi / 3], dtype=np.float32)  # 60° off — should reject at 30°
-    best = st._anisotropic_snap(
-        query_pos, query_ori, dets, det_ori,
-        candidate_indices=np.array([0]),
-        max_along=15.0, max_perp=6.0, ori_tol_rad=np.deg2rad(30),
-    )
-    assert best == -1
-    # Accept at 90° tolerance.
-    best2 = st._anisotropic_snap(
-        query_pos, query_ori, dets, det_ori,
-        candidate_indices=np.array([0]),
-        max_along=15.0, max_perp=6.0, ori_tol_rad=np.deg2rad(90),
-    )
-    assert best2 == 0
-
-
-# ---------------------------------------------------------------------------
 # End-to-end tracker behaviour on a minimal synthetic sequence
 # ---------------------------------------------------------------------------
 
@@ -632,6 +592,61 @@ def test_merge_log_records_each_merge():
     # Residuals on flat synthetic flow should be tiny (reported in µm).
     assert abs(entry['perp_resid_um']) < 0.1
     assert abs(entry['along_resid_um']) < 0.1
+
+
+def test_merge_interleaved_joins_gap_separated_same_sarcomere():
+    """merge_interleaved joins two fragments of one sarcomere separated by a gap
+    longer than the short-gap merge (same resting position + length, no overlap),
+    but leaves a fragment at a different position separate."""
+    T = 20
+    zstack, mstack = _identical_band_stack(T)
+    p = np.array([[25.0, 40.0]], np.float32)
+    p_far = np.array([[25.0, 55.0]], np.float32)  # 15 px away → different sarcomere
+    empty = np.zeros((0, 2), np.float32)
+    sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
+    z0 = np.zeros(0, np.float32)
+    on_a = set(range(0, 6)); on_b = set(range(14, 20))  # A then B, gap 6..13 (8 > 5)
+    common = dict(pixelsize=0.1, frametime=0.01, memory=0, min_track_length=2)
+
+    def build(pb):
+        pos = [p if t in on_a else (pb if t in on_b else empty) for t in range(T)]
+        sln = [sl if (t in on_a or t in on_b) else z0 for t in range(T)]
+        orn = [ori if (t in on_a or t in on_b) else z0 for t in range(T)]
+        return pos, sln, orn
+
+    # same position → interleaved merge joins A+B; short-gap merge alone cannot.
+    pos, sln, orn = build(p)
+    off = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
+                                     merge_interleaved=False, **common)
+    on = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
+                                    merge_interleaved=True, **common)
+    assert off['n_tracks'] == 2
+    assert on['n_tracks'] == 1
+    assert int(on['tracks_snapped'][0].sum()) == 12  # 6 + 6 real snaps preserved
+
+    # different position → not the same sarcomere → not merged even with the flag.
+    pos, sln, orn = build(p_far)
+    on_far = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
+                                        merge_interleaved=True, **common)
+    assert on_far['n_tracks'] == 2
+
+
+def test_merge_interleaved_never_joins_co_occurring_sarcomeres():
+    """Safety property behind shipping this on by default: two sarcomeres that are
+    both snapped in the same frames are distinct by construction (one M-band gives
+    one snap per frame), so they must never be merged however close they sit."""
+    T = 20
+    zstack, mstack = _identical_band_stack(T)
+    # two detections 4 px apart (well inside the resting-position gate at slen=18 px)
+    # but present in EVERY frame, i.e. maximally overlapping.
+    pos = [np.array([[25.0, 40.0], [25.0, 44.0]], np.float32) for _ in range(T)]
+    sln = [np.array([1.8, 1.8], np.float32) for _ in range(T)]
+    orn = [np.array([0.0, 0.0], np.float32) for _ in range(T)]
+    res = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
+                                     pixelsize=0.1, frametime=0.01,
+                                     min_track_length=2, merge_interleaved=True)
+    assert res['n_tracks'] == 2, 'co-occurring sarcomeres must stay separate'
+    assert int(res['n_interleaved_merges']) == 0
 
 
 # ---------------------------------------------------------------------------
