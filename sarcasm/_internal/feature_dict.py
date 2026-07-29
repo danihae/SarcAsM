@@ -99,129 +99,146 @@ structure_feature_dict = {
         'description': 'Time-series of mean sarcomere length within each sarcomere domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain sarcomere length time-series [µm]'
     },
     'domain_slen_median_timeseries': {
         'description': 'Time-series of median sarcomere length within each sarcomere domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain sarcomere length median time-series [µm]'
     },
     'domain_slen_std_timeseries': {
         'description': 'Time-series of standard deviation of sarcomere length within each domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain sarcomere length STD time-series [µm]'
     },
     'domain_slen_q25_timeseries': {
         'description': 'Time-series of 25th percentile of sarcomere length within each domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain sarcomere length Q25 time-series [µm]'
     },
     'domain_slen_q75_timeseries': {
         'description': 'Time-series of 75th percentile of sarcomere length within each domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain sarcomere length Q75 time-series [µm]'
     },
     'domain_n_vectors_timeseries': {
         'description': 'Time-series of number of sarcomere vectors within each domain. '
                        'np.ndarray with shape (n_domains, n_frames).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain vector count time-series'
     },
     'domain_contr': {
         'description': 'Binary contraction state for each domain over time. '
                        'np.ndarray with shape (n_domains, n_frames). True = contracting, False = quiescent.',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain contraction state'
     },
     'domain_n_contr': {
-        'description': 'Number of contraction cycles detected for each domain. np.ndarray with shape (n_domains,).',
+        'description': 'Number of contraction cycles detected for each domain, including cycles that are '
+                       'incomplete at the start/end of the recording. np.ndarray with shape (n_domains,).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain number of contractions'
+    },
+    'domain_n_contr_complete': {
+        'description': 'Number of complete contraction cycles for each domain, i.e. cycles whose onset and '
+                       'offset both fall inside the recording. np.ndarray with shape (n_domains,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Domain number of complete contractions'
+    },
+    'domain_contr_complete': {
+        'description': 'Per-cycle completeness flag: 1.0 = complete, 0.0 = incomplete (truncated by the start '
+                       'or end of the recording), NaN = padding. np.ndarray with shape (n_domains, max_n_contr). '
+                       'Incomplete cycles are kept in the contraction mask but their duration-dependent '
+                       'metrics are NaN.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Domain contraction completeness'
     },
     'domain_labels_contr': {
         'description': 'Contraction cycle labels for each domain over time. '
                        'np.ndarray with shape (n_domains, n_frames). Values 1, 2, 3, ... label each contraction cycle.',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain contraction labels'
     },
     'domain_beating_rate': {
         'description': 'Beating rate in Hz for each domain. np.ndarray with shape (n_domains,).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain beating rate [Hz]'
     },
     'domain_beating_rate_variability': {
         'description': 'Standard deviation of inter-beat interval for each domain. np.ndarray with shape (n_domains,).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain beating rate variability [s]'
     },
     'domain_equ': {
         'description': 'Equilibrium (resting) sarcomere length for each domain. np.ndarray with shape (n_domains,).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain equilibrium sarcomere length [µm]'
     },
     'domain_contr_max': {
         'description': 'Maximum contraction (most negative sarcomere length change from equilibrium) '
                        'for each domain and contraction cycle. np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain max contraction [µm]'
     },
     'domain_elong_max': {
         'description': 'Maximum elongation (most positive sarcomere length change from equilibrium) '
                        'for each domain and contraction cycle. np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain max elongation [µm]'
     },
     'domain_vel_contr_max': {
         'description': 'Maximum shortening velocity for each domain and contraction cycle. '
                        'np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain max shortening velocity [µm/s]'
     },
     'domain_vel_elong_max': {
         'description': 'Maximum elongation velocity for each domain and contraction cycle. '
                        'np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain max elongation velocity [µm/s]'
     },
     'domain_time_to_peak': {
         'description': 'Time from contraction start to maximum contraction for each domain and cycle. '
                        'np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain time to peak [s]'
     },
     'domain_time_to_relax': {
         'description': 'Time from maximum contraction to relaxation for each domain and cycle. '
                        'np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain time to relaxation [s]'
     },
     'domain_time_contr': {
         'description': 'Duration of each contraction cycle for each domain. '
                        'np.ndarray with shape (n_domains, max_n_contr).',
         'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_domain_motion',
+        'function': 'SarcAsM.analyze_track_motion',
         'name': 'Domain contraction duration [s]'
     },
     'domains': {
@@ -690,6 +707,14 @@ structure_feature_dict = {
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track length [frames]'
     },
+    'track_drift_um': {
+        'description': 'Drift of each track relative to the coherent motion of its local '
+                       'neighbourhood (µm); ~one sarcomere length indicates a changed identity. '
+                       'NaN if too short to score. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.track_sarcomere_vectors',
+        'name': 'Track drift [µm]'
+    },
     'tracks_positions_um': {
         'description': 'Per-track sarcomere-centre positions (y, x) in µm. np.ndarray, shape (n_tracks, T, 2); '
                        'NaN before start / after close.',
@@ -792,8 +817,17 @@ motion_feature_dict = {
         'description': 'Standard deviation of inter-beat intervals of the group (s).',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Beating rate variability [s]'},
     'n_contr': {
-        'description': 'Number of detected contraction cycles in the group.',
+        'description': 'Number of detected contraction cycles in the group, including cycles that are '
+                       'incomplete at the start/end of the recording.',
         'data type': int, 'function': 'SarcAsM.analyze_track_motion', 'name': 'N contractions'},
+    'n_contr_complete': {
+        'description': 'Number of complete contraction cycles in the group (onset and offset both inside '
+                       'the recording). Only these back the timing features below.',
+        'data type': int, 'function': 'SarcAsM.analyze_track_motion', 'name': 'N complete contractions'},
+    'contr_complete': {
+        'description': 'Fraction of the group\'s contraction cycles that are complete (per-cycle flag, '
+                       'averaged over cycles on export).',
+        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Complete cycle fraction'},
     'equ': {
         'description': 'Equilibrium (resting) sarcomere length of the group (µm).',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Equ. SL [µm]'},
@@ -810,13 +844,19 @@ motion_feature_dict = {
         'description': 'Maximal elongation velocity per cycle, mean over cycles (µm/s).',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Elong. velocity [µm/s]'},
     'time_to_peak': {
-        'description': 'Time from contraction onset to maximum shortening, mean over cycles (s).',
+        'description': 'Time from contraction onset to maximum shortening, mean over cycles (s). NaN for a '
+                       'cycle whose onset falls outside the recording, so only complete-at-the-start cycles '
+                       'contribute.',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to peak [s]'},
     'time_to_relax': {
-        'description': 'Time from peak shortening to end of contraction, mean over cycles (s).',
+        'description': 'Time from peak shortening to end of contraction, mean over cycles (s). NaN for a '
+                       'cycle whose offset falls outside the recording, so only complete-at-the-end cycles '
+                       'contribute.',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to relax [s]'},
     'time_contr': {
-        'description': 'Total contraction duration per cycle, mean over cycles (s).',
+        'description': 'Total contraction duration per cycle, mean over cycles (s). Only complete cycles '
+                       'contribute — a cycle truncated by the start or end of the recording has no '
+                       'measurable duration and is NaN (see n_contr_complete).',
         'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contraction time [s]'},
     'slen_timeseries': {
         'description': 'Aggregated per-group sarcomere length over time, shape (n_groups, T).',
