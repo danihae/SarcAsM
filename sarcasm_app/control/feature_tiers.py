@@ -95,7 +95,7 @@ STRUCTURE_TIERS: TierSections = {
 MOTION_TIERS: TierSections = {
     'Primary': {
         'Beating': [
-            'beating_rate', 'beating_rate_variability', 'n_contr',
+            'beating_rate', 'beating_rate_variability', 'n_contr', 'n_contr_complete',
         ],
         'Contractile (per group, mean over cycles)': [
             'contr_max', 'elong_max',

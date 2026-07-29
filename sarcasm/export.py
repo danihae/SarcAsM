@@ -215,6 +215,7 @@ class Export:
     # ``<kind>_<suffix>`` keys written by SarcAsM.analyze_track_motion). One value
     # per group; per-cycle arrays are collapsed to a per-group nanmean.
     motion_keys_default = ['beating_rate', 'beating_rate_variability', 'equ', 'n_contr',
+                           'n_contr_complete',
                            'contr_max', 'elong_max', 'vel_contr_max', 'vel_elong_max',
                            'time_to_peak', 'time_to_relax', 'time_contr']
 

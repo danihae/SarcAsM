@@ -20,9 +20,7 @@ contraction parameters (beating rate, amplitude, velocity, time-to-peak, …).
 It operates on already-aggregated per-group signals, NOT on individual tracks
 (that aggregation is :mod:`sarcasm.analysis.grouped_motion`) and is not
 domain-specific — it is the shared engine behind every grouping kind (pool,
-m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`, as
-well as the deprecated mask-based :meth:`SarcAsM.analyze_domain_motion`. The
-one genuinely domain-specific helper here is :func:`compute_domain_timeseries`.
+m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`.
 """
 
 import logging
@@ -32,98 +30,54 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 from scipy.ndimage import binary_closing, binary_opening, label
 from scipy.signal import savgol_filter
-from skimage.segmentation import clear_border
 
 from contraction_net.prediction import predict_contractions
-from sarcasm.analysis.domain_clustering import (
-    analyze_domains,
-    assign_vectors_to_domains,
-)
 
 logger = logging.getLogger(__name__)
 
 
-def compute_domain_timeseries(
-    pos_vectors_all: List[np.ndarray],
-    sarcomere_length_vectors_all: List[np.ndarray],
-    domain_mask: np.ndarray,
-    pixelsize: float,
-    n_domains: int,
-) -> Dict[str, np.ndarray]:
-    """
-    Compute per-domain sarcomere length statistics over time.
+def cycle_truncation_flags(labels: np.ndarray, n_cycles: int, buffer_frames: int
+                           ) -> Tuple[np.ndarray, np.ndarray]:
+    """Per-cycle truncation flags for a labelled 1D contraction (or quiescence) mask.
 
-    For each frame, assigns sarcomere vectors to domains by position and computes
-    summary statistics (mean, median, std, quartiles) of sarcomere lengths per domain.
+    A cycle is *truncated at the start* when its first frame lies within
+    ``buffer_frames`` of the beginning of the recording, and *truncated at the end*
+    when its last frame lies within ``buffer_frames`` of the end — i.e. the onset
+    (resp. offset) happened outside the recorded window, so any quantity that needs
+    it is unobservable. A cycle truncated on neither side is **complete**.
+
+    This reproduces the classification that ``skimage.segmentation.clear_border``
+    used to *delete*; here the cycles are kept and only flagged, so they still
+    appear in the mask (plots, quiet/equilibrium baseline, beating-rate onsets)
+    while their duration-dependent metrics can be set to NaN.
 
     Parameters
     ----------
-    pos_vectors_all : list of np.ndarray
-        Per-frame position vectors, each of shape ``(n_vectors, 2)`` in µm.
-    sarcomere_length_vectors_all : list of np.ndarray
-        Per-frame sarcomere length vectors, each of shape ``(n_vectors,)`` in µm.
-    domain_mask : np.ndarray
-        Integer-labeled domain mask from the reference frame. Domain IDs are 1, 2, 3,
-        ...; background is 0.
-    pixelsize : float
-        Pixel size in µm.
-    n_domains : int
-        Number of domains in the mask (excluding background).
+    labels : np.ndarray
+        1D cycle-label array as returned by :func:`scipy.ndimage.label`
+        (0 = background, ``1 .. n_cycles`` = cycles).
+    n_cycles : int
+        Number of labelled cycles.
+    buffer_frames : int
+        Frames from either end within which a cycle counts as truncated.
 
     Returns
     -------
-    dict
-        Per-domain time-series of shape ``(n_domains, n_frames)``:
-
-        - 'domain_slen_timeseries' : mean sarcomere length (µm)
-        - 'domain_slen_median_timeseries' : median sarcomere length (µm)
-        - 'domain_slen_std_timeseries' : std of sarcomere length (µm)
-        - 'domain_slen_q25_timeseries' : 25th percentile (µm)
-        - 'domain_slen_q75_timeseries' : 75th percentile (µm)
-        - 'domain_n_vectors_timeseries' : number of vectors
+    tuple of np.ndarray
+        ``(trunc_start, trunc_end)``, boolean, each of shape ``(n_cycles,)``.
     """
-    n_frames = len(pos_vectors_all)
-    
-    # Initialize output arrays
-    domain_slen_mean = np.full((n_domains, n_frames), np.nan)
-    domain_slen_median = np.full((n_domains, n_frames), np.nan)
-    domain_slen_std = np.full((n_domains, n_frames), np.nan)
-    domain_slen_q25 = np.full((n_domains, n_frames), np.nan)
-    domain_slen_q75 = np.full((n_domains, n_frames), np.nan)
-    domain_n_vectors = np.zeros((n_domains, n_frames), dtype=np.int32)
-    
-    # Process each frame
-    for frame_idx, (pos_vectors, sarcomere_lengths) in enumerate(
-        zip(pos_vectors_all, sarcomere_length_vectors_all)
-    ):
-        if pos_vectors is None or len(pos_vectors) == 0:
+    trunc_start = np.zeros(int(n_cycles), dtype=bool)
+    trunc_end = np.zeros(int(n_cycles), dtype=bool)
+    if n_cycles == 0:
+        return trunc_start, trunc_end
+    n_frames = labels.shape[0]
+    for i in range(1, int(n_cycles) + 1):
+        idx = np.flatnonzero(labels == i)
+        if idx.size == 0:
             continue
-            
-        # Assign vectors to domains
-        domain_ids = assign_vectors_to_domains(pos_vectors, domain_mask, pixelsize)
-        
-        # Compute statistics for each domain
-        for domain_id in range(1, n_domains + 1):
-            mask = domain_ids == domain_id
-            n_vec = np.sum(mask)
-            domain_n_vectors[domain_id - 1, frame_idx] = n_vec
-            
-            if n_vec > 0:
-                lengths = sarcomere_lengths[mask]
-                domain_slen_mean[domain_id - 1, frame_idx] = np.nanmean(lengths)
-                domain_slen_median[domain_id - 1, frame_idx] = np.nanmedian(lengths)
-                domain_slen_std[domain_id - 1, frame_idx] = np.nanstd(lengths)
-                domain_slen_q25[domain_id - 1, frame_idx] = np.nanpercentile(lengths, 25)
-                domain_slen_q75[domain_id - 1, frame_idx] = np.nanpercentile(lengths, 75)
-    
-    return {
-        'domain_slen_timeseries': domain_slen_mean,
-        'domain_slen_median_timeseries': domain_slen_median,
-        'domain_slen_std_timeseries': domain_slen_std,
-        'domain_slen_q25_timeseries': domain_slen_q25,
-        'domain_slen_q75_timeseries': domain_slen_q75,
-        'domain_n_vectors_timeseries': domain_n_vectors,
-    }
+        trunc_start[i - 1] = idx[0] <= buffer_frames
+        trunc_end[i - 1] = idx[-1] >= n_frames - 1 - buffer_frames
+    return trunc_start, trunc_end
 
 
 def detect_contractions(
@@ -163,7 +117,13 @@ def detect_contractions(
     merge_time_max : float, optional
         Maximal gap in s between two contractions; closer ones are merged. Default is 0.05.
     buffer_frames : int, optional
-        Remove contraction cycles within this many frames of the start/end. Default is 3.
+        Frames from either end within which a contraction cycle counts as
+        **incomplete**: its onset (or offset) lies outside the recorded window.
+        Such cycles are *kept* in the mask — so they are plotted, excluded from the
+        quiet/equilibrium baseline and contribute their onset to the beating rate —
+        but are flagged via ``domain_contr_complete`` so that
+        :func:`analyze_contraction_parameters` can NaN the metrics they cannot
+        support. Default is 3.
     min_valid_frames : float, optional
         Minimum fraction of valid (non-NaN) frames required to analyze a group. Default is 0.5.
     group_label : str, optional
@@ -174,10 +134,16 @@ def detect_contractions(
     Returns
     -------
     dict
-        Per-group contraction detection results:
+        Per-group contraction detection results (``max_n_contr`` is the max cycle
+        count across groups):
 
         - 'domain_contr' : np.ndarray ``(n_domains, n_frames)``, binary contraction state
-        - 'domain_n_contr' : np.ndarray ``(n_domains,)``, number of contractions per group
+        - 'domain_n_contr' : np.ndarray ``(n_domains,)``, number of contraction cycles
+          detected per group, **including** incomplete ones at the recording edges
+        - 'domain_n_contr_complete' : np.ndarray ``(n_domains,)``, number of complete cycles
+        - 'domain_contr_complete' : np.ndarray ``(n_domains, max_n_contr)``, 1.0 for a
+          complete cycle, 0.0 for an incomplete one, NaN padding. Its per-group mean is
+          the fraction of complete cycles.
         - 'domain_labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
         - 'domain_beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
         - 'domain_beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
@@ -188,9 +154,11 @@ def detect_contractions(
     domain_contr = np.zeros((n_domains, n_frames), dtype=bool)
     domain_n_contr = np.zeros(n_domains, dtype=np.int32)
     domain_labels_contr = np.zeros((n_domains, n_frames), dtype=np.int32)
+    domain_n_contr_complete = np.zeros(n_domains, dtype=np.int32)
     domain_beating_rate = np.full(n_domains, np.nan)
     domain_beating_rate_var = np.full(n_domains, np.nan)
-    
+    complete_per_domain: List[Optional[np.ndarray]] = [None] * n_domains
+
     # Morphological structuring elements
     structure_closing = np.ones(max(1, int(merge_time_max / frametime)))
     structure_opening = np.ones(max(1, int(contr_time_min / frametime)))
@@ -222,17 +190,21 @@ def detect_contractions(
         # Apply morphological operations to clean up predictions
         contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
         
-        # Remove incomplete contractions at beginning/end
-        contr = clear_border(contr, buffer_size=buffer_frames)
-        
-        # Store binary contraction state
+        # Store binary contraction state. Cycles at the recording edges are KEPT
+        # (they are real contractions: they belong in the plot, they must not be
+        # counted as quiescent when estimating the equilibrium length, and their
+        # onset is a valid beat) and merely flagged as incomplete below.
         domain_contr[domain_idx] = contr
-        
-        # Label contraction cycles
+
+        # Label contraction cycles and flag the incomplete ones
         labels, n_contr = label(contr)
         domain_labels_contr[domain_idx] = labels
         domain_n_contr[domain_idx] = n_contr
-        
+        trunc_start, trunc_end = cycle_truncation_flags(labels, n_contr, buffer_frames)
+        complete = ~(trunc_start | trunc_end)
+        complete_per_domain[domain_idx] = complete
+        domain_n_contr_complete[domain_idx] = int(complete.sum())
+
         # Calculate beating rate
         if n_contr > 1:
             start_frames = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
@@ -244,9 +216,26 @@ def detect_contractions(
             logger.warning(f"{group_label} {domain_idx + id_offset}: Only {n_contr} contraction cycle(s) detected. "
                           f"Cannot compute beating rate (requires >= 2 cycles).")
     
+    # Per-cycle completeness, NaN-padded to the widest group (like every other
+    # per-cycle array). Float, so its per-group nanmean is the complete fraction.
+    max_n_contr = int(domain_n_contr.max()) if domain_n_contr.size and domain_n_contr.max() > 0 else 1
+    domain_contr_complete = np.full((n_domains, max_n_contr), np.nan)
+    for domain_idx, complete in enumerate(complete_per_domain):
+        if complete is not None and complete.size:
+            domain_contr_complete[domain_idx, :complete.size] = complete.astype(float)
+
+    n_incomplete = int(domain_n_contr.sum() - domain_n_contr_complete.sum())
+    if n_incomplete:
+        logger.info(
+            f"{n_incomplete}/{int(domain_n_contr.sum())} contraction cycles are incomplete "
+            f"(within {buffer_frames} frames of the recording start/end); they are kept in the "
+            f"contraction mask but their duration-dependent metrics are NaN.")
+
     return {
         'domain_contr': domain_contr,
         'domain_n_contr': domain_n_contr,
+        'domain_n_contr_complete': domain_n_contr_complete,
+        'domain_contr_complete': domain_contr_complete,
         'domain_labels_contr': domain_labels_contr,
         'domain_beating_rate': domain_beating_rate,
         'domain_beating_rate_variability': domain_beating_rate_var,
@@ -259,6 +248,7 @@ def analyze_contraction_parameters(
     domain_n_contr: np.ndarray,
     frametime: float,
     filter_params: Tuple[int, int] = (13, 5),
+    buffer_frames: int = 3,
 ) -> Dict[str, np.ndarray]:
     """
     Analyze per-cycle contraction parameters for per-group sarcomere length trajectories.
@@ -279,12 +269,20 @@ def analyze_contraction_parameters(
     filter_params : tuple of int, optional
         Savitzky-Golay filter parameters ``(window_length, polyorder)`` for velocity
         smoothing. Default is (13, 5).
+    buffer_frames : int, optional
+        Frames from either end within which a cycle counts as incomplete (must match
+        the value passed to :func:`detect_contractions`). Metrics an incomplete cycle
+        cannot support are set to NaN rather than computed from a truncated window:
+        ``time_contr`` whenever either edge is missing; ``time_to_peak`` when the
+        onset is missing; ``time_to_relax`` when the offset is missing; and an
+        amplitude/velocity extremum whenever it falls *on* the truncated boundary,
+        because the true extremum then lies outside the recording. Default is 3.
 
     Returns
     -------
     dict
         Per-group contraction parameters (``max_n_contr`` is the max cycle count
-        across groups):
+        across groups). Entries for cycles that cannot support a given metric are NaN:
 
         - 'domain_equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm)
         - 'domain_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
@@ -333,32 +331,56 @@ def analyze_contraction_parameters(
         # Calculate delta (change from equilibrium)
         delta_slen = slen_interp - domain_equ[domain_idx]
         
+        # Cycles touching the recording edges are incomplete: their onset/offset
+        # happened outside the window, so the metrics that need it stay NaN.
+        trunc_start, trunc_end = cycle_truncation_flags(labels, n_contr, buffer_frames)
+
         # Analyze each contraction cycle
         for contr_idx in range(n_contr):
             cycle_mask = labels == (contr_idx + 1)
             if not np.any(cycle_mask):
                 continue
-            
+
             delta_cycle = delta_slen[cycle_mask]
             vel_cycle = vel[cycle_mask]
-            
-            # Contraction duration
-            domain_time_contr[domain_idx, contr_idx] = np.sum(cycle_mask) * frametime
-            
+            cut_start = bool(trunc_start[contr_idx])
+            cut_end = bool(trunc_end[contr_idx])
+
+            def _extremum_observed(arg_idx: int, n: int) -> bool:
+                """False when the extremum sits on a truncated edge of the cycle, i.e.
+                the trace never turned around inside the recording."""
+                return not ((cut_start and arg_idx == 0) or (cut_end and arg_idx == n - 1))
+
+            # Contraction duration — needs both the onset and the offset
+            if not (cut_start or cut_end):
+                domain_time_contr[domain_idx, contr_idx] = np.sum(cycle_mask) * frametime
+
             # Max contraction (most negative delta) and elongation (most positive delta)
-            if len(delta_cycle) > 0:
-                domain_contr_max[domain_idx, contr_idx] = np.nanmin(delta_cycle)
-                domain_elong_max[domain_idx, contr_idx] = np.nanmax(delta_cycle)
-                
-                # Max velocities
-                domain_vel_contr_max[domain_idx, contr_idx] = np.nanmin(vel_cycle)
-                domain_vel_elong_max[domain_idx, contr_idx] = np.nanmax(vel_cycle)
-                
-                # Time to peak (time from start to minimum)
-                if not np.all(np.isnan(delta_cycle)):
-                    peak_idx = np.nanargmin(delta_cycle)
-                    domain_time_to_peak[domain_idx, contr_idx] = peak_idx * frametime
-                    domain_time_to_relax[domain_idx, contr_idx] = (len(delta_cycle) - peak_idx) * frametime
+            if len(delta_cycle) > 0 and not np.all(np.isnan(delta_cycle)):
+                n_cyc = len(delta_cycle)
+                peak_idx = int(np.nanargmin(delta_cycle))
+                elong_idx = int(np.nanargmax(delta_cycle))
+                peak_observed = _extremum_observed(peak_idx, n_cyc)
+                if peak_observed:
+                    domain_contr_max[domain_idx, contr_idx] = np.nanmin(delta_cycle)
+                if _extremum_observed(elong_idx, n_cyc):
+                    domain_elong_max[domain_idx, contr_idx] = np.nanmax(delta_cycle)
+
+                # Max velocities — tested against their own arg-extremum, which need
+                # not coincide with the length extremum.
+                if not np.all(np.isnan(vel_cycle)):
+                    if _extremum_observed(int(np.nanargmin(vel_cycle)), n_cyc):
+                        domain_vel_contr_max[domain_idx, contr_idx] = np.nanmin(vel_cycle)
+                    if _extremum_observed(int(np.nanargmax(vel_cycle)), n_cyc):
+                        domain_vel_elong_max[domain_idx, contr_idx] = np.nanmax(vel_cycle)
+
+                # Timing relative to the peak: onset->peak needs the onset,
+                # peak->offset needs the offset, and both need an observed peak.
+                if peak_observed:
+                    if not cut_start:
+                        domain_time_to_peak[domain_idx, contr_idx] = peak_idx * frametime
+                    if not cut_end:
+                        domain_time_to_relax[domain_idx, contr_idx] = (n_cyc - peak_idx) * frametime
     
     return {
         'domain_equ': domain_equ,

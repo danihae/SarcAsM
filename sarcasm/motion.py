@@ -15,6 +15,7 @@
 
 import os
 import logging
+import warnings
 from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
@@ -24,9 +25,9 @@ from pywt import cwt
 from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
 from scipy.stats import kstest, geom
 from scipy.optimize import linear_sum_assignment
-from skimage.segmentation import clear_border
 
 from contraction_net.prediction import predict_contractions
+from sarcasm.analysis.contraction_analysis import cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
 from sarcasm.utils import Utils
@@ -133,6 +134,69 @@ class Motion(SarcAsMBase):
         os.makedirs(self.data_dir, exist_ok=True)  # data_dir is created on demand (>=1.0)
         IOUtils.json_serialize(self.loi_data, self.__get_loi_data_file_name())
 
+    def _member_slen(self) -> np.ndarray:
+        """Per-sarcomere length series ``(n_sarcomeres, T)`` for this LOI.
+
+        For a **legacy** LOI the sarcomere length *is* the gap between consecutive
+        tracked Z-bands, so it is derived from ``z_pos`` — unchanged behaviour.
+
+        For a **synthesized** chain (``Motion.from_loi_data`` with
+        ``synthetic=True``, i.e. a fibre built from 2D tracks) the honest
+        per-member series is already stored under ``'slen'``. It must be used
+        directly: each member there is an independently tracked sarcomere, so a
+        member with no observation is NaN on its own row only, whereas
+        ``np.diff(z_pos)`` would additionally blank every row below it (see
+        :func:`grouped_motion.synthesize_loi_chain`). Re-deriving it collapsed the
+        usable-sarcomere count and silently forced whole stretches of the movie to
+        be scored as non-contracting.
+
+        Returns
+        -------
+        np.ndarray
+            A fresh ``(n_sarcomeres, T)`` array, safe for the caller to modify.
+        """
+        stored = self.loi_data.get('slen') if self.loi_data.get('synthetic') else None
+        if stored is not None:
+            stored = np.asarray(stored, dtype=float)
+            expected = np.asarray(self.loi_data['z_pos']).shape[0] - 1
+            if stored.ndim == 2 and stored.shape[0] == expected:
+                return stored.copy()
+            logger.warning(
+                f'Synthetic LOI slen has shape {stored.shape}, expected '
+                f'({expected}, T); falling back to diff(z_pos).')
+        return np.diff(np.asarray(self.loi_data['z_pos'], dtype=float), axis=0)
+
+    def _period_durations(self, labels: np.ndarray, n_periods: int,
+                          buffer_frames: int) -> np.ndarray:
+        """Duration (s) of each labelled period, NaN where the period is incomplete.
+
+        A period reaching within ``buffer_frames`` of either end of the recording has
+        an unobserved onset or offset, so its duration is not measurable and is
+        reported as NaN rather than as a silently truncated count.
+
+        Parameters
+        ----------
+        labels : np.ndarray
+            1D period labels from :func:`scipy.ndimage.label`.
+        n_periods : int
+            Number of labelled periods.
+        buffer_frames : int
+            Frames from either end within which a period counts as incomplete.
+
+        Returns
+        -------
+        np.ndarray
+            Durations in seconds, shape ``(n_periods,)``, NaN for incomplete periods.
+        """
+        durations = np.full(int(n_periods), np.nan)
+        if n_periods == 0:
+            return durations
+        trunc_start, trunc_end = cycle_truncation_flags(labels, n_periods, buffer_frames)
+        for i in range(int(n_periods)):
+            if not (trunc_start[i] or trunc_end[i]):
+                durations[i] = np.count_nonzero(labels == i + 1) * self.metadata.frametime
+        return durations
+
     def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
                                     buffer_frames: int = 3, contr_time_min: float = 0.2, merge_time_max: float = 0.05):
@@ -160,8 +224,13 @@ class Motion(SarcAsMBase):
             Minimal number of sarcomeres; if fewer, contraction state is set
             to 0. Default is 4.
         buffer_frames : int, optional
-            Remove contraction cycles within this many frames of the start and
-            end of the time-series. Default is 3.
+            Frames from either end of the time-series within which a contraction
+            cycle (or quiescent period) counts as **incomplete**: its onset or
+            offset lies outside the recording. Incomplete periods are kept in the
+            ``contr`` / ``quiet`` masks — so they are plotted and are not mistaken
+            for quiescence — but their durations (``time_contr`` / ``time_quiet``)
+            are NaN, and ``contr_complete`` / ``quiet_complete`` flag them.
+            Default is 3.
         contr_time_min : float, optional
             Minimal contraction time in seconds; shorter contractions are
             removed. Default is 0.2.
@@ -179,7 +248,7 @@ class Motion(SarcAsMBase):
 
         # edit contractions
         # filter sarcomeres by sarcomere lengths and set to 0 if less sarcomeres than n_sarcomere_min
-        slen = np.diff(self.loi_data['z_pos'], axis=0)
+        slen = self._member_slen()
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
         contr[n_sarcomeres_time < n_sarcomeres_min] = 0
@@ -187,33 +256,42 @@ class Motion(SarcAsMBase):
         structure_closing = np.ones(max(1, int(merge_time_max / self.metadata.frametime)))
         structure_opening = np.ones(max(1, int(contr_time_min / self.metadata.frametime)))
         contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
-        # remove incomplete contractions at the beginning and end of time series
-        contr = clear_border(contr, buffer_size=buffer_frames)
 
-        # analyze contractions
+        # analyze contractions. Cycles at the recording edges are KEPT (they are real
+        # contractions: they belong in the plot, must not be counted as quiescence, and
+        # their onset is a valid beat) and only flagged incomplete, so their duration is
+        # NaN instead of a silently truncated number.
         start_contr_frame = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
         start_contr = start_contr_frame * self.metadata.frametime
         labels_contr, n_contr = label(contr)
-        time_contr = np.asarray(
-            [np.count_nonzero(labels_contr == i) for i in np.unique(labels_contr)[1:]]) * \
-                     self.metadata.frametime
-        beating_rate = 1 / np.mean(np.diff(start_contr))
-        beating_rate_variability = np.std(np.diff(start_contr))
+        time_contr = self._period_durations(labels_contr, n_contr, buffer_frames)
+        contr_complete = np.isfinite(time_contr)
+        n_contr_complete = int(contr_complete.sum())
+        if start_contr.size > 1:
+            beating_rate = 1 / np.mean(np.diff(start_contr))
+            beating_rate_variability = np.std(np.diff(start_contr))
+        else:
+            logger.warning(f'Only {start_contr.size} contraction onset(s) observed; '
+                           'beating rate requires >= 2.')
+            beating_rate = np.nan
+            beating_rate_variability = np.nan
 
-        # analyze quiescent period
+        # analyze quiescent period (same incomplete-at-the-edges treatment)
         quiet = 1 - contr.copy()
-        # remove incomplete quiescent periods at the beginning and end of time series
-        quiet = clear_border(quiet, buffer_size=buffer_frames)
         start_quiet_frame = np.where(np.diff(quiet.astype('float32')) > 0.5)[0]
         start_quiet = start_quiet_frame * self.metadata.frametime
         labels_quiet, n_quiet = label(quiet)
-        time_quiet = np.asarray(
-            [np.count_nonzero(labels_quiet == i) for i in np.unique(labels_quiet)[1:]]) * \
-                     self.metadata.frametime
-        time_quiet_avg = np.mean(time_quiet)
-        time_contr_avg = np.mean(time_contr)
-        # time of full contraction cycles (equivalent to 1/beating_rate)
-        time_cycle = time_contr[:-1] + time_quiet
+        time_quiet = self._period_durations(labels_quiet, n_quiet, buffer_frames)
+        quiet_complete = np.isfinite(time_quiet)
+        n_quiet_complete = int(quiet_complete.sum())
+        with warnings.catch_warnings():  # all-NaN slice when every period is incomplete
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            time_quiet_avg = np.nanmean(time_quiet) if time_quiet.size else np.nan
+            time_contr_avg = np.nanmean(time_contr) if time_contr.size else np.nan
+        # Full contraction-cycle duration = interval between consecutive onsets
+        # (== 1 / beating_rate). Derived from the onsets directly, so it needs no
+        # assumption about how many quiescent periods sit between the cycles.
+        time_cycle = np.diff(start_contr)
 
         # store in LOI dict
         dict_temp = {'params.detect_analyze_contractions.model': model,
@@ -227,6 +305,8 @@ class Motion(SarcAsMBase):
                      'labels_contr': labels_contr, 'labels_quiet': labels_quiet,
                      'time_contr': time_contr, 'time_quiet': time_quiet, 'time_quiet_avg': time_quiet_avg,
                      'time_contr_avg': time_contr_avg, 'time_cycle': time_cycle,
+                     'contr_complete': contr_complete, 'quiet_complete': quiet_complete,
+                     'n_contr_complete': n_contr_complete, 'n_quiet_complete': n_quiet_complete,
                      'n_contr': n_contr, 'n_quiet': n_quiet,
                      'beating_rate_variability': beating_rate_variability, 'beating_rate': beating_rate, }
         self.loi_data.update(dict_temp)
@@ -260,7 +340,7 @@ class Motion(SarcAsMBase):
             values outside are set to NaN. Default is (1.5, 2.3).
         """
         # calculate sarcomere lengths
-        slen = np.diff(self.loi_data['z_pos'], axis=0)
+        slen = self._member_slen()
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         slen_avg = np.nanmean(slen, axis=0)
         n_sarcomeres = slen.shape[0]
