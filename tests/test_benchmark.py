@@ -238,7 +238,8 @@ class TestDomainMotionBenchmark:
             sarc.detect_sarcomeres(frames=list(range(50)), max_patch_size=(256, 1024))
             sarc.analyze_sarcomere_vectors(frames="all", interpolation_method="akima")
             sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-            sarc.analyze_domain_motion(reference_frame=0, threshold=0.3, contr_time_min=0.2)
+            sarc.track_sarcomere_vectors()
+            sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
         filepath = result.save_json(benchmark_output_dir, prefix="domain_motion_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
@@ -257,8 +258,10 @@ class TestDomainMotionBenchmark:
             sarc.analyze_sarcomere_vectors(frames="all", interpolation_method="akima")
         with timer(result, "analyze_sarcomere_domains"):
             sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-        with timer(result, "analyze_domain_motion"):
-            sarc.analyze_domain_motion(reference_frame=0, threshold=0.3, contr_time_min=0.2)
+        with timer(result, "track_sarcomere_vectors"):
+            sarc.track_sarcomere_vectors()
+        with timer(result, "analyze_track_motion_domain"):
+            sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
         filepath = result.save_json(benchmark_output_dir, prefix="domain_motion_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")

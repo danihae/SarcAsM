@@ -700,7 +700,7 @@ class SarcAsM(SarcAsMBase):
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
                                   smooth_orientation_sigma: float = 0.0,
-                                  peak_prominence: float = 0.5,
+                                  peak_prominence: float = 0.3,
                                   peak_algorithm: str = 'default',
                                   use_fast_movie_zbands: bool = True,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -743,7 +743,12 @@ class SarcAsM(SarcAsMBase):
         peak_prominence : float, optional
             ``scipy.signal.find_peaks`` prominence threshold for Z-band peak
             detection inside each profile; lower values accept weaker, noisier
-            peaks. Only used when ``peak_algorithm='default'``. Default is 0.5.
+            peaks. Only used when ``peak_algorithm='default'``. Default is 0.3
+            (lowered from 0.5): validated on real 20 kPa data to recover ~+5.8%
+            real detections — the extra peaks are real (slen median 1.668→1.666,
+            IQR and edge-junk fraction unchanged), concentrated at peak
+            contraction / fast motion where Z-band peaks weaken. NB: the ``'loi'``
+            path ignores this and uses its own fixed prominence.
         peak_algorithm : {'default', 'loi'}, optional
             Peak detection routine. ``'default'`` uses the fast batched
             :func:`sarcasm.utils.Utils.process_profiles_batch` (``interp_factor``
@@ -1232,224 +1237,6 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_domain_motion(
-        self,
-        reference_frame: int = 0,
-        model: Optional[str] = None,
-        threshold: float = 0.3,
-        contr_time_min: float = 0.2,
-        merge_time_max: float = 0.05,
-        buffer_frames: int = 3,
-        min_valid_frames: float = 0.5,
-        filter_params: Tuple[int, int] = (13, 5),
-        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
-    ) -> None:
-        """
-        Analyze sarcomere contraction dynamics within sarcomere domains over time.
-        
-        Uses domain masks from a reference frame to track mean sarcomere length within
-        each domain across all frames. Then detects contraction cycles using ContractionNet
-        and computes per-domain contraction parameters.
-        
-        Prerequisites: Run `analyze_sarcomere_vectors` and `analyze_sarcomere_domains` first.
-        
-        Parameters
-        ----------
-        reference_frame : int, optional
-            Frame index used as reference for domain masks; must be a frame where
-            domains were analyzed. Default is 0.
-        model : str or None, optional
-            Path to ContractionNet model weights (.pt). None uses the default
-            model. Default is None.
-        threshold : float, optional
-            Binary threshold for contraction-state prediction. Default is 0.3.
-        contr_time_min : float, optional
-            Minimal contraction duration in s; shorter contractions are removed.
-            Default is 0.2.
-        merge_time_max : float, optional
-            Maximal time in s between two contractions; closer ones are merged.
-            Default is 0.05.
-        buffer_frames : int, optional
-            Remove contraction cycles within this many frames of the
-            start/end of the time-series. Default is 3.
-        min_valid_frames : float, optional
-            Minimum fraction of valid (non-NaN) frames required to analyze a
-            domain. Default is 0.5.
-        filter_params : tuple of int, optional
-            Savitzky-Golay filter parameters ``(window_length, polyorder)`` for
-            velocity calculation. Default is (13, 5).
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
-            ProgressNotifier.progress_notifier_tqdm().
-
-        Raises
-        ------
-        ValueError
-            If prerequisites are not met or if reference_frame is invalid.
-
-        .. deprecated::
-            Superseded by :meth:`analyze_track_motion` with ``by='domain'``, which
-            groups *tracks* (stable per-sarcomere identity) instead of re-binning
-            per-frame detections into a static reference-frame mask. When a 2D
-            tracking result is present this method now delegates there and emits a
-            ``DeprecationWarning``; without tracks it falls back to the legacy
-            static-mask computation so existing domain-only workflows keep working.
-        """
-        # --- Deprecated path: delegate to the track-based replacement if tracks exist. ---
-        if 'tracks_slen' in self.data:
-            warnings.warn(
-                "analyze_domain_motion is deprecated and superseded by "
-                "analyze_track_motion(by='domain') (track-based, per-sarcomere identity). "
-                "Delegating now; call analyze_track_motion(by='domain', reference_frame=...) "
-                "directly to silence this warning.",
-                DeprecationWarning, stacklevel=2)
-            self.analyze_track_motion(
-                by='domain', reference_frame=reference_frame, model=model,
-                threshold=threshold, contr_time_min=contr_time_min,
-                merge_time_max=merge_time_max, buffer_frames=buffer_frames,
-                min_valid_frames=min_valid_frames, filter_params=filter_params,
-                min_coverage=0.0)
-            return
-
-        # Validate prerequisites
-        if 'pos_vectors' not in self.data:
-            raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
-        if 'domains' not in self.data:
-            raise ValueError('Sarcomere domains not analyzed. Run analyze_sarcomere_domains first.')
-        if self.metadata.frametime is None:
-            raise ValueError('Frame time not defined in metadata. Required for motion analysis.')
-        
-        # Get frames where domains were analyzed
-        domain_frames = self.data.get('params.analyze_sarcomere_domains.frames', [])
-        if reference_frame not in domain_frames:
-            raise ValueError(
-                f'Reference frame {reference_frame} was not analyzed for domains. '
-                f'Available frames: {domain_frames}'
-            )
-        
-        # Get or regenerate domain mask for reference frame
-        if 'domain_mask' in self.data and self.data['domain_mask'][reference_frame] is not None:
-            domain_mask_ref = self.data['domain_mask'][reference_frame]
-            # Convert sparse matrix to dense if needed
-            if hasattr(domain_mask_ref, 'toarray'):
-                domain_mask_ref = domain_mask_ref.toarray()
-        else:
-            # Regenerate domain mask from stored domain data
-            logger.info(f'Regenerating domain mask for reference frame {reference_frame}...')
-            domains_ref = self.data['domains'][reference_frame]
-            pos_vectors_ref = np.asarray(self.data['pos_vectors'][reference_frame])
-            sarcomere_orientation_ref = np.asarray(self.data['sarcomere_orientation_vectors'][reference_frame])
-            sarcomere_length_ref = np.asarray(self.data['sarcomere_length_vectors'][reference_frame])
-            
-            dilation_radius = self.data.get('params.analyze_sarcomere_domains.dilation_radius', 0.3)
-            area_min = self.data.get('params.analyze_sarcomere_domains.area_min', 20.0)
-            
-            domain_mask_ref, *_ = domain_clustering.analyze_domains(
-                domains_ref, pos_vectors_ref, sarcomere_orientation_ref, sarcomere_length_ref,
-                size=self.metadata.size, pixelsize=self.metadata.pixelsize,
-                dilation_radius=dilation_radius, area_min=area_min
-            )
-        
-        # Get number of domains
-        n_domains = int(self.data['n_domains'][reference_frame])
-        if n_domains == 0:
-            logger.warning('No domains found in reference frame. Cannot analyze domain motion.')
-            return
-        
-        logger.info(f'Analyzing domain motion for {n_domains} domains...')
-        
-        # Get all frames where vectors were analyzed
-        vector_frames = self.data.get('params.analyze_sarcomere_vectors.frames', list(range(self.metadata.n_stack)))
-        
-        # Collect sarcomere vectors for all frames
-        pos_vectors_all = [
-            np.asarray(self.data['pos_vectors'][t]) if self.data['pos_vectors'][t] is not None else np.array([])
-            for t in vector_frames
-        ]
-        sarcomere_length_vectors_all = [
-            np.asarray(self.data['sarcomere_length_vectors'][t]) if self.data['sarcomere_length_vectors'][t] is not None else np.array([])
-            for t in vector_frames
-        ]
-        
-        # Compute per-domain time-series
-        logger.info('Computing per-domain sarcomere length time-series...')
-        timeseries_results = contraction_analysis.compute_domain_timeseries(
-            pos_vectors_all=pos_vectors_all,
-            sarcomere_length_vectors_all=sarcomere_length_vectors_all,
-            domain_mask=domain_mask_ref,
-            pixelsize=self.metadata.pixelsize,
-            n_domains=n_domains,
-        )
-        
-        # Select model for ContractionNet
-        if model is None or model == 'default':
-            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
-        
-        # Detect contractions using ContractionNet
-        logger.info('Detecting contraction cycles using ContractionNet...')
-        contraction_results = contraction_analysis.detect_contractions(
-            domain_slen_timeseries=timeseries_results['domain_slen_timeseries'],
-            frametime=self.metadata.frametime,
-            model_path=model,
-            threshold=threshold,
-            contr_time_min=contr_time_min,
-            merge_time_max=merge_time_max,
-            buffer_frames=buffer_frames,
-            min_valid_frames=min_valid_frames,
-            group_label="Domain", id_offset=1,   # 1-based to match the domain mask labels
-        )
-        
-        # Analyze contraction parameters
-        logger.info('Analyzing contraction parameters...')
-        param_results = contraction_analysis.analyze_contraction_parameters(
-            domain_slen_timeseries=timeseries_results['domain_slen_timeseries'],
-            domain_labels_contr=contraction_results['domain_labels_contr'],
-            domain_n_contr=contraction_results['domain_n_contr'],
-            frametime=self.metadata.frametime,
-            filter_params=filter_params,
-        )
-        
-        # Store results in data dictionary
-        domain_motion_data = {
-            # Time-series data
-            'domain_slen_timeseries': timeseries_results['domain_slen_timeseries'],
-            'domain_slen_median_timeseries': timeseries_results['domain_slen_median_timeseries'],
-            'domain_slen_std_timeseries': timeseries_results['domain_slen_std_timeseries'],
-            'domain_slen_q25_timeseries': timeseries_results['domain_slen_q25_timeseries'],
-            'domain_slen_q75_timeseries': timeseries_results['domain_slen_q75_timeseries'],
-            'domain_n_vectors_timeseries': timeseries_results['domain_n_vectors_timeseries'],
-            # Contraction detection
-            'domain_contr': contraction_results['domain_contr'],
-            'domain_n_contr': contraction_results['domain_n_contr'],
-            'domain_labels_contr': contraction_results['domain_labels_contr'],
-            'domain_beating_rate': contraction_results['domain_beating_rate'],
-            'domain_beating_rate_variability': contraction_results['domain_beating_rate_variability'],
-            # Contraction parameters
-            'domain_equ': param_results['domain_equ'],
-            'domain_contr_max': param_results['domain_contr_max'],
-            'domain_elong_max': param_results['domain_elong_max'],
-            'domain_vel_contr_max': param_results['domain_vel_contr_max'],
-            'domain_vel_elong_max': param_results['domain_vel_elong_max'],
-            'domain_time_to_peak': param_results['domain_time_to_peak'],
-            'domain_time_to_relax': param_results['domain_time_to_relax'],
-            'domain_time_contr': param_results['domain_time_contr'],
-            # Parameters
-            'params.analyze_domain_motion.reference_frame': reference_frame,
-            'params.analyze_domain_motion.model': model,
-            'params.analyze_domain_motion.threshold': threshold,
-            'params.analyze_domain_motion.contr_time_min': contr_time_min,
-            'params.analyze_domain_motion.merge_time_max': merge_time_max,
-            'params.analyze_domain_motion.buffer_frames': buffer_frames,
-            'params.analyze_domain_motion.min_valid_frames': min_valid_frames,
-            'params.analyze_domain_motion.filter_params': filter_params,
-        }
-        
-        self.data.update(domain_motion_data)
-        logger.info(f'Domain motion analysis complete. Analyzed {n_domains} domains.')
-
-        if self.auto_save:
-            self.store_structure_data()
-
     def track_sarcomere_vectors(
         self,
         frames: Union[str, int, List[int], np.ndarray] = 'all',
@@ -1459,17 +1246,18 @@ class SarcAsM(SarcAsMBase):
         max_disp_along_um: float = 1.0,
         max_disp_perp_um: float = 0.2,
         ori_tol_deg: float = 45.0,
-        memory: int = 5,
+        memory: Optional[int] = None,
         min_track_length: int = 5,
         reacquire_gap_cap: int = 4,
-        max_gap_interpolation: int = 5,
+        max_gap_interpolation: Optional[int] = None,
         merge_tracks: bool = True,
         merge_max_disp_along_um: float = 1.0,
         merge_max_disp_perp_um: float = 0.3,
         merge_ori_tol_deg: float = 45.0,
         merge_slen_tol_um: float = 0.30,
+        merge_interleaved: bool = False,
         slen_lims: Tuple[float, float] = (1.0, 3.0),
-        motion_predictor: str = 'none',
+        motion_predictor: str = 'neighbors',
         compute_motion_field: bool = False,
         store_flow_fields: bool = False,
         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
@@ -1511,9 +1299,11 @@ class SarcAsM(SarcAsMBase):
         ori_tol_deg : float, optional
             Orientation tolerance for the snap gate, in degrees (compared
             modulo π). Default is 45.0.
-        memory : int, optional
+        memory : int or None, optional
             Frames a query point may go without snapping before it is closed.
-            Default is 5.
+            ``None`` (default) sets it to a fixed physical duration (~0.2 s) via
+            ``frametime``, so the coast horizon is frame-rate invariant; pass an
+            int to override. Falls back to 5 frames when frametime is unknown.
         min_track_length : int, optional
             Minimum number of actual snaps required to keep a track. Default is 5.
         reacquire_gap_cap : int, optional
@@ -1521,9 +1311,16 @@ class SarcAsM(SarcAsMBase):
             gate by a random-walk factor (``∝ sqrt(gap)``, gap capped at this
             value) to re-snap to a reappearing detection, reducing fragmentation.
             Set to 1 to disable (legacy behaviour). Default is 4.
-        max_gap_interpolation : int, optional
+        max_gap_interpolation : int or None, optional
             Maximum absence span, in frames, that the post-loop merge step may
-            bridge (and linearly interpolate). Default is 5.
+            bridge by **linearly interpolating** the gap positions. Kept short on
+            purpose — it bridges brief detection flicker only; long-gap stitching
+            fabricates positions and inflates span-based track lengths without
+            adding real observations. ``None`` (default) sets it to a fixed short
+            duration (~0.05 s) via ``frametime`` so the same brief dropout is
+            bridged at any frame rate; pass a larger int only if you deliberately
+            want longer interpolated gaps. Falls back to 5 frames when frametime
+            is unknown.
         merge_tracks : bool, optional
             If True, run a final pass that stitches respawned trajectory
             fragments back to their parent when the flow-predicted tail of one
@@ -1542,24 +1339,26 @@ class SarcAsM(SarcAsMBase):
             Sarcomere-length continuity tolerance for merging, in µm; fragments
             are stitched only if their seam-frame slens differ by at most this.
             Default is 0.30.
+        merge_interleaved : bool, optional
+            Opt-in de-fragmentation: rejoin same-sarcomere fragments that share a
+            resting position/length and never co-occur. See
+            :func:`~sarcasm.analysis.sarcomere_tracking.merge_interleaved_fragments`.
+            Default is False.
         slen_lims : tuple of float, optional
             Physiologically valid sarcomere-length range, in µm; a merge is
             rejected if either seam slen is finite and outside this range. Same
             semantics as ``slen_lims`` in :class:`~sarcasm.motion.Motion`.
             Default is (1.0, 3.0).
-        motion_predictor : {'none', 'flow'}, optional
-            How each track's next-frame position is predicted before snapping to
-            a detection. ``'none'`` (default) is a zero-motion predictor: the
-            previous position is used, and no optical flow is computed. ``'flow'``
-            computes the dense DT-Farneback optical flow and advects each track
-            along its sarcomere axis before snapping. On benchmark data the two
-            give equivalent tracks at normal frame rates (the next-frame
-            detection sits well inside the snap gate), so ``'none'`` is the
-            default — it is markedly faster and avoids the flow's
-            segmentation-flicker noise. Use ``'flow'`` only for low frame rates /
-            large inter-frame motion (per-frame displacement approaching the snap
-            gate). Track positions / lengths / orientations come from snapping to
-            detections regardless of this choice. Default is 'none'.
+        motion_predictor : {'neighbors', 'none', 'flow'}, optional
+            How a track's next-frame position is predicted before snapping.
+            ``'neighbors'`` (default) advects a track only while it is coasting, by
+            the median step of the tracks around it, so its anchor cannot go stale
+            during a dropout and let the neighbouring sarcomere into the
+            re-acquisition gate. ``'none'`` holds the previous position.
+            ``'flow'`` advects every track by the dense DT-Farneback flow — much
+            slower; use only when per-frame displacement approaches the snap gate.
+            Track positions/lengths/orientations always come from snapping to
+            detections. Default is 'neighbors'.
         compute_motion_field : bool, optional
             If True, also compute the dense optical flow and sample it at every
             detection position to produce a per-vector displacement / velocity
@@ -1679,6 +1478,7 @@ class SarcAsM(SarcAsMBase):
             merge_max_disp_perp_um=merge_max_disp_perp_um,
             merge_ori_tol_deg=merge_ori_tol_deg,
             merge_slen_tol_um=merge_slen_tol_um,
+            merge_interleaved=merge_interleaved,
             slen_lims=slen_lims,
             motion_predictor=motion_predictor,
             compute_motion_field=compute_motion_field,
@@ -1691,6 +1491,7 @@ class SarcAsM(SarcAsMBase):
             'track_ids': out['track_ids'],
             'track_start_frame': out['track_start_frame'],
             'track_lengths': out['track_lengths'],
+            'track_drift_um': out['track_drift_um'],
             'tracks_positions_um': out['tracks_positions_um'],
             'tracks_positions_px': out['tracks_positions_px'],
             'tracks_slen': out['tracks_slen'],
@@ -1699,6 +1500,7 @@ class SarcAsM(SarcAsMBase):
             'tracks_detection_id': out['tracks_detection_id'],
             'tracks_midline_id': out['tracks_midline_id'],
             'n_merges': out['n_merges'],
+            'n_interleaved_merges': out['n_interleaved_merges'],
             'params.track_sarcomere_vectors.frames': list_frames,
             'params.track_sarcomere_vectors.threshold_mbands': threshold_mbands,
             'params.track_sarcomere_vectors.threshold_zbands': threshold_zbands,
@@ -1715,6 +1517,7 @@ class SarcAsM(SarcAsMBase):
             'params.track_sarcomere_vectors.merge_max_disp_perp_um': merge_max_disp_perp_um,
             'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
             'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
+            'params.track_sarcomere_vectors.merge_interleaved': merge_interleaved,
             'params.track_sarcomere_vectors.slen_lims': list(slen_lims),
             'params.track_sarcomere_vectors.motion_predictor': motion_predictor,
             'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
@@ -1885,6 +1688,9 @@ class SarcAsM(SarcAsMBase):
         pandas.DataFrame
             Columns: ``track_id``, ``start_frame``, ``length`` (number of snapped
             frames), ``n_frames``, ``coverage``, ``mean_slen``, ``std_slen``,
+            ``drift_um`` (how far the track wandered from the coherent motion of
+            its neighbours — roughly one sarcomere length means it probably
+            changed identity; NaN if too short to score),
             ``start_y_um``, ``start_x_um``, ``ref_midline_id`` (the M-band id at
             the start frame), and — once :meth:`group_tracks` has been run —
             ``group_id`` / ``order_in_group`` (``order_in_group`` is 0 for the
@@ -1896,7 +1702,8 @@ class SarcAsM(SarcAsMBase):
 
         n_tracks = int(self.data.get('n_tracks', 0))
         columns = ['track_id', 'start_frame', 'length', 'n_frames', 'coverage',
-                   'mean_slen', 'std_slen', 'start_y_um', 'start_x_um', 'ref_midline_id']
+                   'mean_slen', 'std_slen', 'drift_um', 'start_y_um', 'start_x_um',
+                   'ref_midline_id']
         if n_tracks == 0:
             return pd.DataFrame(columns=columns)
 
@@ -1926,6 +1733,8 @@ class SarcAsM(SarcAsMBase):
             'coverage': coverage,
             'mean_slen': mean_slen,
             'std_slen': std_slen,
+            'drift_um': np.asarray(self.data.get(
+                'track_drift_um', np.full(n_tracks, np.nan)), dtype=float).reshape(-1),
             'start_y_um': start_pos[:, 0],
             'start_x_um': start_pos[:, 1],
             'ref_midline_id': ref_mid,
@@ -1951,36 +1760,60 @@ class SarcAsM(SarcAsMBase):
     # grouped result is read after its grouping changed.
 
     _GROUPING_LEVELS = ('pool', 'mband', 'myofibril', 'loi', 'domain', 'custom')
+    # Groupings that order their members head-to-tail into a 1D fibre thread.
+    # They represent geometry, not just a set, so they keep partially-tracked
+    # sarcomeres (a dropped member is a hole in the fibre, not removed noise).
+    _CHAIN_LEVELS = ('myofibril', 'loi')
+    _CHAIN_MIN_COVERAGE = 0.1
 
     def _grouping_hash(self, by: str, reference_frame: int, min_coverage: float,
+                       min_group_size: int = 1,
+                       max_drift_slen: Optional[float] = None,
                        labels: Optional[np.ndarray] = None) -> str:
         """Fingerprint of (current track identity + grouping recipe)."""
         h = hashlib.sha1()
         track_ids = np.ascontiguousarray(np.asarray(self.data.get('track_ids', []))).astype(np.int64)
         h.update(track_ids.tobytes())
-        h.update(repr((by, int(reference_frame), float(min_coverage))).encode())
+        h.update(repr((by, int(reference_frame), float(min_coverage), int(min_group_size),
+                       None if max_drift_slen is None else float(max_drift_slen))).encode())
         if labels is not None:
             h.update(np.ascontiguousarray(np.asarray(labels)).astype(np.int64).tobytes())
         return h.hexdigest()
 
     @staticmethod
     def _partition_fibre_chains(fibers: List[List[int]], gid: np.ndarray,
-                                order: np.ndarray) -> None:
+                                order: np.ndarray,
+                                group_ids: Optional[List[int]] = None) -> None:
         """Greedy longest-first partition of ordered track chains into groups.
 
         Each track joins only one fibre; ``gid``/``order`` are written in place
         (group id and rank along the fibre). Shared by 'myofibril' and any other
         line-chain grouping that resolves to ordered track index lists.
+
+        Parameters
+        ----------
+        fibers : list of list of int
+            Ordered track-index chains, head to tail along each fibre.
+        gid, order : np.ndarray
+            Per-track group id / rank-along-fibre, written in place.
+        group_ids : list of int or None, optional
+            Group id to assign to each chain, parallel to ``fibers``. ``None``
+            (default) numbers the surviving fibres sequentially. Pass explicit ids
+            to preserve a fixed label space (e.g. LOI line *i* -> group *i*), which
+            keeps the groups aligned with the lines they came from even when a
+            chain is dropped for having too few unclaimed tracks.
         """
-        fibers = sorted(fibers, key=len, reverse=True)
+        idx = sorted(range(len(fibers)), key=lambda i: len(fibers[i]), reverse=True)
         claimed: set = set()
         fib_id = 0
-        for chain in fibers:
+        for i in idx:
+            chain = fibers[i]
             unclaimed = [tr for tr in chain if tr not in claimed]
             if len(unclaimed) < 2:
                 continue
+            this_id = fib_id if group_ids is None else int(group_ids[i])
             for rank, tr in enumerate(unclaimed):
-                gid[tr] = fib_id
+                gid[tr] = this_id
                 order[tr] = rank
                 claimed.add(tr)
             fib_id += 1
@@ -2007,6 +1840,10 @@ class SarcAsM(SarcAsMBase):
         arclen : np.ndarray
             ``(N,)`` float array; arc length of the closest point along that
             polyline (NaN if unassigned), used to order points along the line.
+        dist : np.ndarray
+            ``(N,)`` float array; perpendicular distance to the assigned polyline
+            (inf if unassigned), used to pick the on-line track when several
+            candidates share an arc position.
         """
         n = len(points)
         line_id = np.full(n, -1, dtype=np.int64)
@@ -2034,14 +1871,16 @@ class SarcAsM(SarcAsMBase):
                     best[i] = d[j]
                     line_id[i] = li
                     arclen[i] = cum[j] + t[j] * seg_len[j]
-        return line_id, arclen
+        return line_id, arclen, best
 
     def group_tracks(
         self,
         by: str = 'pool',
         *,
         reference_frame: int = 0,
-        min_coverage: float = 0.5,
+        min_coverage: Optional[float] = None,
+        min_group_size: int = 1,
+        max_drift_slen: Optional[float] = 1.0,
         labels: Optional[np.ndarray] = None,
     ) -> None:
         """Assign each track to a group (cheap, inspectable, freely re-callable).
@@ -2073,9 +1912,32 @@ class SarcAsM(SarcAsMBase):
             frame). Used by ``'mband'`` / ``'myofibril'`` / ``'loi'`` / ``'domain'``.
             For ``'loi'`` this should match the ``frame`` passed to
             :meth:`detect_lois`. Default is 0.
-        min_coverage : float, optional
+        min_coverage : float or None, optional
             Tracks snapped in fewer than this fraction of frames are dropped
-            (group id ``-1``). Default is 0.5.
+            (group id ``-1``). ``None`` (default) picks the floor from the
+            grouping: 0.1 for the chain kinds ``'myofibril'`` / ``'loi'``, 0.5
+            otherwise. A chain represents the fibre's geometry, so dropping a
+            partially-tracked sarcomere punches a hole into it rather than
+            removing noise; for a group *mean* the strict floor is right.
+        min_group_size : int, optional
+            Drop groups with fewer than this many member tracks — their members
+            become unassigned (group id ``-1``), like a failed ``min_coverage``.
+            Useful to discard the many 1–2 sarcomere fragments a fine grouping
+            produces (e.g. ``min_group_size=6`` for ``by='myofibril'``), whose
+            group-mean traces are too noisy to analyse. For ``'pool'``, ``'mband'``,
+            ``'myofibril'`` and ``'custom'`` the surviving groups are renumbered
+            contiguously; ``'domain'`` and ``'loi'`` keep their fixed label space
+            (the emptied labels simply end up with a member count of 0) so the
+            domain/LOI plots stay aligned. Default is 1 (no filtering).
+        max_drift_slen : float or None, optional
+            Drop tracks whose ``track_drift_um`` exceeds this many sarcomere
+            lengths — they have wandered away from the coherent motion of their
+            neighbours and most likely changed identity. Applied **only** to the
+            chain groupings ``'myofibril'`` and ``'loi'``, where such a track
+            breaks the head-to-tail order and can place the same physical
+            sarcomere in one chain twice; a drifting track still contributes a
+            valid length to a pooled/mband/domain group, so those are left
+            untouched. ``None`` disables the filter. Default is 1.0.
         labels : np.ndarray or None, optional
             Required for ``by='custom'``: integer label per track, row-aligned to
             ``track_ids``. Negative labels drop the track. Default is None.
@@ -2092,6 +1954,12 @@ class SarcAsM(SarcAsMBase):
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         if by not in self._GROUPING_LEVELS:
             raise ValueError(f"Unknown grouping '{by}'. Valid: {self._GROUPING_LEVELS}.")
+
+        # A chain must span the whole fibre, so it keeps partially-tracked
+        # sarcomeres that a group *mean* would rather discard (see the parameter
+        # docs). Explicit values are always honoured.
+        if min_coverage is None:
+            min_coverage = self._CHAIN_MIN_COVERAGE if by in self._CHAIN_LEVELS else 0.5
 
         n_tracks = int(self.data.get('n_tracks', 0))
         track_ids = np.asarray(self.data.get('track_ids', np.arange(n_tracks)))
@@ -2110,6 +1978,25 @@ class SarcAsM(SarcAsMBase):
                                 np.asarray(self.data['tracks_snapped']).reshape(n_tracks, T).sum(axis=1)))
             coverage = length / float(T) if T else np.zeros(n_tracks)
             eligible = coverage >= min_coverage
+
+            # Chain groupings order their members head-to-tail, so a track that has
+            # drifted off its own sarcomere corrupts the order and can put the same
+            # sarcomere in the chain twice. Drop those here; pooled/mband/domain
+            # groups still get a valid length from such a track, so they keep it.
+            if max_drift_slen is not None and by in self._CHAIN_LEVELS:
+                drift = self.data.get('track_drift_um')
+                if drift is not None:
+                    drift = np.asarray(drift, dtype=float).reshape(-1)
+                    med_slen = float(np.nanmedian(slen[eligible])) if eligible.any() else np.nan
+                    if drift.shape[0] == n_tracks and np.isfinite(med_slen):
+                        too_far = np.isfinite(drift) & (drift > max_drift_slen * med_slen)
+                        n_drop = int((too_far & eligible).sum())
+                        if n_drop:
+                            logger.info(
+                                f'max_drift_slen={max_drift_slen}: dropped {n_drop} track(s) '
+                                f'drifting >{max_drift_slen * med_slen:.2f} µm from their '
+                                f'neighbours before building the {by} chains.')
+                        eligible &= ~too_far
 
             gid = np.full(n_tracks, -1, dtype=np.int32)
             order = np.zeros(n_tracks, dtype=np.int32)
@@ -2169,11 +2056,16 @@ class SarcAsM(SarcAsMBase):
                 self._partition_fibre_chains(fibers, gid, order)
 
             elif by == 'loi':
-                # Like 'myofibril', but the fibre chains come from the curated
-                # detect_lois selection. loi_lines are *position* polylines (px),
-                # so tracks are assigned by geometric proximity (scale-aware) and
-                # ordered along the line by arc length, preserving the LOI label
-                # space (loi line i -> group i).
+                # An LOI is a *1D thread* of consecutive sarcomeres along one fibre —
+                # exactly what 'myofibril' builds, just restricted to the curated
+                # detect_lois selection. get_track_motion() then cumulatively sums the
+                # members' lengths into z_pos, which is only meaningful head-to-tail.
+                #
+                # So prefer the detection-index chain each LOI was selected from
+                # (identical code path to 'myofibril'); only fall back to geometry for
+                # lines that have no chain (a fitted straight line, or one drawn by
+                # hand in the GUI), and then THIN the band to one track per sarcomere
+                # step so the result is still a thread rather than a wide ribbon.
                 rf_idx = self._tracked_frame_index(reference_frame)
                 loi_data = self.data.get('loi_data')
                 loi_lines = None if loi_data is None else loi_data.get('loi_lines')
@@ -2181,30 +2073,56 @@ class SarcAsM(SarcAsMBase):
                     raise ValueError(
                         'LOI lines not available. Run detect_lois first, e.g. '
                         'detect_lois(frame=reference_frame).')
+                index_lines = None if loi_data is None else loi_data.get('loi_index_lines')
                 lines_px = [np.asarray(l, dtype=float).reshape(-1, 2) for l in loi_lines]
-                pos_px_ref = np.asarray(self.data['tracks_positions_px'],
-                                        dtype=float).reshape(n_tracks, T, 2)[:, rf_idx]
-                use = eligible & np.isfinite(pos_px_ref).all(axis=1)
-                idx_use = np.flatnonzero(use)
-                # proximity threshold: half a sarcomere length (scale-aware via
-                # pixelsize), so a sarcomere centre on the LOI line is captured but
-                # the parallel neighbour fibre (~1 slen away) is not.
+
                 med_slen_um = float(np.nanmedian(slen[eligible])) if eligible.any() else np.nan
                 px = self.metadata.pixelsize
                 med_slen_px = med_slen_um / px if (np.isfinite(med_slen_um) and px) else 30.0
-                max_dist = 0.5 * med_slen_px
-                if idx_use.size:
-                    line_id, arclen = self._assign_points_to_polylines(
-                        pos_px_ref[idx_use], lines_px, max_dist)
-                    for k, tr in enumerate(idx_use):
-                        if line_id[k] >= 0:
-                            gid[tr] = int(line_id[k])
-                    arclen_full = np.full(n_tracks, np.nan)
-                    arclen_full[idx_use] = arclen
-                    for g in range(len(lines_px)):
-                        members = np.flatnonzero(gid == g)
-                        if members.size:
-                            order[members] = np.argsort(np.argsort(arclen_full[members]))
+
+                if index_lines is not None and len(index_lines) == len(lines_px):
+                    # --- chain path: same construction as 'myofibril' -------------
+                    det_ref = np.asarray(self.data['tracks_detection_id']).reshape(n_tracks, T)[:, rf_idx]
+                    det_to_track: Dict[int, int] = {}
+                    for tr in np.flatnonzero(eligible):
+                        d = int(det_ref[tr])
+                        if d >= 0:
+                            det_to_track.setdefault(d, int(tr))
+                    fibers, line_ids = [], []
+                    for li, chain_idx in enumerate(index_lines):
+                        chain = [det_to_track[int(v)] for v in np.asarray(chain_idx).ravel()
+                                 if int(v) in det_to_track]
+                        if len(chain) >= 2:
+                            fibers.append(chain)
+                            line_ids.append(li)
+                    # explicit ids keep the LOI label space (line i -> group i)
+                    self._partition_fibre_chains(fibers, gid, order, group_ids=line_ids)
+                else:
+                    # --- geometric fallback: hand-drawn / fitted lines ------------
+                    pos_px_ref = np.asarray(self.data['tracks_positions_px'],
+                                            dtype=float).reshape(n_tracks, T, 2)[:, rf_idx]
+                    use = eligible & np.isfinite(pos_px_ref).all(axis=1)
+                    idx_use = np.flatnonzero(use)
+                    if idx_use.size:
+                        # Capture candidates up to half a sarcomere off the line, then
+                        # keep ONE per sarcomere-long bin along it (the one closest to
+                        # the line). Without this thinning every laterally-adjacent
+                        # sarcomere of the neighbouring myofibrils joins the group and
+                        # the "chain" becomes a ribbon many sarcomeres wide.
+                        line_id, arclen, dist = self._assign_points_to_polylines(
+                            pos_px_ref[idx_use], lines_px, 0.5 * med_slen_px)
+                        step = max(med_slen_px, 1e-6)
+                        bins = np.floor(arclen / step)
+                        for li in range(len(lines_px)):
+                            sel = np.flatnonzero(line_id == li)
+                            # one track per sarcomere-long bin: sort by (bin, distance)
+                            # and take the first of each bin — the one on the line.
+                            o = sel[np.lexsort((dist[sel], bins[sel]))]
+                            keep = o[np.unique(bins[o], return_index=True)[1]]
+                            if keep.size < 2:
+                                continue
+                            gid[idx_use[keep]] = li
+                            order[idx_use[keep]] = np.arange(keep.size)
                 # preserve the LOI line label space (line i -> group i)
                 fixed_n_groups = len(lines_px)
 
@@ -2221,6 +2139,26 @@ class SarcAsM(SarcAsMBase):
                 remap = {int(m): i for i, m in enumerate(uniq)}
                 for i in np.flatnonzero(valid):
                     gid[i] = remap[int(labels[i])]
+
+            # Drop under-sized groups: their members become unassigned, exactly as
+            # if they had failed min_coverage. Groups with a fixed label space
+            # ('domain'/'loi') keep their numbering (the label just empties out);
+            # the others are renumbered contiguously so downstream per-group rows
+            # (and plot row counts) contain no empty groups.
+            if min_group_size > 1 and (gid >= 0).any():
+                raw_counts = np.bincount(gid[gid >= 0])
+                too_small = np.flatnonzero(raw_counts < min_group_size)
+                if too_small.size:
+                    gid[np.isin(gid, too_small)] = -1
+                    n_dropped = int(too_small.size)
+                    if fixed_n_groups is None and (gid >= 0).any():
+                        keep = np.unique(gid[gid >= 0])
+                        remap = np.full(int(keep.max()) + 1, -1, dtype=np.int32)
+                        remap[keep] = np.arange(keep.size, dtype=np.int32)
+                        gid[gid >= 0] = remap[gid[gid >= 0]]
+                    logger.info(
+                        f'min_group_size={min_group_size}: dropped {n_dropped} group(s) '
+                        f'with fewer than {min_group_size} tracks.')
 
             if fixed_n_groups is not None:
                 n_groups = fixed_n_groups
@@ -2239,7 +2177,8 @@ class SarcAsM(SarcAsMBase):
             n_vectors_long = int(length[eligible].sum())
 
         grouping_hash = self._grouping_hash(
-            by, reference_frame, min_coverage,
+            by, reference_frame, min_coverage, min_group_size=min_group_size,
+            max_drift_slen=max_drift_slen,
             labels=labels if by == 'custom' else None)
 
         self.data.update({
@@ -2255,6 +2194,8 @@ class SarcAsM(SarcAsMBase):
             'params.group_tracks.by': by,
             'params.group_tracks.reference_frame': reference_frame,
             'params.group_tracks.min_coverage': min_coverage,
+            'params.group_tracks.min_group_size': min_group_size,
+            'params.group_tracks.max_drift_slen': max_drift_slen,
         })
         logger.info(
             f"group_tracks(by='{by}'): {n_groups} groups, "
@@ -2342,7 +2283,9 @@ class SarcAsM(SarcAsMBase):
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
         reference_frame: int = 0,
-        min_coverage: float = 0.5,
+        min_coverage: Optional[float] = None,
+        min_group_size: int = 1,
+        max_drift_slen: Optional[float] = 1.0,
     ) -> None:
         """Per-group sarcomere-contraction analysis over the current track grouping.
 
@@ -2356,7 +2299,7 @@ class SarcAsM(SarcAsMBase):
         schema so the same plotting code serves every grouping. For ``kind='domain'``
         the prefix *is* ``domain``, so this writes the exact legacy ``domain_*`` keys
         and the existing domain plots / feature_dict / export keep working — it is the
-        track-based replacement for :meth:`analyze_domain_motion`.
+        track-based domain-motion analysis (replacing the former static-mask method).
 
         Parameters
         ----------
@@ -2373,18 +2316,29 @@ class SarcAsM(SarcAsMBase):
             Member lengths outside this µm range are ignored in the aggregate.
             Default is (1.0, 3.0).
         model, threshold, contr_time_min, merge_time_max, buffer_frames, min_valid_frames, filter_params
-            ContractionNet engine knobs (same names/defaults as
-            :meth:`analyze_domain_motion`).
-        reference_frame, min_coverage
+            ContractionNet engine knobs (see :func:`grouped_motion.run_cycle_engine`).
+        reference_frame, min_coverage, min_group_size, max_drift_slen
             Forwarded to :meth:`group_tracks` when ``by`` is given. Defaults are
-            0 and 0.5.
+            0, None (0.1 for chain kinds / 0.5 otherwise), 1 and 1.0.
+            ``min_group_size`` discards groups with too few
+            member tracks (e.g. ``min_group_size=6`` to skip 1–5 sarcomere
+            myofibril fragments whose group mean is too noisy to analyse);
+            ``max_drift_slen`` drops identity-drifting tracks from the chain
+            groupings (myofibril/loi) only.
         """
         if by is not None:
             if by == 'custom':
                 raise ValueError(
                     "by='custom' cannot be used as a front door; call "
                     "group_tracks(by='custom', labels=...) then analyze_track_motion().")
-            self.group_tracks(by=by, reference_frame=reference_frame, min_coverage=min_coverage)
+            self.group_tracks(by=by, reference_frame=reference_frame,
+                              min_coverage=min_coverage, min_group_size=min_group_size,
+                              max_drift_slen=max_drift_slen)
+        elif min_group_size > 1:
+            logger.warning(
+                'min_group_size is only applied when by=... is given (it is a '
+                'grouping parameter); the existing grouping is used unchanged. '
+                'Call group_tracks(..., min_group_size=%d) to apply it.', min_group_size)
 
         if 'track_group_id' not in self.data:
             raise ValueError('No track grouping found. Run group_tracks(...) first '
@@ -2525,7 +2479,20 @@ class SarcAsM(SarcAsMBase):
         members = members[np.argsort(order[members])]  # head -> tail along the fibre
 
         slen = np.asarray(self.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[members]
-        z_pos, slen_f, time = grouped_motion.synthesize_loi_chain(slen, self.metadata.frametime)
+        # Pass the members' measured positions so each Z-band boundary is placed from
+        # its own sarcomere; accumulating them instead lets one missing member blank
+        # every boundary below it.
+        pos_um = np.asarray(self.data['tracks_positions_um'],
+                            dtype=float).reshape(n_tracks, -1, 2)[members]
+        # Anchor the chain geometry on the frame the grouping (and hence the
+        # head-to-tail order) was built from.
+        ref_frame = int(self.data.get('params.group_tracks.reference_frame', 0))
+        try:
+            ref_idx = self._tracked_frame_index(ref_frame)
+        except (ValueError, KeyError):
+            ref_idx = 0
+        z_pos, slen_f, time = grouped_motion.synthesize_loi_chain(
+            slen, self.metadata.frametime, member_pos=pos_um, ref_idx=ref_idx)
         loi_data = {
             'z_pos': z_pos, 'z_pos_raw': z_pos.copy(), 'slen': slen_f, 'time': time,
             'n_sarcomeres': int(members.size),
@@ -2704,12 +2671,17 @@ class SarcAsM(SarcAsMBase):
 
         self.data['loi_data']['loi_lines'] = np.asarray(loi_lines, dtype=object)
         self.data['loi_data']['len_loi_lines'] = np.asarray(len_loi_lines)
+        # A fitted straight line is synthetic geometry, not a chain of real
+        # detections — drop any index chain from a previous selection so
+        # group_tracks(by='loi') falls back to the geometric path instead of
+        # pairing this line with a stale chain.
+        self.data['loi_data']['loi_index_lines'] = None
         if self.auto_save:
             self.store_structure_data()
 
     def _longest_in_cluster(self, n_lois, frame):
         # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_longest_in_cluster(
+        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_longest_in_cluster(
             lines=self.data['loi_data']['lines'],
             pos_vectors=self.data['pos_vectors_px'][frame],
             cluster_labels=self.data['loi_data']['line_cluster'],
@@ -2719,12 +2691,16 @@ class SarcAsM(SarcAsMBase):
 
         self.data['loi_data']['loi_lines'] = loi_lines
         self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        # Keep the ordered detection-index chain of each selected LOI, so
+        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
+        # sarcomeres instead of re-deriving membership from geometric proximity.
+        self.data['loi_data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
         if self.auto_save:
             self.store_structure_data()
 
     def _random_from_cluster(self, n_lois, frame):
         # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_random_from_cluster(
+        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_random_from_cluster(
             lines=self.data['loi_data']['lines'],
             pos_vectors=self.data['pos_vectors_px'][frame],
             cluster_labels=self.data['loi_data']['line_cluster'],
@@ -2734,12 +2710,16 @@ class SarcAsM(SarcAsMBase):
 
         self.data['loi_data']['loi_lines'] = loi_lines
         self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        # Keep the ordered detection-index chain of each selected LOI, so
+        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
+        # sarcomeres instead of re-deriving membership from geometric proximity.
+        self.data['loi_data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
         if self.auto_save:
             self.store_structure_data()
 
     def _random_lois(self, n_lois, frame):
         # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.select_random_lois(
+        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_random_lois(
             lines=self.data['loi_data']['lines'],
             pos_vectors=self.data['pos_vectors_px'][frame],
             n_lois=n_lois
@@ -2747,6 +2727,10 @@ class SarcAsM(SarcAsMBase):
 
         self.data['loi_data']['loi_lines'] = loi_lines
         self.data['loi_data']['len_loi_lines'] = len_loi_lines
+        # Keep the ordered detection-index chain of each selected LOI, so
+        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
+        # sarcomeres instead of re-deriving membership from geometric proximity.
+        self.data['loi_data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
         if self.auto_save:
             self.store_structure_data()
 

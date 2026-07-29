@@ -308,11 +308,17 @@ class TestDomainMotionPlots:
         Runs detection and analysis on multiple frames for domain motion.
         """
         sarc = SarcAsM(motion_30kPa_file_path_class, restart=True)
-        # Analyze first 100 frames for domain motion
-        sarc.detect_sarcomeres(frames=np.arange(100), max_patch_size=(256, 1024))
-        sarc.analyze_sarcomere_vectors(frames='all', interpolation_method='akima')
+        # Analyze first 100 frames for domain motion. Every step must use the SAME
+        # 100-frame window: detection only produces masks for these frames, so
+        # analyze_sarcomere_vectors / track_sarcomere_vectors must be scoped to them
+        # too (passing frames='all'/default here requests all 500 movie frames and
+        # trips the "vectors missing for N frames" guard in track_sarcomere_vectors).
+        frames = np.arange(100)
+        sarc.detect_sarcomeres(frames=frames, max_patch_size=(256, 1024))
+        sarc.analyze_sarcomere_vectors(frames=frames, interpolation_method='akima')
         sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-        sarc.analyze_domain_motion(reference_frame=0, threshold=0.3, contr_time_min=0.2)
+        sarc.track_sarcomere_vectors(frames=frames)
+        sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
         return sarc
 
     def test_plot_sarcomere_domains_domain_motion(self, analyzed_domain_motion):

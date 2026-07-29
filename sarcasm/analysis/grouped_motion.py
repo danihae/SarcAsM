@@ -196,7 +196,9 @@ def run_cycle_engine(
     merge_time_max : float, optional
         Maximum gap in seconds between contractions that are merged. Default is 0.05.
     buffer_frames : int, optional
-        Frames added around each detected contraction. Default is 3.
+        Frames from either end within which a cycle counts as incomplete. Incomplete
+        cycles stay in the contraction mask but their duration-dependent metrics are
+        NaN (see :func:`contraction_analysis.detect_contractions`). Default is 3.
     min_valid_frames : float, optional
         Minimum fraction of valid frames required per group. Default is 0.5.
     filter_params : (int, int), optional
@@ -220,6 +222,8 @@ def run_cycle_engine(
         return {
             'domain_contr': np.zeros((0, T), dtype=bool),
             'domain_n_contr': np.zeros(0, dtype=np.int32),
+            'domain_n_contr_complete': np.zeros(0, dtype=np.int32),
+            'domain_contr_complete': np.zeros((0, 1)),
             'domain_labels_contr': np.zeros((0, T), dtype=np.int32),
             'domain_beating_rate': np.zeros(0),
             'domain_beating_rate_variability': np.zeros(0),
@@ -251,19 +255,26 @@ def run_cycle_engine(
         domain_n_contr=contr['domain_n_contr'],
         frametime=frametime,
         filter_params=filter_params,
+        buffer_frames=buffer_frames,
     )
     return {**contr, **params}
 
 
-def _interp_nan_1d(a: np.ndarray) -> np.ndarray:
-    """Linear-interpolate only the *interior* NaNs of a 1D array.
+def _interp_nan_1d(a: np.ndarray, max_gap: Optional[int] = None) -> np.ndarray:
+    """Linear-interpolate the *interior* NaNs of a 1D array, up to ``max_gap`` long.
 
     Interior NaNs — those anchored by a finite value on both sides — are filled
     by linear interpolation. Leading and trailing NaNs (frames before the track
     first appears or after it is lost) are left as NaN: a track must NEVER carry
     a constant, fabricated length where it has no observation, as a held-constant
     edge corrupts every downstream contraction metric (equilibrium, delta-slen,
-    velocity). An all-NaN input is returned unchanged (still all NaN)."""
+    velocity). An all-NaN input is returned unchanged (still all NaN).
+
+    ``max_gap`` bounds how long a run may be and still be filled. Interpolating a
+    long dropout invents a straight line across it, which at a typical beat can
+    span an entire contraction and silently smooth it away; runs longer than
+    ``max_gap`` are therefore left as NaN. ``None`` (or ``<= 0``) fills every
+    interior run regardless of length."""
     a = np.asarray(a, dtype=float).copy()
     mask = np.isnan(a)
     if not mask.any() or mask.all():
@@ -273,17 +284,114 @@ def _interp_nan_1d(a: np.ndarray) -> np.ndarray:
     first, last = idx[finite][0], idx[finite][-1]
     # Interior = NaN strictly between the first and last finite sample.
     interior = mask & (idx > first) & (idx < last)
+    if max_gap is not None and max_gap > 0 and interior.any():
+        # Drop runs longer than max_gap from the fill set: a long dropout is a real
+        # absence of data, not flicker to be bridged.
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], interior.view(np.int8), [0]))))
+        for start, stop in zip(edges[::2], edges[1::2]):
+            if stop - start > max_gap:
+                interior[start:stop] = False
     if interior.any():
         a[interior] = np.interp(idx[interior], idx[finite], a[finite])
     return a
 
 
-def synthesize_loi_chain(member_slen: np.ndarray, frametime: float):
+def _chain_anchor_positions(member_pos: np.ndarray, ref_idx: int) -> np.ndarray:
+    """``(K, 2)`` anchor position of each member, taken at the reference frame.
+
+    The reference frame is the one the grouping and the head-to-tail ordering were
+    built from, so anchoring there is consistent with the chain order by
+    construction. A time-median anchor is **not** equivalent: two tracks that drift
+    past each other over the movie collapse onto the same anchor even though they
+    are a full sarcomere apart at the reference frame, which fabricates duplicate
+    members in the chain. Members missing at the reference frame fall back to their
+    first observed position, then to interpolation from their neighbours.
+    """
+    K, T, _ = member_pos.shape
+    ref = int(np.clip(ref_idx, 0, max(T - 1, 0)))
+    centre = member_pos[:, ref, :].copy()
+    missing = ~np.isfinite(centre).all(axis=1)
+    for k in np.flatnonzero(missing):
+        finite = np.flatnonzero(np.isfinite(member_pos[k]).all(axis=1))
+        if finite.size:
+            centre[k] = member_pos[k, finite[np.argmin(np.abs(finite - ref))]]
+    # A member never observed at all still has no anchor; interpolate from its
+    # neighbours so the chain's arc coordinate stays continuous.
+    for c in range(2):
+        centre[:, c] = _interp_nan_1d(centre[:, c])
+    return centre
+
+
+def _chain_arc_coordinates(member_pos: np.ndarray, ref_idx: int = 0
+                           ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-member fibre anchor and unit tangent from ordered member positions.
+
+    Parameters
+    ----------
+    member_pos : np.ndarray
+        ``(K, T, 2)`` member centre positions (µm) ordered head-to-tail, NaN on
+        gap frames.
+    ref_idx : int, optional
+        Frame the chain geometry is anchored on. Default is 0.
+
+    Returns
+    -------
+    anchor_arc : np.ndarray
+        ``(K,)`` base arc coordinate of each member: the cumulative distance along
+        the polyline through the members' reference-frame positions. Following the
+        polyline (rather than projecting on one straight axis) keeps a curved
+        fibre's coordinate monotone.
+    tangent : np.ndarray
+        ``(K, 2)`` unit tangent at each member (central difference of the
+        neighbouring anchors, one-sided at the ends).
+    centre : np.ndarray
+        ``(K, 2)`` the anchor positions themselves.
+    """
+    centre = _chain_anchor_positions(member_pos, ref_idx)
+    K = member_pos.shape[0]
+    step = np.zeros(K)
+    if K > 1:
+        step[1:] = np.linalg.norm(np.diff(centre, axis=0), axis=1)
+    anchor_arc = np.cumsum(step)
+    tangent = np.zeros((K, 2))
+    if K > 1:
+        tangent[1:-1] = centre[2:] - centre[:-2]
+        tangent[0] = centre[1] - centre[0]
+        tangent[-1] = centre[-1] - centre[-2]
+    else:
+        tangent[0] = (1.0, 0.0)
+    norm = np.linalg.norm(tangent, axis=1, keepdims=True)
+    tangent = np.divide(tangent, norm, out=np.zeros_like(tangent), where=norm > 0)
+    return anchor_arc, tangent, centre
+
+
+_INTERP_GAP_SECONDS = 0.05
+"""Longest member dropout (s) still bridged by interpolation in a synthesized chain.
+
+A physical duration, so the same real dropout is bridged at any frame rate. Kept
+short deliberately: it exists to close brief detection flicker, not to invent a
+straight line across a gap that can span a whole contraction. Matches the
+tracker's ``_MERGE_GAP_SECONDS`` horizon for the same reason.
+"""
+
+
+def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
+                         member_pos: Optional[np.ndarray] = None,
+                         ref_idx: int = 0,
+                         max_interp_seconds: Optional[float] = _INTERP_GAP_SECONDS):
     """Build an LOI-style ``(z_pos, slen, time)`` triple from an ordered chain of tracks.
 
     Turns K member sarcomere-length series ordered head-to-tail into the triple
     the :mod:`sarcasm.motion` LOI engine consumes, so it runs unmodified on a
     myofibril built from tracks.
+
+    Each Z-band boundary is placed from **its own member's measured position**, so
+    a member without an observation blanks only its own row. The earlier
+    implementation accumulated the boundaries (``cumsum`` of the lengths), which
+    made one undefined member blank every boundary below it — on real data a
+    handful of tracks ending early erased ~24 of 29 traces on a third of the
+    frames, and collapsed the usable-sarcomere count enough to force whole
+    stretches of the movie to be scored as non-contracting.
 
     Parameters
     ----------
@@ -292,18 +400,32 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float):
         NaN on gap frames.
     frametime : float
         Seconds per frame.
+    member_pos : np.ndarray or None, optional
+        ``(K, T, 2)`` member centre positions in µm, same order as
+        ``member_slen``. When given, ``z_pos`` is reconstructed from these
+        measured positions. When None the boundaries are accumulated from the
+        lengths instead (the legacy behaviour, kept for callers that have no
+        positions); a missing member then propagates into every boundary below it.
+    ref_idx : int, optional
+        Frame index the chain geometry is anchored on — pass the reference frame
+        the grouping/ordering was built from, so the arc coordinate agrees with
+        the member order. Used only together with ``member_pos``. Default is 0.
+    max_interp_seconds : float or None, optional
+        Longest member dropout (s) still bridged by interpolation; longer gaps stay
+        NaN in both ``slen`` and ``z_pos``. ``None``/0 bridges any interior gap.
+        Default is :data:`_INTERP_GAP_SECONDS`.
 
     Returns
     -------
     z_pos : np.ndarray
-        ``(K+1, T)`` cumulative arc-length of the K+1 Z-band boundaries (µm).
-        Only *interior* member NaNs (anchored on both sides) are interpolated
-        before the cumulative sum, so a brief mid-track dropout does not poison
-        the tail. Leading/trailing member NaNs are kept as NaN — a member is
-        never extended with a held-constant length — and therefore propagate
-        through the cumulative sum into the boundaries below an undefined member
-        for those frames. ``np.diff(z_pos, axis=0)`` recovers ``slen`` down to
-        the first undefined member in each frame.
+        ``(K+1, T)`` arc position of the K+1 Z-band boundaries along the fibre
+        (µm). With ``member_pos``, row ``k`` is member ``k``'s leading edge
+        (``centre - slen/2``) and the last row is the final member's trailing
+        edge, each depending only on that member. Note ``np.diff(z_pos)`` then
+        equals ``slen`` only up to measurement noise: K sarcomeres yield 2K
+        Z-band observations reconciled onto K+1 boundaries, so exact recovery and
+        per-member independence cannot both hold. **``slen`` is the authoritative
+        per-member series.**
     slen : np.ndarray
         ``(K, T)`` member lengths with interior gaps interpolated and
         leading/trailing gaps left as NaN (never held constant). This is the
@@ -316,11 +438,38 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float):
     if member_slen.ndim != 2:
         raise ValueError('member_slen must be 2D (K, T).')
     K, T = member_slen.shape
+    max_gap = (None if not max_interp_seconds or not frametime
+               else max(1, int(round(float(max_interp_seconds) / float(frametime)))))
     slen = np.empty((K, T), dtype=float)
     for k in range(K):
-        slen[k] = _interp_nan_1d(member_slen[k])
-    z_pos = np.zeros((K + 1, T), dtype=float)
-    if K > 0:
-        np.cumsum(slen, axis=0, out=z_pos[1:])
+        slen[k] = _interp_nan_1d(member_slen[k], max_gap=max_gap)
     time = np.arange(T) * frametime
+
+    if member_pos is None or K == 0:
+        z_pos = np.zeros((K + 1, T), dtype=float)
+        if K > 0:
+            np.cumsum(slen, axis=0, out=z_pos[1:])
+        return z_pos, slen, time
+
+    member_pos = np.asarray(member_pos, dtype=float)
+    if member_pos.shape != (K, T, 2):
+        raise ValueError(f'member_pos must have shape {(K, T, 2)}, got {member_pos.shape}.')
+    anchor_arc, tangent, anchor_pos = _chain_arc_coordinates(member_pos, ref_idx)
+    # Each member's centre along the fibre: its anchor plus the component of its
+    # measured displacement along the local fibre direction. Both terms use the
+    # same reference-frame anchor, so the chain coordinate matches the order.
+    disp = member_pos - anchor_pos[:, None, :]
+    centre_arc = anchor_arc[:, None] + np.einsum('ktc,kc->kt', disp, tangent)  # (K, T)
+    z_pos = np.full((K + 1, T), np.nan, dtype=float)
+    z_pos[:K] = centre_arc - 0.5 * slen          # leading edge of each member
+    z_pos[K] = centre_arc[-1] + 0.5 * slen[-1]   # trailing edge of the last member
+    # Shift so the fibre starts at 0, as in the legacy LOI convention: the arc
+    # origin sits at the first member's *centre*, which would put its leading edge
+    # (and anything that moves further head-ward) below zero, where plots that
+    # assume a non-negative Z-band position silently clip it away.
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)
+        origin = np.nanmin(z_pos)
+    if np.isfinite(origin):
+        z_pos -= origin
     return z_pos, slen, time

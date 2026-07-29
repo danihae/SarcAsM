@@ -175,7 +175,9 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
         logger.warning('No sarcomeres in image (len(points) = 0), could not grow lines.')
         return {'lines': [], 'line_features': {}}
 
-    if random_seed:
+    if random_seed is not None:
+        # NB: `if random_seed:` would skip seed 0 — the canonical "give me a
+        # reproducible run" value — leaving the seed selection silently random.
         random.seed(random_seed)
     n_vectors = len(points_t)
     seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))

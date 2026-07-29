@@ -311,29 +311,36 @@ def select_longest_in_cluster(
         Selected LOI position vectors.
     len_loi_lines : list of int
         Length (number of points) of each LOI.
+    loi_index_lines : list of np.ndarray
+        The selected LOIs as ordered **detection-index** chains (indices into
+        ``pos_vectors``), parallel to ``loi_lines``. Keeping the chain — not just
+        its geometry — lets a consumer rebuild the LOI as a 1D head-to-tail thread
+        of sarcomeres instead of re-deriving membership from proximity.
     """
-    longest_lines = []
+    longest = []   # (index chain, positions) per cluster
 
     for label_i in range(n_clusters):
         # Get all lines in this cluster
         lines_cluster_i = [line_j for j, line_j in enumerate(lines) if cluster_labels[j] == label_i]
-        points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
-                                  cluster_labels[j] == label_i]
+        if not lines_cluster_i:
+            continue
         length_lines_cluster_i = [len(line_j) for line_j in lines_cluster_i]
 
         # Select longest
-        longest_line = points_lines_cluster_i[np.argmax(length_lines_cluster_i)]
-        longest_lines.append(longest_line)
+        chain = lines_cluster_i[int(np.argmax(length_lines_cluster_i))]
+        longest.append((np.asarray(chain), pos_vectors[chain]))
 
     # Sort by length and select top n
-    sorted_by_length = sorted(longest_lines, key=lambda x: len(x), reverse=True)
-    if len(longest_lines) < n_lois:
-        logger.warning(f'Only {len(longest_lines)}<{n_lois} clusters identified.')
+    sorted_by_length = sorted(longest, key=lambda c: len(c[1]), reverse=True)
+    if len(longest) < n_lois:
+        logger.warning(f'Only {len(longest)}<{n_lois} clusters identified.')
 
-    loi_lines = sorted_by_length[:n_lois]
+    selected = sorted_by_length[:n_lois]
+    loi_index_lines = [c[0] for c in selected]
+    loi_lines = [c[1] for c in selected]
     len_loi_lines = [len(line_i) for line_i in loi_lines]
 
-    return loi_lines, len_loi_lines
+    return loi_lines, len_loi_lines, loi_index_lines
 
 
 def select_random_from_cluster(
@@ -342,7 +349,7 @@ def select_random_from_cluster(
         cluster_labels: np.ndarray,
         n_clusters: int,
         n_lois: int
-) -> Tuple[List[np.ndarray], List[int]]:
+) -> Tuple[List[np.ndarray], List[int], List[np.ndarray]]:
     """
     Select a random LOI from each cluster.
 
@@ -365,29 +372,35 @@ def select_random_from_cluster(
         Selected LOI position vectors.
     len_loi_lines : list of int
         Length (number of points) of each LOI.
+    loi_index_lines : list of np.ndarray
+        The selected LOIs as ordered detection-index chains, parallel to
+        ``loi_lines`` (see :func:`select_longest_in_cluster`).
     """
     random_lines = []
 
     for label_i in range(n_clusters):
         # Get all lines in this cluster
-        points_lines_cluster_i = [pos_vectors[line_j] for j, line_j in enumerate(lines) if
-                                  cluster_labels[j] == label_i]
-        # Select one randomly
-        random_line = random.choice(points_lines_cluster_i)
-        random_lines.append(random_line)
+        chains_cluster_i = [line_j for j, line_j in enumerate(lines) if cluster_labels[j] == label_i]
+        if not chains_cluster_i:
+            continue
+        # Select one randomly (keep its index chain alongside its geometry)
+        chain = random.choice(chains_cluster_i)
+        random_lines.append((np.asarray(chain), pos_vectors[chain]))
 
     # Randomly select n_lois from the available clusters
-    loi_lines = random.sample(random_lines, min(n_lois, len(random_lines)))
+    selected = random.sample(random_lines, min(n_lois, len(random_lines)))
+    loi_index_lines = [c[0] for c in selected]
+    loi_lines = [c[1] for c in selected]
     len_loi_lines = [len(line_i) for line_i in loi_lines]
 
-    return loi_lines, len_loi_lines
+    return loi_lines, len_loi_lines, loi_index_lines
 
 
 def select_random_lois(
         lines: List[np.ndarray],
         pos_vectors: np.ndarray,
         n_lois: int
-) -> Tuple[List[np.ndarray], List[int]]:
+) -> Tuple[List[np.ndarray], List[int], List[np.ndarray]]:
     """
     Select random LOIs without clustering.
 
@@ -406,9 +419,13 @@ def select_random_lois(
         Selected LOI position vectors.
     len_loi_lines : list of int
         Length (number of points) of each LOI.
+    loi_index_lines : list of np.ndarray
+        The selected LOIs as ordered detection-index chains, parallel to
+        ``loi_lines`` (see :func:`select_longest_in_cluster`).
     """
-    selected_lines = random.sample(lines, min(n_lois, len(lines)))
+    selected_lines = random.sample(list(lines), min(n_lois, len(lines)))
+    loi_index_lines = [np.asarray(line_i) for line_i in selected_lines]
     loi_lines = [pos_vectors[line_i] for line_i in selected_lines]
     len_loi_lines = [len(line_i) for line_i in loi_lines]
 
-    return loi_lines, len_loi_lines
+    return loi_lines, len_loi_lines, loi_index_lines
