@@ -163,7 +163,58 @@ class PlotUtils:
         ax.set_yticks([])
 
     @staticmethod
-    def polish_xticks(ax, major, minor, pad=3, radian=False):
+    def nice_tick_steps(span, target=5):
+        """
+        Nice major/minor tick spacings for an axis covering ``span``.
+
+        The major spacing is a "nice" number (1, 2 or 5 times a power of ten) chosen
+        so that the axis is divided into roughly ``target`` intervals; the minor
+        spacing subdivides it 5-fold (major spacing starting with a 1 or a 5) or
+        4-fold (starting with a 2), so that both spacings stay nice numbers.
+
+        Parameters
+        ----------
+        span : float
+            Width of the axis range (e.g. ``t_lim[1] - t_lim[0]``).
+        target : int, optional
+            Desired number of major intervals across the span. Default is 5.
+
+        Returns
+        -------
+        tuple of float
+            ``(major, minor)`` spacing, or ``(None, None)`` if ``span`` is zero or
+            not finite.
+
+        Examples
+        --------
+        >>> PlotUtils.nice_tick_steps(2)
+        (0.5, 0.1)
+        >>> PlotUtils.nice_tick_steps(12)
+        (2.0, 0.5)
+        """
+        span = abs(float(span))
+        if not np.isfinite(span) or span == 0:
+            return None, None
+        exponent = np.floor(np.log10(span / target))
+        best = None
+        for e in (exponent - 1, exponent, exponent + 1):
+            for mantissa in (1, 2, 5):
+                step = mantissa * 10.0 ** e
+                # on a tie, the later (larger) candidate wins
+                error = abs(span / step - target)
+                if best is None or error <= best[0] + 1e-12:
+                    best = (error, step)
+        major = best[1]
+        return major, PlotUtils._minor_tick_step(major)
+
+    @staticmethod
+    def _minor_tick_step(major):
+        """Minor spacing subdividing ``major`` 4-fold (2·10^k) or 5-fold (else)."""
+        mantissa = 10 ** (np.log10(abs(major)) % 1)
+        return major / (4 if np.isclose(mantissa, 2) else 5)
+
+    @staticmethod
+    def polish_xticks(ax, major=None, minor=None, pad=3, radian=False, target=5):
         """
         Format and polish the x-ticks of a single panel.
 
@@ -171,17 +222,29 @@ class PlotUtils:
         ----------
         ax : matplotlib.axes.Axes
             Axes object representing the panel.
-        major : float
-            Major tick spacing.
-        minor : float
-            Minor tick spacing.
+        major : float, optional
+            Major tick spacing. If None, a nice spacing is derived from the x-limits
+            of ``ax`` via :meth:`nice_tick_steps` — set the limits *before* calling.
+            Default is None.
+        minor : float, optional
+            Minor tick spacing. If None, it is derived from ``major``. Default is None.
         pad : float, optional
             Padding between the x-axis and the tick labels. Default is 3.
         radian : bool, optional
             If True, format ticks as multiples of pi. Default is False.
+        target : int, optional
+            Desired number of major intervals when ``major`` is derived. Default is 5.
         """
-        ax.xaxis.set_major_locator(MultipleLocator(major))
-        ax.xaxis.set_minor_locator(MultipleLocator(minor))
+        if major is None:
+            x_lim = ax.get_xlim()
+            major, minor_auto = PlotUtils.nice_tick_steps(x_lim[1] - x_lim[0], target=target)
+            minor = minor_auto if minor is None else minor
+        elif minor is None:
+            minor = PlotUtils._minor_tick_step(major)
+
+        if major is not None:
+            ax.xaxis.set_major_locator(MultipleLocator(major))
+            ax.xaxis.set_minor_locator(MultipleLocator(minor))
         ax.tick_params(axis='x', pad=pad)
 
         if radian:

@@ -23,7 +23,6 @@ from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FormatStrFormatter, MultipleLocator
 from matplotlib_scalebar.scalebar import ScaleBar
 
 from sarcasm._internal.feature_dict import structure_feature_dict
@@ -1587,7 +1586,7 @@ class Plots:
         else:
             ax.set_ylim(y_lim)
         PlotUtils.polish_yticks(ax, 5, 2.5)
-        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_xticks(ax)
 
     @staticmethod
     def _plot_delta_slen_loi(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
@@ -1624,14 +1623,15 @@ class Plots:
             if show_contr:
                 Plots._shade_contr_loi(ax_i, motion_obj)
 
-            if i > 0:
-                ax_i.set_xticks([])
-            else:
-                PlotUtils.polish_xticks(ax_i, 1, 0.5)
             if frame is not None:
                 ax_i.axvline(motion_obj.loi_data['time'][frame], linestyle='--', c='k')
             ax_i.set_ylim(y_lim)
             ax_i.set_xlim(t_lim)
+            if i > 0:
+                ax_i.set_xticks([])
+            else:
+                PlotUtils.polish_xticks(ax_i)
+                ax_i.tick_params(axis='x', labelsize='x-small')
             ax_i.set_yticks(yticks)
             ax_i.set_yticklabels(yticks, fontsize='x-small')
 
@@ -1700,7 +1700,7 @@ class Plots:
         ax.set_ylabel('$\Delta$SL [µm]')
         ax.set_ylim(y_lim)
         PlotUtils.polish_yticks(ax, 0.2, 0.1)
-        PlotUtils.polish_xticks(ax, 0.5, 0.25)
+        PlotUtils.polish_xticks(ax)
 
     @staticmethod
     def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, 0.9), y_lim=(-9, 12),
@@ -1759,12 +1759,8 @@ class Plots:
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('V [µm/s]')
         ax.set_ylim(y_lim)
-        ax.yaxis.set_major_locator(MultipleLocator(3))
-        ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
-        ax.yaxis.set_minor_locator(MultipleLocator(1))
-        ax.xaxis.set_major_locator(MultipleLocator(0.5))
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%g'))
-        ax.xaxis.set_minor_locator(MultipleLocator(0.25))
+        PlotUtils.polish_yticks(ax, 3, 1)
+        PlotUtils.polish_xticks(ax)
 
     @staticmethod
     def plot_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
@@ -1774,7 +1770,9 @@ class Plots:
         Plots domain sarcomere length time-series in a stacked multi-subplot layout.
 
         Each domain's sarcomere length time-series is shown in a separate row, with optional
-        contraction period shading. Similar layout to plot_delta_slen for Motion objects.
+        contraction period shading and a dotted line at the domain's equilibrium length
+        (its median length over the non-contracting frames). Same rendering as
+        :meth:`plot_slen_mean`, with the rows numbered like the domain masks.
 
         Parameters
         ----------
@@ -1803,69 +1801,11 @@ class Plots:
             raise ValueError("Domain motion analysis not run. Call analyze_track_motion(by='domain') first.")
 
         # Get data
-        if use_median:
-            slen_timeseries = sarc_obj.data['domain_slen_median_timeseries']
-        else:
-            slen_timeseries = sarc_obj.data['domain_slen_timeseries']
-        n_domains, n_frames = slen_timeseries.shape
-        time = np.arange(n_frames) * sarc_obj.metadata.frametime
-
-        # Determine number of rows
-        if n_rows is None:
-            n_rows = n_domains
-        n_rows = min(n_rows, n_domains)
-
-        # Get contraction data if available
+        key = 'domain_slen_median_timeseries' if use_median else 'domain_slen_timeseries'
+        slen_timeseries = np.asarray(sarc_obj.data[key], dtype=float)
         domain_contr = sarc_obj.data.get('domain_contr', None)
-        domain_labels_contr = sarc_obj.data.get('domain_labels_contr', None)
-
-        # Calculate y-ticks
-        y_range = y_lim[1] - y_lim[0]
-        y_step = y_range / 4
-        yticks = [y_lim[0] + y_step, y_lim[0] + 2 * y_step, y_lim[0] + 3 * y_step]
-
-        # Domain colormap
-        cm = plt.cm.gist_rainbow(np.linspace(0, 1, n_domains))
-
-        # Create inset axes for each domain
-        list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
-        for i, y in enumerate(list_y):
-            domain_idx = n_rows - 1 - i  # Reverse order so domain 1 is at bottom
-            if domain_idx >= n_domains:
-                continue
-
-            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
-            ax_i.plot(time, slen_timeseries[domain_idx], c=cm[domain_idx], lw=0.8)
-            ax_i.axhline(np.nanmean(slen_timeseries[domain_idx]), linewidth=0.5, linestyle=':', c='k')
-
-            # Shade contraction periods
-            if show_contr and domain_contr is not None:
-                contr = domain_contr[domain_idx]
-                ax_i.fill_between(time, y_lim[0], y_lim[1], where=contr, color='lavender', alpha=0.7)
-
-            # Configure axes
-            if i > 0:
-                ax_i.set_xticks([])
-            else:
-                PlotUtils.polish_xticks(ax_i, 2, 1)
-
-            ax_i.set_ylim(y_lim)
-            ax_i.set_xlim(t_lim)
-            ax_i.set_yticks(yticks)
-            ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
-
-            # Add domain label
-            ax_i.text(0.02, 0.85, f'D{domain_idx + 1}', transform=ax_i.transAxes,
-                      fontsize='x-small', fontweight='bold', color=cm[domain_idx])
-
-        # Configure main axes
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Sarcomere length [µm]')
-        ax.spines['bottom'].set_color('w')
-        ax.spines['top'].set_color('w')
-        ax.xaxis.label.set_color('k')
-        ax.tick_params(axis='x', colors='w')
-        ax.tick_params(axis='y', colors='w')
+        Plots._plot_group_stacked(ax, sarc_obj, 'domain', slen_timeseries, domain_contr, _LABEL_SL,
+                                  t_lim, y_lim, n_rows, show_contr, label_offset=1)
 
     @staticmethod
     def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
@@ -1945,7 +1885,7 @@ class Plots:
         ax.set_ylabel('Sarcomere length [µm]')
         ax.set_xlim(t_lim)
         ax.set_ylim(y_lim)
-        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_xticks(ax)
         PlotUtils.polish_yticks(ax, 0.2, 0.1)
 
         # Add legend
@@ -2287,12 +2227,14 @@ class Plots:
 
     @staticmethod
     def _plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, ylabel,
-                            t_lim, y_lim, n_rows, show_contr, hline='equ'):
+                            t_lim, y_lim, n_rows, show_contr, hline='equ', label_offset=0):
         """Stacked per-group time-series (shared by plot_slen_mean / plot_delta_slen_mean).
 
         ``hline`` controls the dotted reference line per row: ``'equ'`` = the
         equilibrium length (median over the non-contracting frames), ``'zero'`` =
         the ΔSL=0 line (which *is* the equilibrium in delta space), ``None`` = no line.
+        ``label_offset`` shifts the row labels (1 gives the 1-based numbering the
+        domain masks use).
         """
         matrix = np.asarray(matrix, dtype=float)
         n_groups, n_frames = matrix.shape
@@ -2323,15 +2265,16 @@ class Plots:
                     ax_i.axhline(equ_g, linewidth=0.5, linestyle=':', c='k')
             if show_contr and group_contr is not None:
                 ax_i.fill_between(time, y_lim[0], y_lim[1], where=group_contr[g], color='lavender', alpha=0.7)
+            ax_i.set_ylim(y_lim)
+            ax_i.set_xlim(t_lim)
             if i > 0:
                 ax_i.set_xticks([])
             else:
-                PlotUtils.polish_xticks(ax_i, 2, 1)
-            ax_i.set_ylim(y_lim)
-            ax_i.set_xlim(t_lim)
+                PlotUtils.polish_xticks(ax_i)
+                ax_i.tick_params(axis='x', labelsize='x-small')
             ax_i.set_yticks(yticks)
             ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
-            ax_i.text(0.02, 0.85, f'{kind[0].upper()}{g}', transform=ax_i.transAxes,
+            ax_i.text(0.02, 0.85, f'{kind[0].upper()}{g + label_offset}', transform=ax_i.transAxes,
                       fontsize='x-small', fontweight='bold', color=cm[g])
         ax.set_xlabel(_LABEL_TIME)
         ax.set_ylabel(ylabel)
@@ -2497,7 +2440,7 @@ class Plots:
         ax.set_ylim(y_lim)
         ax.set_xlabel(_LABEL_TIME)
         ax.set_ylabel(ylabel)
-        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_xticks(ax)
         PlotUtils.polish_yticks(ax, 0.2, 0.1)
         title = f"{kind} group {group} (n={n_total}"
         title += f", showing {n_shown})" if n_shown < n_total else ")"
@@ -2521,7 +2464,7 @@ class Plots:
         ax.set_ylim(y_lim)
         ax.set_xlabel(_LABEL_TIME)
         ax.set_ylabel(_LABEL_SL)
-        PlotUtils.polish_xticks(ax, 2, 1)
+        PlotUtils.polish_xticks(ax)
 
     @staticmethod
     def plot_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
