@@ -136,6 +136,11 @@ class Plots:
 
         if file_path is None:
             file_path = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
+        # 1.0 no longer creates the legacy base_dir tree at construction, so the LOI
+        # folder may not exist yet — create it on demand, as export_json/store_loi_data do.
+        parent = os.path.dirname(os.path.abspath(file_path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         fig.savefig(file_path, dpi=PlotUtils.dpi)
         plt.show()
 
@@ -1430,8 +1435,10 @@ class Plots:
         loi_lines = None
 
         if hasattr(sarc_obj, 'loi_data'):
-            # Extract line data directly from sarc_obj.loi_data
-            loi_lines = [sarc_obj.loi_data['line']]
+            # Extract line data directly from sarc_obj.loi_data. Chains synthesized by
+            # SarcAsM.get_track_motion carry no 'line' polyline, so this must not raise.
+            line = sarc_obj.loi_data.get('line')
+            loi_lines = None if line is None else [line]
         elif hasattr(sarc_obj, 'data') and 'loi_data' in sarc_obj.data:
             # Extract lines from sarc_obj.data['loi_data']
             loi_lines = sarc_obj.data['loi_data'].get('loi_lines', [])
@@ -1528,6 +1535,44 @@ class Plots:
         PlotUtils.remove_spines(ax)
 
     @staticmethod
+    def _contr_window(motion_obj: Motion, number_contr, t_lim):
+        """Frame window of a contraction-centered view, clamped to the recording.
+
+        Parameters
+        ----------
+        motion_obj : Motion
+            Object holding ``loi_data['start_contr']`` / ``['n_contr']`` / ``['time']``.
+        number_contr : int or None
+            Index of the contraction to center on; None disables centering.
+        t_lim : tuple of float
+            Window around the contraction onset, in seconds (may start negative).
+
+        Returns
+        -------
+        tlim : tuple
+            Absolute time limits, or ``(None, None)`` when not centering.
+        i0, i1 : int or None
+            Frame slice bounds, or ``(None, None)`` when not centering, so that
+            ``arr[i0:i1]`` yields the full series.
+
+        Notes
+        -----
+        A cycle beginning at or near frame 0 — which the incomplete-cycle handling
+        deliberately keeps — makes ``tlim[0]`` negative. An unclamped negative start
+        index is interpreted as "from the end" and silently produces an EMPTY slice,
+        so both bounds are clamped into ``[0, len(time)]``.
+        """
+        if number_contr is None or motion_obj.loi_data['n_contr'] <= 0:
+            return (None, None), None, None
+        start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
+        tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
+        n = len(motion_obj.loi_data['time'])
+        frametime = motion_obj.metadata.frametime
+        i0 = min(max(0, int(tlim[0] / frametime)), n)
+        i1 = min(max(i0, int(tlim[1] / frametime)), n)
+        return tlim, i0, i1
+
+    @staticmethod
     def plot_z_pos(ax: Axes, motion_obj: Motion, number_contr=None, show_contr=True, show_kymograph=False, color='k',
                    t_lim=(None, None), y_lim=(None, None)):
         """
@@ -1554,12 +1599,8 @@ class Plots:
             The y-axis limits for the plot. Default is (None, None).
         """
         # plot limits and params
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
-            tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
-        else:
-            tlim, idxlim = (None, None), (None, None)
+        tlim, i0, i1 = Plots._contr_window(motion_obj, number_contr, t_lim)
+        centered = i0 is not None
 
         if show_kymograph:
             ax.pcolorfast(motion_obj.loi_data['time'], motion_obj.loi_data['x_pos'], motion_obj.loi_data['y_int'].T,
@@ -1569,12 +1610,12 @@ class Plots:
         z_pos = motion_obj.loi_data['z_pos']
         # plot contraction cycles
         if show_contr:
-            Plots._shade_contr_loi(ax, motion_obj,
-                                   t_offset=tlim[0] if number_contr is not None else 0.0)
+            Plots._shade_contr_loi(ax, motion_obj, t_offset=tlim[0] if centered else 0.0)
 
         # plot trajectories
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            ax.plot(time[:idxlim[1] - idxlim[0]], z_pos[:, idxlim[0]:idxlim[1]].T, linewidth=0.75, c=color)
+        if centered:
+            seg = z_pos[:, i0:i1].T
+            ax.plot(time[:len(seg)], seg, linewidth=0.75, c=color)
             ax.set_xlim(0, tlim[1] - tlim[0])
         else:
             ax.plot(time, z_pos.T, linewidth=0.75, c=color)
@@ -1666,29 +1707,25 @@ class Plots:
             Whether to shade the contraction periods. Default is True.
         """
         # plot limits and params
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
-            tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
-        else:
-            tlim, idxlim = (None, None), (None, None)
+        tlim, i0, i1 = Plots._contr_window(motion_obj, number_contr, t_lim)
+        centered = i0 is not None
         # get data
         time = motion_obj.loi_data['time']
         delta_slen = motion_obj.loi_data['delta_slen']
         delta_slen_avg = motion_obj.loi_data['delta_slen_avg']
         # plot contraction cycles
         if show_contr:
-            Plots._shade_contr_loi(ax, motion_obj,
-                                   t_offset=tlim[0] if number_contr is not None else 0.0)
+            Plots._shade_contr_loi(ax, motion_obj, t_offset=tlim[0] if centered else 0.0)
 
         # colormap
         cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(delta_slen)))
         ax.set_prop_cycle('color', list(cm))
 
         # plot single and average trajectories
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            ax.plot(time[:idxlim[1] - idxlim[0]], delta_slen.T[idxlim[0]:idxlim[1]], linewidth=0.5)
-            ax.plot(time[:idxlim[1] - idxlim[0]], delta_slen_avg[idxlim[0]:idxlim[1]], c='k', linewidth=2,
+        if centered:
+            seg = delta_slen.T[i0:i1]
+            ax.plot(time[:len(seg)], seg, linewidth=0.5)
+            ax.plot(time[:len(seg)], delta_slen_avg[i0:i1], c='k', linewidth=2,
                     linestyle='-')
             ax.set_xlim(0, tlim[1] - tlim[0])
         else:
@@ -1725,12 +1762,8 @@ class Plots:
             Whether to shade the contraction periods. Default is True.
         """
         # plot limits and params
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
-            tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
-        else:
-            tlim, idxlim = (None, None), (None, None)
+        tlim, i0, i1 = Plots._contr_window(motion_obj, number_contr, t_lim)
+        centered = i0 is not None
         # get data
         time = motion_obj.loi_data['time']
         vel = motion_obj.loi_data['vel']
@@ -1738,17 +1771,17 @@ class Plots:
 
         # plot contraction cycles
         if show_contr:
-            Plots._shade_contr_loi(ax, motion_obj,
-                                   t_offset=tlim[0] if number_contr is not None else 0.0)
+            Plots._shade_contr_loi(ax, motion_obj, t_offset=tlim[0] if centered else 0.0)
 
         # colormap
         cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(vel)))
         ax.set_prop_cycle('color', list(cm))
 
         # plot single and average trajectories
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            ax.plot(time[:idxlim[1] - idxlim[0]], vel.T[idxlim[0]:idxlim[1]], linewidth=0.5)
-            ax.plot(time[:idxlim[1] - idxlim[0]], vel_avg[idxlim[0]:idxlim[1]], c='k', linewidth=2,
+        if centered:
+            seg = vel.T[i0:i1]
+            ax.plot(time[:len(seg)], seg, linewidth=0.5)
+            ax.plot(time[:len(seg)], vel_avg[i0:i1], c='k', linewidth=2,
                     linestyle='-')
             ax.set_xlim(0, tlim[1] - tlim[0])
         else:
@@ -1919,19 +1952,14 @@ class Plots:
         cm = plt.cm.nipy_spectral(np.linspace(0, 1, len(delta_slen)))
         ax.set_prop_cycle('color', list(cm))
         # plot limits and params
-        if number_contr is not None and motion_obj.loi_data['n_contr'] > 0:
-            start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
-            tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
-            idxlim = (int(tlim[0] / motion_obj.metadata.frametime), int(tlim[1] / motion_obj.metadata.frametime))
-        else:
-            tlim, idxlim = (None, None), (None, None)
+        _, i0, i1 = Plots._contr_window(motion_obj, number_contr, t_lim)
         for i, (vel_i, delta_i) in enumerate(zip(vel, delta_slen)):
-            ax.plot(vel_i[idxlim[0]:idxlim[1]], delta_i[idxlim[0]:idxlim[1]], c='r', alpha=0.35, lw=0.36, zorder=1)
+            ax.plot(vel_i[i0:i1], delta_i[i0:i1], c='r', alpha=0.35, lw=0.36, zorder=1)
             if isinstance(frame, numbers.Integral):
                 ax.scatter(vel_i[frame], delta_i[frame], c=cm[i], s=10,
                            zorder=2)
 
-        ax.plot(vel_avg[idxlim[0]:idxlim[1]], delta_slen_avg[idxlim[0]:idxlim[1]], c='k', lw=1, label='Average')
+        ax.plot(vel_avg[i0:i1], delta_slen_avg[i0:i1], c='k', lw=1, label='Average')
         legend_elements = [Line2D([0], [0], color='k', lw=2), Line2D([0], [0], color='r', alpha=0.35, lw=0.5)]
         ax.legend(legend_elements, ['Average', 'Individual'], loc='upper right')
         PlotUtils.polish_xticks(ax, 5, 2.5)
@@ -2526,7 +2554,7 @@ class Plots:
                         t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
                         show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                         color: Optional[str] = None, mean_color: str = 'k',
-                        frame: Optional[int] = None, n_rows: int = 6, n_start: int = 0):
+                        frame: Optional[int] = None, n_rows: int = 6, n_start: int = 1):
         """
         Plot individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
 
