@@ -118,6 +118,20 @@ class SarcAsMBase:
             log_level: Union[str, int] = 'INFO',
             **info: Dict[str, Any]
     ):
+        # Guard the second positional argument before anything destructive runs.
+        # Pre-1.0 the LOI workflow was entered as Motion(file_path, loi_name); that slot
+        # now holds `restart`, and a non-empty LOI name is truthy -> the analysis store
+        # would be deleted silently. Fail loudly instead of destroying data.
+        if not isinstance(restart, (bool, int)):
+            raise TypeError(
+                f"{type(self).__name__}(...): 'restart' must be a bool, got "
+                f"{type(restart).__name__} {restart!r}. The second positional argument is "
+                f"'restart', and restart=True DELETES the existing analysis store. "
+                f"The pre-1.0 form Motion(file_path, loi_name) was removed together with the "
+                f"manual-LOI workflow — use SarcAsM.get_track_motion(group) to obtain a "
+                f"Motion object for a tracked myofibril."
+            )
+
         # Convert file_path to absolute path (as a string)
         self.file_path = os.path.abspath(str(file_path))
         if not os.path.exists(self.file_path):
