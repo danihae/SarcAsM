@@ -22,6 +22,6 @@ from .utils import Utils
 from .io.ioutils import IOUtils
 from .plotting.plots import Plots
 from .plotting.plot_utils import PlotUtils
-from .export import BatchExport
+from .export import Export, BatchExport
 from .type_utils import TypeUtils
 from .training_data_generation import TrainingDataGenerator
