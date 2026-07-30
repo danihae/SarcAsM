@@ -2522,21 +2522,28 @@ class Plots:
                                           color=color, mean_color=mean_color)
 
     @staticmethod
-    def plot_delta_slen(ax: Axes, obj: Union[SarcAsM, Motion], **kwargs):
+    def plot_delta_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
+                        t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
+                        show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
+                        color: Optional[str] = None, mean_color: str = 'k',
+                        frame: Optional[int] = None, n_rows: int = 6, n_start: int = 0):
         """
         Plot individual sarcomere-length *change* (ΔSL) traces with the mean overlaid.
 
-        Polymorphic dispatch on ``obj``:
+        The ΔSL counterpart of :meth:`plot_slen`, polymorphic on ``obj``:
 
         * **SarcAsM** (track grouping): overlays member ΔSL(t) = SL(t) − equ for
           one track ``group`` (``equ`` = each member's median length over the
-          group's non-contracting frames), with the group ΔSL drawn bold. Accepts
-          ``group``, ``kind``, ``t_lim``, ``y_lim``, ``show_contr``, ``show_mean``,
-          ``max_lines``, ``color``, ``mean_color``. Requires
-          :meth:`SarcAsM.analyze_track_motion`.
-        * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view.
-          Accepts ``frame``, ``t_lim``, ``y_lim``, ``n_rows``, ``n_start``,
-          ``show_contr`` (unchanged behaviour).
+          group's non-contracting frames), with the group ΔSL drawn bold. Members
+          are subsampled to ``max_lines`` (longest-coverage first) for legibility.
+          Requires :meth:`SarcAsM.analyze_track_motion`.
+        * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view,
+          one inset row per sarcomere.
+
+        The two branches take different parameters — ``group``/``kind``/``max_lines``/
+        ``show_mean``/``color``/``mean_color`` apply to **SarcAsM** only, and
+        ``frame``/``n_rows``/``n_start`` to **Motion** only. Parameters that do not
+        apply to the object you pass are ignored.
 
         Parameters
         ----------
@@ -2544,13 +2551,41 @@ class Plots:
             The axes to draw the plot on.
         obj : SarcAsM or Motion
             The object to plot (see polymorphic behaviour above).
-        **kwargs
-            Keyword arguments forwarded to the dispatched implementation, depending
-            on the type of ``obj`` (see above).
+        group : int, optional
+            Track group index to plot (SarcAsM only). Default is 0.
+        kind : str, optional
+            Grouping prefix ('pool', 'mband', ...) (SarcAsM only). If None, the last
+            analyzed grouping is used. Default is None.
+        t_lim : tuple of float, optional
+            The time limits for the plot in seconds. Default is (0, 12).
+        y_lim : tuple of float, optional
+            The y-axis limits for ΔSL in µm. Default is (-0.4, 0.4).
+        show_contr : bool, optional
+            Whether to shade contraction periods. Default is True.
+        show_mean : bool, optional
+            Whether to overlay the bold group ΔSL trace (SarcAsM only). Default is True.
+        max_lines : int, optional
+            Maximum number of member traces to draw (SarcAsM only). If None, all
+            members are drawn. Default is 300.
+        color : str, optional
+            Colour of the individual traces (SarcAsM only). If None, a grey is used.
+            Default is None.
+        mean_color : str, optional
+            Colour of the mean trace (SarcAsM only). Default is 'k'.
+        frame : int, optional
+            Mark this frame with a vertical dashed line (Motion only). Default is None.
+        n_rows : int, optional
+            Number of stacked sarcomere rows to plot (Motion only). Default is 6.
+        n_start : int, optional
+            Index of the first sarcomere row to plot (Motion only). Default is 1.
         """
         if isinstance(obj, Motion):
-            return Plots._plot_delta_slen_loi(ax, obj, **kwargs)
-        return Plots._track_group_overlay(ax, obj, mode='delta', **kwargs)
+            return Plots._plot_delta_slen_loi(ax, obj, frame=frame, t_lim=t_lim, y_lim=y_lim,
+                                              n_rows=n_rows, n_start=n_start, show_contr=show_contr)
+        return Plots._track_group_overlay(ax, obj, mode='delta', group=group, kind=kind,
+                                          t_lim=t_lim, y_lim=y_lim, show_contr=show_contr,
+                                          show_mean=show_mean, max_lines=max_lines,
+                                          color=color, mean_color=mean_color)
 
     @staticmethod
     def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0,
