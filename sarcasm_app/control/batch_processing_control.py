@@ -318,16 +318,11 @@ class BatchProcessingControl:
 
         sarc_obj.track_sarcomere_vectors(
             frames='all',
-            threshold_mbands=_p('motion.track.threshold_mbands'),
-            threshold_zbands=_p('motion.track.threshold_zbands'),
             max_disp_along_um=_p('motion.track.max_disp_along'),
             max_disp_perp_um=_p('motion.track.max_disp_perp'),
             ori_tol_deg=_p('motion.track.ori_tol'),
-            memory=int(_p('motion.track.memory')),
-            min_track_length=int(_p('motion.track.min_length')),
-            max_gap_interpolation=int(_p('motion.track.max_gap_interp')),
-            merge_tracks=bool(_p('motion.track.merge')),
-            slen_lims=(_p('motion.track.slen_lower'), _p('motion.track.slen_upper')))
+            min_track_duration_s=_p('motion.track.min_duration_s'),
+            max_gap_interpolation=int(_p('motion.track.max_gap_interp')))
 
         ref = int(_p('motion.group.reference_frame'))
         if by == 'loi' and 'loi_data' not in sarc_obj.data:

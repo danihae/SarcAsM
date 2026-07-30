@@ -145,17 +145,11 @@ class ApplicationModel:
 
     def _set_defaults_motion(self):
         # Track sarcomere vectors
-        self.__parameters.get_parameter(name='motion.track.threshold_mbands').set_value(0.25)
-        self.__parameters.get_parameter(name='motion.track.threshold_zbands').set_value(0.5)
         self.__parameters.get_parameter(name='motion.track.max_disp_along').set_value(1.0)
         self.__parameters.get_parameter(name='motion.track.max_disp_perp').set_value(0.2)
         self.__parameters.get_parameter(name='motion.track.ori_tol').set_value(45.0)
-        self.__parameters.get_parameter(name='motion.track.memory').set_value(5)
-        self.__parameters.get_parameter(name='motion.track.min_length').set_value(5)
-        self.__parameters.get_parameter(name='motion.track.max_gap_interp').set_value(5)
-        self.__parameters.get_parameter(name='motion.track.merge').set_value(True)
-        self.__parameters.get_parameter(name='motion.track.slen_lower').set_value(1.0)
-        self.__parameters.get_parameter(name='motion.track.slen_upper').set_value(3.0)
+        self.__parameters.get_parameter(name='motion.track.min_duration_s').set_value(0.08)
+        self.__parameters.get_parameter(name='motion.track.max_gap_interp').set_value(3)
 
         # Group tracks
         self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
@@ -259,17 +253,11 @@ class ApplicationModel:
         # endregion
 
         # region motion parameters (track-based)
-        self.__parameters.set_parameter(name='motion.track.threshold_mbands')
-        self.__parameters.set_parameter(name='motion.track.threshold_zbands')
         self.__parameters.set_parameter(name='motion.track.max_disp_along')
         self.__parameters.set_parameter(name='motion.track.max_disp_perp')
         self.__parameters.set_parameter(name='motion.track.ori_tol')
-        self.__parameters.set_parameter(name='motion.track.memory')
-        self.__parameters.set_parameter(name='motion.track.min_length')
+        self.__parameters.set_parameter(name='motion.track.min_duration_s')
         self.__parameters.set_parameter(name='motion.track.max_gap_interp')
-        self.__parameters.set_parameter(name='motion.track.merge')
-        self.__parameters.set_parameter(name='motion.track.slen_lower')
-        self.__parameters.set_parameter(name='motion.track.slen_upper')
 
         self.__parameters.set_parameter(name='motion.group.by')
         self.__parameters.set_parameter(name='motion.group.reference_frame')

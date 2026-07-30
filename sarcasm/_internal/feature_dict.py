@@ -684,7 +684,8 @@ structure_feature_dict = {
     },
     # --- 2D sarcomere-vector tracking (SarcAsM.track_sarcomere_vectors) ---
     'n_tracks': {
-        'description': 'Number of sarcomere query-point tracks kept after the min_track_length filter.',
+        'description': 'Number of sarcomere query-point tracks kept after the '
+                       'min_track_duration_s filter.',
         'data type': int,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Number of tracks'
@@ -743,7 +744,7 @@ structure_feature_dict = {
         'name': 'Track orientation [rad]'
     },
     'tracks_snapped': {
-        'description': 'Boolean mask, True where a real detection was snapped (vs flow-predicted gap). '
+        'description': 'Boolean mask, True where a real detection was matched (vs a predicted gap frame). '
                        'np.ndarray, shape (n_tracks, T).',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
@@ -763,39 +764,31 @@ structure_feature_dict = {
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track M-band id'
     },
-    'n_merges': {
-        'description': 'Number of fragmented trajectory pairs stitched by the post-loop merge step.',
+    'fragmentation_ratio': {
+        'description': 'Number of tracks divided by the median number of sarcomere vectors per '
+                       'frame. 1.0 means one track per vector across the whole recording; larger '
+                       'values mean the same vector was split into that many trajectories. The '
+                       'headline tracking-continuity quality number.',
+        'data type': float,
+        'function': 'SarcAsM.track_sarcomere_vectors',
+        'name': 'Track fragmentation ratio'
+    },
+    'n_interpolated_gap_frames': {
+        'description': 'Number of (track, frame) entries whose sarcomere length / orientation was '
+                       'filled by interpolation across a short interior gap '
+                       '(max_gap_interpolation). These frames stay False in tracks_snapped, so no '
+                       'coverage or real-observation metric counts them.',
         'data type': int,
         'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Number of track merges'
+        'name': 'Number of interpolated gap frames'
     },
-    'motionfield_source': {
-        'description': "Which producer last wrote the motion-field keys: 'tracker' "
-                       '(track_sarcomere_vectors) or \'standalone\' (compute_motion_field).',
-        'data type': str,
+    'n_tracks_retired': {
+        'description': 'Number of tracks closed because they went unmatched for longer than '
+                       'retire_after_s (0 with the default, where tracks never retire).',
+        'data type': int,
         'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Motion-field source'
+        'name': 'Number of retired tracks'
     },
-    'displacement_along_sarcomere': {
-        'description': 'Per-frame optical-flow displacement projected onto the sarcomere axis, in µm. '
-                       'List of np.ndarray (one per frame). Also stored namespaced as motionfield_<source>_*.',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Displacement along sarcomere [µm]'
-    },
-    'displacement_perpendicular': {
-        'description': 'Per-frame optical-flow displacement perpendicular to the sarcomere axis, in µm. '
-                       'List of np.ndarray (one per frame).',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Displacement perpendicular [µm]'
-    },
-    'velocity_magnitude': {
-        'description': 'Per-frame optical-flow speed at each detection, in µm/s. List of np.ndarray (one per frame).',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Velocity magnitude [µm/s]'
-    }
 }
 
 motion_feature_dict = {

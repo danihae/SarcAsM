@@ -172,13 +172,6 @@ def test_masks_label_and_float(tmp_path):
     assert np.array_equal(s.read_image(), img)
 
 
-def test_flow_roundtrip(tmp_path):
-    s = OmeZarrStore.create(tmp_path / "m.ome.zarr", _img(), axes="TYX")
-    flow = np.random.default_rng(1).random((4, 48, 64, 2)).astype(np.float32)
-    s.write_flow(flow)
-    assert np.allclose(s.read_flow(), flow)
-
-
 # --------------------------------------------------------------------------- #
 # analysis results nested under sarcasm/
 # --------------------------------------------------------------------------- #
@@ -208,13 +201,12 @@ def test_metadata_roundtrip(tmp_path):
 
 
 def test_everything_coexists(tmp_path):
-    """One store: image + label + float mask + flow + tracks + metadata, all readable."""
+    """One store: image + label + float mask + tracks + metadata, all readable."""
     img = _img()
     s = OmeZarrStore.create(tmp_path / "m.ome.zarr", img, axes="TYX",
                             pixelsize=0.65, frametime=0.1)
     s.write_mask("cell_mask", (img > 500).astype(np.uint8), as_label=True)
     s.write_mask("zbands", (img / 1000).astype(np.float32))
-    s.write_flow(np.zeros((4, 48, 64, 2), np.float32))
     rd = s.results_dict()
     rd["n_tracks"] = 7
     rd.flush()
@@ -222,7 +214,6 @@ def test_everything_coexists(tmp_path):
     s2 = OmeZarrStore(tmp_path / "m.ome.zarr")           # fresh handle
     assert np.array_equal(s2.read_image(), img)
     assert s2.has_mask("cell_mask") and s2.has_mask("zbands")
-    assert s2.read_flow().shape == (4, 48, 64, 2)
     assert s2.results_view()["n_tracks"] == 7
     assert s2.read_metadata()["pixelsize"] == 0.65
     # napari/Fiji-visible top level is a valid OME image with labels

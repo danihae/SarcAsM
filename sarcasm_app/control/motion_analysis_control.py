@@ -84,16 +84,11 @@ class MotionAnalysisControl:
         cell: SarcAsM = TypeUtils.unbox(m.cell)
         cell.track_sarcomere_vectors(
             frames='all',
-            threshold_mbands=_pv(m, 'motion.track.threshold_mbands'),
-            threshold_zbands=_pv(m, 'motion.track.threshold_zbands'),
             max_disp_along_um=_pv(m, 'motion.track.max_disp_along'),
             max_disp_perp_um=_pv(m, 'motion.track.max_disp_perp'),
             ori_tol_deg=_pv(m, 'motion.track.ori_tol'),
-            memory=int(_pv(m, 'motion.track.memory')),
-            min_track_length=int(_pv(m, 'motion.track.min_length')),
+            min_track_duration_s=_pv(m, 'motion.track.min_duration_s'),
             max_gap_interpolation=int(_pv(m, 'motion.track.max_gap_interp')),
-            merge_tracks=bool(_pv(m, 'motion.track.merge')),
-            slen_lims=(_pv(m, 'motion.track.slen_lower'), _pv(m, 'motion.track.slen_upper')),
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
@@ -365,17 +360,11 @@ class MotionAnalysisControl:
 
         p = self.__main_control.model.parameters.get_parameter
         # track
-        p('motion.track.threshold_mbands').connect(w.dsb_track_threshold_mbands)
-        p('motion.track.threshold_zbands').connect(w.dsb_track_threshold_zbands)
         p('motion.track.max_disp_along').connect(w.dsb_track_max_disp_along)
         p('motion.track.max_disp_perp').connect(w.dsb_track_max_disp_perp)
         p('motion.track.ori_tol').connect(w.dsb_track_ori_tol)
-        p('motion.track.memory').connect(w.sb_track_memory)
-        p('motion.track.min_length').connect(w.sb_track_min_length)
+        p('motion.track.min_duration_s').connect(w.dsb_track_min_duration_s)
         p('motion.track.max_gap_interp').connect(w.sb_track_max_gap_interp)
-        p('motion.track.merge').connect(w.chk_track_merge)
-        p('motion.track.slen_lower').connect(w.dsb_track_slen_lower)
-        p('motion.track.slen_upper').connect(w.dsb_track_slen_upper)
         # group
         p('motion.group.by').connect(w.cb_group_by)
         p('motion.group.reference_frame').connect(w.sb_group_reference_frame)

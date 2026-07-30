@@ -29,12 +29,10 @@ def _sample_data():
     slen = np.where(live, rng.normal(1.8, 0.1, (40, 30)).astype(np.float32), np.nan)
     return {
         "n_tracks": 40,
-        "motionfield_source": "tracker",                 # string scalar
         "tracks_slen": slen,                              # (n,T) float32 + NaN
         "tracks_positions_um": rng.random((40, 30, 2)).astype(np.float32),
         "tracks_snapped": live,                           # bool
         "tracks_detection_id": rng.integers(-1, 50, (40, 30)).astype(np.int32),
-        "displacement_magnitude": rng.random((40, 30)).astype(np.float32),
         "sarcomere_oop": np.float64(0.73),                # numpy scalar
         "sarcomere_length_mean": np.array([1.7, 1.8, np.nan]),  # small array w/ NaN
         "sarcomere_length_vectors": [np.array([1.8, 1.9]), None, np.array([2.0, 2.1, 2.2])],
@@ -115,7 +113,6 @@ def test_sparse_sequence(store):
 def test_routing():
     assert _route("tracks_slen") == ("tracks", "slen")
     assert _route("track_ids") == ("tracks", "ids")
-    assert _route("displacement_magnitude") == ("motion", "displacement_magnitude")
     assert _route("sarcomere_oop") == ("structure/sarcomere", "oop")
     assert _route("params.detect_sarcomeres.model") == ("params/detect_sarcomeres", "model")
 
@@ -123,7 +120,7 @@ def test_routing():
 def test_native_groups_on_disk(store):
     root = zarr.open_group(str(store), mode="r")
     groups = set(root.group_keys())
-    assert {"tracks", "motion", "structure", "params"} <= groups
+    assert {"tracks", "structure", "params"} <= groups
     assert "slen" in set(root["tracks"].array_keys())
 
 
@@ -192,7 +189,6 @@ def test_incremental_only_touches_changed_group(store):
     changed = {k for k, v in snap().items() if v != before.get(k)}
     assert any(c.startswith("structure/pool/") for c in changed)
     assert not any(c.startswith("tracks/") for c in changed)
-    assert not any(c.startswith("motion/") for c in changed)
 
 
 def test_overwrite_existing_key(store):

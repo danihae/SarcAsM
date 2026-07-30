@@ -24,8 +24,6 @@ structure, so it is browsable with any Zarr tool::
       tracks/                         dense per-track block, row-chunked + zstd
         slen positions_um positions_px orientations snapped detection_id
         midline_id ids start_frame lengths group_id ...   each (n_tracks, T) | (n_tracks,)
-      motion/                         per-track/-vector motion field
-        displacement_magnitude displacement_along_sarcomere ... velocity_magnitude flow_at_vectors
       structure/                      morphology / per-frame analysis
         sarcomere/  vectors/  domain/  myofibril/  pool/  mband/
 
@@ -45,8 +43,8 @@ Access (see :class:`Results`)::
 
 This store holds the analysis, tracking and motion results plus their
 parameters (the contents of the old ``structure.json``), with image metadata
-mirrored into the root attrs. Image pixel data, segmentation masks and
-optical-flow fields live alongside these groups in the same OME-Zarr container
+mirrored into the root attrs. Image pixel data and segmentation masks live
+alongside these groups in the same OME-Zarr container
 (:mod:`sarcasm.io.ome_store`).
 """
 
@@ -96,11 +94,9 @@ def _route(key: str) -> Tuple[str, str]:
         return "tracks", key[len("tracks_"):]
     if key.startswith("track_"):
         return "tracks", key[len("track_"):]
-    if key in ("n_tracks", "n_merges", "n_groups", "group_kind", "grouping_hash"):
+    if key in ("n_tracks", "fragmentation_ratio", "n_tracks_retired",
+               "n_interpolated_gap_frames", "n_groups", "group_kind", "grouping_hash"):
         return "tracks", key
-    # motion-field keys keep their full descriptive names (avoid magnitude clashes)
-    if key.startswith(("displacement_", "velocity_", "flow_at", "motionfield")):
-        return "motion", key
     if key.startswith("sarcomere_"):
         return "structure/sarcomere", key[len("sarcomere_"):]
     if key.startswith(("pos_vectors", "midline_")):

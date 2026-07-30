@@ -293,21 +293,13 @@ class SarcAsMBase:
     )
 
     def __getattr__(self, name: str) -> Any:
-        """Dynamic loading of the image / masks / flow from the OME-Zarr store."""
+        """Dynamic loading of the image / masks from the OME-Zarr store."""
         if name == 'image':
             return self.read_imgs()
 
         store = self.__dict__.get('store')
         if store is None:
             raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
-
-        if name == 'flow':
-            flow = store.read_flow()
-            if flow is None:
-                raise FileNotFoundError(
-                    "No optical-flow field stored. Run "
-                    "track_sarcomere_vectors(store_flow_fields=True) first.")
-            return flow
 
         if name in type(self)._STORE_MASKS:
             if not store.has_mask(name):

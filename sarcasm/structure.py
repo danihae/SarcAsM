@@ -1240,37 +1240,26 @@ class SarcAsM(SarcAsMBase):
     def track_sarcomere_vectors(
         self,
         frames: Union[str, int, List[int], np.ndarray] = 'all',
-        threshold_mbands: float = 0.25,
-        threshold_zbands: float = 0.5,
-        dt_clip_um: float = 2.0,
         max_disp_along_um: float = 1.0,
         max_disp_perp_um: float = 0.2,
         ori_tol_deg: float = 45.0,
-        memory: Optional[int] = None,
-        min_track_length: int = 5,
-        reacquire_gap_cap: int = 4,
-        max_gap_interpolation: Optional[int] = None,
-        merge_tracks: bool = True,
-        merge_max_disp_along_um: float = 1.0,
-        merge_max_disp_perp_um: float = 0.3,
-        merge_ori_tol_deg: float = 45.0,
-        merge_slen_tol_um: float = 0.30,
-        merge_interleaved: bool = False,
-        slen_lims: Tuple[float, float] = (1.0, 3.0),
-        motion_predictor: str = 'neighbors',
-        compute_motion_field: bool = False,
-        store_flow_fields: bool = False,
-        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
+        retire_after_s: Optional[float] = None,
+        min_track_duration_s: float = 0.08,
+        max_gap_interpolation: int = 3,
     ) -> None:
         """2D full-field sarcomere-vector tracking.
 
         Complements :meth:`Motion.track_z_bands` (LOI / 1D). Each sarcomere
-        detection in the first analyzed frame seeds a query point; every
-        subsequent frame the query point is flow-advected (Lagrangian
-        prediction) and then snapped to the nearest sarcomere detection
-        consistent with its prediction under anisotropic (along-/perpendicular-
-        to-sarcomere) and orientation gates. No M-band identity is tracked;
-        anti-convergence is guaranteed by snapping to discrete detections.
+        vector in the first analyzed frame seeds a query point. Every frame, the
+        candidate (query point, detection) pairs that pass the anisotropic
+        (along-/perpendicular-to-sarcomere) and orientation gates are matched by an
+        exact minimum-cost assignment, solved per connected component of the
+        candidate graph — which, because the vectors densely sample each M-band
+        midline, means each midline row is aligned jointly. A query point with no
+        consistent detection records an honest gap frame (``tracks_snapped`` False,
+        length NaN) and keeps its identity, so a detection dropout of any length no
+        longer ends a trajectory. No M-band identity is tracked; anti-convergence
+        is guaranteed because each detection is matched at most once.
 
         Prerequisites: :meth:`analyze_sarcomere_vectors` must have been run.
 
@@ -1279,14 +1268,6 @@ class SarcAsM(SarcAsMBase):
         frames : {'all', int, list of int, np.ndarray}, optional
             Frames to track ('all', a single frame index, or selected frames).
             Default is 'all'.
-        threshold_mbands : float, optional
-            Threshold to binarize the M-band mask before distance-transform
-            computation. Default is 0.25.
-        threshold_zbands : float, optional
-            Threshold to binarize the Z-band mask before distance-transform
-            computation. Default is 0.5.
-        dt_clip_um : float, optional
-            Distance-transform clipping distance for the flow, in µm. Default is 2.0.
         max_disp_along_um : float, optional
             Snap-gate tolerance for motion along the sarcomere axis, in µm — the
             maximum a track may move along its axis per frame. At the default
@@ -1299,84 +1280,25 @@ class SarcAsM(SarcAsMBase):
         ori_tol_deg : float, optional
             Orientation tolerance for the snap gate, in degrees (compared
             modulo π). Default is 45.0.
-        memory : int or None, optional
-            Frames a query point may go without snapping before it is closed.
-            ``None`` (default) sets it to a fixed physical duration (~0.2 s) via
-            ``frametime``, so the coast horizon is frame-rate invariant; pass an
-            int to override. Falls back to 5 frames when frametime is unknown.
-        min_track_length : int, optional
-            Minimum number of actual snaps required to keep a track. Default is 5.
-        reacquire_gap_cap : int, optional
-            Live gap-scaled re-acquisition cap. A coasting track widens its snap
-            gate by a random-walk factor (``∝ sqrt(gap)``, gap capped at this
-            value) to re-snap to a reappearing detection, reducing fragmentation.
-            Set to 1 to disable (legacy behaviour). Default is 4.
-        max_gap_interpolation : int or None, optional
-            Maximum absence span, in frames, that the post-loop merge step may
-            bridge by **linearly interpolating** the gap positions. Kept short on
-            purpose — it bridges brief detection flicker only; long-gap stitching
-            fabricates positions and inflates span-based track lengths without
-            adding real observations. ``None`` (default) sets it to a fixed short
-            duration (~0.05 s) via ``frametime`` so the same brief dropout is
-            bridged at any frame rate; pass a larger int only if you deliberately
-            want longer interpolated gaps. Falls back to 5 frames when frametime
-            is unknown.
-        merge_tracks : bool, optional
-            If True, run a final pass that stitches respawned trajectory
-            fragments back to their parent when the flow-predicted tail of one
-            matches the head of another, reducing fragmentation from transient
-            U-Net misses. Default is True.
-        merge_max_disp_along_um : float, optional
-            Along-axis position-residual tolerance for the merge step, in µm
-            (scales with the bridged gap). Default is 1.0.
-        merge_max_disp_perp_um : float, optional
-            Perpendicular position-residual tolerance for the merge step, in µm
-            (scales with the bridged gap). Default is 0.3.
-        merge_ori_tol_deg : float, optional
-            Orientation tolerance for merging, in degrees (axial / mod π).
-            Default is 45.0.
-        merge_slen_tol_um : float, optional
-            Sarcomere-length continuity tolerance for merging, in µm; fragments
-            are stitched only if their seam-frame slens differ by at most this.
-            Default is 0.30.
-        merge_interleaved : bool, optional
-            Opt-in de-fragmentation: rejoin same-sarcomere fragments that share a
-            resting position/length and never co-occur. See
-            :func:`~sarcasm.analysis.sarcomere_tracking.merge_interleaved_fragments`.
-            Default is False.
-        slen_lims : tuple of float, optional
-            Physiologically valid sarcomere-length range, in µm; a merge is
-            rejected if either seam slen is finite and outside this range. Same
-            semantics as ``slen_lims`` in :class:`~sarcasm.motion.Motion`.
-            Default is (1.0, 3.0).
-        motion_predictor : {'neighbors', 'none', 'flow'}, optional
-            How a track's next-frame position is predicted before snapping.
-            ``'neighbors'`` (default) advects a track only while it is coasting, by
-            the median step of the tracks around it, so its anchor cannot go stale
-            during a dropout and let the neighbouring sarcomere into the
-            re-acquisition gate. ``'none'`` holds the previous position.
-            ``'flow'`` advects every track by the dense DT-Farneback flow — much
-            slower; use only when per-frame displacement approaches the snap gate.
-            Track positions/lengths/orientations always come from snapping to
-            detections. Default is 'neighbors'.
-        compute_motion_field : bool, optional
-            If True, also compute the dense optical flow and sample it at every
-            detection position to produce a per-vector displacement / velocity
-            field (``velocity_magnitude``, ``displacement_*``). This is the 2D
-            *centroid* motion of the vectors, not the sarcomere length-change
-            velocity — for contraction dynamics use ``tracks_slen`` and the
-            slen-based motion analysis instead. Carries the flow's flicker noise
-            floor. Forces the flow computation even when ``motion_predictor`` is
-            ``'none'``. Default is False.
-        store_flow_fields : bool, optional
-            If True, persist the dense optical-flow stack to the OME-Zarr store
-            (``<name>.ome.zarr/sarcasm/flow``) as a lossless float32 array of
-            shape ``(T-1, H, W, 2)`` (last axis ``[dy, dx]`` in px/frame; entry
-            ``t`` is the flow from frame ``t`` to ``t+1``). Load it back via
-            ``sarc.flow``. Large on disk. Default is False.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
-            ProgressNotifier.progress_notifier_tqdm().
+        retire_after_s : float or None, optional
+            Time a track may go unmatched before it is closed, in seconds.
+            ``None`` (default) means tracks never retire: an unmatched track is
+            carried along by the coherent motion of its neighbourhood, so its
+            identity stays valid through a dropout of any length and retiring it
+            would only fragment the trajectory. Set a value (e.g. 5.0) for very
+            long recordings, where sarcomeres genuinely appear and disappear, to
+            bound the track count.
+        min_track_duration_s : float, optional
+            Minimum accumulated real observation time required to keep a track, in
+            seconds. Falls back to 5 real snaps when frametime is unknown.
+            Default is 0.08.
+        max_gap_interpolation : int, optional
+            Longest run of consecutive gap frames whose sarcomere length and
+            orientation are filled by interpolating between the real snaps on
+            either side, so brief detection flicker does not punch holes in the
+            per-track traces. Interior gaps only, and ``tracks_snapped`` stays
+            False on filled frames, so coverage and every real-observation metric
+            are unaffected. Set to 0 to leave all gap frames NaN. Default is 3.
         """
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
@@ -1387,35 +1309,24 @@ class SarcAsM(SarcAsMBase):
                 or (self.metadata.n_stack == 1 and frames == 0)
                 or (_detected_frames != 'all' and len(_detected_frames) == 1)):
             list_frames = list(range(self.metadata.n_stack))
-            z_bands = self._read_mask('zbands')
-            mbands = self._read_mask('mbands')
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [int(frames)]
             else:
                 list_frames = [int(f) for f in frames]
-            # Masks are stored sparsely (one page per detected frame); translate
-            # absolute movie-frame indices to mask-TIFF page indices.
-            mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            z_bands = self._read_mask('zbands', frames=mask_key)
-            mbands = self._read_mask('mbands', frames=mask_key)
         else:
             raise ValueError('frames argument not valid')
-        if z_bands.ndim == 2:
-            z_bands = np.expand_dims(z_bands, axis=0)
-        if mbands.ndim == 2:
-            mbands = np.expand_dims(mbands, axis=0)
 
         if len(list_frames) < 2:
             raise ValueError('Need at least 2 frames for tracking.')
 
-        # Tracking is temporal: real-time gaps between non-contiguous frames are
-        # treated as single-frame steps (flow + velocity scaling assume Δt=frametime).
+        # Tracking is temporal: real-time gaps between non-contiguous frames would
+        # be treated as single-frame steps (the seconds-valued horizons assume
+        # Δt = frametime).
         if not np.all(np.diff(list_frames) == 1):
             raise ValueError(
                 f'track_sarcomere_vectors requires contiguous frames; got {list_frames}. '
-                'Optical flow and velocity scaling assume a single-frame step between '
-                'consecutive entries.')
+                'The tracker assumes a single-frame step between consecutive entries.')
 
         # The per-frame vectors must ACTUALLY be present for every tracked frame.
         # (params.analyze_sarcomere_vectors.frames can be stale — e.g. left claiming
@@ -1459,31 +1370,15 @@ class SarcAsM(SarcAsMBase):
 
         logger.info(f'Tracking {len(list_frames)} frames...')
         out = sarcomere_tracking.track_sarcomere_vectors(
-            z_bands, mbands,
             pos_px_all, mid_all, slen_all, ori_all,
             pixelsize=self.metadata.pixelsize,
             frametime=self.metadata.frametime,
-            threshold_mbands=threshold_mbands,
-            threshold_zbands=threshold_zbands,
-            dt_clip_um=dt_clip_um,
             max_disp_along_um=max_disp_along_um,
             max_disp_perp_um=max_disp_perp_um,
             ori_tol_deg=ori_tol_deg,
-            memory=memory,
-            min_track_length=min_track_length,
-            reacquire_gap_cap=reacquire_gap_cap,
+            retire_after_s=retire_after_s,
+            min_track_duration_s=min_track_duration_s,
             max_gap_interpolation=max_gap_interpolation,
-            merge_tracks=merge_tracks,
-            merge_max_disp_along_um=merge_max_disp_along_um,
-            merge_max_disp_perp_um=merge_max_disp_perp_um,
-            merge_ori_tol_deg=merge_ori_tol_deg,
-            merge_slen_tol_um=merge_slen_tol_um,
-            merge_interleaved=merge_interleaved,
-            slen_lims=slen_lims,
-            motion_predictor=motion_predictor,
-            compute_motion_field=compute_motion_field,
-            store_flow_fields=store_flow_fields,
-            progress_notifier=progress_notifier,
         )
 
         tracking_data = {
@@ -1499,48 +1394,17 @@ class SarcAsM(SarcAsMBase):
             'tracks_snapped': out['tracks_snapped'],
             'tracks_detection_id': out['tracks_detection_id'],
             'tracks_midline_id': out['tracks_midline_id'],
-            'n_merges': out['n_merges'],
-            'n_interleaved_merges': out['n_interleaved_merges'],
+            'fragmentation_ratio': out['fragmentation_ratio'],
+            'n_tracks_retired': out['n_tracks_retired'],
+            'n_interpolated_gap_frames': out['n_interpolated_gap_frames'],
             'params.track_sarcomere_vectors.frames': list_frames,
-            'params.track_sarcomere_vectors.threshold_mbands': threshold_mbands,
-            'params.track_sarcomere_vectors.threshold_zbands': threshold_zbands,
-            'params.track_sarcomere_vectors.dt_clip_um': dt_clip_um,
             'params.track_sarcomere_vectors.max_disp_along_um': max_disp_along_um,
             'params.track_sarcomere_vectors.max_disp_perp_um': max_disp_perp_um,
             'params.track_sarcomere_vectors.ori_tol_deg': ori_tol_deg,
-            'params.track_sarcomere_vectors.memory': memory,
-            'params.track_sarcomere_vectors.min_track_length': min_track_length,
-            'params.track_sarcomere_vectors.reacquire_gap_cap': reacquire_gap_cap,
+            'params.track_sarcomere_vectors.retire_after_s': retire_after_s,
+            'params.track_sarcomere_vectors.min_track_duration_s': min_track_duration_s,
             'params.track_sarcomere_vectors.max_gap_interpolation': max_gap_interpolation,
-            'params.track_sarcomere_vectors.merge_tracks': merge_tracks,
-            'params.track_sarcomere_vectors.merge_max_disp_along_um': merge_max_disp_along_um,
-            'params.track_sarcomere_vectors.merge_max_disp_perp_um': merge_max_disp_perp_um,
-            'params.track_sarcomere_vectors.merge_ori_tol_deg': merge_ori_tol_deg,
-            'params.track_sarcomere_vectors.merge_slen_tol_um': merge_slen_tol_um,
-            'params.track_sarcomere_vectors.merge_interleaved': merge_interleaved,
-            'params.track_sarcomere_vectors.slen_lims': list(slen_lims),
-            'params.track_sarcomere_vectors.motion_predictor': motion_predictor,
-            'params.track_sarcomere_vectors.compute_motion_field': compute_motion_field,
-            'params.track_sarcomere_vectors.store_flow_fields': store_flow_fields,
         }
-        if compute_motion_field:
-            # Namespace the motion-field outputs by producer so they never silently
-            # collide with the standalone compute_motion_field() method. The bare
-            # keys are kept as back-compat aliases (last writer wins); read
-            # 'motionfield_source' to know which producer wrote them.
-            mf = {
-                'flow_at_vectors': out['flow_at_vectors'],
-                'displacement_magnitude': out['displacement_magnitude'],
-                'displacement_along_sarcomere': out['displacement_along_sarcomere'],
-                'displacement_perpendicular': out['displacement_perpendicular'],
-                'velocity_magnitude': out['velocity_magnitude'],
-            }
-            tracking_data.update(mf)
-            tracking_data.update({f'motionfield_tracker_{k}': v for k, v in mf.items()})
-            tracking_data['motionfield_source'] = 'tracker'
-        if store_flow_fields:
-            self.store.write_flow(np.asarray(out['flow_fields'], dtype=np.float32))
-
         self.data.update(tracking_data)
         # Re-tracking changes track identities, so any prior grouping no longer
         # matches the new tracks. Drop the stale grouping keys (grouped-motion
@@ -1555,118 +1419,6 @@ class SarcAsM(SarcAsMBase):
             if _stale in self.data:
                 del self.data[_stale]
         logger.info(f'Tracked {out["n_tracks"]} sarcomere query points over {len(list_frames)} frames.')
-        if self.auto_save:
-            self.store_structure_data()
-
-    def compute_motion_field(
-        self,
-        frames: Union[str, int, List[int], np.ndarray] = 'all',
-        threshold: float = 0.5,
-        dt_clip_um: float = 2.0,
-        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm(),
-    ) -> None:
-        """Compute optical flow + per-vector motion field without tracking.
-
-        Useful for quick motion assessment, strain maps, or as input to
-        downstream contraction detection. Prerequisite:
-        :meth:`analyze_sarcomere_vectors`.
-
-        Outputs are written under ``motionfield_standalone_*`` keys (and the bare
-        ``displacement_*`` / ``velocity_magnitude`` aliases); ``motionfield_source``
-        is set to ``'standalone'`` to distinguish them from the tracker's.
-
-        Parameters
-        ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
-            Frames to use ('all', a single frame index, or selected frames).
-            Default is 'all'.
-        threshold : float, optional
-            Threshold to binarize the probability masks before distance-transform
-            computation. Default is 0.5.
-        dt_clip_um : float, optional
-            Distance-transform clipping distance for the flow, in µm. Default is 2.0.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
-            ProgressNotifier.progress_notifier_tqdm().
-        """
-        if 'pos_vectors_px' not in self.data:
-            raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
-
-        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if ((isinstance(frames, str) and frames == 'all')
-                or (self.metadata.n_stack == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.metadata.n_stack))
-            z_bands = self._read_mask('zbands')
-            mbands = self._read_mask('mbands')
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [int(frames)]
-            else:
-                list_frames = [int(f) for f in frames]
-            # Translate absolute movie-frame indices to sparse mask-TIFF pages.
-            mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            z_bands = self._read_mask('zbands', frames=mask_key)
-            mbands = self._read_mask('mbands', frames=mask_key)
-        else:
-            raise ValueError('frames argument not valid')
-        if z_bands.ndim == 2:
-            z_bands = np.expand_dims(z_bands, axis=0)
-        if mbands.ndim == 2:
-            mbands = np.expand_dims(mbands, axis=0)
-        if len(list_frames) < 2:
-            raise ValueError('Need at least 2 frames to compute motion field.')
-        if not np.all(np.diff(list_frames) == 1):
-            raise ValueError(
-                f'compute_motion_field requires contiguous frames; got {list_frames}. '
-                'Optical flow and velocity scaling assume a single-frame step.')
-        pv = self.data['pos_vectors_px']
-        missing = [t for t in list_frames if t >= len(pv) or pv[t] is None]
-        if missing:
-            raise ValueError(
-                f'Sarcomere vectors are missing for {len(missing)} of {len(list_frames)} '
-                f'requested frames (e.g. {missing[:8]}). Re-run analyze_sarcomere_vectors() to '
-                'completion, or pass frames=<a fully analyzed contiguous range>.')
-
-        pos_px_all = [
-            np.asarray(self.data['pos_vectors_px'][t], dtype=np.float32)
-            if self.data['pos_vectors_px'][t] is not None
-            else np.zeros((0, 2), np.float32)
-            for t in list_frames
-        ]
-        ori_all = [
-            np.asarray(self.data['sarcomere_orientation_vectors'][t], dtype=np.float32)
-            if self.data['sarcomere_orientation_vectors'][t] is not None
-            else np.zeros(0, np.float32)
-            for t in list_frames
-        ]
-
-        out = sarcomere_tracking.compute_motion_field(
-            z_bands, mbands, pos_px_all, ori_all,
-            pixelsize=self.metadata.pixelsize,
-            frametime=self.metadata.frametime,
-            threshold=threshold, dt_clip_um=dt_clip_um,
-            progress_notifier=progress_notifier,
-        )
-
-        # Namespace by producer ('standalone') so these never silently collide
-        # with the tracker's motion field; keep bare keys as back-compat aliases.
-        mf = {
-            'flow_at_vectors': out['flow_at_vectors'],
-            'displacement_magnitude': out['displacement_magnitude'],
-            'displacement_along_sarcomere': out['displacement_along_sarcomere'],
-            'displacement_perpendicular': out['displacement_perpendicular'],
-            'velocity_magnitude': out['velocity_magnitude'],
-        }
-        motion_field_data = dict(mf)
-        motion_field_data.update({f'motionfield_standalone_{k}': v for k, v in mf.items()})
-        motion_field_data.update({
-            'motionfield_source': 'standalone',
-            'params.compute_motion_field.frames': list_frames,
-            'params.compute_motion_field.threshold': threshold,
-            'params.compute_motion_field.dt_clip_um': dt_clip_um,
-        })
-        self.data.update(motion_field_data)
         if self.auto_save:
             self.store_structure_data()
 

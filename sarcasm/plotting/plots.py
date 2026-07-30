@@ -2029,7 +2029,7 @@ class Plots:
             Width of the trajectory lines. Default is 0.8.
         only_snapped : bool, optional
             Only link frames where the track actually snapped to a detection
-            (vs flow-coasted/gap); the line bridges across the skipped frames.
+            (vs a predicted gap frame); the line bridges across the skipped frames.
             Default is True.
         max_tracks : int or None, optional
             Draw at most this many tracks (longest-coverage first) for legibility.

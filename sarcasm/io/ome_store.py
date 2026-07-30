@@ -15,7 +15,7 @@
 
 One store holds *everything*: the raw image (OME-Zarr multiscales), derived
 masks (integer → OME-Zarr ``labels/``; float prob maps → ``sarcasm/masks/``),
-the optical-flow field, the analysis/track results (the
+the analysis/track results (the
 :mod:`sarcasm.io.results_store` groups, re-parented under ``sarcasm/``) and the
 metadata. Bioimage tools (napari, Fiji, vizarr) read the image + labels; the
 ``sarcasm/`` namespace is an extra group they ignore.
@@ -28,7 +28,6 @@ Layout::
       labels/<name>/0      integer masks (cell_mask, sarcomere_mask) + image-label metadata
       sarcasm/
         masks/<name>       float prob maps (zbands, mbands, orientation, distance, …)
-        flow/0             optical flow (T-1, H, W, 2)
         tracks/ motion/ structure/ params/   ← results_store groups
         zarr.json          attrs: metadata, _manifest
 
@@ -58,7 +57,6 @@ OME_VERSION = "0.5"
 IMAGE = "0"                 # full-resolution image array (multiscales level 0)
 SARCASM = "sarcasm"        # SarcAsM namespace group
 MASKS = f"{SARCASM}/masks"
-FLOW = f"{SARCASM}/flow"
 LABELS = "labels"
 _META = "metadata"
 
@@ -317,7 +315,7 @@ def _ome_scale(axes: str, pixelsize: Optional[float], frametime: Optional[float]
 class OmeZarrStore:
     """Read/write façade over a single ``<name>.ome.zarr`` analysis store.
 
-    Holds the raw image, derived masks, optical flow, analysis/track results
+    Holds the raw image, derived masks, analysis/track results
     and metadata in one OME-Zarr container.
 
     Parameters
@@ -622,44 +620,6 @@ class OmeZarrStore:
             del masks_grp[name]
             return True
         return False
-
-    # -- flow ------------------------------------------------------------- #
-    def write_flow(self, flow: np.ndarray) -> None:
-        """Store the dense optical-flow stack under ``sarcasm/flow``.
-
-        Parameters
-        ----------
-        flow : np.ndarray
-            Optical flow of shape ``(T-1, H, W, 2)``, last axis ``[dy, dx]``
-            in pixels/frame.
-        """
-        grp = _ensure_group(self._root("a"), SARCASM)
-        # One full frame (incl. both [dy, dx] components) per chunk. The 4D flow
-        # is (T-1, H, W, 2); _image_chunks treats only the last two axes as the
-        # plane, so it would chunk per-row ((1, 1, W, 2)) and explode the chunk
-        # count ~H-fold. sample_flow_bilinear / the advection loop read a whole
-        # frame at a time, so frame-granular chunks are also the right read unit.
-        chunks = (1,) + tuple(flow.shape[1:])
-        a = grp.create_array("flow", shape=flow.shape, dtype=flow.dtype,
-                             chunks=chunks, overwrite=True)
-        a[...] = flow
-
-    def read_flow(self) -> Optional[np.ndarray]:
-        """Read the dense optical-flow stack, or None if not stored.
-
-        Entry ``t`` is the flow FROM frame ``t`` TO frame ``t+1`` (no outgoing
-        flow for the final frame).
-
-        Returns
-        -------
-        np.ndarray or None
-            Flow of shape ``(T-1, H, W, 2)``, float32, last axis ``[dy, dx]``
-            in pixels/frame; None when no flow (or no store) exists.
-        """
-        try:
-            return self._root("r")[FLOW][...]
-        except (KeyError, FileNotFoundError):
-            return None
 
     # -- analysis results (nested results_store) -------------------------- #
     @property

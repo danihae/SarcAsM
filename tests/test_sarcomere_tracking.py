@@ -1,6 +1,7 @@
 """Unit + behavioural tests for :mod:`sarcasm.analysis.sarcomere_tracking`.
 
-The tracker is flow-predict + detection-snap; no M-band identity is persisted.
+The tracker consumes only per-frame sarcomere vectors (position, length,
+orientation) — no image data — and persists no M-band identity.
 """
 from __future__ import annotations
 
@@ -13,22 +14,6 @@ from sarcasm.analysis import sarcomere_tracking as st
 # ---------------------------------------------------------------------------
 # Helpers for synthetic data
 # ---------------------------------------------------------------------------
-
-def _make_band_masks(H=120, W=120, n_bands=6, spacing=18, band_width=2, seed=0):
-    """Build a pair of Z/M band masks with irregular endpoints."""
-    rng = np.random.default_rng(seed)
-    z = np.zeros((H, W), dtype=np.float32)
-    m = np.zeros((H, W), dtype=np.float32)
-    for i in range(n_bands):
-        r = 10 + i * spacing
-        x0 = int(rng.integers(5, 25)); x1 = int(rng.integers(W - 25, W - 5))
-        z[r - band_width // 2:r + band_width // 2 + 1, x0:x1] = 1.0
-        r2 = r + spacing // 2
-        if r2 < H - band_width:
-            x0 = int(rng.integers(5, 25)); x1 = int(rng.integers(W - 25, W - 5))
-            m[r2 - band_width // 2:r2 + band_width // 2 + 1, x0:x1] = 1.0
-    return z, m
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,71 +32,7 @@ def test_angular_diff_wraps_modulo_pi():
 
 
 # ---------------------------------------------------------------------------
-# Flow engine
-# ---------------------------------------------------------------------------
-
-def test_build_dt_channels_shape_and_dtype():
-    z, m = _make_band_masks()
-    dz, dm = st.build_dt_channels(z, m, threshold=0.5)
-    assert dz.shape == z.shape
-    assert dm.shape == m.shape
-    assert dz.dtype == np.uint8
-    assert dm.dtype == np.uint8
-    # DT is zero on the mask.
-    assert (dz[z > 0.5] == 0).all()
-    assert (dm[m > 0.5] == 0).all()
-
-
-def test_flow_output_shape_and_zero_on_identical_frames():
-    z, m = _make_band_masks(H=160, W=160)
-    flow = st.compute_flow_pair(z, m, z, m, threshold=0.5, clip=10.0)
-    assert flow.shape == (160, 160, 2)
-    assert flow.dtype == np.float32
-    # Identical frames → flow should be near zero everywhere.
-    assert np.max(np.abs(flow)) < 0.5
-
-
-# ---------------------------------------------------------------------------
-# Motion-field sampling
-# ---------------------------------------------------------------------------
-
-def test_sample_flow_bilinear_subpixel():
-    H = W = 50
-    flow = np.zeros((H, W, 2), dtype=np.float32)
-    flow[..., 0] = 2.0
-    flow[..., 1] = -1.0
-    positions = np.array([[10.5, 10.5], [25.0, 25.0], [40.25, 30.75]], dtype=np.float32)
-    out = st.sample_flow_bilinear(flow, positions)
-    assert out.shape == (3, 2)
-    np.testing.assert_allclose(out[:, 0], 2.0, atol=1e-5)
-    np.testing.assert_allclose(out[:, 1], -1.0, atol=1e-5)
-
-
-def test_decompose_along_perpendicular():
-    # sarcomere axis = (sin θ, cos θ); θ=0 → along = (0, 1)  (col direction)
-    disp = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float32)
-    ori = np.zeros(2, dtype=np.float32)
-    along, perp = st.decompose_along_perpendicular(disp, ori)
-    assert along[0] == pytest.approx(1.0, abs=1e-5)
-    assert abs(perp[0]) < 1e-5
-    assert abs(along[1]) < 1e-5
-
-
-def test_compute_motion_field_stats_velocity_scaling():
-    disp_lists = [np.array([[1.0, 0.0], [0.0, 2.0]], np.float32)]
-    ori_lists = [np.array([np.pi / 2, np.pi / 2], np.float32)]
-    # orientation = π/2 → sarcomere axis = (1, 0). Along = dy.
-    stats = st.compute_motion_field_stats(disp_lists, ori_lists, frametime=0.01)
-    assert stats['displacement_along_sarcomere'][0][0] == pytest.approx(1.0, abs=1e-5)
-    assert stats['displacement_along_sarcomere'][0][1] == pytest.approx(0.0, abs=1e-5)
-    # Velocity = magnitude / frametime.
-    np.testing.assert_allclose(
-        stats['velocity_magnitude'][0], [100.0, 200.0], atol=1e-3,
-    )
-
-
-# ---------------------------------------------------------------------------
-# End-to-end tracker behaviour on a minimal synthetic sequence
+# End-to-end tracker behaviour
 # ---------------------------------------------------------------------------
 
 def _make_detection_sequence(T=6, n_points=20, shift_per_frame=1.0, orientation=0.0, seed=0):
@@ -139,33 +60,15 @@ def _make_detection_sequence(T=6, n_points=20, shift_per_frame=1.0, orientation=
 
 
 def test_seed_and_snap_recovers_uniform_translation():
-    """Build a flat motion with a constant-flow stack so flow prediction works.
-
-    We don't need realistic masks: the tracker's compute_flow_sequence needs a
-    stack, but we bypass it by calling the tracker with a pre-baked constant
-    flow via farneback_kwargs. Simpler path: construct a 2-frame case where
-    pos moves by a known amount and flow is uniform.
-    """
+    """Static detections must simply stay on the same detections."""
     T = 3
-    H, W = 80, 80
-    # Build Z/M masks that identically contain one stripe so the DT flow is ~0,
-    # then shift positions by 0 as well — this is the simplest match test.
-    z = np.zeros((H, W), dtype=np.float32)
-    m = np.zeros((H, W), dtype=np.float32)
-    z[20, 10:70] = 1.0; m[30, 10:70] = 1.0
-    zstack = np.stack([z] * T)
-    mstack = np.stack([m] * T)
-
-    # Detections don't move — pure "will the tracker just stay on the same
-    # detections?" sanity check.
     pos_px_all, slen_all, ori_all = _make_detection_sequence(
         T=T, n_points=10, shift_per_frame=0.0, orientation=np.pi / 2,
     )
     out = st.track_sarcomere_vectors(
-        zstack, mstack,
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01,
-        memory=2, min_track_length=2,
+        min_track_duration_s=0.02,
     )
     # All 10 detections should produce persistent tracks.
     assert out['n_tracks'] == 10
@@ -175,15 +78,9 @@ def test_seed_and_snap_recovers_uniform_translation():
 
 
 def test_anti_convergence_tracks_stay_separated():
-    """Two query points ≥ 20 px apart at t=0 must stay separated. The snap
-    anchor guarantees they cannot collapse onto each other even if flow is
-    locally uniform."""
+    """Two query points 40 px apart must stay separated: each detection is
+    matched at most once, so they cannot collapse onto each other."""
     T = 5
-    H, W = 120, 120
-    z = np.zeros((H, W), dtype=np.float32); m = np.zeros((H, W), dtype=np.float32)
-    z[40, 20:100] = 1.0; z[80, 20:100] = 1.0
-    m[30, 20:100] = 1.0; m[70, 20:100] = 1.0
-    zstack = np.stack([z] * T); mstack = np.stack([m] * T)
 
     # Two detections, 40 px apart, static across time.
     pos = np.array([[30.0, 50.0], [70.0, 50.0]], dtype=np.float32)
@@ -194,10 +91,9 @@ def test_anti_convergence_tracks_stay_separated():
     ori_all = [ori.copy() for _ in range(T)]
 
     out = st.track_sarcomere_vectors(
-        zstack, mstack,
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01,
-        memory=2, min_track_length=2,
+        min_track_duration_s=0.02,
     )
     # 2 tracks, 40 px apart in every frame.
     assert out['n_tracks'] == 2
@@ -207,47 +103,13 @@ def test_anti_convergence_tracks_stay_separated():
         assert d >= 30.0, f"tracks collapsed at frame {t}: distance = {d:.1f}"
 
 
-def test_flow_advection_is_along_sarcomere_axis_only():
-    """Sarcomere orientation is horizontal (θ=0 → along = col direction).
-    A purely perpendicular flow (uniform in row direction) must not move
-    query points perpendicularly. Only the snap residual can move them off-axis.
-    """
-    # Actually achieving this in a test is intricate — the synthetic DT-Farneback
-    # flow will be zero on identical frames so we can't inject a custom flow
-    # easily. Instead we test the _advect_all_slots logic indirectly: if
-    # sarcomeres are oriented along cols (θ=0) and the movie is identical,
-    # tracks should stay put even if there were phantom perpendicular flow.
+def test_gap_frame_is_not_snapped_and_carries_no_measured_slen():
+    """If a detection disappears for a frame, the query point stays alive at its
+    predicted position, and that frame is marked as not snapped — it carries no
+    *measured* sarcomere length. With gap interpolation disabled its slen is NaN;
+    the interpolated value that the default fills in is a convenience for
+    continuous traces, and ``tracks_snapped`` remains the record of what is real."""
     T = 4
-    H, W = 80, 80
-    z = np.zeros((H, W), dtype=np.float32); m = np.zeros((H, W), dtype=np.float32)
-    # horizontal Z-band at row 30
-    z[30, 10:70] = 1.0; m[35, 10:70] = 1.0
-    zstack = np.stack([z] * T); mstack = np.stack([m] * T)
-    # One detection at (30, 40), orientation = 0 → sarcomere axis along cols.
-    pos = np.array([[30.0, 40.0]], np.float32)
-    pos_px_all = [pos.copy() for _ in range(T)]
-    slen_all = [np.array([1.8], np.float32) for _ in range(T)]
-    ori_all = [np.array([0.0], np.float32) for _ in range(T)]
-    out = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=1, min_track_length=2,
-    )
-    # Track should stay at (30, 40) for all frames (no motion).
-    assert out['n_tracks'] == 1
-    p = out['tracks_positions_px'][0]
-    np.testing.assert_allclose(p[:, 0], 30.0, atol=0.5)
-    np.testing.assert_allclose(p[:, 1], 40.0, atol=0.5)
-
-
-def test_gap_frame_records_nan_slen_but_keeps_position():
-    """If a detection disappears for a frame, the tracker should keep the
-    query point alive with flow-predicted position and NaN slen."""
-    T = 4
-    H, W = 80, 80
-    z = np.zeros((H, W), dtype=np.float32); m = np.zeros((H, W), dtype=np.float32)
-    z[20, 10:70] = 1.0; m[30, 10:70] = 1.0
-    zstack = np.stack([z] * T); mstack = np.stack([m] * T)
 
     pos_full = np.array([[25.0, 40.0]], dtype=np.float32)
     pos_empty = np.zeros((0, 2), dtype=np.float32)
@@ -257,30 +119,29 @@ def test_gap_frame_records_nan_slen_but_keeps_position():
     ori_all = [np.array([np.pi / 2], np.float32), np.zeros(0, np.float32),
                np.array([np.pi / 2], np.float32), np.array([np.pi / 2], np.float32)]
 
+    common = dict(pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
     out = st.track_sarcomere_vectors(
-        zstack, mstack,
         pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=3, min_track_length=2,
-    )
-    # Either one continuous track (gap bridged) or, depending on memory,
-    # a re-spawn. At memory=3 the original track should survive.
+        max_gap_interpolation=0, **common)
     assert out['n_tracks'] >= 1
     slens = out['tracks_slen']
-    # At least one track has a NaN slen at frame 1 but valid slen at frames 0/2/3.
+    snapped = out['tracks_snapped']
+    # At least one track has a NaN slen at frame 1 but valid slen at frames 0/2/3,
+    # and frame 1 is not counted as an observation.
     assert any(
         np.isnan(slens[i, 1]) and np.isfinite(slens[i, 0]) and np.isfinite(slens[i, 2])
+        and not snapped[i, 1]
         for i in range(slens.shape[0])
     )
+    # The position is kept (predicted), not blanked, since the gap is interior.
+    assert np.all(np.isfinite(out['tracks_positions_px'][0, 1]))
 
 
-def test_lost_track_trailing_coast_is_nan_not_held():
+def test_frames_after_final_snap_are_nan():
     """A track that permanently loses its detection must not freeze in place at
-    its last position. The trailing coast frames (after the final snap, while
-    the query point is flow-advected toward closure) are blanked to NaN in the
-    output — position, slen and orientation alike."""
+    its last position: every frame after the final snap is blanked to NaN —
+    position, slen and orientation alike."""
     T = 8
-    zstack, mstack = _identical_band_stack(T)  # flow ~ 0
     pos = np.array([[25.0, 40.0]], dtype=np.float32)
     empty = np.zeros((0, 2), dtype=np.float32)
     # Detection present frames 0-3, then gone for good (track is lost).
@@ -291,11 +152,8 @@ def test_lost_track_trailing_coast_is_nan_not_held():
     ori_all = [ori_one if len(p) else np.zeros(0, np.float32) for p in pos_px_all]
 
     out = st.track_sarcomere_vectors(
-        zstack, mstack,
         pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=3, min_track_length=2,
-        merge_tracks=False,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
     )
     assert out['n_tracks'] == 1
     snapped = out['tracks_snapped'][0]
@@ -315,425 +173,120 @@ def test_lost_track_trailing_coast_is_nan_not_held():
     assert np.all(np.isnan(oris[4:]))
 
 
-def test_motion_predictor_none_is_default_and_flowless():
-    """Default motion_predictor='none' computes NO optical flow and returns no
-    flow-derived outputs, while producing the same tracks as the flow predictor
-    on quiescent input. compute_motion_field still forces flow on demand."""
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], np.float32)
-    pos_px_all = [pos.copy() for _ in range(T)]
-    slen_all = [np.array([1.8], np.float32) for _ in range(T)]
-    ori_all = [np.array([0.0], np.float32) for _ in range(T)]
-    common = dict(pixelsize=0.1, frametime=0.01, memory=2, min_track_length=2)
+def test_optimal_assignment_handles_a_shifted_1px_row():
+    """The decisive case for the assignment.
 
-    out_none = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all, **common)
-    # No flow-derived outputs by default.
-    assert 'velocity_magnitude' not in out_none
-    assert 'flow_at_vectors' not in out_none
-    assert 'flow_fields' not in out_none
-    assert out_none['n_tracks'] == 1
+    Sarcomere vectors are a ~1 px sampling along each M-band, so a whole ordered
+    row of them shifts together while its ends gain and lose samples. Here a row
+    of 40 detections at 1 px lateral spacing moves 1 px along the sarcomere axis
+    between frames; one sample is lost at one end and one gained at the other.
 
-    # Equivalent to the flow predictor on quiescent input (flow ~ 0 there).
-    out_flow = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        motion_predictor='flow', **common)
-    np.testing.assert_array_equal(np.nan_to_num(out_none['tracks_positions_px']),
-                                  np.nan_to_num(out_flow['tracks_positions_px']))
-
-    # compute_motion_field forces the flow computation even with predictor 'none'.
-    out_mf = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        compute_motion_field=True, **common)
-    assert 'velocity_magnitude' in out_mf
-
-    # Unknown predictor is rejected.
-    with pytest.raises(ValueError):
-        st.track_sarcomere_vectors(
-            zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-            motion_predictor='bogus', **common)
-
-
-# ---------------------------------------------------------------------------
-# Trajectory-merge step
-# ---------------------------------------------------------------------------
-
-def _identical_band_stack(T: int, H: int = 80, W: int = 80):
-    """Identical Z/M-band stack so synthetic flow is ~0 across frames.
-
-    Lets tests manipulate detections independently of the underlying flow
-    (which is computed from the masks, not from the detections).
+    Every one of the 39 surviving samples must keep its identity. A greedy claim
+    ordered by raw Euclidean distance cannot guarantee this — it orphans a track
+    at the end of the row, which then dies and respawns as a duplicate.
     """
-    z = np.zeros((H, W), dtype=np.float32)
-    m = np.zeros((H, W), dtype=np.float32)
-    z[20, 10:70] = 1.0
-    m[30, 10:70] = 1.0
-    return np.stack([z] * T), np.stack([m] * T)
-
-
-def test_merge_bridges_one_frame_gap():
-    """A respawned track separated by a 1-frame gap should be stitched back."""
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    # Detection present every frame except t=2.
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos, pos, empty, pos, pos, pos]
-    slen_one = np.array([1.8], np.float32)
-    ori_one = np.array([0.0], np.float32)  # sarcomere axis along cols
-    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
-                slen_one, slen_one, slen_one]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        max_gap_interpolation=5,
-        merge_tracks=True,
-    )
-    # Without merging this would yield 2 tracks (A snaps 0,1; B snaps 3,4,5).
-    assert out['n_tracks'] == 1
-    assert out['n_merges'] == 1
-    snapped = out['tracks_snapped'][0]
-    assert snapped.tolist() == [True, True, False, True, True, True]
-    slens = out['tracks_slen'][0]
-    assert np.isnan(slens[2])
-    np.testing.assert_allclose(slens[[0, 1, 3, 4, 5]], 1.8)
-    pos_out = out['tracks_positions_px'][0]
-    np.testing.assert_allclose(pos_out[:, 0], 25.0, atol=1.0)
-    np.testing.assert_allclose(pos_out[:, 1], 40.0, atol=1.0)
-
-
-def test_merge_off_preserves_legacy_behavior():
-    """With merge_tracks=False the gap should leave two separate tracks."""
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos, pos, empty, pos, pos, pos]
-    slen_one = np.array([1.8], np.float32)
-    ori_one = np.array([0.0], np.float32)
-    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
-                slen_one, slen_one, slen_one]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        merge_tracks=False,
-    )
-    assert out['n_tracks'] == 2
-    assert out['n_merges'] == 0
-
-
-def test_merge_respects_perp_gate():
-    """A respawned track far enough transverse to the original must NOT merge.
-
-    With the default ``merge_max_disp_perp_um=0.3`` (= 3 px at pixelsize 0.1,
-    gap-scaled to ``perp² ≤ 9·gap``), an 8-px transverse offset across a 2-frame
-    gap exceeds the gate (perp²=64 vs 9·2=18) and the merge should be rejected.
-    """
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos_a = np.array([[25.0, 40.0]], dtype=np.float32)
-    pos_b = np.array([[33.0, 40.0]], dtype=np.float32)  # 8 px transverse
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos_a, pos_a, empty, pos_b, pos_b, pos_b]
-    slen_one = np.array([1.8], np.float32)
-    ori_one = np.array([0.0], np.float32)  # axis along cols → perp = rows
-    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
-                slen_one, slen_one, slen_one]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        merge_tracks=True,
-    )
-    assert out['n_tracks'] == 2
-    assert out['n_merges'] == 0
-
-
-def test_merge_respects_slen_gate():
-    """Two co-located fragments with very different slens should not merge."""
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos, pos, empty, pos, pos, pos]
-    slen_a = np.array([1.5], np.float32)
-    slen_b = np.array([2.4], np.float32)  # 0.9 μm difference >> 0.15 default
-    ori_one = np.array([0.0], np.float32)
-    slen_all = [slen_a, slen_a, np.zeros(0, np.float32),
-                slen_b, slen_b, slen_b]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        merge_tracks=True,  # default merge_slen_tol_um=0.30 μm
-    )
-    assert out['n_tracks'] == 2
-    assert out['n_merges'] == 0
-
-
-def test_merge_respects_slen_lims():
-    """A fragment whose seam slen falls outside slen_lims must NOT be stitched.
-
-    Fragments at the same position with slens of 1.7 μm (in range) and
-    3.5 μm (above the default ``slen_lims=(1.0, 3.0)``) should be left as
-    two separate tracks even though every other gate would pass.
-    """
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos, pos, empty, pos, pos, pos]
-    slen_in = np.array([1.7], np.float32)
-    slen_out = np.array([3.5], np.float32)  # > slen_lims[1]=3.0
-    ori_one = np.array([0.0], np.float32)
-    slen_all = [slen_in, slen_in, np.zeros(0, np.float32),
-                slen_out, slen_out, slen_out]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        # Loosen slen continuity so only slen_lims can reject; otherwise
-        # the |Δslen|=1.8 would also fail merge_slen_tol_um.
-        merge_slen_tol_um=5.0,
-        slen_lims=(1.0, 3.0),
-        merge_tracks=True,
-    )
-    assert out['n_tracks'] == 2
-    assert out['n_merges'] == 0
-
-
-def test_merge_chains_multi_hop():
-    """Three respawned fragments on the same trajectory should chain into one."""
-    T = 10
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    # Fragments: A=[0,1,2], gap, B=[5,6], gap, C=[8,9].
-    pos_px_all = [pos, pos, pos, empty, empty,
-                  pos, pos, empty, pos, pos]
-    slen_one = np.array([1.8], np.float32)
-    ori_one = np.array([0.0], np.float32)
-    slen_all = [
-        slen_one if len(p) else np.zeros(0, np.float32)
-        for p in pos_px_all
-    ]
-    ori_all = [
-        ori_one if len(p) else np.zeros(0, np.float32)
-        for p in pos_px_all
-    ]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        max_gap_interpolation=5,
-        merge_tracks=True,
-    )
-    assert out['n_tracks'] == 1
-    assert out['n_merges'] == 2
-    snapped = out['tracks_snapped'][0]
-    expected = [True, True, True, False, False, True, True, False, True, True]
-    assert snapped.tolist() == expected
-
-
-def test_merge_log_records_each_merge():
-    """When return_merge_log=True the log should have one entry per merge."""
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    pos = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    pos_px_all = [pos, pos, empty, pos, pos, pos]
-    slen_one = np.array([1.8], np.float32)
-    ori_one = np.array([0.0], np.float32)
-    slen_all = [slen_one, slen_one, np.zeros(0, np.float32),
-                slen_one, slen_one, slen_one]
-    ori_all = [ori_one, ori_one, np.zeros(0, np.float32),
-               ori_one, ori_one, ori_one]
-
-    out = st.track_sarcomere_vectors(
-        zstack, mstack,
-        pos_px_all, [None] * T, slen_all, ori_all,
-        pixelsize=0.1, frametime=0.01,
-        memory=0, min_track_length=2,
-        merge_tracks=True,
-        return_merge_log=True,
-    )
-    assert out['n_merges'] == 1
-    log = out['merge_log']
-    assert len(log) == 1
-    entry = log[0]
-    assert int(entry['gap']) == 2
-    assert int(entry['t_a']) == 1
-    assert int(entry['t_b']) == 3
-    # Residuals on flat synthetic flow should be tiny (reported in µm).
-    assert abs(entry['perp_resid_um']) < 0.1
-    assert abs(entry['along_resid_um']) < 0.1
-
-
-def test_merge_interleaved_joins_gap_separated_same_sarcomere():
-    """merge_interleaved joins two fragments of one sarcomere separated by a gap
-    longer than the short-gap merge (same resting position + length, no overlap),
-    but leaves a fragment at a different position separate."""
-    T = 20
-    zstack, mstack = _identical_band_stack(T)
-    p = np.array([[25.0, 40.0]], np.float32)
-    p_far = np.array([[25.0, 55.0]], np.float32)  # 15 px away → different sarcomere
-    empty = np.zeros((0, 2), np.float32)
-    sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
-    z0 = np.zeros(0, np.float32)
-    on_a = set(range(0, 6)); on_b = set(range(14, 20))  # A then B, gap 6..13 (8 > 5)
-    common = dict(pixelsize=0.1, frametime=0.01, memory=0, min_track_length=2)
-
-    def build(pb):
-        pos = [p if t in on_a else (pb if t in on_b else empty) for t in range(T)]
-        sln = [sl if (t in on_a or t in on_b) else z0 for t in range(T)]
-        orn = [ori if (t in on_a or t in on_b) else z0 for t in range(T)]
-        return pos, sln, orn
-
-    # same position → interleaved merge joins A+B; short-gap merge alone cannot.
-    pos, sln, orn = build(p)
-    off = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
-                                     merge_interleaved=False, **common)
-    on = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
-                                    merge_interleaved=True, **common)
-    assert off['n_tracks'] == 2
-    assert on['n_tracks'] == 1
-    assert int(on['tracks_snapped'][0].sum()) == 12  # 6 + 6 real snaps preserved
-
-    # different position → not the same sarcomere → not merged even with the flag.
-    pos, sln, orn = build(p_far)
-    on_far = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
-                                        merge_interleaved=True, **common)
-    assert on_far['n_tracks'] == 2
-
-
-def test_merge_interleaved_never_joins_co_occurring_sarcomeres():
-    """Safety property behind shipping this on by default: two sarcomeres that are
-    both snapped in the same frames are distinct by construction (one M-band gives
-    one snap per frame), so they must never be merged however close they sit."""
-    T = 20
-    zstack, mstack = _identical_band_stack(T)
-    # two detections 4 px apart (well inside the resting-position gate at slen=18 px)
-    # but present in EVERY frame, i.e. maximally overlapping.
-    pos = [np.array([[25.0, 40.0], [25.0, 44.0]], np.float32) for _ in range(T)]
-    sln = [np.array([1.8, 1.8], np.float32) for _ in range(T)]
-    orn = [np.array([0.0, 0.0], np.float32) for _ in range(T)]
-    res = st.track_sarcomere_vectors(zstack, mstack, pos, [None] * T, sln, orn,
-                                     pixelsize=0.1, frametime=0.01,
-                                     min_track_length=2, merge_interleaved=True)
-    assert res['n_tracks'] == 2, 'co-occurring sarcomeres must stay separate'
-    assert int(res['n_interleaved_merges']) == 0
-
-
-# ---------------------------------------------------------------------------
-# Short-fragment merge bridges + gap-scaled re-acquisition
-# ---------------------------------------------------------------------------
-
-def test_merge_uses_short_fragment_as_bridge():
-    """A short fragment (< min_track_length) must be usable as a bridge that
-    chains two longer pieces which are otherwise too far apart to merge directly.
-
-    Layout (min_track_length=4, max_gap_interpolation=5):
-        A: snaps at 0,1,2,3      (len 4 — eligible seed)
-        B: snap  at 8            (len 1 — short fragment, bridge only)
-        C: snaps at 13,14,15     (len 3 — too short to seed/keep alone)
-    A→C directly spans a 9-frame gap (> max_gap), so it can only be stitched
-    *through* B (A→B gap 4, B→C gap 4). Legacy eligibility (bridge must be long)
-    drops B and C, leaving A alone at length 4.
-    """
-    T = 16
-    zstack, mstack = _identical_band_stack(T)
-    p = np.array([[25.0, 40.0]], dtype=np.float32)
-    empty = np.zeros((0, 2), dtype=np.float32)
-    sl = np.array([1.8], np.float32)
-    ori = np.array([0.0], np.float32)
-    sl0 = np.zeros(0, np.float32)
+    T = 4
+    n = 40
+    lateral = np.arange(n, dtype=np.float32)      # 1 px apart along the row (rows)
     pos_px_all, slen_all, ori_all = [], [], []
     for t in range(T):
-        if t in (0, 1, 2, 3, 8, 13, 14, 15):
-            pos_px_all.append(p); slen_all.append(sl); ori_all.append(ori)
-        else:
-            pos_px_all.append(empty); slen_all.append(sl0); ori_all.append(sl0)
-
-    common = dict(pixelsize=0.1, frametime=0.01, memory=0, min_track_length=4,
-                  max_gap_interpolation=5, merge_tracks=True, reacquire_gap_cap=1)
-
-    # New behaviour: short B bridges A→B→C into one long track.
-    out_new = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        merge_min_bridge_snaps=1, **common)
-    assert out_new['n_tracks'] == 1
-    assert int(out_new['tracks_snapped'][0].sum()) == 8   # 4 + 1 + 3 snaps
-
-    # Legacy emulation: bridges must themselves be >= min_track_length, so B and
-    # C are excluded and A can't reach C across the 9-frame gap → A alone.
-    out_old = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        merge_min_bridge_snaps=4, merge_max_passes=1, **common)
-    assert out_old['n_tracks'] == 1
-    assert int(out_old['tracks_snapped'][0].sum()) == 4
+        # the row translates 1 px per frame along the sarcomere axis (cols);
+        # drop the first sample and add one past the far end each frame
+        ys = lateral[1:] + 0.0
+        xs = np.full(n - 1, 40.0 + t, np.float32)
+        pos_px_all.append(np.stack([ys, xs], axis=1).astype(np.float32))
+        slen_all.append(np.full(n - 1, 1.8, np.float32))
+        ori_all.append(np.zeros(n - 1, np.float32))   # axis along cols
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.06, frametime=0.01, min_track_duration_s=0.02)
+    snapped = out['tracks_snapped']
+    # One track per surviving sample, each snapped in every frame: no duplicates.
+    assert out['n_tracks'] == n - 1, f"expected {n - 1} tracks, got {out['n_tracks']}"
+    assert snapped.all(), 'every sample must stay matched through the shift'
+    # And each track stayed on its own lateral row (no swap with a neighbour).
+    rows = out['tracks_positions_px'][:, :, 0]
+    assert np.allclose(rows, rows[:, :1]), 'a track changed lateral position'
 
 
-def test_gap_scaled_reacquisition_recovers_offset_snap():
-    """A coasting track re-snaps to a detection just outside the fresh gate but
-    inside the gap-widened gate, instead of fragmenting.
-
-    Flow ~0 (identical masks). Track sits at (25,40), detected at frames 0,1;
-    frame 2 has no detection (track coasts, frames_since_snap→1); frames 3-5
-    have a detection 24 px (= 1.2 µm at pixelsize 0.05) along-axis away. The
-    fresh along gate is max_disp_along_um=1.0 µm (= 20 px → rejects → new track
-    spawns), but after one gap frame the widened along gate is 1.0·sqrt(2) ≈
-    1.41 µm (≈ 28 px → re-acquisition accepts). merge is OFF to isolate the live
-    loop. pixelsize=0.05 → slen ≈ 36 px, so the scale-aware along cap
-    (0.6·slen ≈ 21.6 px) does not interfere with the widened reach.
-    """
-    T = 6
-    zstack, mstack = _identical_band_stack(T)
-    p0 = np.array([[25.0, 40.0]], dtype=np.float32)
-    p1 = np.array([[25.0, 64.0]], dtype=np.float32)   # 24 px (=1.2 µm) along cols
-    empty = np.zeros((0, 2), dtype=np.float32)
-    sl = np.array([1.8], np.float32); ori = np.array([0.0], np.float32)
+def test_track_survives_a_gap_far_longer_than_the_old_memory_horizon():
+    """Identity now survives a dropout of any length, with no merge pass: the
+    unmatched track keeps its anchor and re-acquires the same detection. The gap
+    frames stay honest — snapped False and slen NaN, never a fabricated length."""
+    T = 40
+    pos = np.array([[25.0, 40.0]], np.float32)
+    empty = np.zeros((0, 2), np.float32)
+    sl, ori = np.array([1.8], np.float32), np.array([0.0], np.float32)
     sl0 = np.zeros(0, np.float32)
-    pos_px_all = [p0, p0, empty, p1, p1, p1]
-    slen_all = [sl, sl, sl0, sl, sl, sl]
-    ori_all = [ori, ori, sl0, ori, ori, ori]
-    common = dict(pixelsize=0.05, frametime=0.01, memory=3, min_track_length=2,
-                  merge_tracks=False)
+    gap = slice(5, 35)                       # 30 frames absent (0.3 s at 0.01 s)
+    pos_px_all = [pos.copy() for _ in range(T)]
+    slen_all = [sl.copy() for _ in range(T)]
+    ori_all = [ori.copy() for _ in range(T)]
+    for t in range(gap.start, gap.stop):
+        pos_px_all[t] = empty; slen_all[t] = sl0; ori_all[t] = sl0
 
-    out_off = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        reacquire_gap_cap=1, **common)
-    assert out_off['n_tracks'] == 2     # legacy: gap not bridged, B spawns
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
+    assert out['n_tracks'] == 1, 'the 30-frame gap must not split the trajectory'
+    snapped = out['tracks_snapped'][0]
+    assert snapped[:5].all() and snapped[35:].all()
+    assert not snapped[gap].any()
+    # gap frames carry no fabricated length
+    assert np.all(np.isnan(out['tracks_slen'][0][gap]))
 
-    out_on = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
-        reacquire_gap_cap=4, **common)
-    assert out_on['n_tracks'] == 1      # widened gate re-acquires the offset det
-    assert int(out_on['tracks_snapped'][0].sum()) == 5
+
+def test_a_gap_never_widens_the_snap_gate():
+    """Waiting longer does not license a longer jump: a detection outside the
+    single-frame gate is never claimed, however long the track has been unmatched.
+    (The previous design widened the gate with the gap, which measurably traded
+    identity for continuity.)"""
+    T = 12
+    p0 = np.array([[25.0, 40.0]], np.float32)
+    # reappears 14 px along cols — outside the 1 µm gate at pixelsize 0.1 (10 px)
+    p1 = np.array([[25.0, 54.0]], np.float32)
+    empty = np.zeros((0, 2), np.float32)
+    sl, ori = np.array([1.8], np.float32), np.array([0.0], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    pos_px_all = [p0, p0] + [empty] * 8 + [p1, p1]
+    slen_all = [sl, sl] + [sl0] * 8 + [sl, sl]
+    ori_all = [ori, ori] + [sl0] * 8 + [ori, ori]
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
+    # two separate tracks: the far reappearance is a different sarcomere
+    assert out['n_tracks'] == 2
+
+
+def test_unmatched_track_advection_is_along_the_axis_only():
+    """An unmatched track is carried by its neighbourhood, but only along its own
+    sarcomere axis: perpendicular motion can come solely from a snap residual,
+    which the perpendicular gate hard-caps. Here the neighbours move purely
+    perpendicular to the axis, so the unmatched track must not follow them."""
+    T = 6
+    # neighbours: a block of detections moving +2 px per frame in rows (= perp,
+    # since orientation 0 puts the sarcomere axis along cols)
+    nb0 = np.stack([np.full(8, 60.0), np.linspace(30, 100, 8)], axis=1)
+    target = np.array([[100.0, 65.0]], np.float32)   # present only at t=0..1
+    pos_px_all, slen_all, ori_all = [], [], []
+    for t in range(T):
+        nb = nb0 + np.array([2.0 * t, 0.0])
+        pts = np.vstack([nb, target]) if t < 2 else nb
+        pos_px_all.append(pts.astype(np.float32))
+        slen_all.append(np.full(len(pts), 1.8, np.float32))
+        ori_all.append(np.zeros(len(pts), np.float32))
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
+    # find the track that owned the target and check it never moved in rows
+    pos_out = out['tracks_positions_px']
+    which = [i for i in range(out['n_tracks'])
+             if np.isfinite(pos_out[i, 0]).all() and abs(pos_out[i, 0, 0] - 100.0) < 1.0]
+    assert which, 'the target detection was not tracked'
+    row = pos_out[which[0], :, 0]
+    finite = row[np.isfinite(row)]
+    assert np.allclose(finite, 100.0, atol=0.5), (
+        f'unmatched track drifted perpendicular to its axis: {finite}')
 
 
 def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
@@ -743,12 +296,11 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
     (where 12 px exceeds the 1 µm gate and would reach a neighbour). Same
     masks/positions/offset — only pixelsize (hence the gate in px) differs.
 
-    offset = 12 px. fine (pixelsize 0.05): gate 1.0 µm = 20 px → 12<20 snapped →
-    1 track. coarse (pixelsize 0.12): gate 1.0 µm = 8.3 px → 12>8.3 rejected →
-    fragments into 2 tracks (12 px ≈ 1.4 µm = a neighbouring sarcomere).
+    offset = 12 px. fine (pixelsize 0.05): gate 1.0 µm = 20 px -> 12<20 snapped ->
+    1 track. coarse (pixelsize 0.12): gate 1.0 µm = 8.3 px -> 12>8.3 rejected ->
+    fragments into 2 tracks (12 px ~ 1.4 µm = a neighbouring sarcomere).
     """
     T = 5
-    zstack, mstack = _identical_band_stack(T)
     p0 = np.array([[25.0, 40.0]], dtype=np.float32)
     p1 = np.array([[25.0, 52.0]], dtype=np.float32)   # 12 px along cols
     empty = np.zeros((0, 2), dtype=np.float32)
@@ -757,15 +309,77 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
     pos_px_all = [p0, p0, empty, p1, p1]
     slen_all = [sl, sl, sl0, sl, sl]
     ori_all = [ori, ori, sl0, ori, ori]
-    common = dict(frametime=0.01, memory=3, min_track_length=2,
-                  merge_tracks=False, reacquire_gap_cap=1)
+    common = dict(frametime=0.01, min_track_duration_s=0.02)
 
     out_fine = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.05, **common)
-    assert out_fine['n_tracks'] == 1     # cap inactive → 12 px snapped
+    assert out_fine['n_tracks'] == 1     # cap inactive -> 12 px snapped
 
     out_coarse = st.track_sarcomere_vectors(
-        zstack, mstack, pos_px_all, [None] * T, slen_all, ori_all,
+        pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.12, **common)
     assert out_coarse['n_tracks'] == 2   # cap (9 px) rejects the 12 px neighbour
+
+
+def test_short_interior_gaps_are_interpolated_but_not_marked_snapped():
+    """``max_gap_interpolation`` fills slen/orientation across brief flicker so the
+    per-track traces have no holes — but the filled frames must stay False in
+    ``tracks_snapped``, so coverage and every real-observation metric still count
+    only genuine detections. Gaps longer than the limit stay NaN, and nothing is
+    ever extrapolated past the final snap."""
+    T = 12
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    sl_a, sl_b = np.array([1.6], np.float32), np.array([2.0], np.float32)
+    ori = np.array([0.0], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    # snap 0,1 -> 2-frame gap -> snap 4 -> 5-frame gap -> snap 10, 11
+    present = [True, True, False, False, True, False, False, False, False, False, True, True]
+    pos_px_all = [pos.copy() if p else empty for p in present]
+    slen_all = [(sl_a if t < 5 else sl_b) if present[t] else sl0 for t in range(T)]
+    ori_all = [ori.copy() if p else sl0 for p in present]
+
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
+        max_gap_interpolation=3)
+    assert out['n_tracks'] == 1
+    snapped = out['tracks_snapped'][0]
+    slen = out['tracks_slen'][0]
+
+    assert snapped.tolist() == present, 'interpolation must not fabricate snaps'
+    # the 2-frame gap is filled, and monotonically between its anchors
+    assert np.all(np.isfinite(slen[2:4]))
+    assert slen[1] <= slen[2] <= slen[3] <= slen[4]
+    # the 5-frame gap exceeds the limit and stays NaN
+    assert np.all(np.isnan(slen[5:10]))
+    assert out['n_interpolated_gap_frames'] == 2
+
+    # disabling it leaves every gap frame NaN
+    off = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
+        max_gap_interpolation=0)
+    assert np.all(np.isnan(off['tracks_slen'][0][~off['tracks_snapped'][0]]))
+    assert off['n_interpolated_gap_frames'] == 0
+
+
+def test_interpolated_orientation_is_axial():
+    """Orientations are undirected axes, so they must be interpolated in the
+    double-angle representation: between 0.1 rad and π-0.1 rad the midpoint is
+    ~0 (the short way round the axis), not ~π/2."""
+    T = 3
+    pos = np.array([[25.0, 40.0]], dtype=np.float32)
+    empty = np.zeros((0, 2), dtype=np.float32)
+    sl = np.array([1.8], np.float32)
+    sl0 = np.zeros(0, np.float32)
+    pos_px_all = [pos, empty, pos]
+    slen_all = [sl, sl0, sl]
+    ori_all = [np.array([0.1], np.float32), sl0, np.array([np.pi - 0.1], np.float32)]
+    out = st.track_sarcomere_vectors(
+        pos_px_all, [None] * T, slen_all, ori_all,
+        pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
+        max_gap_interpolation=3)
+    mid = float(out['tracks_orientations'][0][1])
+    assert abs(st._angular_diff(mid, 0.0)) < 0.05, mid
