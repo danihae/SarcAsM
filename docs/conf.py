@@ -34,6 +34,9 @@ extensions = [
 
 autoapi_type = 'python'
 autoapi_dirs = ['../sarcasm', '../contraction_net']
+# index.rst places autoapi/index explicitly under the "API reference" caption,
+# so autoapi must not also append its own root-toctree entry.
+autoapi_add_toctree_entry = False
 autoapi_ignore = [
     "*/test*.py", "*/tests/*.py", "*/type_utils.py",
     "*/siam_unet/*", "*/progress/*"

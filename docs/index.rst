@@ -80,6 +80,7 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
    :caption: Tutorials:
 
    ./notebooks/tutorial_structure_analysis
+   ./notebooks/tutorial_sarcomere_tracking
    ./notebooks/tutorial_batch_analysis
    ./notebooks/tutorial_data_export
    ./notebooks/tutorial_data_visualization
@@ -99,6 +100,8 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
    :maxdepth: 2
    :caption: API reference:
 
+   autoapi/sarcasm/index
+   autoapi/contraction_net/index
 
 Contact
 -------
@@ -107,7 +110,7 @@ For questions, requests and issues, please contact us or `open an issue on GitHu
 .. _license:
 
 License
-------
+-------
 
 This software is distributed under a custom license and is patent pending (DE 10 2024 112 939.5).
 

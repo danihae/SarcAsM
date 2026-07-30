@@ -1,7 +1,8 @@
 import glob
 import os
 from multiprocessing import Pool
-from sarcasm import Structure, Motion, Utils
+
+from sarcasm import SarcAsM, BatchExport
 
 folder = 'D:/SarcAsM_drugs/'
 
@@ -10,48 +11,42 @@ files = glob.glob(os.path.join(folder, '*.tif'))
 print(f'{len(files)} tif-files found')
 
 
-# detect LOIs
-def detect_lois(file):
+# analyze sarcomere motion of a single movie
+def analyze_motion(file):
+    print(file)
     # initialize file
-    sarc = Structure(file)
+    sarc = SarcAsM(file)
 
-    # detect all sarcomere features for first frame only
+    # detect all sarcomere features for the first frame only
     sarc.detect_sarcomeres(frames=0)
 
-    # detect Z-bands for all frames with time-consistent 3D-U-Net, alternatively run detect_sarcomeres(frames='all')
+    # detect Z-bands for all frames with the time-consistent 3D-U-Net,
+    # alternatively run detect_sarcomeres(frames='all')
     sarc.detect_z_bands_fast_movie()
 
-    # analyze sarcomere vectors in first frame
-    sarc.analyze_sarcomere_vectors(frames=0)
+    # analyze sarcomere vectors in all frames
+    sarc.analyze_sarcomere_vectors(frames='all')
 
-    # detect lines of interest (LOIs)
-    sarc.detect_lois(n_lois=4)
+    # track individual sarcomere vectors through the movie
+    sarc.track_sarcomere_vectors()
 
-    # remove intermediate tiff files to save storage, optional
+    # analyze contractions of all tracks pooled into one averaged signal
+    sarc.analyze_track_motion(by='pool')
+
+    # remove intermediate masks to save storage, optional
     # sarc.remove_intermediate_masks()
 
+    print(f'{file} successfully analyzed!')
 
-# analyze all LOIs of one tif-file
-def analyze_lois(file):
-    lois = Utils.get_lois_of_file(file)
-    for file, loi in lois:
-        try:
-            # initialize LOI
-            mot_obj = Motion(file, loi)
 
-            # analysis of LOI with default parameters
-            mot_obj.full_analysis_loi()
-
-        except Exception as e:
-            print(file, loi)
-            print(repr(e))
-
+# set number of pools
+n_pools = 4
 
 if __name__ == '__main__':
-    # find LOIs
-    with Pool(4) as p:
-        p.map(detect_lois, files)
+    with Pool(n_pools) as p:
+        p.map(analyze_motion, files)
 
-    # analyze LOIs
-    with Pool(12) as p:
-        p.map(analyze_lois, files)
+    # collect the per-group motion features of all movies into one table
+    batch = BatchExport(files, folder=folder)
+    batch.get_motion_data()
+    batch.export_data(os.path.join(folder, 'motion_features.xlsx'))

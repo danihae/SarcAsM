@@ -1,8 +1,17 @@
-..
-   DO NOT DELETE THIS FILE! It contains the all-important `.. autosummary::` directive with `:recursive:` option, without
-   which API documentation wouldn't get extracted from docstrings by the `sphinx.ext.autosummary` engine. It is hidden 
-   (not declared in any toctree) to remove an unnecessary intermediate page; index.rst instead points directly to the
-   package page. DO NOT REMOVE THIS FILE!
+:orphan:
 
-.. autoapi:: your_package_name
-   :members:
+..
+   The API reference pages are generated automatically by ``sphinx-autoapi`` from the
+   package docstrings (see ``autoapi_dirs`` in conf.py). ``index.rst`` links the
+   generated ``autoapi/index`` directly under the "API reference" caption, and
+   ``autoapi_add_toctree_entry = False`` stops autoapi from adding a second entry.
+   This page is kept only as a stable ``api.html`` landing spot for existing links.
+
+=============
+API reference
+=============
+
+The full API reference is generated from the package docstrings:
+
+* :doc:`autoapi/sarcasm/index`
+* :doc:`autoapi/contraction_net/index`

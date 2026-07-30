@@ -91,12 +91,12 @@ Test data for getting started can be found [here](https://zenodo.org/records/153
 
 After installation, SarcAsM can be imported and used in your Python scripts or Jupyter notebooks:
 
-```
+```python
 # Example workflow for structural analysis
-from sarcasm import Structure, Export
+from sarcasm import SarcAsM, Export
 
 # Load an image or movie
-sarc = Structure("path/to/your/image_or_movie.tif")
+sarc = SarcAsM("path/to/your/image_or_movie.tif")
 
 # Detect sarcomeres
 sarc.detect_sarcomeres()
@@ -113,17 +113,18 @@ sarc.analyze_myofibrils()
 # Analyze domains
 sarc.analyze_sarcomere_domains()
 
-# Export data to xlsx file (summary statistics of each frame, full data stored as json in file base directory)
-Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc_obj)
+# Export data to xlsx file (summary statistics per frame; the full results live in the
+# sibling <name>.ome.zarr store next to the tif)
+Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc)
 ```
 
 **Tip:** Control logging verbosity with the `log_level` parameter:
 ```python
 # Verbose output for troubleshooting
-sarc = Structure("file.tif", log_level='DEBUG')
+sarc = SarcAsM("file.tif", log_level='DEBUG')
 
 # Quiet mode - only warnings and errors  
-sarc = Structure("file.tif", log_level='WARNING')
+sarc = SarcAsM("file.tif", log_level='WARNING')
 ```
 
 Check out `quickstart_demo.ipynb` in the repository root or our [documentation](https://sarcasm.readthedocs.io/)

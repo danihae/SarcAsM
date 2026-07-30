@@ -7,7 +7,7 @@ Sarcomere structure analysis
 
 Test data for getting started can be found `here <https://zenodo.org/records/15389034/files/test_data.zip?download=1>`_.
 
-More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
+More detailed instructions see :doc:`notebooks/tutorial_structure_analysis`.
 
 .. code-block:: python
 
@@ -38,38 +38,41 @@ More detailed instructions see :doc:`../notebooks/tutorial_structure_analysis`.
 Sarcomere motion analysis
 =========================
 
-More detailed instruction see :doc:`../notebooks/tutorial_sarcomere_tracking`.
+Motion analysis tracks every sarcomere vector through the movie, then analyzes the
+contractions of *groups* of tracks. More detailed instructions see
+:doc:`notebooks/tutorial_sarcomere_tracking`.
 
 .. code-block:: python
 
-    from sarcasm import *
+    from sarcasm import SarcAsM
 
     # initialize SarcAsM object for tif-file
-    file_path = '/path/to/file.tif'
+    file_path = '/path/to/movie.tif'
     sarc_obj = SarcAsM(file_path)
 
-    # automatically detect lines of interest (LOIs) for sarcomere tracking
-    sarc_obj.detect_lois(n_lois=4)
+    # detect sarcomere Z-bands, M-bands, orientation and masks
+    sarc_obj.detect_sarcomeres(frames=0)
 
-    # get list of LOIs and select single LOI
-    list_lois = sarc_obj.get_list_lois()
-    file, loi = list_lois[0]
+    # detect Z-bands in all frames with the time-consistent 3D U-Net
+    sarc_obj.detect_z_bands_fast_movie()
 
-    # initialize Motion object for LOI
-    mot_obj = Motion(file, loi)
+    # analyze sarcomere vectors in all frames
+    sarc_obj.analyze_sarcomere_vectors(frames='all')
 
-    # track individual Z-bands
-    mot_obj.detect_peaks()
-    mot_obj.track_z_bands()
+    # track every sarcomere vector through the movie
+    sarc_obj.track_sarcomere_vectors()
 
-    # predict contraction intervals using neural network ContractionNet and analyze contractions
-    mot_obj.detect_analyze_contractions()
+    # analyze contractions of all tracks pooled into one averaged signal
+    sarc_obj.analyze_track_motion(by='pool')
 
-    # calculate sarcomere length change and velocity of individual sarcomeres and average
-    mot_obj.get_trajectories()
+    # ... or group the tracks per myofibril and analyze each group separately
+    sarc_obj.analyze_myofibrils(frames=[0])
+    sarc_obj.analyze_track_motion(by='myofibril', reference_frame=0)
 
-    # analyze individual and average sarcomere trajectories
-    mot_obj.analyze_trajectories()
+Tracks can also be grouped by M-band (``by='mband'``), by myofibril domain
+(``by='domain'``), along automatically detected lines of interest (``by='loi'``),
+or by your own labels (``by='custom'``). Each grouping writes its features under
+``<kind>_<feature>`` keys — see :ref:`motion_features`.
 
 Controlling Log Output
 ======================

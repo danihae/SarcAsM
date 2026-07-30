@@ -1,7 +1,7 @@
 import glob
 import os
 from multiprocessing import Pool
-from sarcasm import Structure
+from sarcasm import SarcAsM
 
 # select folder with tif files
 folder = 'D:/2023_SarcAsM_drugs_chronic/'
@@ -14,7 +14,7 @@ print(f'{len(tif_files)} tif-files found')
 def analyze_tif(file):
     print(file)
     # initialize SarcAsM object
-    sarc = Structure(file)
+    sarc = SarcAsM(file)
 
     # detect sarcomere z-bands, m-bands, sarcomere orientation and cell masks
     sarc.detect_sarcomeres(max_patch_size=(2048, 2048))

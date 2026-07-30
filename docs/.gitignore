@@ -1,2 +1,9 @@
 _*
 .DS_Store
+
+# Generated at build time by conf.py -> feature_dict.py
+structure_features.rst
+motion_features.rst
+
+# Generated at build time by sphinx-autoapi
+autoapi/

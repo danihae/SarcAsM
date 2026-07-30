@@ -2,7 +2,7 @@ import os
 import sys
 # Ensure the sarcasm module is in the PYTHONPATH
 sys.path.insert(0, os.path.abspath('..'))
-from sarcasm.feature_dict import structure_feature_dict, motion_feature_dict
+from sarcasm._internal.feature_dict import structure_feature_dict, motion_feature_dict
 
 
 def get_type_name(data_type):
@@ -27,7 +27,7 @@ def get_type_name(data_type):
         return data_type.__name__
 
 
-def dict_to_list_table(dictionary):
+def dict_to_list_table(dictionary, caption='Table of features'):
     header = ['Feature (dict key)', 'Name', 'Function', 'Description', 'Data Type']
     rows = []
     for key, value in dictionary.items():
@@ -50,7 +50,7 @@ def dict_to_list_table(dictionary):
         row = [f"`{key}`", name, function_link, description, data_type]
         rows.append(row)
 
-    table = ".. list-table:: Table with structural features\n"
+    table = f".. list-table:: {caption}\n"
     table += "   :header-rows: 1\n"
     table += "   :widths: 15 15 30 28 12\n\n"
 
@@ -64,51 +64,32 @@ def dict_to_list_table(dictionary):
     return table
 
 
-# Generate the CSV table
-table_structure = dict_to_list_table(structure_feature_dict)
-table_motion = dict_to_list_table(motion_feature_dict)
-
-# Write the CSV table to an .rst file
-with open('./structure_features.rst', 'w') as file:
-    file.write("""
-Structural features
-===================
-
-The following table describes the structural features analyzed by SarcAsM:
-
-""")
-    file.write(table_structure)
-
-with open('./motion_features.rst', 'w') as file:
-    file.write("""
-Motion features
-===============
-
-The following table describes the functional features analyzed by SarcAsM, stored in dictionary sarc.data:
-
-""")
-    file.write(table_motion)
-
-# Function to generate the content for the rst files
-def generate_rst_content(title, table):
+def generate_rst_content(title, table, intro):
     return f"""
 .. _{title.lower().replace(' ', '_')}:
 
 {title}
 {'=' * len(title)}
 
-The following table describes the {title.lower()} analyzed by SarcAsM, stored in dictionary motion_obj.loi_data:
+{intro}
 
 {table}
 """
 
-# Generate the CSV table
-table_structure = dict_to_list_table(structure_feature_dict)
-table_motion = dict_to_list_table(motion_feature_dict)
 
-# Write the CSV table to an .rst file
+table_structure = dict_to_list_table(structure_feature_dict, 'Table of structural features')
+table_motion = dict_to_list_table(motion_feature_dict, 'Table of motion features')
+
 with open('./structure_features.rst', 'w') as file:
-    file.write(generate_rst_content("Structural Features", table_structure))
+    file.write(generate_rst_content(
+        "Structural Features", table_structure,
+        "The following table describes the structural features analyzed by SarcAsM, "
+        "stored in ``sarc.data`` and accessible via ``sarc.results``:"))
 
 with open('./motion_features.rst', 'w') as file:
-    file.write(generate_rst_content("Motion Features", table_motion))
+    file.write(generate_rst_content(
+        "Motion Features", table_motion,
+        "The following table describes the functional features analyzed by SarcAsM. "
+        "They are computed per track group by :py:meth:`sarcasm.SarcAsM.analyze_track_motion` "
+        "and stored in ``sarc.data`` under ``<kind>_<feature>`` keys, where ``kind`` is the "
+        "grouping used (``pool``, ``mband``, ``myofibril``, ``domain`` or ``loi``):"))
