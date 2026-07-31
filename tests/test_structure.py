@@ -115,6 +115,52 @@ class TestStructureErrors:
         with pytest.raises(FileNotFoundError):
             SarcAsM('nonexistent_file.tif')
 
+    def test_short_mask_stack_is_reported_not_silently_truncated(
+            self, structure_crop_file_path):
+        """A mask shorter than the requested range must warn and trim `frames`.
+
+        The per-frame loop zips list_frames against the mask stacks, so a short
+        stack analyses fewer frames than asked. If the stored `frames` param still
+        claimed the full range, the mismatch would only surface much later and far
+        away — as track_sarcomere_vectors reporting missing vectors.
+        """
+        import logging
+
+        sarc = SarcAsM(structure_crop_file_path, restart=True)
+        sarc.detect_sarcomeres()
+
+        # Serve a 1-frame mbands stack while the movie has 2 frames.
+        real_read_mask = sarc._read_mask
+
+        def short_mbands(name, *args, **kwargs):
+            out = real_read_mask(name, *args, **kwargs)
+            return out[:1] if name == 'mbands' else out
+
+        sarc._read_mask = short_mbands
+
+        # The sarcasm loggers do not propagate to root, so caplog misses them.
+        records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        handler = _Capture(level=logging.WARNING)
+        log = logging.getLogger('sarcasm.structure')
+        log.addHandler(handler)
+        try:
+            sarc.analyze_sarcomere_vectors(frames='all')
+        finally:
+            log.removeHandler(handler)
+
+        assert any('have masks for every input' in m for m in records), \
+            f'expected a truncation warning, got: {records}'
+        assert any('mbands' in m for m in records)
+        # The recorded frame list must match what was actually analyzed.
+        stored = sarc.data['params.analyze_sarcomere_vectors.frames']
+        assert len(stored) == 1, f'frames param should be trimmed to 1, got {stored}'
+        assert sarc.data['pos_vectors_px'][0] is not None
+
 
 class TestStructureIntegration:
     """Integration tests combining multiple features."""

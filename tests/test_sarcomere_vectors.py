@@ -143,11 +143,20 @@ def test_process_profiles_batch_loi_recovers_known_slen():
     np.testing.assert_allclose(slens, slen_true, atol=0.05)
 
 
-def test_loi_peak_algorithm_tighter_than_default_under_noise():
-    """With noisy profiles the LOI algorithm (6× Akima + prominence=0.5) should
-    produce tighter slen estimates than the default at interp_factor=0 +
-    prominence=0.2 — because upsampling reduces peak-position quantisation and
-    the stricter prominence rejects noise-driven spurious peaks."""
+def test_upsampling_and_prominence_tighten_slen_under_noise():
+    """Upsampling plus a stricter prominence tightens slen on noisy profiles.
+
+    Both the LOI algorithm and the tightened default should beat a degenerate
+    default (no upsampling, loose prominence), because upsampling reduces
+    peak-position quantisation and prominence rejects noise-driven peaks.
+
+    This is a property of these *synthetic* two-Gaussian profiles and says
+    nothing about which algorithm is better on real data. Measured on real
+    20 kPa profiles the two are equivalent — 9.27 nm per-frame length noise for
+    ``'loi'`` versus 9.14 nm for ``'default'`` at identical mean length and
+    validity, with ``'loi'`` costing ~2.7× more. Do not read this test as a
+    reason to prefer ``peak_algorithm='loi'``.
+    """
     rng = np.random.default_rng(0)
     slen_true = 1.85
     n_profiles = 500
@@ -177,6 +186,97 @@ def test_loi_peak_algorithm_tighter_than_default_under_noise():
         f"tightened default (std={tight_std:.4f}) should be tighter than loose "
         f"default (std={loose_std:.4f})"
     )
+
+
+def test_orientation_at_points_matches_full_angle_map_in_interior():
+    """The sparse gather must equal the full-frame disk median away from borders.
+
+    ``orientation_at_points`` replaced a whole-image median filter that was 59%
+    of ``analyze_sarcomere_vectors`` runtime while ~98% of its output was
+    discarded. Interior results must be identical; at the border they
+    legitimately differ, because the full-frame filter zero-pads and zero is not
+    a valid unit vector, whereas the gather replicates the edge.
+    """
+    rng = np.random.default_rng(7)
+    height, width, radius = 64, 96, 4
+
+    # Smooth-ish field plus noise, so the median actually has work to do.
+    yy, xx = np.mgrid[0:height, 0:width]
+    angle = 0.6 * np.sin(xx / 11.0) + 0.4 * np.cos(yy / 7.0)
+    angle += rng.normal(0, 0.25, angle.shape)
+    field = np.stack([np.cos(angle), np.sin(angle)]).astype(np.float32)
+
+    full = Utils.get_orientation_angle_map(field, use_median_filter=True, radius=radius)
+
+    rows = rng.integers(radius, height - radius, 400)
+    cols = rng.integers(radius, width - radius, 400)
+    sparse = sv.orientation_at_points(field, rows, cols, radius)
+
+    np.testing.assert_allclose(sparse, full[rows, cols], atol=1e-12)
+
+
+def test_orientation_at_points_empty_input():
+    field = _field_from_angle(0.3, H=16, W=16)
+    out = sv.orientation_at_points(field, np.array([], dtype=int),
+                                   np.array([], dtype=int), 3)
+    assert out.shape == (0,)
+
+
+def test_batched_peak_finder_matches_scipy_find_peaks():
+    """The numba peak kernel must reproduce scipy's find_peaks selection.
+
+    Guards the filter *order* in particular: scipy applies height, then
+    distance, then prominence, so a peak dropped by the distance rule is never
+    prominence-tested and a low-prominence peak can still suppress a neighbour.
+    Getting that order wrong changes which sarcomeres are measured.
+    """
+    from scipy.signal import find_peaks
+    from sarcasm.utils import _slen_from_profiles
+
+    rng = np.random.default_rng(3)
+    n_profiles, length = 300, 220
+    x_interp = np.linspace(0.0, 4.0, length)
+    profiles = np.empty((n_profiles, length), dtype=np.float64)
+    for i in range(n_profiles):
+        # Several bumps of varied height/width plus noise -> plenty of marginal
+        # peaks near the height/prominence/distance thresholds.
+        y = np.zeros(length)
+        for _ in range(rng.integers(2, 6)):
+            c = rng.uniform(0, 4.0)
+            y += rng.uniform(0.3, 1.0) * np.exp(-0.5 * ((x_interp - c) / rng.uniform(0.05, 0.3)) ** 2)
+        profiles[i] = y + rng.normal(0, 0.03, length)
+
+    thres, distance, prominence, window = 0.25, 12, 0.3, 8
+    center = (x_interp[-1] + x_interp[0]) * 0.5
+    flat = np.zeros(n_profiles, dtype=bool)
+
+    got_slen, got_off = _slen_from_profiles(
+        profiles, x_interp, flat, thres, distance, prominence,
+        window, center, 0.2, 3.0,
+    )
+
+    for i in range(n_profiles):
+        y = profiles[i]
+        peaks_idx, _ = find_peaks(y, height=thres, distance=distance, prominence=prominence)
+        if len(peaks_idx) < 2:
+            assert np.isnan(got_slen[i])
+            continue
+        coms = np.empty(len(peaks_idx))
+        for j, idx in enumerate(peaks_idx):
+            s, e = max(0, idx - window), min(length, idx + window + 1)
+            w = y[s:e] - y[s:e].min()
+            coms[j] = np.dot(x_interp[s:e], w) / w.sum() if w.sum() > 0 else x_interp[idx]
+        left, right = coms < center, coms >= center
+        if not (left.any() and right.any()):
+            assert np.isnan(got_slen[i])
+            continue
+        expected = coms[right][0] - coms[left][-1]
+        if 0.2 <= expected <= 3.0:
+            assert np.isclose(got_slen[i], expected, atol=1e-9), f'profile {i}'
+        else:
+            assert np.isnan(got_slen[i])
+
+    assert np.isfinite(got_slen).sum() > 0.5 * n_profiles, 'test data exercises too few peaks'
 
 
 def test_get_sarcomere_vectors_accepts_peak_algorithm():

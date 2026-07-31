@@ -17,7 +17,7 @@ from typing import Tuple, Union, List
 import numpy as np
 from scipy import ndimage
 from skimage import measure
-from skimage.morphology import skeletonize
+from skimage.morphology import disk, skeletonize
 
 from sarcasm.utils import Utils
 
@@ -149,6 +149,73 @@ def smooth_orientation_field_temporal(
     return _axial_double_angle_decode(cos2_sm, sin2_sm, orientation_field.dtype)
 
 
+def orientation_at_points(
+        orientation_field: np.ndarray,
+        rows: np.ndarray,
+        cols: np.ndarray,
+        radius: int,
+) -> np.ndarray:
+    """Axial-median sarcomere orientation, sampled only at the given pixels.
+
+    Equivalent to indexing :func:`Utils.get_orientation_angle_map` (disk median,
+    double-angle correct) at ``(rows, cols)``, but gathers the footprint at those
+    points instead of filtering the whole frame. Orientation is only ever needed
+    at M-band midline pixels — roughly 2% of the image — so filtering every pixel
+    wastes ~98% of the work, and this stage otherwise dominates the runtime of
+    :func:`get_sarcomere_vectors`.
+
+    Out-of-bounds neighbours are clipped to the edge rather than zero-padded.
+    Zero is not a valid unit vector, so the zero-padding in
+    :func:`Utils.median_filter_numba` biases the median within ``radius`` px of
+    the border; edge replication does not.
+
+    Parameters
+    ----------
+    orientation_field : np.ndarray
+        ``(2, H, W)`` orientation vector field; channel 0 is x, channel 1 is y.
+    rows, cols : np.ndarray
+        Integer pixel coordinates at which to evaluate the orientation.
+    radius : int
+        Radius of the disk footprint, in pixels.
+
+    Returns
+    -------
+    np.ndarray
+        Axial orientation angle in radians at each point, in ``[0, π)``.
+    """
+    if orientation_field.ndim != 3 or orientation_field.shape[0] != 2:
+        raise ValueError(
+            f"orientation_field must have shape (2, H, W); got {orientation_field.shape}"
+        )
+    rows = np.asarray(rows)
+    if rows.size == 0:
+        return np.empty(0, dtype=np.float64)
+
+    height, width = orientation_field.shape[1], orientation_field.shape[2]
+
+    # Same encoding as Utils.get_orientation_angle_map: wrap to the axial range,
+    # then double so opposite-sign vectors describing one axis coincide.
+    angles = np.arctan2(orientation_field[1], orientation_field[0])
+    angles = (angles + 2 * np.pi) % (2 * np.pi)
+    angles = np.where(angles > np.pi, angles - np.pi, angles)
+    doubled = 2 * angles
+    comp_x, comp_y = np.cos(doubled), np.sin(doubled)
+
+    d_row, d_col = np.nonzero(disk(radius, strict_radius=False))
+    d_row = d_row - radius
+    d_col = d_col - radius
+
+    idx_row = np.clip(rows[:, None] + d_row[None, :], 0, height - 1)
+    idx_col = np.clip(np.asarray(cols)[:, None] + d_col[None, :], 0, width - 1)
+
+    x_med = np.median(comp_x[idx_row, idx_col], axis=1)
+    y_med = np.median(comp_y[idx_row, idx_col], axis=1)
+
+    filtered = np.arctan2(y_med, x_med)
+    filtered = (filtered + 2 * np.pi) % (2 * np.pi)
+    return filtered / 2
+
+
 def get_sarcomere_vectors(
         zbands: np.ndarray,
         mbands: np.ndarray,
@@ -161,7 +228,6 @@ def get_sarcomere_vectors(
         interpolation_method: str = 'linear',
         peak_prominence: float = 0.3,
         peak_algorithm: str = 'default',
-        precomputed_angle_map: Union[np.ndarray, None] = None,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """Extract sarcomere orientation and length vectors.
@@ -200,9 +266,6 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         :func:`Utils.process_profiles_batch_loi`, the peak-detection +
         Akima-upsampling + COM-refinement pipeline used by the LOI analysis
         (slower). Default is 'default'.
-    precomputed_angle_map : np.ndarray or None, optional
-        Precomputed orientation-angle map; if None it is derived from
-        ``orientation_field``. Default is None.
 
     Returns
     -------
@@ -228,12 +291,6 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
 
     # skeletonize mbands
     mbands_skel = skeletonize(mbands, method='lee')
-
-    # calculate and preprocess orientation map
-    if precomputed_angle_map is not None:
-        orientation = precomputed_angle_map
-    else:
-        orientation = Utils.get_orientation_angle_map(orientation_field, use_median_filter=True, radius=radius_pixels)
 
     # label mbands
     midline_labels, n_mbands = ndimage.label(mbands_skel,
@@ -263,7 +320,9 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
             midline_length_vectors[idx:idx + n_coords] = length_midline_i
             idx += n_coords
 
-        sarcomere_orientation_vectors = orientation[pos_vectors_px[:, 0], pos_vectors_px[:, 1]]
+        # Smooth and sample the orientation field at the midline points only.
+        sarcomere_orientation_vectors = orientation_at_points(
+            orientation_field, pos_vectors_px[:, 0], pos_vectors_px[:, 1], radius_pixels)
 
         # Pre-compute trigonometric values and scaling factor
         half_length_scale = (slen_lims[1] * 1.3) / 2 / pixelsize

@@ -266,6 +266,8 @@ class StructureAnalysisControl:
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
                 smooth_orientation_sigma=m.parameters.get_parameter(
                     'structure.vectors.smooth_orientation_sigma').get_value(),
+                smooth_zbands_sigma=m.parameters.get_parameter(
+                    'structure.vectors.smooth_zbands_sigma').get_value(),
                 progress_notifier=progress_notifier
             )
             pass
@@ -495,6 +497,8 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.vectors.length_limit_upper').connect(widget.dsb_vectors_len_lims_max)
         parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').connect(
             widget.dsb_vectors_smooth_orientation_sigma)
+        parameters.get_parameter(name='structure.vectors.smooth_zbands_sigma').connect(
+            widget.dsb_vectors_smooth_zbands_sigma)
 
         parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)

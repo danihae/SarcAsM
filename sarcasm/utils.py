@@ -71,6 +71,161 @@ def _batched_linear_interp(
     return y[:, idx] * (1.0 - w) + y[:, idx + 1] * w
 
 
+@njit(cache=True, parallel=True)
+def _slen_from_profiles(y_up, x_interp, flat_mask, thres, distance, prominence,
+                        window_size, center, slen_min, slen_max):
+    """Sarcomere length + center offset for a batch of interpolated profiles.
+
+    Replaces a per-profile ``scipy.signal.find_peaks`` call — roughly one scipy
+    call per sarcomere vector per frame, which dominated
+    ``analyze_sarcomere_vectors`` once the orientation filter was made sparse.
+
+    The peak selection reproduces ``find_peaks(height=thres, distance=distance,
+    prominence=prominence)`` exactly, including scipy's filter *order*
+    (height, then distance, then prominence) — a peak dropped by the distance
+    rule is never prominence-tested, and a low-prominence peak can still
+    suppress a neighbour, so the order is load-bearing.
+
+    Center-of-mass accumulation is done in float64 regardless of input dtype;
+    the profiles themselves are typically float32.
+
+    Returns
+    -------
+    sarcomere_lengths, center_offsets : np.ndarray
+        Both ``(N,)`` float64, NaN where no valid straddling peak pair exists.
+    """
+    n, length = y_up.shape
+    out_slen = np.full(n, np.nan)
+    out_off = np.full(n, np.nan)
+
+    for i in prange(n):
+        if flat_mask[i]:
+            continue
+        y = y_up[i]
+
+        # --- local maxima, plateau midpoints (scipy _local_maxima_1d) ---
+        peaks = np.empty(length // 2 + 1, dtype=np.int64)
+        n_pk = 0
+        j = 1
+        j_max = length - 1
+        while j < j_max:
+            if y[j - 1] < y[j]:
+                j_ahead = j + 1
+                while j_ahead < j_max and y[j_ahead] == y[j]:
+                    j_ahead += 1
+                if y[j_ahead] < y[j]:
+                    peaks[n_pk] = (j + j_ahead - 1) // 2
+                    n_pk += 1
+                    j = j_ahead
+            j += 1
+        if n_pk < 2:
+            continue
+
+        # --- height ---
+        m = 0
+        for k in range(n_pk):
+            if y[peaks[k]] >= thres:
+                peaks[m] = peaks[k]
+                m += 1
+        n_pk = m
+        if n_pk < 2:
+            continue
+
+        # --- distance: greedy, tallest first (scipy _select_by_peak_distance) ---
+        keep = np.ones(n_pk, dtype=np.bool_)
+        heights = np.empty(n_pk, dtype=np.float64)
+        for k in range(n_pk):
+            heights[k] = y[peaks[k]]
+        order = np.argsort(heights)
+        for oi in range(n_pk - 1, -1, -1):
+            k = order[oi]
+            if not keep[k]:
+                continue
+            t = k - 1
+            while t >= 0 and peaks[k] - peaks[t] < distance:
+                keep[t] = False
+                t -= 1
+            t = k + 1
+            while t < n_pk and peaks[t] - peaks[k] < distance:
+                keep[t] = False
+                t += 1
+        m = 0
+        for k in range(n_pk):
+            if keep[k]:
+                peaks[m] = peaks[k]
+                m += 1
+        n_pk = m
+        if n_pk < 2:
+            continue
+
+        # --- prominence (scipy _peak_prominences, wlen=None) ---
+        m = 0
+        for k in range(n_pk):
+            p = peaks[k]
+            h = y[p]
+            left_min = h
+            t = p
+            while t >= 0 and y[t] <= h:
+                if y[t] < left_min:
+                    left_min = y[t]
+                t -= 1
+            right_min = h
+            t = p
+            while t < length and y[t] <= h:
+                if y[t] < right_min:
+                    right_min = y[t]
+                t += 1
+            base = left_min if left_min > right_min else right_min
+            if h - base >= prominence:
+                peaks[m] = p
+                m += 1
+        n_pk = m
+        if n_pk < 2:
+            continue
+
+        # --- COM refinement, then the pair straddling the profile centre ---
+        left_com = 0.0
+        right_com = 0.0
+        have_left = False
+        have_right = False
+        for k in range(n_pk):
+            idx = peaks[k]
+            start = idx - window_size
+            if start < 0:
+                start = 0
+            end = idx + window_size + 1
+            if end > length:
+                end = length
+            y_min = y[start]
+            for t in range(start + 1, end):
+                if y[t] < y_min:
+                    y_min = y[t]
+            y_sum = 0.0
+            acc = 0.0
+            for t in range(start, end):
+                w = y[t] - y_min
+                y_sum += w
+                acc += x_interp[t] * w
+            com = acc / y_sum if y_sum > 0 else x_interp[idx]
+            # Mirrors peaks[left][-1] / peaks[right][0]: last below centre,
+            # first at-or-above it, both in peak-index order.
+            if com < center:
+                left_com = com
+                have_left = True
+            elif not have_right:
+                right_com = com
+                have_right = True
+        if not (have_left and have_right):
+            continue
+
+        slen = right_com - left_com
+        if slen_min <= slen <= slen_max:
+            out_slen[i] = slen
+            out_off[i] = (left_com + right_com) * 0.5 - center
+
+    return out_slen, out_off
+
+
 class Utils:
     """Miscellaneous utility functions."""
 
@@ -746,51 +901,11 @@ class Utils:
             peak_distance = max(1, min_dist_pixel * actual_interp_factor)
             center = (pos_array[-1] + pos_array[0]) * 0.5
 
-            for i in range(n_profiles):
-                if flat_mask[i]:
-                    sarcomere_lengths[i] = np.nan
-                    center_offsets[i] = np.nan
-                    continue
-
-                y_interp = y_up[i]
-                peaks_idx, _ = find_peaks(
-                    y_interp, height=thres, distance=peak_distance,
-                    prominence=prominence,
-                )
-                if len(peaks_idx) < 2:
-                    sarcomere_lengths[i] = np.nan
-                    center_offsets[i] = np.nan
-                    continue
-
-                peaks = np.empty(len(peaks_idx), dtype=np.float64)
-                for j, idx in enumerate(peaks_idx):
-                    start = max(0, idx - window_size)
-                    end = min(L_up, idx + window_size + 1)
-                    x_window = x_interp[start:end]
-                    y_window = y_interp[start:end] - y_interp[start:end].min()
-                    y_sum = y_window.sum()
-                    if y_sum > 0:
-                        peaks[j] = np.dot(x_window, y_window) / y_sum
-                    else:
-                        peaks[j] = x_interp[idx]
-
-                left_mask = peaks < center
-                right_mask = ~left_mask
-                if not (left_mask.any() and right_mask.any()):
-                    sarcomere_lengths[i] = np.nan
-                    center_offsets[i] = np.nan
-                    continue
-                left_peak = peaks[left_mask][-1]
-                right_peak = peaks[right_mask][0]
-                slen_profile = right_peak - left_peak
-                if slen_lims[0] <= slen_profile <= slen_lims[1]:
-                    sarcomere_lengths[i] = slen_profile
-                    center_offsets[i] = (left_peak + right_peak) * 0.5 - center
-                else:
-                    sarcomere_lengths[i] = np.nan
-                    center_offsets[i] = np.nan
-
-            return sarcomere_lengths, center_offsets
+            return _slen_from_profiles(
+                np.ascontiguousarray(y_up), np.ascontiguousarray(x_interp, dtype=np.float64),
+                np.ascontiguousarray(flat_mask), thres, peak_distance, prominence,
+                window_size, center, slen_lims[0], slen_lims[1],
+            )
 
         # Fallback: variable-length profiles — retain the original per-profile
         # path. Rare in production since the common caller uses uniform

@@ -233,12 +233,17 @@ class TestDomainMotionBenchmark:
         result = BenchmarkResult.for_test("domain_motion_pipeline", motion_30kPa_file_path)
         print(f"\n[bench] {result.name} on {os.path.basename(motion_30kPa_file_path)}")
 
+        # Detection runs on a 50-frame window, so every downstream step must be
+        # given the same window: frames="all" would claim all 500 frames of the
+        # movie while only 50 have masks, and the tracker rejects the gap.
+        bench_frames = list(range(50))
+
         with timer(result, "full_domain_motion_pipeline"):
             sarc = SarcAsM(motion_30kPa_file_path, restart=True)
-            sarc.detect_sarcomeres(frames=list(range(50)), max_patch_size=(256, 1024))
-            sarc.analyze_sarcomere_vectors(frames="all", interpolation_method="akima")
+            sarc.detect_sarcomeres(frames=bench_frames, max_patch_size=(256, 1024))
+            sarc.analyze_sarcomere_vectors(frames=bench_frames, interpolation_method="akima")
             sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-            sarc.track_sarcomere_vectors()
+            sarc.track_sarcomere_vectors(frames=bench_frames)
             sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
         filepath = result.save_json(benchmark_output_dir, prefix="domain_motion_")
@@ -252,14 +257,17 @@ class TestDomainMotionBenchmark:
 
         sarc = SarcAsM(motion_30kPa_file_path, restart=True)
 
+        # Same window for every step — see test_domain_motion_pipeline.
+        bench_frames = list(range(50))
+
         with timer(result, "detect_sarcomeres_multi_frame"):
-            sarc.detect_sarcomeres(frames=list(range(50)), max_patch_size=(256, 1024))
+            sarc.detect_sarcomeres(frames=bench_frames, max_patch_size=(256, 1024))
         with timer(result, "analyze_sarcomere_vectors"):
-            sarc.analyze_sarcomere_vectors(frames="all", interpolation_method="akima")
+            sarc.analyze_sarcomere_vectors(frames=bench_frames, interpolation_method="akima")
         with timer(result, "analyze_sarcomere_domains"):
             sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
         with timer(result, "track_sarcomere_vectors"):
-            sarc.track_sarcomere_vectors()
+            sarc.track_sarcomere_vectors(frames=bench_frames)
         with timer(result, "analyze_track_motion_domain"):
             sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
