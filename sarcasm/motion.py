@@ -217,8 +217,8 @@ class Motion(SarcAsMBase):
             uses the bundled ContractionNet model. Default is None.
         threshold : float or None, optional
             Binary threshold for contraction state (0, 1) after prediction. None (the
-            default) uses the operating point the model was tuned for, read from the
-            checkpoint: 0.5 for ContractionNetV2, 0.3 for the older model.
+            default) uses the operating point the model was tuned for, read from its
+            checkpoint.
         slen_lims : tuple of float, optional
             Minimal and maximal sarcomere lengths (µm); values outside the
             interval are set to NaN. Default is (1.2, 3).
@@ -243,7 +243,7 @@ class Motion(SarcAsMBase):
 
         # select weights for convolutional neural network
         if model == None or model == 'default':
-            model = os.path.join(self.model_dir, 'model_ContractionNetV2.pt')
+            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
                                           threshold=threshold)

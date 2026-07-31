@@ -1,22 +1,21 @@
 """
 Synthetic training and benchmark data for ContractionNet.
 
-The generator this module replaces (``utils.simulate_training_data``) built traces from a
-clipped cosine, so the contracting fraction of a trace ("duty") was an accidental by-product
-of the clip threshold rather than something one could ask for. That is why the shipped
-training set tops out at duty 0.78 and contains no contraction longer than 107 frames, and
-why the shipped model collapses once a recording spends more than ~70% of its time
-contracting.
+The twitch waveform is parameterised physiologically (time to peak, plateau, relaxation)
+and **duty -- the fraction of a trace spent contracting -- is sampled directly**, so the full
+range 0.0-0.97 is reachable by construction, including single tonic contractions and fused
+beats that never return to baseline.
 
-Here the twitch waveform is parameterised physiologically (time to peak, plateau, relaxation)
-and **duty is sampled directly**, so the full range 0.0-0.97 is reachable by construction,
-including single tonic contractions and fused beats that never return to baseline.
+Sampling duty directly is the point. Build traces from a clipped periodic waveform instead
+and duty becomes an accidental by-product of the clip threshold: the reachable range is
+narrow, long contractions never appear, and a model trained on the result inherits a duty
+prior it was never asked to learn.
 
 The second axis is **sampling quality**. The detector is not only for high-speed sarcomere
 recordings: it has to work on time-series whose sampling resolves a whole contraction in
 three or four points as well as on ones that spread it over hundreds. Frames per
 contraction is therefore sampled log-uniformly over :data:`FRAMES_PER_EVENT` and trace
-length over 64-4096, rather than being fixed at the 512 the old generator hard-coded.
+length over 64-4096, rather than being fixed.
 
 Sarcomere length is the modelled quantity, so rest is *high* and contraction is *low*.
 Amplitudes are in µm and ``frametime`` in seconds, but frametime only scales the velocity
@@ -401,9 +400,9 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 
         - ``'regular'``: periodic beating at the requested duty.
         - ``'tonic'``: a single sustained contraction filling most of the recording -- the
-          case the shipped model fails on.
+          case that a duty-coupled detector fails on.
         - ``'fused'``: beats whose relaxation is truncated, so the trace never returns to
-          baseline between them (summation). Absent from the shipped training set.
+          baseline between them (summation).
         - ``'arrhythmic'``: irregular intervals, ectopic beats, pauses and alternans.
         - ``'quiescent'``: no contraction at all.
     duty : float or None, optional
@@ -448,9 +447,9 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                          'trace has no visible transition and no absolute reference, so '
                          'it is not decidable.')
 
-    # Log-uniform, and starting well below the 512 the old generator hard-coded: short
-    # coarsely-sampled recordings are exactly the regime the detector has to generalise to,
-    # and they are absent from both the shipped training set and real high-speed data.
+    # Log-uniform, and reaching well below 512: short, coarsely-sampled recordings are a
+    # regime the detector has to generalise to, and one that real high-speed data cannot
+    # supply.
     n_frames = (int(n_frames) if n_frames is not None
                 else int(round(np.exp(rng.uniform(np.log(64), np.log(4096))))))
     frametime = (float(frametime) if frametime is not None
@@ -601,7 +600,7 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 
 #: Sampling weights per regime. ``regular`` dominates because that is what most recordings
 #: look like; ``tonic`` and ``fused`` are over-represented relative to reality because they
-#: are the regimes the shipped model fails on and real data cannot supply them.
+#: are the regimes a duty-coupled detector fails on, and real data cannot supply them.
 REGIME_WEIGHTS = {'regular': 0.34, 'tonic': 0.22, 'fused': 0.20,
                   'arrhythmic': 0.16, 'quiescent': 0.08}
 
@@ -615,7 +614,7 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
 
     Stratification is the point: the real training traces all come from normally-beating
     cells and cluster around duty 0.4-0.5, so the synthetic half has to carry the whole
-    range -- especially duty > 0.7, where the shipped model fails.
+    range -- especially duty > 0.7, which real recordings of healthy cells never reach.
 
     Parameters
     ----------

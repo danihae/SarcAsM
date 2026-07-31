@@ -112,8 +112,9 @@ def detect_contractions(
         Path to the ContractionNet model weights (.pt file).
     threshold : float or None, optional
         Binary threshold for contraction state prediction. None (the default) uses the
-        operating point the model was tuned for, read from the checkpoint -- 0.5 for
-        ContractionNetV2, 0.3 for the older model, which is not interchangeable.
+        operating point the model was tuned for, read from its checkpoint. The right value
+        is a property of the model; a threshold carried over from a different one is not
+        meaningful.
     contr_time_min : float, optional
         Minimal contraction duration in s; shorter contractions are removed. Default is 0.2.
     merge_time_max : float, optional

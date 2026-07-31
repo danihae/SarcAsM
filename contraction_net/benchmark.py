@@ -1,9 +1,10 @@
 """
 Benchmark harness for ContractionNet.
 
-Measures the failure mode that motivated the rebuild: the shipped model loses contractions
-once a recording spends more than ~70% of its time contracting, regardless of how long the
-individual contractions are. Three complementary probes:
+Measures the two things a contraction detector is easiest to get wrong: what fraction of a
+recording is spent contracting ("duty"), and how coarsely a contraction is sampled. Both are
+properties of the *recording*, not of the contraction, and a detector that quietly depends on
+either will look fine on typical data and fail on the rest. Three complementary probes:
 
 - :func:`duty_duration_grid` -- a controlled sweep over (event duration x duty cycle) on
   idealised traces, which localises the cliff precisely;

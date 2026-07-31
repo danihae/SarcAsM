@@ -191,8 +191,8 @@ def run_cycle_engine(
         Path to the ContractionNet model used for contraction detection.
     threshold : float or None, optional
         Detection probability threshold. None (the default) uses the operating point the
-        model was tuned for, read from the checkpoint: 0.5 for ContractionNetV2, 0.3 for
-        the older model. The two are not interchangeable.
+        model was tuned for, read from its checkpoint. The right value is a property of the
+        model; a threshold carried over from a different one is not meaningful.
     contr_time_min : float, optional
         Minimum contraction duration in seconds. Default is 0.2.
     merge_time_max : float, optional

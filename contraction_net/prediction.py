@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from scipy.signal import savgol_filter
 
-from .contraction_net import ContractionNet, ContractionNetV2
+from .contraction_net import ContractionNet
 from .utils import get_device
 
 # select device
@@ -22,14 +22,15 @@ _CACHE_LOCK = threading.Lock()
 _RECEPTIVE_FIELD = 24
 
 
-def _load_model(model, network):
-    """Load a checkpoint into an eval-mode model, caching by path and mtime.
+#: Weight name unique to the architecture used before 1.0. Present only so that such a
+#: checkpoint fails with a readable message instead of a state-dict key mismatch.
+_PRE_1_0_MARKER = 'attention.in_proj_weight'
 
-    Returns ``(module, input_norm)`` where ``input_norm`` is the input convention the
-    checkpoint was trained under -- see :func:`predict_contractions`.
-    """
+
+def _load_model(model, network):
+    """Load a checkpoint into an eval-mode model, caching by path, mtime and device."""
     if isinstance(model, torch.nn.Module):
-        return model.eval(), getattr(model, 'input_norm', 'legacy')
+        return model.eval()
 
     try:
         key = (os.fspath(model), os.path.getmtime(model), str(device))
@@ -43,28 +44,31 @@ def _load_model(model, network):
             return cached
 
     state_dict = torch.load(model, map_location=device, weights_only=False)
-    # Architecture follows the checkpoint, so a V2 file loads correctly even through the
-    # default argument, and pre-existing files (which carry no 'arch' key) keep working.
-    arch = state_dict.get('arch')
-    cls = {'ContractionNetV2': ContractionNetV2, 'ContractionNet': ContractionNet}.get(arch, network)
-    net = cls(state_dict['n_filter'], in_channels=state_dict['in_channels'],
-              out_channels=state_dict['out_channels']).to(device)
+    if _PRE_1_0_MARKER in state_dict.get('state_dict', {}):
+        raise ValueError(
+            f'{model} was trained with the pre-1.0 ContractionNet architecture, which was '
+            'removed in 1.0: it coupled its normalisation across the whole time axis and so '
+            'lost contractions in recordings that spend most of their time contracting. '
+            'Retrain with contraction_net.Trainer -- see the ContractionNet training '
+            'tutorial -- or use the bundled model_ContractionNet.pt.')
+
+    net = network(state_dict['n_filter'], in_channels=state_dict['in_channels'],
+                  out_channels=state_dict['out_channels']).to(device)
     net.load_state_dict(state_dict['state_dict'])
-    # Without this the module stays in training mode and its dropout (p=0.5) keeps firing
-    # during inference, making every call an unintended random ensemble member: repeated
+    # Without this the module stays in training mode and its dropout keeps firing during
+    # inference, making every call an unintended random ensemble member: repeated
     # predictions on one trace disagreed on several percent of frames and shifted the
     # detected cycle count, and therefore the beating rate, run to run.
     net.eval()
-    entry = (net, state_dict.get('input_norm', getattr(cls, 'input_norm', 'legacy')))
 
     if key is not None:
         with _CACHE_LOCK:
-            _MODEL_CACHE[key] = entry
-    return entry
+            _MODEL_CACHE[key] = net
+    return net
 
 
 def prepare_robust_input(data, diff_window=5):
-    """Condition a 1D trace into the two-channel input used by :class:`ContractionNetV2`.
+    """Condition a 1D trace into the two-channel input used by :class:`ContractionNet`.
 
     Shared by training and inference so the two conventions cannot drift apart.
 
@@ -129,39 +133,26 @@ def predict_contractions(data, model, network=ContractionNet):
         Array of shape ``(out_channels, len(data))`` with per-frame probabilities. Channel
         0 is the contraction state.
 
+    Raises
+    ------
+    ValueError
+        If the trace is empty or non-finite, or if ``model`` predates the 1.0 architecture.
+
     Notes
     -----
-    How the input is conditioned follows the checkpoint's ``input_norm`` key:
+    The input is conditioned by :func:`prepare_robust_input`: referenced to a high quantile,
+    scaled by the 10-90 spread, and paired with a per-frame difference channel. This is
+    genuinely offset- and scale-invariant, so the same trace in µm and in nm gives
+    bit-identical output.
 
-    ``'legacy'`` (default, and what every pre-existing checkpoint gets)
-        The trace is passed through as-is, apart from padding. This looks wrong -- the
-        convolutions pad with zeros, so an uncentred trace (sarcomere length sits near
-        1.7 µm, Z-band positions much higher) creates a boundary step many times the size
-        of the signal, and that step sets the instance-normalisation statistics for the
-        whole trace, making the output depend on the input's arbitrary offset. It is kept
-        anyway because the bundled model was *trained* that way: median-centring the input,
-        a no-op in exact arithmetic, drops its mean IoU above duty 0.75 from 0.65 to 0.32,
-        because the network learned to rely on the artefact. Removing the artefact without
-        retraining just trades a known bias for an unmeasured one.
-
-    ``'robust'``
-        Referenced to a high quantile and scaled by the 10-90 spread, then paired with a
-        per-frame difference channel. Genuinely offset- and scale-invariant, so µm and nm
-        inputs agree exactly.
-
-        The reference is the 90th percentile rather than the median because the median is
-        *not* duty-robust: in a trace that spends 90% of its time contracting, the median
-        sits inside the contraction, so centring on it would feed the network a
-        duty-dependent offset and reintroduce the very bias the architecture removes. Rest
-        is the high side of a sarcomere-length trace, so a high quantile stays near rest up
-        to duty ~0.9. **Signals whose resting state is the low side must be inverted before
-        being passed in.**
-
-        The second channel is the per-*frame* difference, not a velocity in µm/s: expressed
-        per frame it needs no ``frametime``, so the model cannot come to depend on the
-        acquisition rate.
+    The reference is the 90th percentile rather than the median because the median is *not*
+    duty-robust: in a trace that spends 90% of its time contracting the median sits inside
+    the contraction, so centring on it would feed the network a duty-dependent offset and
+    reintroduce the very bias the architecture removes. Rest is the high side of a
+    sarcomere-length trace, so a high quantile stays near rest up to duty ~0.9. **Signals
+    whose resting state is the low side must be inverted before being passed in.**
     """
-    net, input_norm = _load_model(model, network)
+    net = _load_model(model, network)
 
     data = np.asarray(data, dtype=np.float64).ravel()
     len_data = data.shape[0]
@@ -170,18 +161,10 @@ def predict_contractions(data, model, network=ContractionNet):
     if not np.isfinite(data).all():
         raise ValueError('Time-series contains NaN or infinite values; fill gaps first.')
 
-    if input_norm == 'robust':
-        prepared = prepare_robust_input(data)
-    elif input_norm == 'legacy':
-        prepared = data.astype(np.float32)[None, :]
-    else:
-        raise ValueError(f"Unknown input_norm {input_norm!r}; expected 'legacy' or 'robust'.")
+    prepared = prepare_robust_input(data)
 
     # Pad by the receptive field so the first and last frames are inferred from real
-    # context. The previous padding to a multiple of 32 served no purpose -- the net has no
-    # downsampling stage -- and added a full 32 frames when the length was already a
-    # multiple of 32. Instance normalisation also needs more than one sample, so very short
-    # traces are padded up to a workable length rather than crashing.
+    # context, and so that normalisation always has more than one sample to work with.
     pad = max(_RECEPTIVE_FIELD, 2 - len_data)
     mode = 'reflect' if pad <= len_data - 1 else 'edge'
     prepared = np.pad(prepared, ((0, 0), (pad, pad)), mode=mode)
@@ -194,14 +177,15 @@ def predict_contractions(data, model, network=ContractionNet):
     return res[:, pad:pad + len_data]
 
 
-def recommended_threshold(model, default=0.3):
+def recommended_threshold(model, default=0.5):
     """Decision threshold a checkpoint was tuned for.
 
-    The right operating point is a property of the model, not of the caller. The bundled
-    0.3 was tuned for the original architecture; on :class:`ContractionNetV2` a sweep puts
-    the best trade-off at 0.5 (stress-set IoU 0.759 and 15.8% false positives on quiescent
-    traces, against 0.742 and 27.2% at 0.3). Checkpoints that predate this key keep
-    ``default``.
+    The right operating point is a property of the model, not of the caller, so it is
+    stored in the checkpoint and read back rather than hard-coded at the call site: a
+    threshold carried over from a differently-trained model is not meaningful. A sweep puts
+    the best trade-off for the bundled model at 0.5 -- stress-set IoU 0.759 with 15.8% false
+    positives on quiescent traces, against 0.742 and 27.2% at 0.3. Checkpoints without the
+    key fall back to ``default``.
 
     Parameters
     ----------

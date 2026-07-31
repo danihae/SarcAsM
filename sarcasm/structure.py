@@ -2118,7 +2118,7 @@ class SarcAsM(SarcAsMBase):
             tracks_slen, gid, n_groups, aggregate=agg_method, slen_lims=slen_lims)
 
         if model is None or model == 'default':
-            model = os.path.join(self.model_dir, 'model_ContractionNetV2.pt')
+            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
 
         logger.info(f"analyze_track_motion: {n_groups} '{kind}' groups...")
         engine = grouped_motion.run_cycle_engine(
