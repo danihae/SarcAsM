@@ -14,7 +14,7 @@
 
 import napari
 
-from .parameters import Parameters
+from .parameters import Parameters, patch_size_from_parameters
 from .parameter import Parameter
 from sarcasm import SarcAsM, TypeUtils
 from typing import Optional
@@ -92,6 +92,10 @@ class ApplicationModel:
     def _set_defaults_structure(self):
         self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict.rescale_factor').set_value(1.0)
+        # Auto: the patch size follows the device memory and the model, so an image
+        # that fits into one patch is not split. The manual sizes below are the
+        # fallback when it is switched off.
+        self.__parameters.get_parameter(name='structure.predict.auto_patch_size').set_value(True)
         self.__parameters.get_parameter(name='structure.predict.size_width').set_value(
             1024)  # is the predict_size_min from ui
         self.__parameters.get_parameter(name='structure.predict.size_height').set_value(
@@ -100,6 +104,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.98)
 
         self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.auto_patch_size').set_value(True)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(256)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(256)
@@ -203,12 +208,16 @@ class ApplicationModel:
         # region structure parameters
         self.__parameters.set_parameter(name='structure.predict.network_path')
         self.__parameters.set_parameter(name='structure.predict.rescale_factor')
+        # When set, the patch size is derived from device memory and the model
+        # instead of the width/height below.
+        self.__parameters.set_parameter(name='structure.predict.auto_patch_size', value=True)
         self.__parameters.set_parameter(name='structure.predict.size_width')  # is the predict_size_min from ui
         self.__parameters.set_parameter(name='structure.predict.size_height')  # is the predict_size_max from ui
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_max')
 
         self.__parameters.set_parameter(name='structure.predict_fast_movie.network_path')
+        self.__parameters.set_parameter(name='structure.predict_fast_movie.auto_patch_size', value=True)
         self.__parameters.set_parameter(name='structure.predict_fast_movie.n_frames')
         self.__parameters.set_parameter(name='structure.predict_fast_movie.size_width')
         self.__parameters.set_parameter(name='structure.predict_fast_movie.size_height')

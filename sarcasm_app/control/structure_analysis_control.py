@@ -13,7 +13,7 @@
 
 
 import logging
-from typing import Any, Union, Tuple
+from typing import Any
 
 import qtutils
 from PyQt5.QtWidgets import QFileDialog
@@ -25,7 +25,7 @@ from .application_control import ApplicationControl
 from .file_selection_control import _INVALID_INPUT_QSS
 from .popup_export import ExportPopup
 from ..view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
-from ..model import ApplicationModel
+from ..model import ApplicationModel, patch_size_from_parameters
 from sarcasm.type_utils import TypeUtils
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,19 @@ class StructureAnalysisControl:
                     hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
         return progress_notifier
 
+    def __on_auto_patch_size_toggled(self, checked: bool):
+        widget = self.__structure_parameters_widget
+        for element in (widget.sb_predict_size_width, widget.sb_predict_size_height,
+                        widget.label_11, widget.label_10):
+            element.setEnabled(not checked)
+
+    def __on_fast_movie_auto_patch_size_toggled(self, checked: bool):
+        widget = self.__structure_parameters_widget
+        for element in (widget.sb_fast_movie_width, widget.sb_fast_movie_height,
+                        widget.sb_fast_movie_n_frames, widget.label_34, widget.label_33,
+                        widget.label_31):
+            element.setEnabled(not checked)
+
     def __predict_call(self, worker, model: ApplicationModel):
 
         progress_notifier = self.__get_progress_notifier(worker)
@@ -72,8 +85,7 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
         cell: SarcAsM = TypeUtils.unbox(model.cell)
-        size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
-                                        model.parameters.get_parameter('structure.predict.size_height').get_value())
+        size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
         cell.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                model_path=network_model,
@@ -93,12 +105,7 @@ class StructureAnalysisControl:
         if network_model == 'generalist':
             network_model = None
         cell: SarcAsM = TypeUtils.unbox(model.cell)
-        size: Union[Tuple[int, int, int]] = (model.parameters.get_parameter(
-            'structure.predict_fast_movie.n_frames').get_value(),
-                                             model.parameters.get_parameter(
-                                                 'structure.predict_fast_movie.size_width').get_value(),
-                                             model.parameters.get_parameter(
-                                                 'structure.predict_fast_movie.size_height').get_value())
+        size = patch_size_from_parameters(model.parameters, 'structure.predict_fast_movie')
         cell.detect_z_bands_fast_movie(model_path=network_model,
                                        max_patch_size=size,
                                        clip_thres=(
@@ -439,6 +446,8 @@ class StructureAnalysisControl:
 
         parameters.get_parameter(name='structure.predict.network_path').connect(widget.le_network)
         parameters.get_parameter(name='structure.predict.rescale_factor').connect(widget.dsb_predict_rescale_factor)
+        parameters.get_parameter(name='structure.predict.auto_patch_size').connect(
+            widget.chk_predict_auto_patch_size)
         parameters.get_parameter(name='structure.predict.size_width').connect(widget.sb_predict_size_width)
         parameters.get_parameter(name='structure.predict.size_height').connect(widget.sb_predict_size_height)
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_predict_clip_thresh_min)
@@ -446,9 +455,18 @@ class StructureAnalysisControl:
 
         parameters.get_parameter(name='structure.predict_fast_movie.network_path').connect(
             widget.le_fast_movie_network_model)
+        parameters.get_parameter(name='structure.predict_fast_movie.auto_patch_size').connect(
+            widget.chk_fast_movie_auto_patch_size)
         parameters.get_parameter(name='structure.predict_fast_movie.n_frames').connect(widget.sb_fast_movie_n_frames)
         parameters.get_parameter(name='structure.predict_fast_movie.size_width').connect(widget.sb_fast_movie_width)
         parameters.get_parameter(name='structure.predict_fast_movie.size_height').connect(widget.sb_fast_movie_height)
+
+        # Grey out the manual size boxes while 'Auto' is on, so it is visible that
+        # they are not what the prediction will use.
+        widget.chk_predict_auto_patch_size.toggled.connect(self.__on_auto_patch_size_toggled)
+        widget.chk_fast_movie_auto_patch_size.toggled.connect(self.__on_fast_movie_auto_patch_size_toggled)
+        self.__on_auto_patch_size_toggled(widget.chk_predict_auto_patch_size.isChecked())
+        self.__on_fast_movie_auto_patch_size_toggled(widget.chk_fast_movie_auto_patch_size.isChecked())
         parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').connect(
             widget.dsb_fast_movie_clip_thresh_min)
         parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').connect(

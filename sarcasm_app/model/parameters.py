@@ -12,8 +12,39 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
+from typing import Tuple, Union
+
 from .parameter import Parameter
 from sarcasm import IOUtils
+
+
+def patch_size_from_parameters(parameters: 'Parameters', prefix: str) -> Union[str, Tuple[int, ...]]:
+    """Resolve the ``max_patch_size`` argument for a prediction call.
+
+    Returns ``'auto'`` when the group's auto checkbox is set, so the patch size is
+    derived from device memory and the model; otherwise the manually entered
+    dimensions. Fast-movie groups carry a leading frame count.
+
+    Parameters
+    ----------
+    parameters : Parameters
+        The application's parameter store.
+    prefix : str
+        Parameter group, e.g. ``'structure.predict'`` or
+        ``'structure.predict_fast_movie'``.
+
+    Returns
+    -------
+    str or tuple of int
+        ``'auto'``, or ``(width, height)`` / ``(n_frames, width, height)``.
+    """
+    if parameters.get_parameter(f'{prefix}.auto_patch_size').get_value():
+        return 'auto'
+    size = (parameters.get_parameter(f'{prefix}.size_width').get_value(),
+            parameters.get_parameter(f'{prefix}.size_height').get_value())
+    if prefix.endswith('fast_movie'):
+        return (parameters.get_parameter(f'{prefix}.n_frames').get_value(),) + size
+    return size
 
 
 class Parameters:

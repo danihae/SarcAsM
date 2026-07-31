@@ -125,6 +125,19 @@
       <item row="2" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
+         <widget class="QCheckBox" name="chk_predict_auto_patch_size">
+          <property name="toolTip">
+           <string>Derive the patch size from the available device memory and the model. An image that fits into a single patch is then not split at all, which is usually faster and avoids stitching seams. Uncheck to set the size by hand.</string>
+          </property>
+          <property name="text">
+           <string>Auto</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="label_11">
           <property name="toolTip">
            <string>Maximal patch dimensions for convolutional neural network (n_x, n_y).</string>
@@ -307,6 +320,19 @@
       </item>
       <item row="1" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <widget class="QCheckBox" name="chk_fast_movie_auto_patch_size">
+          <property name="toolTip">
+           <string>Derive the patch size from the available device memory and the model. Fewer, larger patches mean less redundant computation. Uncheck to set the size by hand.</string>
+          </property>
+          <property name="text">
+           <string>Auto</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
         <item>
          <widget class="QLabel" name="label_34">
           <property name="toolTip">

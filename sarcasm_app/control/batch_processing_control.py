@@ -16,7 +16,6 @@ import glob
 import logging
 import traceback
 from pathlib import Path
-from typing import Union, Tuple
 import concurrent.futures
 
 import qtutils
@@ -26,6 +25,7 @@ from bio_image_unet.progress import ProgressNotifier
 from sarcasm import SarcAsM, BatchExport
 from .application_control import ApplicationControl
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
+from ..model import patch_size_from_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -278,8 +278,7 @@ class BatchProcessingControl:
         if network_model == 'generalist':
             network_model = None
 
-        size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
-                                        model.parameters.get_parameter('structure.predict.size_height').get_value())
+        size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                    model_path=network_model,
@@ -359,8 +358,7 @@ class BatchProcessingControl:
             network_model = None
             pass
 
-        size: Union[Tuple[int, int]] = (model.parameters.get_parameter('structure.predict.size_width').get_value(),
-                                        model.parameters.get_parameter('structure.predict.size_height').get_value())
+        size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                    model_path=network_model,

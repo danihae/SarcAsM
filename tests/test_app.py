@@ -123,10 +123,48 @@ class TestParameters:
         assert params.get_parameter('structure.predict.rescale_factor').get_value() == 1.0
         assert params.get_parameter('batch.pixel.size').get_value() == 0.1
 
+    def test_auto_patch_size_is_the_default(self, model):
+        """Both prediction groups default to letting the device decide the patch size."""
+        params = model.parameters
+        assert params.get_parameter('structure.predict.auto_patch_size').get_value() is True
+        assert params.get_parameter('structure.predict_fast_movie.auto_patch_size').get_value() is True
+
+    def test_patch_size_resolves_to_auto_or_manual(self, model):
+        """The helper the controls use must yield 'auto' or the entered dimensions."""
+        from sarcasm_app.model import patch_size_from_parameters
+        params = model.parameters
+
+        assert patch_size_from_parameters(params, 'structure.predict') == 'auto'
+        assert patch_size_from_parameters(params, 'structure.predict_fast_movie') == 'auto'
+
+        params.get_parameter('structure.predict.auto_patch_size').set_value(False)
+        params.get_parameter('structure.predict_fast_movie.auto_patch_size').set_value(False)
+        assert patch_size_from_parameters(params, 'structure.predict') == (1024, 1024)
+        # the fast-movie tuple carries the frame count first
+        assert patch_size_from_parameters(params, 'structure.predict_fast_movie') == (32, 256, 256)
+
+        params.get_parameter('structure.predict.size_width').set_value(768)
+        params.get_parameter('structure.predict.size_height').set_value(640)
+        assert patch_size_from_parameters(params, 'structure.predict') == (768, 640)
+
+    def test_manual_patch_size_is_accepted_by_the_backend(self, model):
+        """Whatever the helper returns must be a valid max_patch_size for detection."""
+        from sarcasm import Utils
+        from sarcasm_app.model import patch_size_from_parameters
+        params = model.parameters
+
+        assert Utils.check_and_round_max_patch_size(
+            patch_size_from_parameters(params, 'structure.predict')) == 'auto'
+        params.get_parameter('structure.predict.auto_patch_size').set_value(False)
+        params.get_parameter('structure.predict.size_width').set_value(700)
+        rounded = Utils.check_and_round_max_patch_size(
+            patch_size_from_parameters(params, 'structure.predict'))
+        assert rounded == (704, 1024), 'non-multiples of 16 should be rounded up'
+
     def test_parameters_export_import(self, model):
         """Test parameter export and import functionality."""
         params = model.parameters
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             temp_path = f.name
         
