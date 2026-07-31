@@ -777,10 +777,20 @@ class SarcAsM(SarcAsMBase):
             stack before profiles are measured. 0 disables it. Default is 0.0.
 
             Frame-to-frame flicker in the Z-band mask — not orientation jitter — is
-            what limits per-frame sarcomere-length precision once orientation
-            smoothing is on. Measured on the 20 kPa movie: ``sigma=1`` takes length
-            noise from 9.2 to 4.4 nm and ``sigma=2`` to 3.2 nm, with the mean length
-            moving under 0.3 nm.
+            what limits per-frame sarcomere-length *precision* once orientation
+            smoothing is on.
+
+            ``sigma=1`` is the recommended maximum. On the 20 kPa movie it removes
+            82% of the noise-floor power above 20 Hz while preserving 98% of the
+            power in the contraction band (0.4-6 Hz) — that is noise removal, not
+            signal removal. It is not free: peak shortening velocity falls ~6%,
+            because any temporal filter attenuates the fastest real transients. If
+            you report shortening velocity, either leave this at 0 or state the
+            attenuation. ``sigma=2`` is over-smoothing — peak velocity falls ~12%
+            with no further gain in the noise floor.
+
+            Note these are *precision* figures (frame-to-frame repeatability), not
+            accuracy: none of them compare against a known true sarcomere length.
 
             **Only valid for high-speed recordings**, for the same reason as
             ``smooth_orientation_sigma``: it averages a pixel across neighbouring
@@ -1317,6 +1327,7 @@ class SarcAsM(SarcAsMBase):
         retire_after_s: Optional[float] = None,
         min_track_duration_s: float = 0.08,
         max_gap_interpolation: int = 3,
+        progress_notifier: Optional[ProgressNotifier] = None,
     ) -> None:
         """2D full-field sarcomere-vector tracking.
 
@@ -1363,6 +1374,9 @@ class SarcAsM(SarcAsMBase):
             Minimum accumulated real observation time required to keep a track, in
             seconds. Falls back to 5 real snaps when frametime is unknown.
             Default is 0.08.
+        progress_notifier : ProgressNotifier, optional
+            Reports per-frame progress, for GUI integration. Default is None
+            (no reporting).
         max_gap_interpolation : int, optional
             Longest run of consecutive gap frames whose sarcomere length and
             orientation are filled by interpolating between the real snaps on
@@ -1450,6 +1464,7 @@ class SarcAsM(SarcAsMBase):
             retire_after_s=retire_after_s,
             min_track_duration_s=min_track_duration_s,
             max_gap_interpolation=max_gap_interpolation,
+            progress_notifier=progress_notifier,
         )
 
         tracking_data = {
