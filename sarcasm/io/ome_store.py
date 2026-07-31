@@ -518,6 +518,31 @@ class OmeZarrStore:
                                  chunks=_image_chunks(arr.shape), overwrite=True)
             a[...] = arr
 
+    def create_mask(self, name: str, shape, dtype) -> Any:
+        """Allocate an empty mask array and return its handle for region writes.
+
+        Lets a caller fill a mask block by block instead of holding the whole
+        stack in memory first -- for a multi-head prediction over a large movie
+        the assembled result is several times the size of the input.
+
+        Parameters
+        ----------
+        name : str
+            Mask name (e.g. ``'zbands'``).
+        shape : sequence of int
+            Full shape of the mask.
+        dtype : dtype
+            Element type.
+
+        Returns
+        -------
+        zarr.Array
+            Writable handle; assign into it with ordinary slicing.
+        """
+        grp = _ensure_group(self._root("a"), MASKS)
+        return grp.create_array(name, shape=tuple(shape), dtype=dtype,
+                                chunks=_image_chunks(tuple(shape)), overwrite=True)
+
     def read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a derived mask by name (from ``labels/`` or ``sarcasm/masks/``).
 

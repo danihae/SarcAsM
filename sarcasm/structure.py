@@ -225,9 +225,10 @@ class SarcAsM(SarcAsMBase):
             self.store_structure_data()
 
     def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
-                          model_path: str = None, max_patch_size: Tuple[int, int] = (1024, 1024),
+                          model_path: str = None, max_patch_size: Union[Tuple[int, int], str] = 'auto',
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
-                          rescale_factor: float = 1.0,
+                          rescale_factor: float = 1.0, batch_size: Union[int, str] = 'auto',
+                          memory_budget_gb: float = 2.0, prune_level: int = None,
                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
         """
         Predict sarcomeres (Z-bands, mbands, distance, orientation) with U-Net.
@@ -240,9 +241,10 @@ class SarcAsM(SarcAsMBase):
         model_path : str or None, optional
             Path of trained U-Net weights. None uses the default model.
             Default is None.
-        max_patch_size : tuple of int, optional
-            Maximal patch dimensions ``(n_x, n_y)`` for the CNN.
-            Default is (1024, 1024).
+        max_patch_size : tuple of int or 'auto', optional
+            Maximal patch dimensions ``(n_x, n_y)`` for the CNN. 'auto' derives
+            them from free device memory and the model, which avoids splitting an
+            image that would fit in one patch. Default is 'auto'.
         normalization_mode : str, optional
             Intensity normalization mode for 3D stacks ('single': each image
             individually, 'all': histogram of full stack, 'first': histogram of
@@ -253,15 +255,34 @@ class SarcAsM(SarcAsMBase):
         rescale_factor : float, optional
             Factor to rescale input images in XY before prediction (e.g. 0.5
             halves the XY resolution); outputs are rescaled back afterwards.
-            Default is 1.0 (no rescaling).
+            Intended to bring the pixel size into the model's trained range, not
+            as a speed knob: resampling and the upscaling of the masks afterwards
+            can introduce artefacts. Default is 1.0 (no rescaling).
+        batch_size : int or 'auto', optional
+            Patches per forward pass. 'auto' sizes from free GPU memory on CUDA
+            and uses 1 elsewhere, where batching does not help. Default is 'auto'.
+        memory_budget_gb : float, optional
+            Rough ceiling on the working set while predicting. Long movies are
+            predicted in blocks so the five output heads do not have to fit in
+            memory at once. Default is 2.0.
+        prune_level : int, optional
+            Stop the U-Net at this nesting depth (1, 2 or 3) and read the matching
+            deep-supervision head. Level 2 roughly halves the compute but changes
+            the masks, so validate it on your data first
+            (``_bench/validate_fast_modes.py``). None uses the full model, the
+            default.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
         max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if isinstance(frames, str) and frames == 'all':
-            images = self.read_imgs()
-            list_frames = list(range(len(images)))
+            # Hand the detector a lazy handle so the raw stack is read block by
+            # block instead of being materialised in full.
+            if not self.store.has_image():
+                self.read_imgs()  # first open: ingest the source TIFF into the store
+            images = self.store.image_handle() if self.store.has_image() else self.read_imgs()
+            list_frames = list(range(images.shape[0] if len(images.shape) > 2 else 1))
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
             images = self.read_imgs(frames=frames)
             if np.issubdtype(type(frames), np.integer):
@@ -271,40 +292,19 @@ class SarcAsM(SarcAsMBase):
         else:
             raise ValueError('frames argument not valid')
 
-        if images.ndim < 2:
-            raise ValueError("Images must be at least 2D (Y,X) to have XY dimensions for rescaling.")
-        original_xy_shape = images.shape[-2:]
-
-        if rescale_factor != 1.0:
-            from skimage.transform import rescale
-
-            current_ndim = images.ndim
-            if current_ndim == 2:  # Input is (Y, X)
-                # Scale factors for Y, X
-                scale_vector = (rescale_factor, rescale_factor)
-            elif current_ndim == 3:  # Input is (Z, Y, X) or (T, Y, X)
-                # Scale factors for Z, Y, X (or T, Y, X) - only scale last two
-                scale_vector = (1.0, rescale_factor, rescale_factor)
-            else:
-                raise ValueError(f"Unsupported image dimensionality for rescaling: {current_ndim}D. Expected 2D or 3D.")
-
-            logger.info(f"Rescaling image from {images.shape} by factor {round(rescale_factor, 4)} on XY axes...")
-            images = rescale(
-                images,
-                scale_vector,
-                order=0,
-                mode='reflect',
-                preserve_range=True,
-                channel_axis=None
-            ).astype(images.dtype)
-            logger.info(f"Rescaled image shape: {images.shape}")
+        # Rescaling is done inside detect_sarcomeres_unet, which also scales the
+        # predicted masks back to the input resolution. Doing it here as well would
+        # apply the factor twice and return masks at the wrong size.
 
         # Check pixelsize is not None
         if self.metadata.pixelsize is None:
             raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
         
-        # Delegate to detection module — returns float prob-map masks in-memory.
-        masks = detection.detect_sarcomeres_unet(
+        # Delegate to the detection module, which writes each block of predicted
+        # masks straight into the OME-Zarr store as it is produced.
+        info = {}
+        detection.detect_sarcomeres_unet(
+            info=info,
             images=images,
             model_path=model_path,
             model_dir=str(self.model_dir),
@@ -314,11 +314,12 @@ class SarcAsM(SarcAsMBase):
             clip_thres=clip_thres,
             rescale_factor=rescale_factor,
             device=self.device,
+            batch_size=batch_size,
+            memory_budget_gb=memory_budget_gb,
+            prune_level=prune_level,
+            make_sink=self.store.create_mask,
             progress_notifier=progress_notifier
         )
-        # Write masks straight into the OME-Zarr store (no intermediate TIFFs).
-        for name, arr in masks.items():
-            self.store.write_mask(name, np.asarray(arr))
 
         _dict = {
             'params.detect_sarcomeres.frames': list_frames,
@@ -326,6 +327,10 @@ class SarcAsM(SarcAsMBase):
             'params.detect_sarcomeres.normalization_mode': normalization_mode,
             'params.detect_sarcomeres.clip_threshold': clip_thres,
             'params.detect_sarcomeres.rescale_factor': rescale_factor,
+            'params.detect_sarcomeres.prune_level': prune_level,
+            'params.detect_sarcomeres.max_patch_size': max_patch_size,
+            # what 'auto' actually resolved to, so the run can be reproduced
+            'params.detect_sarcomeres.patch_size_used': info.get('patch_size'),
         }
         self.data.update(_dict)
         if self.auto_save:
@@ -394,9 +399,10 @@ class SarcAsM(SarcAsMBase):
         return full
 
     def detect_z_bands_fast_movie(self, model_path: Optional[str] = None,
-                                  max_patch_size: Tuple[int, int, int] = (32, 256, 256),
+                                  max_patch_size: Union[Tuple[int, int, int], str] = 'auto',
                                   normalization_mode: str = 'all',
                                   clip_thres: Tuple[float, float] = (0., 99.8),
+                                  batch_size: Union[int, str] = 'auto',
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Predict sarcomere z-bands with 3D U-Net for high-speed movies for improved temporal consistency.
@@ -406,9 +412,10 @@ class SarcAsM(SarcAsMBase):
         model_path : str or None, optional
             Path of trained 3D U-Net weights. None uses the default model.
             Default is None.
-        max_patch_size : tuple of int, optional
-            Maximal patch dimensions ``(n_frames, n_x, n_y)`` for the CNN;
-            each must be divisible by 16. Default is (32, 256, 256).
+        max_patch_size : tuple of int or 'auto', optional
+            Maximal patch dimensions ``(n_frames, n_x, n_y)`` for the CNN; each
+            must be divisible by 16. 'auto' derives them from free device memory
+            and the model. Default is 'auto'.
         normalization_mode : str, optional
             Intensity normalization mode for 3D stacks ('single': each image
             individually, 'all': histogram of full stack, 'first': histogram of
@@ -424,7 +431,9 @@ class SarcAsM(SarcAsMBase):
             model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
         
         # Delegate to detection module
+        info = {}
         masks = detection.detect_z_bands_fast_movie_unet(
+            info=info,
             images=self.read_imgs(),
             model_path=model_path,
             model_dir=str(self.model_dir),
@@ -432,14 +441,16 @@ class SarcAsM(SarcAsMBase):
             normalization_mode=normalization_mode,
             clip_thres=clip_thres,
             device=self.device,
+            batch_size=batch_size,
             progress_notifier=progress_notifier
         )
         for name, arr in masks.items():
             self.store.write_mask(name, np.asarray(arr))
         _dict = {'params.detect_z_bands_fast_movie.model': model_path,
                  'params.detect_z_bands_fast_movie.max_patch_size': max_patch_size,
+                 'params.detect_z_bands_fast_movie.patch_size_used': info.get('patch_size'),
                  'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,
-                 'params.predict_z_bands_fast_movie.clip_threshold': clip_thres}
+                 'params.detect_z_bands_fast_movie.clip_threshold': clip_thres}
         self.data.update(_dict)
         if self.auto_save:
             self.store_structure_data()

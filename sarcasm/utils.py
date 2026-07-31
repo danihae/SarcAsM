@@ -170,22 +170,25 @@ class Utils:
 
     @staticmethod
     def check_and_round_max_patch_size(max_patch_size):
-        """Round each element of a tuple up to the next multiple of 16 if not already divisible by 8.
+        """Round each element of a tuple up to the next multiple of 16.
 
         Parameters
         ----------
-        max_patch_size : tuple of int
-            Patch dimensions to check and round.
+        max_patch_size : tuple of int or str
+            Patch dimensions to check and round. The string ``'auto'`` is passed
+            through, to be resolved from device memory at prediction time.
 
         Returns
         -------
-        tuple of int
-            Rounded patch dimensions.
+        tuple of int or str
+            Rounded patch dimensions, or ``'auto'`` unchanged.
         """
+        if isinstance(max_patch_size, str):  # 'auto' is resolved from device memory later
+            return max_patch_size
         rounded_patch_size = []
         for dim in max_patch_size:
-            if dim % 8 != 0:
-                rounded_dim = ((dim // 16) + 1) * 16
+            if dim % 16 != 0:
+                rounded_dim = ((dim + 15) // 16) * 16
                 logger.warning(f"Dimension {dim} is not divisible by 16, rounding up to {rounded_dim}.")
                 rounded_patch_size.append(rounded_dim)
             else:
