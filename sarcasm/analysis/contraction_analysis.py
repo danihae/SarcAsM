@@ -31,7 +31,7 @@ import numpy as np
 from scipy.ndimage import binary_closing, binary_opening, label
 from scipy.signal import savgol_filter
 
-from contraction_net.prediction import predict_contractions
+from contraction_net.prediction import predict_contractions, recommended_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def detect_contractions(
     domain_slen_timeseries: np.ndarray,
     frametime: float,
     model_path: str,
-    threshold: float = 0.3,
+    threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
     merge_time_max: float = 0.05,
     buffer_frames: int = 3,
@@ -110,8 +110,10 @@ def detect_contractions(
         Time between frames in s.
     model_path : str
         Path to the ContractionNet model weights (.pt file).
-    threshold : float, optional
-        Binary threshold for contraction state prediction. Default is 0.3.
+    threshold : float or None, optional
+        Binary threshold for contraction state prediction. None (the default) uses the
+        operating point the model was tuned for, read from the checkpoint -- 0.5 for
+        ContractionNetV2, 0.3 for the older model, which is not interchangeable.
     contr_time_min : float, optional
         Minimal contraction duration in s; shorter contractions are removed. Default is 0.2.
     merge_time_max : float, optional
@@ -148,6 +150,9 @@ def detect_contractions(
         - 'domain_beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
         - 'domain_beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
     """
+    if threshold is None:
+        threshold = recommended_threshold(model_path)
+
     n_domains, n_frames = domain_slen_timeseries.shape
     
     # Initialize output arrays

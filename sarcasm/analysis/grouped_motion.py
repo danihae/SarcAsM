@@ -164,7 +164,7 @@ def run_cycle_engine(
     group_slen: np.ndarray,
     frametime: float,
     model_path: str,
-    threshold: float = 0.3,
+    threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
     merge_time_max: float = 0.05,
     buffer_frames: int = 3,
@@ -189,8 +189,10 @@ def run_cycle_engine(
         Seconds per frame.
     model_path : str
         Path to the ContractionNet model used for contraction detection.
-    threshold : float, optional
-        Detection probability threshold. Default is 0.3.
+    threshold : float or None, optional
+        Detection probability threshold. None (the default) uses the operating point the
+        model was tuned for, read from the checkpoint: 0.5 for ContractionNetV2, 0.3 for
+        the older model. The two are not interchangeable.
     contr_time_min : float, optional
         Minimum contraction duration in seconds. Default is 0.2.
     merge_time_max : float, optional

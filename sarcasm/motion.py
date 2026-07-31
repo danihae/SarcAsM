@@ -26,7 +26,7 @@ from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
 from scipy.stats import kstest, geom
 from scipy.optimize import linear_sum_assignment
 
-from contraction_net.prediction import predict_contractions
+from contraction_net.prediction import predict_contractions, recommended_threshold
 from sarcasm.analysis.contraction_analysis import cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
@@ -197,7 +197,8 @@ class Motion(SarcAsMBase):
                 durations[i] = np.count_nonzero(labels == i + 1) * self.metadata.frametime
         return durations
 
-    def detect_analyze_contractions(self, model: Union[str, None] = None, threshold: float = 0.3,
+    def detect_analyze_contractions(self, model: Union[str, None] = None,
+                                    threshold: Union[float, None] = None,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
                                     buffer_frames: int = 3, contr_time_min: float = 0.2, merge_time_max: float = 0.05):
         """
@@ -214,9 +215,10 @@ class Motion(SarcAsMBase):
         model : str or None, optional
             Path to the neural network weights (.pt file). None or 'default'
             uses the bundled ContractionNet model. Default is None.
-        threshold : float, optional
-            Binary threshold for contraction state (0, 1) after prediction.
-            Default is 0.3.
+        threshold : float or None, optional
+            Binary threshold for contraction state (0, 1) after prediction. None (the
+            default) uses the operating point the model was tuned for, read from the
+            checkpoint: 0.5 for ContractionNetV2, 0.3 for the older model.
         slen_lims : tuple of float, optional
             Minimal and maximal sarcomere lengths (µm); values outside the
             interval are set to NaN. Default is (1.2, 3).
@@ -241,7 +243,7 @@ class Motion(SarcAsMBase):
 
         # select weights for convolutional neural network
         if model == None or model == 'default':
-            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
+            model = os.path.join(self.model_dir, 'model_ContractionNetV2.pt')
         # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
         contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
                                           threshold=threshold)
@@ -809,7 +811,8 @@ class Motion(SarcAsMBase):
             plt.show()
 
     @staticmethod
-    def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str, threshold: float = 0.33):
+    def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str,
+                             threshold: Union[float, None] = None):
         """
         Predict contractions from Z-band motion and sarcomere lengths.
 
@@ -824,14 +827,17 @@ class Motion(SarcAsMBase):
             Time-series of sarcomere lengths.
         weights : str
             Path to the neural network weights (.pt file).
-        threshold : float, optional
-            Binary threshold for contraction state (0, 1). Default is 0.33.
+        threshold : float or None, optional
+            Binary threshold for contraction state (0, 1). None uses the model's own
+            operating point from the checkpoint.
 
         Returns
         -------
         np.ndarray
             Boolean contraction state per frame (True where contracting).
         """
+        if threshold is None:
+            threshold = recommended_threshold(weights)
         data = np.concatenate([z_pos, slen])
         # ContractionNet needs a finite trace. z_pos/slen legitimately carry
         # NaN (e.g. synthesized track chains keep gap/edge frames as NaN rather

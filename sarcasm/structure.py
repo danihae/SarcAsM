@@ -2028,7 +2028,7 @@ class SarcAsM(SarcAsMBase):
         aggregate: Optional[str] = None,
         slen_lims: Tuple[float, float] = (1.0, 3.0),
         model: Optional[str] = None,
-        threshold: float = 0.3,
+        threshold: Optional[float] = None,
         contr_time_min: float = 0.2,
         merge_time_max: float = 0.05,
         buffer_frames: int = 3,
@@ -2118,7 +2118,7 @@ class SarcAsM(SarcAsMBase):
             tracks_slen, gid, n_groups, aggregate=agg_method, slen_lims=slen_lims)
 
         if model is None or model == 'default':
-            model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
+            model = os.path.join(self.model_dir, 'model_ContractionNetV2.pt')
 
         logger.info(f"analyze_track_motion: {n_groups} '{kind}' groups...")
         engine = grouped_motion.run_cycle_engine(
