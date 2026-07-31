@@ -1,86 +1,173 @@
-# name: Build Standalone Apps
+name: Build Standalone Apps
 
-# on:
-#   push:
-#     tags: ['v*']
-#   workflow_dispatch:  # Allow manual trigger for testing
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
 
-# jobs:
-#   build-macos:
-#     if: startsWith(github.ref, 'refs/tags/v')
-#     runs-on: macos-latest
-#     steps:
-#       - uses: actions/checkout@v4
-      
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: '3.12'
-      
-#       - name: Install uv
-#         run: pip install uv
-      
-#       - name: Install dependencies
-#         run: |
-#           uv venv
-#           uv pip install -e ".[app,dev]"
-      
-#       - name: Build standalone app
-#         run: |
-#           source .venv/bin/activate && pyinstaller sarcasm.spec
-      
-#       - name: Prepare DMG contents
-#         run: |
-#           mkdir -p dmg_contents
-#           cp -r dist/SarcAsM-*.app dmg_contents/
-#           cp docs/INSTALL.txt dmg_contents/"📖 READ ME FIRST.txt"
-#           ln -s /Applications dmg_contents/Applications
-      
-#       - name: Create DMG
-#         run: |
-#           hdiutil create -volname "SarcAsM-${{ github.ref_name }}" \
-#             -srcfolder dmg_contents \
-#             -ov -format UDZO \
-#             dist/SarcAsM-${{ github.ref_name }}-macos.dmg
-      
-#       - name: Upload to Release
-#         uses: softprops/action-gh-release@v1
-#         with:
-#           files: |
-#             dist/SarcAsM-*.dmg
-#           draft: false
-#           prerelease: ${{ contains(github.ref_name, '-test') }}
+# Each job builds a self-contained PyInstaller bundle (onedir layout) for one
+# platform/torch-backend combination. The full bundle is several GB because
+# PyTorch + CUDA libs are bulky; one-file mode is intentionally NOT used since
+# it would extract those gigabytes to a temp dir on every launch.
 
-#   build-windows:
-#     if: startsWith(github.ref, 'refs/tags/v')
-#     runs-on: windows-latest
-#     steps:
-#       - uses: actions/checkout@v4
-      
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: '3.12'
-      
-#       - name: Install uv
-#         run: pip install uv
-      
-#       - name: Install dependencies
-#         shell: pwsh
-#         run: |
-#           uv venv
-#           uv pip install -e ".[app,dev]"
-      
-#       - name: Build standalone app
-#         shell: pwsh
-#         run: |
-#           .venv\Scripts\Activate.ps1
-#           pyinstaller --noconfirm sarcasm.spec 2>&1 | Tee-Object build-log.txt
-      
-#       - name: Create ZIP
-#         run: Compress-Archive -Path dist\SarcAsM-*.exe -DestinationPath dist\SarcAsM-${{ github.ref_name }}-windows.zip
-      
-#       - name: Upload to Release
-#         uses: softprops/action-gh-release@v1
-#         with:
-#           files: dist/SarcAsM-*.zip
-#           draft: false
-#           prerelease: ${{ contains(github.ref_name, '-test') }}
+jobs:
+  build-macos:
+    name: macOS (CPU, unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[app]"
+
+      - name: Build standalone .app
+        run: |
+          source .venv/bin/activate
+          pyinstaller sarcasm.spec --noconfirm
+
+      - name: Resolve app name
+        id: app
+        run: |
+          APP=$(ls -d dist/SarcAsM-v*.app | head -1)
+          NAME=$(basename "$APP" .app)
+          echo "app_path=$APP" >> "$GITHUB_OUTPUT"
+          echo "app_name=$NAME" >> "$GITHUB_OUTPUT"
+
+      # Strip any quarantine attributes from the freshly-built bundle so that
+      # if a user clears quarantine on the downloaded zip itself (xattr -dr),
+      # nothing inside re-flags it. The zip will still get a quarantine bit
+      # added by the user's browser on download — that's an unsigned-build
+      # reality the README needs to call out.
+      - name: Clean extended attributes
+        run: |
+          xattr -cr "${{ steps.app.outputs.app_path }}"
+
+      # `ditto -c -k --sequesterRsrc --keepParent` is Apple's archive tool.
+      # It preserves the exec bits inside Contents/MacOS/, internal symlinks,
+      # and HFS metadata. Plain `zip` on macOS strips exec bits from the .app's
+      # main binary, which is exactly the failure mode the user flagged.
+      - name: Zip .app preserving exec bits
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${{ steps.app.outputs.app_name }}.app" \
+            "${{ steps.app.outputs.app_name }}-macos.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarcasm-macos
+          path: dist/SarcAsM-v*-macos.zip
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SarcAsM-v*-macos.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-test') }}
+
+  build-windows-cpu:
+    name: Windows (CPU)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies (CPU torch)
+        shell: pwsh
+        # The PyTorch CPU index ships CPU-only torch/torchvision wheels.
+        # Using --index-strategy unsafe-best-match lets uv pull torch from the
+        # PyTorch index and everything else from PyPI in one resolution pass.
+        run: |
+          uv venv --python 3.12
+          uv pip install `
+            --index-strategy unsafe-best-match `
+            --extra-index-url https://download.pytorch.org/whl/cpu `
+            -e ".[app]"
+
+      - name: Build standalone bundle
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\Activate.ps1
+          pyinstaller sarcasm.spec --noconfirm
+
+      - name: Zip bundle directory
+        shell: pwsh
+        run: |
+          $dir = Get-ChildItem dist -Directory | Where-Object { $_.Name -match '^SarcAsM-v' } | Select-Object -First 1
+          $zip = "dist\$($dir.Name)-windows-cpu.zip"
+          Compress-Archive -Path "$($dir.FullName)\*" -DestinationPath $zip -CompressionLevel Optimal
+          Write-Output "Created $zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarcasm-windows-cpu
+          path: dist/SarcAsM-v*-windows-cpu.zip
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SarcAsM-v*-windows-cpu.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-test') }}
+
+  # CUDA build disabled: PyTorch + CUDA 12.8 produces a ~3 GB zip, which exceeds
+  # GitHub Releases' 2 GB per-asset limit. Re-enable once we pick a host (HF
+  # dataset repo, Zenodo) or prune CUDA DLLs in the PyInstaller spec.
+  # build-windows-cuda128:
+  #   name: Windows (CUDA 12.8)
+  #   runs-on: windows-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Install uv
+  #       uses: astral-sh/setup-uv@v3
+  #
+  #     - name: Install dependencies (CUDA 12.8 torch)
+  #       shell: pwsh
+  #       run: |
+  #         uv venv --python 3.12
+  #         uv pip install `
+  #           --index-strategy unsafe-best-match `
+  #           --extra-index-url https://download.pytorch.org/whl/cu128 `
+  #           -e ".[app]"
+  #
+  #     - name: Sanity-check torch is the CUDA build
+  #       shell: pwsh
+  #       run: |
+  #         .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); assert '+cu' in torch.__version__, f'expected CUDA build, got {torch.__version__}'"
+  #
+  #     - name: Build standalone bundle
+  #       shell: pwsh
+  #       run: |
+  #         .\.venv\Scripts\Activate.ps1
+  #         pyinstaller sarcasm.spec --noconfirm
+  #
+  #     - name: Zip bundle directory
+  #       shell: pwsh
+  #       run: |
+  #         $dir = Get-ChildItem dist -Directory | Where-Object { $_.Name -match '^SarcAsM-v' } | Select-Object -First 1
+  #         $zip = "dist\$($dir.Name)-windows-cuda128.zip"
+  #         Compress-Archive -Path "$($dir.FullName)\*" -DestinationPath $zip -CompressionLevel Optimal
+  #         Write-Output "Created $zip"
+  #
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: sarcasm-windows-cuda128
+  #         path: dist/SarcAsM-v*-windows-cuda128.zip
+  #
+  #     - name: Upload to GitHub Release
+  #       if: startsWith(github.ref, 'refs/tags/v')
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: dist/SarcAsM-v*-windows-cuda128.zip
+  #         draft: false
+  #         prerelease: ${{ contains(github.ref_name, '-test') }}

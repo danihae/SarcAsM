@@ -17,6 +17,11 @@ import re
 import sys
 from pathlib import Path
 
+# Import torch before PyQt5: on Windows, importing PyQt5 first leaves the
+# DLL loader in a state where torch's bundled CUDA libs fail with WinError 1114
+# ("DLL initialization routine failed") when c10.dll is loaded.
+import torch  # noqa: F401
+
 import requests
 from PyQt5.QtCore import Qt, QLocale, QUrl
 from PyQt5.QtGui import QPalette, QColor, QIcon, QDesktopServices
