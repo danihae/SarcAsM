@@ -17,6 +17,27 @@ def pytest_addoption(parser):
         default=False,
         help="Keep generated *_sarcasm folders after tests complete"
     )
+    parser.addoption(
+        "--runslow",
+        action="store_true",
+        default=False,
+        help="Also run tests marked slow (minutes of network inference on full stacks)"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked slow unless --runslow is given.
+
+    The slow tests run the networks over full-size stacks, which is worth doing
+    before a release but makes the everyday suite too slow to run often enough
+    to be useful.
+    """
+    if config.getoption("--runslow"):
+        return
+    skip_slow = pytest.mark.skip(reason="slow: pass --runslow to include")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
 
 
 def cleanup_sarcasm_folders(base_paths: List[Path]):
@@ -121,6 +142,58 @@ def structure_single_file_path_class(test_data_dir_class):
     if not file_path.exists():
         pytest.skip(f"Test data not found: {file_path}")
     return str(file_path)
+
+
+def _structure_crop_path():
+    """A 512x512 two-frame crop of the time-lapse, carrying its pixel size.
+
+    The full time-lapse is 50 frames of 2000x2000; detecting on all of it takes
+    over two minutes. Tests that only need "detection produced masks" get the
+    same coverage from this at a fraction of the cost.
+    """
+    return _get_test_data_dir() / "long_term_2D_ACTN2-citrine_CM" / "structure_crop.tif"
+
+
+@pytest.fixture
+def structure_crop_file_path():
+    """Path to the small two-frame crop of the time-lapse."""
+    path = _structure_crop_path()
+    if not path.exists():
+        pytest.skip(f"Test data not found: {path}")
+    return str(path)
+
+
+@pytest.fixture(scope="class")
+def structure_crop_file_path_class():
+    """Path to the small two-frame crop (class-scoped)."""
+    path = _structure_crop_path()
+    if not path.exists():
+        pytest.skip(f"Test data not found: {path}")
+    return str(path)
+
+
+@pytest.fixture(scope="session")
+def structure_single_image_path(tmp_path_factory):
+    """A genuine single-image file, written once per session.
+
+    The single-image fixtures used to point at the 50-frame time-lapse, so the
+    "single image" tests neither exercised the single-image path nor ran quickly.
+    This writes one frame of the crop with its pixel size preserved.
+    """
+    source = _structure_crop_path()
+    if not source.exists():
+        pytest.skip(f"Test data not found: {source}")
+
+    import tifffile
+
+    with tifffile.TiffFile(source) as tif:
+        frame = tif.series[0].asarray()[0]
+        x_res = tif.pages[0].tags["XResolution"].value
+    out = tmp_path_factory.mktemp("structure_single") / "single_image.tif"
+    tifffile.imwrite(out, frame, imagej=True,
+                     resolution=(x_res[0] / x_res[1], x_res[0] / x_res[1]),
+                     metadata={"unit": "um"})
+    return str(out)
 
 
 @pytest.fixture

@@ -60,22 +60,20 @@ class TestStructureMetadata:
 class TestStructureTimelapseAnalysis:
     """Test analysis pipeline on time-lapse files."""
 
-    @pytest.mark.slow
-    def test_timelapse_sarcomere_detection(self, structure_timelapse_file_path):
+    def test_timelapse_sarcomere_detection(self, structure_crop_file_path):
         """Test sarcomere detection on time-lapse."""
-        sarc = SarcAsM(structure_timelapse_file_path, restart=False)
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc = SarcAsM(structure_crop_file_path, restart=False)
+        sarc.detect_sarcomeres()
         
         # Verify detection attributes exist
         assert hasattr(sarc, 'zbands')
         assert hasattr(sarc, 'mbands')
         assert hasattr(sarc, 'cell_mask')
         
-    @pytest.mark.slow
-    def test_timelapse_full_analysis(self, structure_timelapse_file_path):
+    def test_timelapse_full_analysis(self, structure_crop_file_path):
         """Test complete structural analysis pipeline on time-lapse."""
-        sarc = SarcAsM(structure_timelapse_file_path, restart=False)
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc = SarcAsM(structure_crop_file_path, restart=False)
+        sarc.detect_sarcomeres()
         sarc.full_analysis_structure()
         
         # Verify analysis results
@@ -84,24 +82,23 @@ class TestStructureTimelapseAnalysis:
         assert 'domains' in sarc.data
 
 
-@pytest.mark.slow
 class TestStructureSingleImageAnalysis:
     """Test analysis pipeline on single images."""
 
-    def test_single_image_sarcomere_detection(self, structure_single_file_path):
+    def test_single_image_sarcomere_detection(self, structure_single_image_path):
         """Test sarcomere detection on single image."""
-        sarc = SarcAsM(structure_single_file_path, restart=False)
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc = SarcAsM(structure_single_image_path, restart=False)
+        sarc.detect_sarcomeres()
         
         # Verify detection attributes exist
         assert hasattr(sarc, 'zbands')
         assert hasattr(sarc, 'mbands')
         assert hasattr(sarc, 'cell_mask')
         
-    def test_single_image_full_analysis(self, structure_single_file_path):
+    def test_single_image_full_analysis(self, structure_single_image_path):
         """Test complete structural analysis pipeline on single image."""
-        sarc = SarcAsM(structure_single_file_path, restart=False)
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc = SarcAsM(structure_single_image_path, restart=False)
+        sarc.detect_sarcomeres()
         sarc.full_analysis_structure()
         
         # Verify analysis results
@@ -122,17 +119,16 @@ class TestStructureErrors:
 class TestStructureIntegration:
     """Integration tests combining multiple features."""
     
-    @pytest.mark.slow
     @pytest.mark.integration
-    def test_complete_workflow_timelapse(self, structure_timelapse_file_path):
+    def test_complete_workflow_timelapse(self, structure_crop_file_path):
         """Test complete SarcAsM workflow on time-lapse."""
         # Initialize with metadata
-        sarc = SarcAsM(structure_timelapse_file_path, 
+        sarc = SarcAsM(structure_crop_file_path,
                         experiment_type='timelapse',
                         restart=True)
-        
+
         # Run detection
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc.detect_sarcomeres()
         
         # Run full analysis
         sarc.full_analysis_structure()
@@ -145,15 +141,15 @@ class TestStructureIntegration:
         assert sarc.metadata.user_info['experiment_type'] == 'timelapse'
         
     @pytest.mark.integration
-    def test_complete_workflow_single_image(self, structure_single_file_path):
+    def test_complete_workflow_single_image(self, structure_single_image_path):
         """Test complete SarcAsM workflow on single image."""
         # Initialize with metadata
-        sarc = SarcAsM(structure_single_file_path, 
+        sarc = SarcAsM(structure_single_image_path,
                         experiment_type='single_image',
                         restart=True)
-        
+
         # Run detection
-        sarc.detect_sarcomeres(max_patch_size=(1024, 1024))
+        sarc.detect_sarcomeres()
         
         # Run full analysis
         sarc.full_analysis_structure()
@@ -165,23 +161,40 @@ class TestStructureIntegration:
         assert 'domains' in sarc.data
         assert sarc.metadata.user_info['experiment_type'] == 'single_image'
 
+    @pytest.mark.slow
+    @pytest.mark.integration
+    def test_complete_workflow_full_stack(self, structure_timelapse_file_path):
+        """The whole pipeline on the real 50-frame 2000x2000 time-lapse.
 
-@pytest.mark.slow
+        The other workflow tests run on a small crop so the suite stays quick.
+        This one keeps the full-size path covered -- tiling across several
+        patches, and analysis over a long stack -- for release checks.
+        """
+        sarc = SarcAsM(structure_timelapse_file_path, experiment_type='timelapse', restart=True)
+        sarc.detect_sarcomeres()
+        sarc.full_analysis_structure()
+
+        assert hasattr(sarc, 'zbands')
+        assert 'sarcomere_length_vectors' in sarc.data
+        assert 'myof_length' in sarc.data
+        assert 'domains' in sarc.data
+
+
 class TestStructurePlots:
     """Tests for structure-related plotting functions."""
 
     @pytest.fixture(scope="class")
-    def analyzed_structure(self, structure_single_file_path_class):
+    def analyzed_structure(self, structure_crop_file_path_class):
         """
         Class-scoped fixture providing a fully analyzed SarcAsM object.
         Runs all required analysis steps once for the entire test class.
         
-        Note: We detect on frame 33 to test non-zero frame handling, but
+        Note: We detect on frame 1 to test non-zero frame handling, but
         the data is stored at index 0 (first analyzed frame), so subsequent
         analysis and plotting use frame=0.
         """
-        sarc = SarcAsM(structure_single_file_path_class, restart=True)
-        sarc.detect_sarcomeres(frames=33, max_patch_size=(1024, 1024))
+        sarc = SarcAsM(structure_crop_file_path_class, restart=True)
+        sarc.detect_sarcomeres(frames=1)
         sarc.analyze_z_bands(frames=[0])
         sarc.analyze_sarcomere_vectors(frames=0)
         sarc.analyze_sarcomere_domains(frames=0)
@@ -297,9 +310,14 @@ class TestStructurePlots:
         plt.close(fig)
 
 
-@pytest.mark.slow
 class TestDomainMotionPlots:
-    """Tests for domain motion plotting functions. Requires full movie analysis."""
+    """Real-data cover for the tracking and contraction pipeline.
+
+    This is the only test that runs track_sarcomere_vectors and
+    analyze_track_motion -- and so ContractionNet -- on an actual movie, so it
+    stays in the default run rather than behind --runslow. The class-scoped
+    fixture pays the analysis cost once for all tests here.
+    """
 
     @pytest.fixture(scope="class")
     def analyzed_domain_motion(self, motion_30kPa_file_path_class):
@@ -308,18 +326,38 @@ class TestDomainMotionPlots:
         Runs detection and analysis on multiple frames for domain motion.
         """
         sarc = SarcAsM(motion_30kPa_file_path_class, restart=True)
-        # Analyze first 100 frames for domain motion. Every step must use the SAME
-        # 100-frame window: detection only produces masks for these frames, so
-        # analyze_sarcomere_vectors / track_sarcomere_vectors must be scoped to them
-        # too (passing frames='all'/default here requests all 500 movie frames and
-        # trips the "vectors missing for N frames" guard in track_sarcomere_vectors).
-        frames = np.arange(100)
+        # Every step must use the SAME window: detection only produces masks for
+        # these frames, so analyze_sarcomere_vectors / track_sarcomere_vectors must
+        # be scoped to them too (passing frames='all'/default here requests all 500
+        # movie frames and trips the "vectors missing for N frames" guard in
+        # track_sarcomere_vectors).
+        #
+        # The window is sized from the movie, not picked round: this cell beats at
+        # ~1.38 Hz and the frame time is 16.4 ms, so one cycle is ~44 frames. 150
+        # frames is ~3.4 cycles, which yields 3 complete contractions -- enough that
+        # the contraction analysis is exercised on more than a single cycle, with
+        # margin if the rate drifts. 100 frames yielded exactly 2, with none to
+        # spare. test_at_least_two_contractions_are_analysed pins this down.
+        frames = np.arange(150)
         sarc.detect_sarcomeres(frames=frames, max_patch_size=(256, 1024))
         sarc.analyze_sarcomere_vectors(frames=frames, interpolation_method='akima')
         sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
         sarc.track_sarcomere_vectors(frames=frames)
         sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
         return sarc
+
+    def test_at_least_two_contractions_are_analysed(self, analyzed_domain_motion):
+        """The window must span more than one contraction cycle.
+
+        Contraction metrics computed from a single cycle say little, and a window
+        that drifts below two would weaken every other test in this class without
+        failing any of them. This fails loudly instead.
+        """
+        n_complete = np.asarray(analyzed_domain_motion.data['domain_n_contr_complete'])
+        assert n_complete.size, "no domains were analysed"
+        assert n_complete.min() >= 2, (
+            f"only {n_complete.min()} complete contractions in the analysed window; "
+            f"widen the frame range in the analyzed_domain_motion fixture")
 
     def test_plot_sarcomere_domains_domain_motion(self, analyzed_domain_motion):
         """Test plot_sarcomere_domains with domain motion data."""
