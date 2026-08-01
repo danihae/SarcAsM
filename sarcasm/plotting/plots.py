@@ -2324,7 +2324,7 @@ class Plots:
 
     @staticmethod
     def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
-                       t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.6, 2.2),
+                       t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.3, 2.0),
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False):
         """
@@ -2347,7 +2347,7 @@ class Plots:
         t_lim : tuple of float, optional
             The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Default is (1.6, 2.2).
+            The y-axis limits for sarcomere length in µm. Default is (1.3, 2.0).
         n_rows : int, optional
             Number of groups to display. If None, all groups are shown. Default is None.
         show_contr : bool, optional
