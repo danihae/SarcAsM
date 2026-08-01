@@ -1789,8 +1789,13 @@ class SarcAsM(SarcAsMBase):
         else:
             slen = np.asarray(self.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
             T = slen.shape[1]
-            length = np.asarray(self.data.get('track_lengths',
-                                np.asarray(self.data['tracks_observed']).reshape(n_tracks, T).sum(axis=1)))
+            # Branch explicitly: .get(default=...) evaluates its default eagerly, so it
+            # would pull the whole (n_tracks, T) mask out of the store on every call
+            # even though 'track_lengths' is always present.
+            if 'track_lengths' in self.data:
+                length = np.asarray(self.data['track_lengths'])
+            else:
+                length = np.asarray(self.data['tracks_observed']).reshape(n_tracks, T).sum(axis=1)
             coverage = length / float(T) if T else np.zeros(n_tracks)
             eligible = coverage >= min_coverage
 
@@ -2162,9 +2167,9 @@ class SarcAsM(SarcAsMBase):
             raise ValueError('Frame time not defined in metadata. Required for motion analysis.')
 
         # Refuse to analyze a grouping that no longer matches the current tracks.
-        snap = np.asarray(self.data.get('track_ids_snapshot', []))
+        snapshot_ids = np.asarray(self.data.get('track_ids_snapshot', []))
         cur_ids = np.asarray(self.data.get('track_ids', []))
-        if not np.array_equal(snap, cur_ids):
+        if not np.array_equal(snapshot_ids, cur_ids):
             raise ValueError('Tracks changed since group_tracks was run. Re-run '
                              'group_tracks(...) before analyze_track_motion().')
 
@@ -2245,9 +2250,9 @@ class SarcAsM(SarcAsMBase):
         if cur is None or cur != used:
             raise ValueError('Track grouping changed since analyze_track_motion() was run. '
                              'Re-run analyze_track_motion() before reading grouped results.')
-        snap = np.asarray(self.data.get('track_ids_snapshot', []))
+        snapshot_ids = np.asarray(self.data.get('track_ids_snapshot', []))
         cur_ids = np.asarray(self.data.get('track_ids', []))
-        if not np.array_equal(snap, cur_ids):
+        if not np.array_equal(snapshot_ids, cur_ids):
             raise ValueError('Tracks changed since grouping. Re-run track_sarcomere_vectors '
                              '-> group_tracks -> analyze_track_motion.')
 
