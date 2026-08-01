@@ -796,10 +796,12 @@ class SarcAsM(SarcAsMBase):
             6× Akima + COM-refinement pipeline; ``interp_factor`` and
             ``peak_prominence`` ignored). Default is 'default'.
 
-            ``'loi'`` is provided so that results can be compared directly against
-            the LOI analysis, which uses the same peak detector. It is slower than
-            the default and not more accurate, so prefer ``'default'`` unless such
-            a comparison is the goal.
+            ``'loi'`` uses the same peak detector as the LOI analysis, so it is the
+            right choice when results must be directly comparable with that
+            pipeline. Its heavier upsampling and peak refinement localise Z-band
+            centres more precisely on noisy profiles, but cost substantially more
+            time; on real recordings the advantage is largely masked by
+            frame-to-frame variability in the Z-band segmentation.
         use_fast_movie_zbands : bool, optional
             If True and a ``zbands_fast_movie`` mask exists (produced by
             :meth:`detect_z_bands_fast_movie`), use that 3D U-Net output instead
