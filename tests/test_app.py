@@ -46,7 +46,6 @@ class TestApplicationModel:
     def test_model_initialization(self, model):
         """Test that the model initializes with correct defaults."""
         assert model.cell is None
-        assert model.sarcomere is None
         assert model.currentlyProcessing.get_value() is False
         assert model.parameters is not None
 
@@ -55,9 +54,8 @@ class TestApplicationModel:
         model._cell = "dummy_cell"
         model._ApplicationModel__cell_file_name = "test.tif"
         model.reset_model()
-        
+
         assert model.cell is None
-        assert model.sarcomere is None
         assert len(model.line_dictionary) == 0
 
     def test_is_initialized_false_when_no_cell(self, model):
@@ -287,15 +285,6 @@ class TestGPUDetection:
 class TestUtilityFunctions:
     """Test utility functions."""
 
-    def test_get_entry_key_for_line(self):
-        """Test line key generation."""
-        from sarcasm_app.control.application_control import ApplicationControl
-        
-        line = ([100, 200], [300, 400], 0.65, None)
-        key = ApplicationControl.get_entry_key_for_line(line)
-        
-        assert '(100,200)->(300,400):0.65' == key
-
     def test_type_utils_unbox(self):
         """Test TypeUtils unbox function."""
         from sarcasm.type_utils import TypeUtils
@@ -458,10 +447,30 @@ class TestMotionParameters:
             return ApplicationModel()
 
     def test_motion_defaults(self, model):
-        """Test motion analysis default values."""
+        """Test motion analysis default values.
+
+        These follow the track-based pipeline; the LOI peak-detection parameters
+        this once checked went with the LOI motion path.
+        """
         params = model.parameters
-        
-        assert params.get_parameter('motion.detect_peaks.threshold').get_value() == 0.2
-        assert params.get_parameter('motion.detect_peaks.min_distance').get_value() == 1.4
-        assert params.get_parameter('motion.track_z_bands.search_range').get_value() == 2.0
-        assert params.get_parameter('motion.systoles.threshold').get_value() == 0.3
+
+        assert params.get_parameter('motion.track.max_disp_along').get_value() == 1.0
+        assert params.get_parameter('motion.track.max_disp_perp').get_value() == 0.2
+        assert params.get_parameter('motion.track.ori_tol').get_value() == 45.0
+        assert params.get_parameter('motion.group.by').get_value() == 'myofibril'
+        assert params.get_parameter('motion.analyze.threshold').get_value() == 0.3
+        assert params.get_parameter('motion.analyze.contr_time_min').get_value() == 0.2
+
+    def test_every_parameter_has_a_default(self, model):
+        """Registering a parameter without defaulting it leaves the GUI reading None.
+
+        Checking named defaults one by one lets a renamed parameter rot unnoticed --
+        which is how the LOI-era assertions above survived the migration that
+        deleted them. This covers the whole set instead.
+        """
+        registered = model.parameters._Parameters__parameters_dict
+        assert registered, "no parameters registered"
+        # batch.root is a folder the user chooses; it has no meaningful default.
+        undefaulted = {name for name, param in registered.items()
+                       if param.get_raw_value() is None} - {'batch.root'}
+        assert not undefaulted, f"parameters registered without a default: {sorted(undefaulted)}"
