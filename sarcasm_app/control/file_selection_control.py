@@ -27,7 +27,7 @@ from ..view.file_selection import Ui_Form as FileSelectionWidget
 logger = logging.getLogger(__name__)
 
 # Input validation error styling — soft tint + border so text stays legible in
-# both light and dark palettes (old `background: red` made text unreadable).
+# both light and dark palettes.
 _INVALID_INPUT_QSS = (
     "QLineEdit { border: 1px solid #e06060; "
     "background-color: rgba(224,96,96,0.18); }"

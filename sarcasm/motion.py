@@ -52,7 +52,7 @@ class Motion(SarcAsMBase):
         Wraps a synthesized myofibril chain (an ordered ``z_pos`` / ``slen``
         built from 2D tracks, see
         :meth:`sarcasm.structure.SarcAsM.get_track_motion`) so the full LOI
-        analysis and every existing LOI plot work unchanged. ``loi_data`` is
+        analysis and all LOI plots apply to it. ``loi_data`` is
         marked ``synthetic=True``. Nothing is written to disk unless
         ``auto_save=True``.
 
@@ -138,7 +138,7 @@ class Motion(SarcAsMBase):
         """Per-sarcomere length series ``(n_sarcomeres, T)`` for this LOI.
 
         For a **legacy** LOI the sarcomere length *is* the gap between consecutive
-        tracked Z-bands, so it is derived from ``z_pos`` — unchanged behaviour.
+        tracked Z-bands, so it is derived from ``z_pos``.
 
         For a **synthesized** chain (``Motion.from_loi_data`` with
         ``synthetic=True``, i.e. a fibre built from 2D tracks) the honest
@@ -146,9 +146,7 @@ class Motion(SarcAsMBase):
         directly: each member there is an independently tracked sarcomere, so a
         member with no observation is NaN on its own row only, whereas
         ``np.diff(z_pos)`` would additionally blank every row below it (see
-        :func:`grouped_motion.synthesize_loi_chain`). Re-deriving it collapsed the
-        usable-sarcomere count and silently forced whole stretches of the movie to
-        be scored as non-contracting.
+        :func:`grouped_motion.synthesize_loi_chain`).
 
         Returns
         -------

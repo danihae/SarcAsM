@@ -875,7 +875,7 @@
       <item row="5" column="0">
        <widget class="QLabel" name="label_vectors_smooth_zbands_sigma">
         <property name="toolTip">
-         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). This is the main lever on per-frame sarcomere-length noise: sigma=1 cuts it by about a third. Only valid for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
+         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). Reduces frame-to-frame variability in the measured sarcomere length; values above ~1 attenuate genuine fast length transients and bias peak shortening velocity low. Only meaningful for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
         </property>
         <property name="text">
          <string>Temporal Z-band smoothing [frames]</string>
@@ -885,7 +885,7 @@
       <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="dsb_vectors_smooth_zbands_sigma">
         <property name="toolTip">
-         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). This is the main lever on per-frame sarcomere-length noise: sigma=1 cuts it by about a third. Only valid for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
+         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). Reduces frame-to-frame variability in the measured sarcomere length; values above ~1 attenuate genuine fast length transients and bias peak shortening velocity low. Only meaningful for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
         </property>
         <property name="decimals">
          <number>2</number>

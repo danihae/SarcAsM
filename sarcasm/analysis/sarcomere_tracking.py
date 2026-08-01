@@ -30,8 +30,8 @@ and is carried forward as follows:
    the last two frames), projected onto its own sarcomere axis. Perpendicular
    motion can therefore only come from the snap residual, which is hard-capped —
    the anti-perpendicular-jump guarantee. The advection is load-bearing: without
-   it, tracks that drift more than one sarcomere length from their neighbourhood
-   rise from 0.04 % to 1.65 %.
+   it a query point that misses several frames is left behind by a moving field
+   and is far more likely to drift away from its neighbourhood.
 2. **Gating.** Each query point's candidate detections are those inside the
    anisotropic along-/perpendicular-to-sarcomere ellipse with orientation
    compatible modulo π.
@@ -52,10 +52,9 @@ and is carried forward as follows:
    records an honest gap frame: position = its prediction, ``snapped=False``, and
    slen/orientation NaN unless a short interior gap is interpolated
    (``max_gap_interpolation``, which never sets ``snapped``). It keeps its identity
-   and re-enters the assignment on later frames, so a dropout of *any* length no
-   longer ends a trajectory. Tracks therefore do not retire by default
-   (``retire_after_s=None``); this replaces the former ``memory`` horizon,
-   gap-scaled re-acquisition, and the two post-hoc fragment-merging passes.
+   and re-enters the assignment on later frames, so a dropout of *any* length does
+   not end a trajectory. Tracks therefore do not retire by default
+   (``retire_after_s=None``), and no post-hoc fragment stitching is needed.
 
 A query point's **trailing coast** — the frames after its *final* snap — is
 blanked to NaN (position, slen, orientation) in the output: a lost track does not
@@ -63,12 +62,6 @@ freeze in place at its last position. Interior gaps are anchored on both sides,
 keep their predicted position, and have their slen/orientation interpolated when
 the gap is short (``max_gap_interpolation``); ``tracks_snapped`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
-
-Measured against the previous greedy/merge design on three 500-frame movies:
-fragmentation (tracks per detection-per-frame, ideal 1.0) 2.1-3.4 → 1.2-1.4,
-median real-snap fraction of the movie 0.13-0.37 → 0.86-0.97, detection coverage
-99.5-99.9 % → 99.98 %, and per-track drift away from the local neighbourhood
-p90 0.31-0.42 µm → 0.12-0.16 µm, at unchanged runtime.
 """
 
 from __future__ import annotations
@@ -96,8 +89,8 @@ _PERP_SLEN_FRAC = 0.25
 
 # Components larger than this fall back to a greedy claim ordered by cost. The
 # per-component assignment is a dense O(k³) solve, so this bounds the worst case
-# on unusually dense fields. Measured on the reference data: ~71 components per
-# frame, median size 41, p99 168, max 229 — the valve never trips there.
+# on unusually dense fields. Typical components are far smaller, so the fallback
+# is a safety valve rather than a routine path.
 _LAP_MAX_COMPONENT = 1500
 
 # Frame-count fallbacks for the seconds-valued horizons, used only when
@@ -470,8 +463,7 @@ def track_sarcomere_vectors(
     the sarcomere length so the tracker stays scale-invariant across pixel size /
     frame time.
 
-    Continuity rests on two properties (see the module docstring for the
-    measurements):
+    Continuity rests on two properties:
 
     1. **Exact assignment per graph component** with a gate-normalised
        anisotropic cost (:func:`_assign_optimal`). Sarcomere vectors are a dense
@@ -482,7 +474,7 @@ def track_sarcomere_vectors(
        query point — the anti-convergence guarantee.
     2. **Identity that survives a gap of any length.** An unmatched track records
        an honest gap frame (``snapped=False``, slen/orientation NaN) and re-enters
-       the assignment later, so detection dropout no longer ends a trajectory and
+       the assignment later, so detection dropout does not end a trajectory and
        no post-hoc fragment stitching is required.
 
     Each (track, frame) also records ``tracks_detection_id`` (index of the
@@ -706,8 +698,8 @@ def track_sarcomere_vectors(
         # carried by the tissue around it, so its anchor stays valid however long
         # the dropout lasts. Reference set = tracks that snapped in both of the
         # last two frames, so their step is a real observation, not a prediction.
-        # Load-bearing: without this advection, the fraction of tracks drifting
-        # more than one sarcomere length from their neighbourhood rises 0.04→1.65 %.
+        # Load-bearing: without this advection an unmatched track is left behind by
+        # a moving field and drifts away from its neighbourhood.
         live = np.flatnonzero(alive[:n_tracks])
         if live.size > 0:
             ys = last_y[live]
@@ -751,8 +743,8 @@ def track_sarcomere_vectors(
         # 3. build kd-tree and vectorized gate on all (qp, candidate) pairs.
         # The gate is the SAME whether a track snapped last frame or has been
         # unmatched for a hundred frames: a gap does not license a longer jump,
-        # it only means the track kept waiting. (Gap-scaled gate widening was
-        # measured to *hurt* — it buys fragmentation with identity.)
+        # it only means the track kept waiting. Widening the gate with gap length
+        # would trade identity for fragmentation.
         if n_det > 0 and live.size > 0:
             tree = cKDTree(dets)
             live_pos = np.column_stack((last_y[live], last_x[live]))

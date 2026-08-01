@@ -119,9 +119,8 @@ class SarcAsMBase:
             **info: Dict[str, Any]
     ):
         # Guard the second positional argument before anything destructive runs.
-        # Pre-1.0 the LOI workflow was entered as Motion(file_path, loi_name); that slot
-        # now holds `restart`, and a non-empty LOI name is truthy -> the analysis store
-        # would be deleted silently. Fail loudly instead of destroying data.
+        # It holds `restart`, so passing a string there (e.g. an LOI name) would be
+        # truthy and silently delete the analysis store. Fail loudly instead.
         if not isinstance(restart, (bool, int)):
             raise TypeError(
                 f"{type(self).__name__}(...): 'restart' must be a bool, got "
@@ -164,13 +163,13 @@ class SarcAsMBase:
         if restart and os.path.exists(self.base_dir):
             remove_tree(self.base_dir)
 
-        # NB: base_dir/data_dir/analysis_dir are the pre-1.0 layout and are no
-        # longer created here — merely constructing an object must not spawn an
-        # empty '<name>/' tree. The few remaining consumers (legacy LOI data,
-        # export_json, open_base_dir) create their target directory on demand.
-        # In >=1.0 all artefacts live in the sibling '<name>.ome.zarr' store,
-        # which IS created eagerly at construction (metadata only — the raw image
-        # pixels are still ingested lazily on first read; see end of __init__).
+        # NB: base_dir/data_dir/analysis_dir are not created here — merely
+        # constructing an object must not spawn an empty '<name>/' tree. The few
+        # consumers that need them (LOI data, export_json, open_base_dir) create
+        # their target directory on demand. All artefacts live in the sibling
+        # '<name>.ome.zarr' store, which IS created eagerly at construction
+        # (metadata only — the raw image pixels are ingested lazily on first
+        # read; see end of __init__).
 
         # --- single-store backing: everything lives in <name>.ome.zarr ---
         self.store_path = store_path_for(self.file_path)
@@ -331,7 +330,7 @@ class SarcAsMBase:
 
     def _read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a mask from the store, optionally selecting ``frames`` (int / list /
-        slice), mirroring the old ``tifffile.imread(..., key=frames)`` behaviour."""
+        slice)."""
         if not self._mask_exists(name):
             raise FileNotFoundError(
                 f"Required analysis mask '{name}' not found in the store.\n"
@@ -382,9 +381,8 @@ class SarcAsMBase:
     def open_base_dir(self):
         """Open the folder holding this file's analysis in the file explorer.
 
-        In >=1.0 the analysis lives in the sibling ``<name>.ome.zarr`` store, so
-        this reveals the directory that contains the input image and its store
-        (the legacy ``base_dir`` is no longer created).
+        The analysis lives in the sibling ``<name>.ome.zarr`` store, so this
+        reveals the directory that contains the input image and its store.
         """
         Utils.open_folder(os.path.dirname(self.store_path))
 
@@ -611,9 +609,9 @@ class SarcAsMBase:
                 order += 'C'
             order += 'YX'
             
-            # BUG FIX: ImageJ metadata might say channels=1 or slices=1, but the actual
-            # data could still have singleton dimensions for these axes.
-            # We need to verify the axes match the actual data shape.
+            # ImageJ metadata might say channels=1 or slices=1 while the data still
+            # carries singleton dimensions for those axes, so verify the axis string
+            # against the actual data shape.
             expected_ndim = len(order)
             actual_ndim = len(series.shape)
             

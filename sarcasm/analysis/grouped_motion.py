@@ -22,10 +22,9 @@ custom — is just a *grouping* of those tracks. This module turns a grouping
 1. a per-group aggregated length time-series ``(n_groups, T)`` (:func:`aggregate_group_slen`), and
 2. per-group contraction cycles + kinematics (:func:`run_cycle_engine`),
 
-reusing the existing, battle-tested ContractionNet engine
-(:mod:`sarcasm.analysis.contraction_analysis`) verbatim — those
-functions are pure functions of a ``(n_groups, T)`` length matrix plus
-``frametime``.
+both built on the ContractionNet engine
+(:mod:`sarcasm.analysis.contraction_analysis`), whose entry points are pure
+functions of a ``(n_groups, T)`` length matrix plus ``frametime``.
 """
 
 from __future__ import annotations
@@ -388,12 +387,9 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     myofibril built from tracks.
 
     Each Z-band boundary is placed from **its own member's measured position**, so
-    a member without an observation blanks only its own row. The earlier
-    implementation accumulated the boundaries (``cumsum`` of the lengths), which
-    made one undefined member blank every boundary below it — on real data a
-    handful of tracks ending early erased ~24 of 29 traces on a third of the
-    frames, and collapsed the usable-sarcomere count enough to force whole
-    stretches of the movie to be scored as non-contracting.
+    a member without an observation blanks only its own row. Accumulating the
+    boundaries instead (``cumsum`` of the lengths) would let a single undefined
+    member blank every boundary below it.
 
     Parameters
     ----------
@@ -406,8 +402,8 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
         ``(K, T, 2)`` member centre positions in µm, same order as
         ``member_slen``. When given, ``z_pos`` is reconstructed from these
         measured positions. When None the boundaries are accumulated from the
-        lengths instead (the legacy behaviour, kept for callers that have no
-        positions); a missing member then propagates into every boundary below it.
+        lengths instead, in which case a missing member propagates into every
+        boundary below it.
     ref_idx : int, optional
         Frame index the chain geometry is anchored on — pass the reference frame
         the grouping/ordering was built from, so the arc coordinate agrees with
@@ -465,7 +461,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     z_pos = np.full((K + 1, T), np.nan, dtype=float)
     z_pos[:K] = centre_arc - 0.5 * slen          # leading edge of each member
     z_pos[K] = centre_arc[-1] + 0.5 * slen[-1]   # trailing edge of the last member
-    # Shift so the fibre starts at 0, as in the legacy LOI convention: the arc
+    # Shift so the fibre starts at 0, matching the LOI convention: the arc
     # origin sits at the first member's *centre*, which would put its leading edge
     # (and anything that moves further head-ward) below zero, where plots that
     # assume a non-negative Z-band position silently clip it away.

@@ -76,9 +76,8 @@ def _slen_from_profiles(y_up, x_interp, flat_mask, thres, distance, prominence,
                         window_size, center, slen_min, slen_max):
     """Sarcomere length + center offset for a batch of interpolated profiles.
 
-    Replaces a per-profile ``scipy.signal.find_peaks`` call — roughly one scipy
-    call per sarcomere vector per frame, which dominated
-    ``analyze_sarcomere_vectors`` once the orientation filter was made sparse.
+    Processes the whole batch in one compiled, parallel pass rather than one
+    ``scipy.signal.find_peaks`` call per profile.
 
     The peak selection reproduces ``find_peaks(height=thres, distance=distance,
     prominence=prominence)`` exactly, including scipy's filter *order*
@@ -860,16 +859,15 @@ class Utils:
 
         # Fast path: all profiles share the same length (typical case when the
         # caller uses ``fast_profile_lines`` with uniform endpoints). Build the
-        # interpolator **once** over the full (N, L) batch instead of once per
-        # profile — Akima construction was the dominant cost (~37% of
-        # ``analyze_sarcomere_vectors`` end-to-end on real movies).
+        # interpolator once over the full (N, L) batch instead of once per
+        # profile, since constructing it is the expensive part.
         lengths0 = len(profiles[0])
         uniform_length = all(len(p) == lengths0 for p in profiles)
 
         if uniform_length and lengths0 >= 2:
             L = lengths0
-            # Preserve the caller's dtype through normalization so the batched
-            # path matches per-profile numerics bit-for-bit.
+            # Preserve the caller's dtype through normalization so the batched and
+            # per-profile paths agree numerically.
             y_mat = np.stack(profiles, axis=0)
             if y_mat.ndim != 2:
                 y_mat = y_mat.reshape(n_profiles, L)
@@ -907,9 +905,9 @@ class Utils:
                 window_size, center, slen_lims[0], slen_lims[1],
             )
 
-        # Fallback: variable-length profiles — retain the original per-profile
-        # path. Rare in production since the common caller uses uniform
-        # endpoints, but needed for external callers that pass in ragged lists.
+        # Fallback: variable-length profiles are handled one at a time. The common
+        # caller passes uniform endpoints, but external callers may supply ragged
+        # lists.
         for i, profile in enumerate(profiles):
             pmin = profile.min()
             pmax = profile.max()
@@ -1561,7 +1559,7 @@ class Utils:
             # Return as list of 1-D arrays to preserve caller API.
             return [profiles[i] for i in range(n_lines)]
 
-        # Fallback: variable-length profiles (original path).
+        # Fallback: variable-length profiles.
         if linewidth > 1:
             perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
             perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))

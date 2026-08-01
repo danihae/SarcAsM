@@ -272,8 +272,8 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
 
     # Size the blocks from the whole working set of one block, not just the
     # result: the float32 input, the extracted patches, the float16 patch
-    # predictions and the float32 stitch canvas are all live at once. Measured at
-    # roughly twelve float32 planes per frame for the five-head sarcomere model.
+    # predictions and the float32 stitch canvas are all live at once, which comes
+    # to roughly twelve float32 planes per frame.
     out_channels = 6
     per_frame_bytes = int(np.prod(original_xy_shape)) * 4 * (2 * out_channels)
     budget_bytes = int(memory_budget_gb * (1 << 30))

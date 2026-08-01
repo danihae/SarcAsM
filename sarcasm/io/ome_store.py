@@ -100,12 +100,12 @@ def remove_tree(path: Union[str, os.PathLike], attempts: int = 3) -> None:
     ``shutil.rmtree`` walks a directory and then ``rmdir``s it, so an entry created
     in between makes the final step fail with ``OSError: [Errno 66] Directory not
     empty`` even though nothing is in use. The trigger in practice is macOS Finder
-    writing ``.DS_Store`` into a folder the user has open, which made
-    ``SarcAsM(..., restart=True)`` crash on a store the user was merely *looking* at.
+    writing ``.DS_Store`` into a folder the user has open, which makes
+    ``SarcAsM(..., restart=True)`` fail on a store the user is merely *looking* at.
 
-    Retrying alone does not fix this — a watcher that keeps writing wins every race
-    (measured: a continuous writer defeats 3 retries 15/15 times). So the tree is
-    first **renamed out of the way**: ``os.replace`` is atomic, so the moment it
+    Retrying alone does not fix this, because a watcher that keeps writing wins
+    every race. So the tree is first **renamed out of the way**: ``os.replace`` is
+    atomic, so the moment it
     returns, whatever is watching the original name can no longer reach the tree we
     are deleting, and the delete proceeds unopposed. Retries remain as a fallback for
     the case where the rename itself is not possible.

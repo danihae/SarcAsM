@@ -136,8 +136,8 @@ class Plots:
 
         if file_path is None:
             file_path = os.path.join(motion_obj.loi_folder, 'summary_loi.png')
-        # 1.0 no longer creates the legacy base_dir tree at construction, so the LOI
-        # folder may not exist yet — create it on demand, as export_json/store_loi_data do.
+        # The LOI folder is not created at construction, so it may not exist yet —
+        # create it on demand, as export_json/store_loi_data do.
         parent = os.path.dirname(os.path.abspath(file_path))
         if parent:
             os.makedirs(parent, exist_ok=True)
@@ -1341,9 +1341,8 @@ class Plots:
 
         Notes
         -----
-        Previously this plot showed an inverted raw image as the background by
-        default. That implicit inversion has been removed — opt in with
-        ``show_image=True, invert_image=True`` to reproduce the old look.
+        No background image is drawn by default; pass
+        ``show_image=True, invert_image=True`` for an inverted raw-image backdrop.
         """
         # create myofibril length map
         assert 'myof_lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
@@ -2018,7 +2017,7 @@ class Plots:
 
     # ------------------------------------------------------------------
     # 2D sarcomere tracking + grouped motion (track_sarcomere_vectors ->
-    # group_tracks -> analyze_track_motion). Additive; existing plots unchanged.
+    # group_tracks -> analyze_track_motion).
     # ------------------------------------------------------------------
 
     @staticmethod

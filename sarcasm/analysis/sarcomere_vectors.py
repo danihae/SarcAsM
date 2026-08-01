@@ -159,15 +159,12 @@ def orientation_at_points(
 
     Equivalent to indexing :func:`Utils.get_orientation_angle_map` (disk median,
     double-angle correct) at ``(rows, cols)``, but gathers the footprint at those
-    points instead of filtering the whole frame. Orientation is only ever needed
-    at M-band midline pixels — roughly 2% of the image — so filtering every pixel
-    wastes ~98% of the work, and this stage otherwise dominates the runtime of
-    :func:`get_sarcomere_vectors`.
+    points instead of filtering the whole frame. Orientation is only needed at the
+    M-band midline pixels, a small fraction of the image.
 
-    Out-of-bounds neighbours are clipped to the edge rather than zero-padded.
-    Zero is not a valid unit vector, so the zero-padding in
-    :func:`Utils.median_filter_numba` biases the median within ``radius`` px of
-    the border; edge replication does not.
+    Out-of-bounds neighbours are clipped to the edge rather than zero-padded,
+    because zero is not a valid unit vector and would bias the median within
+    ``radius`` px of the border.
 
     Parameters
     ----------
@@ -306,7 +303,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         # Pre-calculate total number of points for efficient pre-allocation
         total_points = sum(coords.shape[0] for coords in coords_mbands)
         
-        # Pre-allocate arrays (much faster than appending and concatenating)
+        # Pre-allocate and slice-assign rather than appending per label
         pos_vectors_px = np.empty((total_points, 2), dtype=coords_mbands[0].dtype)
         midline_id_vectors = np.empty(total_points, dtype=np.float64)
         midline_length_vectors = np.empty(total_points, dtype=np.float64)
@@ -337,10 +334,9 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
         profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
-        # Use batch processing for better performance (avoids parallel processing overhead)
         if peak_algorithm == 'loi':
-            # Route through Utils.peakdetekt — the exact pipeline the LOI
-            # analysis uses. Preset parameters match LOI.
+            # Route through Utils.peakdetekt — the same pipeline the LOI analysis
+            # uses, with matching preset parameters.
             sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch_loi(
                 profiles, pixelsize, slen_lims=slen_lims,
             )

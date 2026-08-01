@@ -13,8 +13,7 @@
 
 """Single Zarr store for SarcAsM analysis + track results.
 
-This replaces the giant text ``structure.json`` with a self-describing Zarr
-group tree — used standalone as ``data.zarr`` (e.g. in tests) and, in
+A self-describing Zarr group tree — used standalone as ``data.zarr`` and, in
 production, re-parented under the ``sarcasm/`` group of the OME-Zarr container
 (see :mod:`sarcasm.io.ome_store`). The physical layout mirrors the logical
 structure, so it is browsable with any Zarr tool::
@@ -42,8 +41,7 @@ Access (see :class:`Results`)::
     r['tracks_slen']            # legacy flat-key dict access (materialised)
 
 This store holds the analysis, tracking and motion results plus their
-parameters (the contents of the old ``structure.json``), with image metadata
-mirrored into the root attrs. Image pixel data and segmentation masks live
+parameters, with image metadata mirrored into the root attrs. Image pixel data and segmentation masks live
 alongside these groups in the same OME-Zarr container
 (:mod:`sarcasm.io.ome_store`).
 """
@@ -841,9 +839,8 @@ class ResultsDict(MutableMapping):
     Reads materialise (numpy/objects) on first access and cache; writes stage
     in memory and persist incrementally via :meth:`flush` (only the changed
     members are rewritten). Implements the full ``dict`` surface the codebase
-    uses (``[]``, ``get``, ``update``, ``keys``, ``pop``, ``in``, iteration), so
-    it is a drop-in for the old plain dict. For the ergonomic grouped/lazy view
-    use :meth:`view` (``SarcAsM.results``).
+    uses (``[]``, ``get``, ``update``, ``keys``, ``pop``, ``in``, iteration).
+    For the ergonomic grouped/lazy view use :meth:`view` (``SarcAsM.results``).
 
     Parameters
     ----------

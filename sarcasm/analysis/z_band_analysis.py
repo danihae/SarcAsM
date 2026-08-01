@@ -165,7 +165,6 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
             skel_i = skeletonize(zbands_i, method='lee')
 
             # detect line ends: skeleton pixels with exactly 1 foreground neighbor (degree 1).
-            # Equivalent to the prior ndimage.generic_filter(line_end_filter) but vectorized.
             skel_bool = skel_i.astype(bool)
             nbr_count = ndimage.convolve(skel_bool.astype(np.int8), _nbr_kernel, mode='constant')
             z_ends_i = np.asarray(np.where(skel_bool & (nbr_count == 1)))

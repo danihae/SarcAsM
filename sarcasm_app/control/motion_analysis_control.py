@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Track-based motion analysis control (replaces the removed LOI workflow).
+"""Track-based motion analysis control.
 
 Workflow: Track sarcomere vectors -> group tracks (pool / m-band / myofibril /
 domain / loi) -> analyze track motion (ContractionNet per group). Visualization:

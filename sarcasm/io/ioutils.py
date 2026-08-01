@@ -13,7 +13,7 @@
 
 """Legacy JSON (de)serialization of SarcAsM results (``IOUtils``).
 
-Round-trips nested results dicts to/from the old ``structure.json`` format,
+Round-trips nested results dicts to/from the ``structure.json`` format,
 preserving numpy arrays, scalars and scipy sparse matrices.
 """
 

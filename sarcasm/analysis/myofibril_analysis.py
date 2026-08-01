@@ -182,7 +182,7 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
     n_vectors = len(points_t)
     seed_idx = random.sample(range(n_vectors), max(1, int(ratio_seeds * n_vectors)))
 
-    # Precompute nearest-neighbor tree (scipy cKDTree — faster single-query than sklearn BallTree)
+    # Precompute nearest-neighbor tree
     tree = cKDTree(points_t)
 
     # Prepare arguments for parallel processing

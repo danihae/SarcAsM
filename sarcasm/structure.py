@@ -268,9 +268,8 @@ class SarcAsM(SarcAsMBase):
         prune_level : int, optional
             Stop the U-Net at this nesting depth (1, 2 or 3) and read the matching
             deep-supervision head. Level 2 roughly halves the compute but changes
-            the masks, so validate it on your data first
-            (``_bench/validate_fast_modes.py``). None uses the full model, the
-            default.
+            the masks, so validate it on your data first. None uses the full model,
+            the default.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
@@ -732,17 +731,15 @@ class SarcAsM(SarcAsMBase):
             orientation at M-points, in µm. Default is 0.25.
         linewidth : float, optional
             Line width of profile lines for analyzing sarcomere lengths, in µm.
-            Default is 0.2. Averaging over more transverse pixels smooths per-frame
-            sarcomere length: measured on the 20 kPa movie, 0.3 → 0.65 → 1.0 → 1.5 µm
-            gives 10.8 → 9.2 → 8.1 → 6.9 nm of per-frame length noise, with the mean
-            length shifting by under 0.3 nm. This is the **only** noise lever available
-            for long-term time-lapses, where the temporal options below do not apply.
-            The cost is averaging across the sarcomere width, which blurs short or
-            strongly curved myofibrils.
+            Default is 0.2. Wider lines average over more transverse pixels, which
+            reduces frame-to-frame variability in the measured length at the cost of
+            averaging across the sarcomere width; this blurs short or strongly curved
+            myofibrils. For long-term time-lapses this is the only such control
+            available, since the temporal options below do not apply.
         interp_factor : int, optional
             Akima/linear upsampling factor applied to each profile before peak
-            detection. Default is 4. LOI analysis uses 6; sub-pixel peak
-            localisation drives per-frame slen accuracy.
+            detection. Default is 4. Higher values refine sub-pixel peak
+            localisation, which sets the resolution of the length estimate.
         slen_lims : tuple of float, optional
             Sarcomere length limits in µm. Default is (1, 3).
         threshold_sarcomere_mask : float, optional
@@ -760,51 +757,37 @@ class SarcAsM(SarcAsMBase):
             trick). 0 disables smoothing; ``sigma ≈ 1`` is a ~5-frame effective
             span. Default is 0.0.
 
-            **Only valid for high-speed recordings**, where consecutive frames
+            Only meaningful for high-speed recordings, where consecutive frames
             image the same structures. Long-term time-lapses have no frame-to-frame
             correspondence, so smoothing across their frames is meaningless — leave
             this at 0 there and use ``linewidth`` instead.
 
-            Worth enabling for high-speed movies: raw per-pixel U-Net orientation
-            jitter is ~21°, which the spatial ``median_filter_radius`` alone reduces
-            to ~2°; adding ``sigma=1.5`` takes it to ~0.4°. Beyond that there is no
-            return — at ~0.4° the resulting cosine-projection error on sarcomere
-            length is ~0.05 nm against ~9 nm of measured length noise, so further
-            orientation smoothing cannot improve length. Use ``smooth_zbands_sigma``
-            for that.
+            The spatial ``median_filter_radius`` already removes most per-pixel
+            orientation jitter; this suppresses the residual frame-to-frame
+            component. Because orientation enters the length estimate only through
+            the cosine of a small angular error, smoothing it beyond a modest sigma
+            does not improve length — use ``smooth_zbands_sigma`` for that.
         smooth_zbands_sigma : float, optional
             Temporal Gaussian sigma (in frames) applied to the Z-band probability
             stack before profiles are measured. 0 disables it. Default is 0.0.
 
-            Frame-to-frame flicker in the Z-band mask — not orientation jitter — is
-            what limits per-frame sarcomere-length *precision* once orientation
-            smoothing is on.
+            Reduces frame-to-frame variability in the measured sarcomere length
+            caused by variability in the Z-band segmentation, which is the dominant
+            such source once orientation smoothing is enabled. Values above ~1
+            progressively attenuate genuine fast length transients and bias peak
+            shortening velocity low; leave at 0 when reporting shortening velocity.
 
-            ``sigma=1`` is the recommended maximum. On the 20 kPa movie it removes
-            82% of the noise-floor power above 20 Hz while preserving 98% of the
-            power in the contraction band (0.4-6 Hz) — that is noise removal, not
-            signal removal. It is not free: peak shortening velocity falls ~6%,
-            because any temporal filter attenuates the fastest real transients. If
-            you report shortening velocity, either leave this at 0 or state the
-            attenuation. ``sigma=2`` is over-smoothing — peak velocity falls ~12%
-            with no further gain in the noise floor.
-
-            Note these are *precision* figures (frame-to-frame repeatability), not
-            accuracy: none of them compare against a known true sarcomere length.
-
-            **Only valid for high-speed recordings**, for the same reason as
+            Only meaningful for high-speed recordings, for the same reason as
             ``smooth_orientation_sigma``: it averages a pixel across neighbouring
             frames, which requires those frames to show the same structures. Leave
             at 0 for long-term time-lapses.
         peak_prominence : float, optional
             ``scipy.signal.find_peaks`` prominence threshold for Z-band peak
             detection inside each profile; lower values accept weaker, noisier
-            peaks. Only used when ``peak_algorithm='default'``. Default is 0.3
-            (lowered from 0.5): validated on real 20 kPa data to recover ~+5.8%
-            real detections — the extra peaks are real (slen median 1.668→1.666,
-            IQR and edge-junk fraction unchanged), concentrated at peak
-            contraction / fast motion where Z-band peaks weaken. NB: the ``'loi'``
-            path ignores this and uses its own fixed prominence.
+            peaks and recover detections where Z-band contrast is reduced, such as
+            at peak contraction or during fast motion. Only used when
+            ``peak_algorithm='default'``; the ``'loi'`` path uses its own fixed
+            prominence. Default is 0.3.
         peak_algorithm : {'default', 'loi'}, optional
             Peak detection routine. ``'default'`` uses the fast batched
             :func:`sarcasm.utils.Utils.process_profiles_batch` (``interp_factor``
@@ -813,16 +796,16 @@ class SarcAsM(SarcAsMBase):
             6× Akima + COM-refinement pipeline; ``interp_factor`` and
             ``peak_prominence`` ignored). Default is 'default'.
 
-            ``'loi'`` is retained for comparison with LOI analysis, not because it
-            is more accurate. Measured on real 20 kPa profiles it gives 9.27 nm of
-            per-frame length noise versus 9.14 nm for ``'default'``, at identical
-            mean length and validity — for roughly 2.7× the cost. Prefer the
-            default.
+            ``'loi'`` is provided so that results can be compared directly against
+            the LOI analysis, which uses the same peak detector. It is slower than
+            the default and not more accurate, so prefer ``'default'`` unless such
+            a comparison is the goal.
         use_fast_movie_zbands : bool, optional
             If True and a ``zbands_fast_movie`` mask exists (produced by
             :meth:`detect_z_bands_fast_movie`), use that 3D U-Net output instead
-            of the per-frame ``zbands`` mask; it is less noisy frame-to-frame,
-            yielding smoother per-frame slen. Falls back to the 2D mask when
+            of the per-frame ``zbands`` mask. Because it is predicted from a
+            temporal window, it varies less between consecutive frames, which
+            carries through to the measured lengths. Falls back to the 2D mask when
             unavailable; the choice is stored in
             ``params.analyze_sarcomere_vectors.zbands_source``. Default is True.
         progress_notifier : ProgressNotifier, optional
@@ -989,11 +972,9 @@ class SarcAsM(SarcAsMBase):
                 oop[frame_i], _ = Utils.analyze_orientations(
                     sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)])
 
-            # Threshold before summing. Previously this summed the raw float
-            # probability map while threshold_sarcomere_mask was applied only to a
-            # write-only array, so sarcomere_area was a probability integral while
-            # cell_mask_area (and z_mask_area, and domain_area) are pixel counts —
-            # sarcomere_area_ratio therefore divided two different quantities.
+            # Threshold before summing, so that this is a pixel count like
+            # cell_mask_area, z_mask_area and domain_area, and sarcomere_area_ratio
+            # divides two comparable quantities.
             sarcomere_area[frame_i] = (np.sum(sarcomere_mask_i > threshold_sarcomere_mask)
                                        * self.metadata.pixelsize ** 2)
             if 'cell_mask_area' in self.data:
@@ -2135,9 +2116,8 @@ class SarcAsM(SarcAsMBase):
         Outputs are written under a ``<kind>_*`` prefix (e.g. ``pool_beating_rate``,
         ``mband_slen_timeseries``, ``mband_contr``), mirroring the ``domain_*``
         schema so the same plotting code serves every grouping. For ``kind='domain'``
-        the prefix *is* ``domain``, so this writes the exact legacy ``domain_*`` keys
-        and the existing domain plots / feature_dict / export keep working — it is the
-        track-based domain-motion analysis (replacing the former static-mask method).
+        the prefix *is* ``domain``, so this writes the ``domain_*`` keys consumed by
+        the domain plots, ``feature_dict`` and export.
 
         Parameters
         ----------
@@ -2318,8 +2298,8 @@ class SarcAsM(SarcAsMBase):
 
         slen = np.asarray(self.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[members]
         # Pass the members' measured positions so each Z-band boundary is placed from
-        # its own sarcomere; accumulating them instead lets one missing member blank
-        # every boundary below it.
+        # its own sarcomere. Accumulating the lengths instead would let a single
+        # undefined member blank every boundary below it.
         pos_um = np.asarray(self.data['tracks_positions_um'],
                             dtype=float).reshape(n_tracks, -1, 2)[members]
         # Anchor the chain geometry on the frame the grouping (and hence the

@@ -256,8 +256,7 @@ class Application:
         in structure_analysis_control continues to read/write it without changes.
         """
         le = self.__structure_analysis_parameters.le_general_frames
-        # label_4 ("Frames") is no longer needed as a free-floating label;
-        # just hide it so it does not consume space in the old form layout.
+        # Hide label_4 ("Frames") so it does not consume space in the form layout.
         self.__structure_analysis_parameters.label_4.setVisible(False)
 
         scope = QFrame()
@@ -371,8 +370,8 @@ class Application:
         self.__override_radio_container = container
 
     def __get_parameter_scroll_box(self):
-        # QTabWidget (horizontal tabs) instead of QToolBox — reclaims ~100px of
-        # vertical space that QToolBox's stacked section headers consumed.
+        # QTabWidget (horizontal tabs) rather than QToolBox, whose stacked section
+        # headers consume vertical space.
         widget_parameter_tabs = QTabWidget()
         widget_parameter_tabs.setDocumentMode(True)
         widget_parameter_tabs.setUsesScrollButtons(True)
