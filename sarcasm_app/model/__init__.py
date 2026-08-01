@@ -131,7 +131,6 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
         self.__parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').set_value(0.0)
-        self.__parameters.get_parameter(name='structure.vectors.smooth_zbands_sigma').set_value(0.0)
 
 
         self.__parameters.get_parameter(name='structure.myofibril.ratio_seeds').set_value(0.1)
@@ -245,7 +244,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.vectors.length_limit_lower')
         self.__parameters.set_parameter(name='structure.vectors.length_limit_upper')
         self.__parameters.set_parameter(name='structure.vectors.smooth_orientation_sigma')
-        self.__parameters.set_parameter(name='structure.vectors.smooth_zbands_sigma')
 
 
         self.__parameters.set_parameter(name='structure.myofibril.ratio_seeds')

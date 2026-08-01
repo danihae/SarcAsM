@@ -104,7 +104,7 @@ def test_smooth_orientation_scipy_and_torch_agree():
 
 
 # ---------------------------------------------------------------------------
-# Profile peak detection — default vs LOI pipelines
+# Profile peak detection
 # ---------------------------------------------------------------------------
 
 def _gauss_peak(x, center, sigma=0.1):
@@ -134,58 +134,92 @@ def test_process_profiles_batch_recovers_known_slen():
     np.testing.assert_allclose(slens, slen_true, atol=0.05)
 
 
-def test_process_profiles_batch_loi_recovers_known_slen():
-    slen_true = 1.85
-    profiles = [_synthetic_profile(slen_true) for _ in range(5)]
-    slens, _ = Utils.process_profiles_batch_loi(
-        profiles, pixelsize=0.06, slen_lims=(1.0, 3.0),
-    )
-    np.testing.assert_allclose(slens, slen_true, atol=0.05)
+def _profile_with_spurious_peak(slen_um, bump, offset=0.35, pixelsize=0.06, n=40, seed=0):
+    """Two real Z-band peaks plus a faint third one between the profile centre
+    and the true left peak, placed so that *prominence* is the filter that
+    decides its fate.
 
-
-def test_upsampling_and_prominence_tighten_slen_under_noise():
-    """Upsampling plus a stricter prominence tightens slen on noisy profiles.
-
-    Both the LOI algorithm and the tightened default should beat a degenerate
-    default (no upsampling, loose prominence), because upsampling reduces
-    peak-position quantisation and prominence rejects noise-driven peaks.
-
-    This is a property of these *synthetic* two-Gaussian profiles and says
-    nothing about which algorithm is better on real data. Measured on real
-    20 kPa profiles the two are equivalent — 9.27 nm per-frame length noise for
-    ``'loi'`` versus 9.14 nm for ``'default'`` at identical mean length and
-    validity, with ``'loi'`` costing ~2.7× more. Do not read this test as a
-    reason to prefer ``peak_algorithm='loi'``.
+    scipy applies height, then distance, then prominence — so the spurious peak
+    must sit farther than ``min_dist`` from both true peaks, or the distance rule
+    removes it before prominence is ever consulted (the tests below pass
+    ``min_dist=0.3`` for that reason). If prominence lets it through it becomes
+    the 'last peak below centre' and the measured length collapses from
+    ``slen_um`` to ``slen_um / 2 + offset``.
     """
-    rng = np.random.default_rng(0)
-    slen_true = 1.85
-    n_profiles = 500
+    rng = np.random.default_rng(seed)
+    x = np.arange(n) * pixelsize
+    center = (x[-1] + x[0]) * 0.5
+    y = (_gauss_peak(x, center - 0.5 * slen_um, sigma=0.08)
+         + _gauss_peak(x, center + 0.5 * slen_um, sigma=0.08)
+         + bump * _gauss_peak(x, center - offset, sigma=0.08))
+    return (y + rng.normal(0.0, 0.01, size=n)).astype(np.float32)
+
+
+_PROM_KW = dict(pixelsize=0.06, interp_factor=4, interpolation_method='akima',
+                min_dist=0.3)
+
+
+def test_prominence_rejects_spurious_peaks():
+    """Prominence, and only prominence, must reject a sub-threshold peak.
+
+    Every other setting is held fixed, so this fails if ``prominence`` is ignored
+    or hard-coded. The previous version of this test varied ``interp_factor`` at
+    the same time and passed even when the prominence argument was discarded
+    entirely.
+    """
+    slen_true, offset = 1.85, 0.35
     profiles = [
-        _synthetic_profile(slen_true, noise=0.05, seed=int(rng.integers(1e9)))
-        for _ in range(n_profiles)
+        _profile_with_spurious_peak(slen_true, bump=0.3, offset=offset, seed=i)
+        for i in range(64)
     ]
+    strict, _ = Utils.process_profiles_batch(profiles, prominence=0.5, **_PROM_KW)
+    loose, _ = Utils.process_profiles_batch(profiles, prominence=0.05, **_PROM_KW)
 
-    slens_loi, _ = Utils.process_profiles_batch_loi(profiles, pixelsize=0.06)
-    slens_default_tight, _ = Utils.process_profiles_batch(
-        profiles, pixelsize=0.06, interp_factor=4, interpolation_method='akima',
-        prominence=0.5,
-    )
-    # Degenerate default — mimics the previous behaviour (no upsample, loose prominence)
-    slens_default_loose, _ = Utils.process_profiles_batch(
-        profiles, pixelsize=0.06, interp_factor=0,
-        prominence=0.2,
+    # Strict: the 0.3-high bump lacks the prominence to qualify, so the true
+    # Z-band pair survives and the length is right.
+    np.testing.assert_allclose(np.nanmedian(strict), slen_true, atol=0.05)
+    # Loose: the bump qualifies and displaces the left peak, so the measurement
+    # collapses towards ``slen_true / 2 + offset``. The centre-of-mass window
+    # still drags it a little towards the true peak, so assert the direction and
+    # magnitude rather than the exact value.
+    assert np.nanmedian(loose) < slen_true - 0.3, (
+        f'loose prominence should admit the spurious peak and shorten the '
+        f'measurement (got median {np.nanmedian(loose):.4f} µm)'
     )
 
-    loi_std = float(np.nanstd(slens_loi))
-    tight_std = float(np.nanstd(slens_default_tight))
-    loose_std = float(np.nanstd(slens_default_loose))
-    # LOI should beat (or match within tolerance) the tightened default, and
-    # both should beat the loose default by a clear margin.
-    assert loi_std < 2.0 * tight_std
-    assert tight_std < loose_std * 0.95, (
-        f"tightened default (std={tight_std:.4f}) should be tighter than loose "
-        f"default (std={loose_std:.4f})"
+
+def test_prominence_argument_is_actually_used():
+    """Guard against the threshold being ignored or hard-coded downstream."""
+    profiles = [
+        _profile_with_spurious_peak(1.85, bump=0.3, seed=i) for i in range(32)
+    ]
+    a, _ = Utils.process_profiles_batch(profiles, prominence=0.05, **_PROM_KW)
+    b, _ = Utils.process_profiles_batch(profiles, prominence=0.5, **_PROM_KW)
+    assert not np.allclose(np.nan_to_num(a), np.nan_to_num(b)), (
+        'changing prominence must change the result'
     )
+
+
+def test_process_profiles_batch_prominence_is_scale_invariant():
+    """Peak selection must not depend on the profile's absolute intensity scale.
+
+    ``process_profiles_batch`` min-max normalises each profile before applying
+    the prominence threshold, so scaling a profile by any positive constant must
+    leave the measured length unchanged. The deleted LOI path failed exactly this
+    — it applied a hard-coded absolute prominence to un-normalised data, so it
+    only behaved as intended on [0, 1] probability maps.
+    """
+    rng = np.random.default_rng(11)
+    profiles = [
+        _synthetic_profile(1.85, noise=0.05, seed=int(rng.integers(1e9)))
+        for _ in range(64)
+    ]
+    base, _ = Utils.process_profiles_batch(profiles, pixelsize=0.06)
+    for scale in (0.01, 255.0):
+        scaled = [(p * scale).astype(np.float32) for p in profiles]
+        got, _ = Utils.process_profiles_batch(scaled, pixelsize=0.06)
+        np.testing.assert_allclose(got, base, rtol=1e-6, equal_nan=True,
+                                   err_msg=f'scale={scale}')
 
 
 def test_orientation_at_points_matches_full_angle_map_in_interior():
@@ -279,24 +313,29 @@ def test_batched_peak_finder_matches_scipy_find_peaks():
     assert np.isfinite(got_slen).sum() > 0.5 * n_profiles, 'test data exercises too few peaks'
 
 
-def test_get_sarcomere_vectors_accepts_peak_algorithm():
-    """Smoke test: the ``peak_algorithm`` kwarg is accepted and routed."""
-    import pytest
-    H, W = 32, 32
+def test_get_sarcomere_vectors_recovers_known_slen():
+    """End-to-end on a synthetic two-Z-band field with a known spacing.
+
+    Z-bands are horizontal, so the sarcomere axis is vertical and the profile
+    must be cast along rows. ``get_sarcomere_vectors`` builds the profile
+    direction as ``(sin θ, cos θ)`` against ``(row, col)`` positions, so that
+    requires θ = π/2, i.e. the orientation field's *y* channel set to 1.
+    """
+    H, W = 48, 48
+    pixelsize = 0.1
     zb = np.zeros((H, W), dtype=np.float32)
     mb = np.zeros((H, W), dtype=np.float32)
-    zb[10, 5:25] = 1.0; zb[20, 5:25] = 1.0; mb[15, 5:25] = 1.0
+    zb[16, 8:40] = 1.0; zb[32, 8:40] = 1.0; mb[24, 8:40] = 1.0
     ori_field = np.zeros((2, H, W), dtype=np.float32)
-    ori_field[0] = 1.0  # cos θ = 1 → θ = 0
-    for algo in ('default', 'loi'):
-        out = sv.get_sarcomere_vectors(
-            zb, mb > 0.25, ori_field, pixelsize=0.1, peak_algorithm=algo,
-        )
-        assert out is not None  # no exception
-    with pytest.raises(ValueError):
-        sv.get_sarcomere_vectors(
-            zb, mb > 0.25, ori_field, pixelsize=0.1, peak_algorithm='garbage',
-        )
+    ori_field[1] = 1.0  # sin θ = 1 → θ = π/2, profile along rows
+
+    *_, slen, _orient, n_mbands = sv.get_sarcomere_vectors(
+        zb, mb > 0.25, ori_field, pixelsize=pixelsize,
+    )
+    assert n_mbands == 1
+    assert np.isfinite(slen).mean() > 0.9, 'most midline points should yield a length'
+    # Z-bands sit 16 px apart → 1.6 µm.
+    np.testing.assert_allclose(np.nanmedian(slen), 16 * pixelsize, atol=0.05)
 
 
 def test_smooth_orientation_single_frame_noop():

@@ -223,8 +223,7 @@ def get_sarcomere_vectors(
         interp_factor: int = 4,
         linewidth: float = 0.3,
         interpolation_method: str = 'linear',
-        peak_prominence: float = 0.3,
-        peak_algorithm: str = 'default',
+        peak_prominence: float = 0.4,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """Extract sarcomere orientation and length vectors.
@@ -253,16 +252,8 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         'linear'.
     peak_prominence : float, optional
         ``scipy.signal.find_peaks`` prominence threshold used inside
-        :func:`Utils.process_profiles_batch`; only used when
-        ``peak_algorithm='default'``. Default is 0.3.
-    peak_algorithm : {'default', 'loi'}, optional
-        Peak-detection routine applied to each profile. ``'default'`` uses
-        :func:`Utils.process_profiles_batch` (fast, batched, honours
-        ``peak_prominence`` / ``interp_factor`` / ``interpolation_method``);
-        ``'loi'`` routes every profile through
-        :func:`Utils.process_profiles_batch_loi`, which upsamples further and
-        refines peaks by centre of mass over a wider window (slower). Default is
-        'default'.
+        :func:`Utils.process_profiles_batch`, applied to the per-profile
+        min-max normalised profile. Default is 0.4.
 
     Returns
     -------
@@ -281,8 +272,6 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     n_mbands : int
         Number of detected M-bands.
     """
-    if peak_algorithm not in ('default', 'loi'):
-        raise ValueError(f"peak_algorithm must be 'default' or 'loi'; got {peak_algorithm!r}")
     radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
     linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
@@ -334,16 +323,10 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
         profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
-        if peak_algorithm == 'loi':
-            # Route through Utils.peakdetekt, which fixes its own presets.
-            sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch_loi(
-                profiles, pixelsize, slen_lims=slen_lims,
-            )
-        else:
-            sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
-                profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
-                interpolation_method=interpolation_method, prominence=peak_prominence,
-            )
+        sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
+            profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
+            interpolation_method=interpolation_method, prominence=peak_prominence,
+        )
 
         # get vector positions in µm and correct center of vectors
         pos_vectors = pos_vectors_px * pixelsize

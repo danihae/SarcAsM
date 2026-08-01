@@ -706,13 +706,11 @@ class SarcAsM(SarcAsMBase):
             self.store_structure_data()
 
     def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
-                                  median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 4,
+                                  median_filter_radius: float = 0.25, linewidth: float = 0.3, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
                                   smooth_orientation_sigma: float = 0.0,
-                                  smooth_zbands_sigma: float = 0.0,
-                                  peak_prominence: float = 0.3,
-                                  peak_algorithm: str = 'default',
+                                  peak_prominence: float = 0.4,
                                   use_fast_movie_zbands: bool = True,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
@@ -730,12 +728,35 @@ class SarcAsM(SarcAsMBase):
             Radius of the kernel smoothing the orientation field before assessing
             orientation at M-points, in µm. Default is 0.25.
         linewidth : float, optional
-            Line width of profile lines for analyzing sarcomere lengths, in µm.
-            Default is 0.2. Wider lines average over more transverse pixels, which
-            reduces frame-to-frame variability in the measured length at the cost of
-            averaging across the sarcomere width; this blurs short or strongly curved
-            myofibrils. For long-term time-lapses this is the only such control
-            available, since the temporal options below do not apply.
+            Width of the profile lines used to measure sarcomere length, in µm.
+            Default is 0.3. The averaging runs *along* the M-band, i.e. laterally
+            across the myofibril, so wider lines pool neighbouring sarcomeres.
+
+            Widening it does **not** meaningfully reduce frame-to-frame
+            variability. Measured at fixed geometry, 0.1 → 1.5 µm moves the noise
+            only 32.4 → 27.1 nm (−16 %), against the −72 % that averaging 12.5×
+            more independent samples would give. The reason is that the residual
+            noise is a coherent wobble of the whole Z-band: the temporal residuals
+            of two *disjoint* lateral half-windows correlate at 0.85 / 0.68 / 0.42
+            at 0.15 / 0.34 / 0.61 µm separation. Lateral averaging therefore
+            re-samples the same fluctuation instead of cancelling it. (Per-pixel
+            segmentation flicker does decorrelate over ~0.5 µm, but the
+            centre-of-mass along the profile has already averaged that away.)
+
+            What widening does buy is a slightly higher detection rate (~+1.5 %
+            from 0.3 to 1.5 µm), and what it costs is real: two disjoint halves of
+            the window agree to ~30 nm at 0.3 µm but disagree by ~80 nm at 1.5 µm,
+            i.e. a wide line pools sarcomeres that genuinely differ. The mean
+            length shifts by ~1 % over that range with a *sample-dependent sign*
+            (+18 nm on one recording, −20 nm on two others), so absolute lengths
+            are not comparable between analyses run at different ``linewidth``.
+            Runtime scales ~4.6× from 0.2 to 1.5 µm.
+
+            In short, treat it as a detection-rate knob with an accuracy cost, not
+            as a noise filter. To actually reduce frame-to-frame length noise on
+            high-speed recordings, run :meth:`detect_z_bands_fast_movie` — the 3D
+            U-Net cuts it ~4× (32 → 8 nm) by integrating over a temporal window
+            during prediction, without smearing moving Z-bands after the fact.
         interp_factor : int, optional
             Akima/linear upsampling factor applied to each profile before peak
             detection. Default is 4. Higher values refine sub-pixel peak
@@ -766,41 +787,31 @@ class SarcAsM(SarcAsMBase):
             orientation jitter; this suppresses the residual frame-to-frame
             component. Because orientation enters the length estimate only through
             the cosine of a small angular error, smoothing it beyond a modest sigma
-            does not improve length — use ``smooth_zbands_sigma`` for that.
-        smooth_zbands_sigma : float, optional
-            Temporal Gaussian sigma (in frames) applied to the Z-band probability
-            stack before profiles are measured. 0 disables it. Default is 0.0.
-
-            Reduces frame-to-frame variability in the measured sarcomere length
-            caused by variability in the Z-band segmentation, which is the dominant
-            such source once orientation smoothing is enabled. Values above ~1
-            progressively attenuate genuine fast length transients and bias peak
-            shortening velocity low; leave at 0 when reporting shortening velocity.
-
-            Only meaningful for high-speed recordings, for the same reason as
-            ``smooth_orientation_sigma``: it averages a pixel across neighbouring
-            frames, which requires those frames to show the same structures. Leave
-            at 0 for long-term time-lapses.
+            does not improve length. To reduce frame-to-frame length variability,
+            run :meth:`detect_z_bands_fast_movie` and let ``use_fast_movie_zbands``
+            pick up its output.
         peak_prominence : float, optional
             ``scipy.signal.find_peaks`` prominence threshold for Z-band peak
-            detection inside each profile; lower values accept weaker, noisier
-            peaks and recover detections where Z-band contrast is reduced, such as
-            at peak contraction or during fast motion. Only used when
-            ``peak_algorithm='default'``; the ``'loi'`` path uses its own fixed
-            prominence. Default is 0.3.
-        peak_algorithm : {'default', 'loi'}, optional
-            Peak detection routine. ``'default'`` uses the fast batched
-            :func:`sarcasm.utils.Utils.process_profiles_batch` (``interp_factor``
-            and ``peak_prominence`` configurable); ``'loi'`` routes every profile
-            through :func:`sarcasm.utils.Utils.peakdetekt`, which fixes its own
-            6× Akima upsampling and prominence, so ``interp_factor`` and
-            ``peak_prominence`` are ignored. Default is 'default'.
+            detection inside each profile, applied after each profile is min-max
+            normalised. Lower values accept weaker, noisier peaks and recover
+            detections where Z-band contrast is reduced, such as at peak
+            contraction or during fast motion. Default is 0.4.
 
-            ``'loi'`` upsamples more aggressively and refines each peak by
-            centre-of-mass over a wider window, which localises Z-band centres more
-            precisely on noisy profiles but costs substantially more time. On real
-            recordings that advantage is largely masked by frame-to-frame
-            variability in the Z-band segmentation.
+            Unlike the other profile-level knobs, it acts on *which* vectors are
+            admitted rather than on how precisely each peak is localised —
+            ``interp_factor``, ``interpolation_method`` and the centre-of-mass
+            window leave the estimate within ~3 nm at any setting.
+
+            Below ~0.4 a tail of poorly-conditioned lengths appears. Measured
+            against the local spatial consensus on 20 kPa, the 1–2 % of vectors
+            admitted by 0.3 but rejected by 0.5 sit ~4–8× further from it than the
+            rest (mean ~70 nm vs ~12 nm, median ~45 nm vs ~5 nm), and ~2 % of them
+            are grossly wrong (>300 nm); they inflate ``sarcomere_length_std`` and
+            leak outliers into tracking. Above that the lengths are unchanged —
+            ``slen(0.3)`` and ``slen(0.5)`` agree exactly on every vector both
+            accept — and only the detection count falls: ~0.3 % per 0.05 step on a
+            high-SNR recording, but several times that on dimmer data, where more
+            of what is dropped is genuine. Lower it if your recordings are dim.
         use_fast_movie_zbands : bool, optional
             If True and a ``zbands_fast_movie`` mask exists (produced by
             :meth:`detect_z_bands_fast_movie`), use that 3D U-Net output instead
@@ -894,19 +905,6 @@ class SarcAsM(SarcAsMBase):
                 orientation_field, sigma=smooth_orientation_sigma,
             )
 
-        # Optional temporal smoothing of the Z-band probability map. Frame-to-frame
-        # flicker here, not orientation jitter, limits per-frame sarcomere length.
-        if smooth_zbands_sigma > 0 and z_bands.shape[0] > 1:
-            logger.info(
-                f'Temporally smoothing Z-band mask with sigma={smooth_zbands_sigma:.3f} frames...'
-            )
-            z_bands = ndimage.gaussian_filter1d(
-                z_bands.astype(np.float32, copy=False), sigma=smooth_zbands_sigma,
-                axis=0, mode='nearest',
-            )
-        elif smooth_zbands_sigma > 0:
-            logger.info('smooth_zbands_sigma ignored: stack has a single frame.')
-
         # binarize M-bands
         mbands = mbands > threshold_mbands
 
@@ -947,8 +945,7 @@ class SarcAsM(SarcAsMBase):
                                                          interp_factor=interp_factor,
                                                          linewidth=linewidth,
                                                          interpolation_method=interpolation_method,
-                                                         peak_prominence=peak_prominence,
-                                                         peak_algorithm=peak_algorithm)
+                                                         peak_prominence=peak_prominence)
 
             # write in list
             n_vectors[frame_i] = len(sarcomere_length_vectors_i)
@@ -988,9 +985,7 @@ class SarcAsM(SarcAsMBase):
                         'params.analyze_sarcomere_vectors.interp_factor': interp_factor,
                         'params.analyze_sarcomere_vectors.linewidth': linewidth,
                         'params.analyze_sarcomere_vectors.smooth_orientation_sigma': smooth_orientation_sigma,
-                        'params.analyze_sarcomere_vectors.smooth_zbands_sigma': smooth_zbands_sigma,
                         'params.analyze_sarcomere_vectors.peak_prominence': peak_prominence,
-                        'params.analyze_sarcomere_vectors.peak_algorithm': peak_algorithm,
                         'params.analyze_sarcomere_vectors.use_fast_movie_zbands': use_fast_movie_zbands,
                         'params.analyze_sarcomere_vectors.zbands_source': zbands_source,
                         'n_vectors': n_vectors, 'n_mbands': n_mbands, 'pos_vectors_px': pos_vectors_px,

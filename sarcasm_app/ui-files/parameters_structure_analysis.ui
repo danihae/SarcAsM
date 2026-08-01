@@ -872,36 +872,7 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_vectors_smooth_zbands_sigma">
-        <property name="toolTip">
-         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). Reduces frame-to-frame variability in the measured sarcomere length; values above ~1 attenuate genuine fast length transients and bias peak shortening velocity low. Only meaningful for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
-        </property>
-        <property name="text">
-         <string>Temporal Z-band smoothing [frames]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_vectors_smooth_zbands_sigma">
-        <property name="toolTip">
-         <string>Temporal smoothing of the Z-band mask across frames (Gaussian sigma, in frames). Reduces frame-to-frame variability in the measured sarcomere length; values above ~1 attenuate genuine fast length transients and bias peak shortening velocity low. Only meaningful for high-speed movies, where consecutive frames show the same structures — leave at 0 for long-term time-lapses. 0 = off.</string>
-        </property>
-        <property name="decimals">
-         <number>2</number>
-        </property>
-        <property name="maximum">
-         <double>100.000000000000000</double>
-        </property>
-        <property name="singleStep">
-         <double>0.500000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" colspan="2">
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_vectors">
         <property name="toolTip">
          <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>
@@ -999,7 +970,7 @@
         </property>
        </widget>
       </item>
-      <item row="6" column="0" colspan="2">
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_myofibril">
         <property name="toolTip">
          <string>execute myofibril length calculation</string>
@@ -1191,7 +1162,7 @@
         </property>
        </widget>
       </item>
-      <item row="6" column="0" colspan="2">
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_domain_analysis">
         <property name="toolTip">
          <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>
