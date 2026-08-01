@@ -179,12 +179,12 @@ class SarcAsM(SarcAsMBase):
 
     def export_json(self, path: Optional[str] = None, *, keys=None,
                     include_arrays: bool = True) -> str:
-        """Export results to a legacy-format JSON file (reloadable by old code).
+        """Export results to a JSON file.
 
         Parameters
         ----------
         path : str or None, optional
-            Output path. Default is None, which uses the historical
+            Output path. Default is None, which uses the default
             ``structure.json`` location.
         keys : list of str or None, optional
             Subset of result keys to export. Default is None (all keys).
@@ -792,16 +792,15 @@ class SarcAsM(SarcAsMBase):
             Peak detection routine. ``'default'`` uses the fast batched
             :func:`sarcasm.utils.Utils.process_profiles_batch` (``interp_factor``
             and ``peak_prominence`` configurable); ``'loi'`` routes every profile
-            through :func:`sarcasm.utils.Utils.peakdetekt` (the LOI peak +
-            6× Akima + COM-refinement pipeline; ``interp_factor`` and
-            ``peak_prominence`` ignored). Default is 'default'.
+            through :func:`sarcasm.utils.Utils.peakdetekt`, which fixes its own
+            6× Akima upsampling and prominence, so ``interp_factor`` and
+            ``peak_prominence`` are ignored. Default is 'default'.
 
-            ``'loi'`` uses the same peak detector as the LOI analysis, so it is the
-            right choice when results must be directly comparable with that
-            pipeline. Its heavier upsampling and peak refinement localise Z-band
-            centres more precisely on noisy profiles, but cost substantially more
-            time; on real recordings the advantage is largely masked by
-            frame-to-frame variability in the Z-band segmentation.
+            ``'loi'`` upsamples more aggressively and refines each peak by
+            centre-of-mass over a wider window, which localises Z-band centres more
+            precisely on noisy profiles but costs substantially more time. On real
+            recordings that advantage is largely masked by frame-to-frame
+            variability in the Z-band segmentation.
         use_fast_movie_zbands : bool, optional
             If True and a ``zbands_fast_movie`` mask exists (produced by
             :meth:`detect_z_bands_fast_movie`), use that 3D U-Net output instead
@@ -2130,8 +2129,8 @@ class SarcAsM(SarcAsMBase):
             Default is None.
         aggregate : {'nanmedian', 'nanmean'} or None, optional
             Reduction of member ``slen(t)`` into the per-group signal. None
-            resolves to ``'nanmean'`` for ``domain`` (legacy parity) and
-            ``'nanmedian'`` otherwise. Default is None.
+            resolves to ``'nanmean'`` for ``domain`` and ``'nanmedian'``
+            otherwise. Default is None.
         slen_lims : tuple of float, optional
             Member lengths outside this µm range are ignored in the aggregate.
             Default is (1.0, 3.0).
@@ -2263,9 +2262,9 @@ class SarcAsM(SarcAsMBase):
         The fibre's member tracks (ordered head-to-tail by ``track_group_order``)
         are turned into a synthesized LOI (``z_pos`` = cumulative arc-length of the
         member sarcomere lengths) and wrapped in a ``Motion`` object, so the full
-        LOI analysis and **every existing LOI plot** (``plot_z_pos``,
-        ``plot_delta_slen``, ``plot_phase_space``, ``plot_popping_events``, …) work
-        unchanged on tracker-derived fibres. Requires a ``'myofibril'`` or
+        LOI analysis and **every LOI plot** (``plot_z_pos``, ``plot_delta_slen``,
+        ``plot_phase_space``, ``plot_popping_events``, …) apply to tracker-derived
+        fibres. Requires a ``'myofibril'`` or
         ``'loi'`` grouping (:meth:`group_tracks` / :meth:`analyze_track_motion`
         with ``by='myofibril'`` or ``by='loi'``).
 

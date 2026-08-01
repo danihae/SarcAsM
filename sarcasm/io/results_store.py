@@ -38,7 +38,7 @@ Access (see :class:`Results`)::
     r.tracks.slen[5]            # one track, reads a single chunk
     r.structure.sarcomere.oop   # eager value
     r.params.track_sarcomere_vectors.max_disp_along_um
-    r['tracks_slen']            # legacy flat-key dict access (materialised)
+    r['tracks_slen']            # flat-key dict access (materialised)
 
 This store holds the analysis, tracking and motion results plus their
 parameters, with image metadata mirrored into the root attrs. Image pixel data and segmentation masks live
@@ -71,12 +71,12 @@ _VERSION = "_format_version"
 # routing schema: flat result key -> (group path, member name)
 # --------------------------------------------------------------------------- #
 def _route(key: str) -> Tuple[str, str]:
-    """Map a legacy flat key to its home in the store.
+    """Map a flat key to its home in the store.
 
     Parameters
     ----------
     key : str
-        Legacy flat result key (e.g. ``'tracks_slen'``, ``'sarcomere_oop'``).
+        Flat result key (e.g. ``'tracks_slen'``, ``'sarcomere_oop'``).
 
     Returns
     -------
@@ -505,7 +505,7 @@ def _write_key(root: "zarr.Group", key: str, val: Any,
     root : zarr.Group
         Store root.
     key : str
-        Legacy flat result key.
+        Flat result key.
     val : Any
         Value to store.
     manifest : dict of str to list
@@ -567,7 +567,7 @@ def write_results(data: Dict[str, Any], store_path: Union[str, Path]) -> None:
     Parameters
     ----------
     data : dict of str to Any
-        Flat results mapping (legacy keys) to serialize.
+        Flat results mapping to serialize.
     store_path : str or Path
         Destination ``data.zarr`` path; overwritten if it exists.
     """
@@ -617,10 +617,10 @@ def update_results(store_path: Union[str, Path], mapping: Dict[str, Any],
 def export_to_json(data, path: Union[str, Path], *,
                    keys: Optional[Iterable[str]] = None,
                    include_arrays: bool = True) -> Path:
-    """Project a results mapping to a legacy-format JSON file.
+    """Project a results mapping to a JSON file.
 
-    Reuses :meth:`IOUtils.json_serialize`, so the output is byte-compatible with
-    the old ``structure.json`` and reloadable by old code.
+    Reuses :meth:`IOUtils.json_serialize`, so the output is in the
+    ``structure.json`` format and is reloadable by :meth:`IOUtils.json_deserialize`.
 
     Parameters
     ----------
@@ -738,7 +738,7 @@ class Results:
     """Lazy attribute-and-dict accessor over a ``data.zarr`` results store.
 
     Read-only. Supports both grouped attribute access (``r.tracks.slen``,
-    nested namespaces, lazy zarr arrays) and legacy flat-key dict access
+    nested namespaces, lazy zarr arrays) and flat-key dict access
     (``r['tracks_slen']``, materialised numpy).
 
     Parameters
@@ -754,12 +754,12 @@ class Results:
 
     # -- dict interface (legacy flat keys, materialised numpy) ------------- #
     def __getitem__(self, key: str) -> Any:
-        """Materialise the value for a legacy flat ``key``.
+        """Materialise the value for a flat ``key``.
 
         Parameters
         ----------
         key : str
-            Legacy flat result key.
+            Flat result key.
 
         Returns
         -------
@@ -782,11 +782,11 @@ class Results:
         return _from_attr(meta) if meta is not None else None
 
     def __contains__(self, key: str) -> bool:
-        """Return True if ``key`` is a known legacy flat key."""
+        """Return True if ``key`` is a known flat key."""
         return key in self._manifest
 
     def keys(self):
-        """Return the list of legacy flat keys in the store."""
+        """Return the list of flat keys in the store."""
         return list(self._manifest.keys())
 
     def get(self, key: str, default=None):
@@ -795,7 +795,7 @@ class Results:
         Parameters
         ----------
         key : str
-            Legacy flat key.
+            Flat key.
         default : Any, optional
             Value returned if ``key`` is absent. Default is None.
 

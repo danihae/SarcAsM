@@ -145,8 +145,8 @@ class BatchExport:
         """
         Load the DataFrame from ``<folder>data_structure.pkl``.
 
-        Falls back to the legacy ``data_structure.pd`` file when the ``.pkl``
-        file is absent.
+        Falls back to a ``data_structure.pd`` file when the ``.pkl`` file is
+        absent.
 
         Raises
         ------

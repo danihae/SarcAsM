@@ -137,8 +137,8 @@ class Motion(SarcAsMBase):
     def _member_slen(self) -> np.ndarray:
         """Per-sarcomere length series ``(n_sarcomeres, T)`` for this LOI.
 
-        For a **legacy** LOI the sarcomere length *is* the gap between consecutive
-        tracked Z-bands, so it is derived from ``z_pos``.
+        For a **Z-band-tracked** LOI the sarcomere length *is* the gap between
+        consecutive tracked Z-bands, so it is derived from ``z_pos``.
 
         For a **synthesized** chain (``Motion.from_loi_data`` with
         ``synthetic=True``, i.e. a fibre built from 2D tracks) the honest

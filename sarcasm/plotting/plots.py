@@ -2372,7 +2372,7 @@ class Plots:
 
         Like :meth:`plot_slen_mean` but plotting ΔSL(t) = SL(t) − equ, where the
         equilibrium ``equ`` is the median group length over the non-contracting
-        frames (``<kind>_contr == 0``), matching the legacy LOI ``delta_slen``.
+        frames (``<kind>_contr == 0``), matching the LOI ``delta_slen``.
         See :meth:`plot_delta_slen` for the individual member sarcomeres.
 
         Parameters
@@ -2476,7 +2476,7 @@ class Plots:
     @staticmethod
     def _plot_slen_loi(ax, motion_obj: Motion, t_lim=(None, None), y_lim=(None, None),
                        show_contr=True, show_mean=True, color=None, mean_color='k'):
-        """Legacy LOI overlay of individual sarcomere lengths + the average."""
+        """LOI overlay of individual sarcomere lengths + the average."""
         time = motion_obj.loi_data['time']
         slen = np.asarray(motion_obj.loi_data['slen'], dtype=float)
         slen_avg = motion_obj.loi_data['slen_avg']
@@ -2508,7 +2508,7 @@ class Plots:
           the group aggregate drawn bold. Members are subsampled to ``max_lines``
           (longest-coverage first) for legibility. Requires
           :meth:`SarcAsM.analyze_track_motion`.
-        * **Motion** (legacy LOI): overlays the per-sarcomere lengths along the LOI
+        * **Motion** (LOI): overlays the per-sarcomere lengths along the LOI
           plus the average (``t_lim``/``y_lim``/``show_contr``/``show_mean``/``color``/
           ``mean_color`` apply; ``group``/``kind``/``max_lines`` are ignored).
 
@@ -2564,7 +2564,7 @@ class Plots:
           group's non-contracting frames), with the group ΔSL drawn bold. Members
           are subsampled to ``max_lines`` (longest-coverage first) for legibility.
           Requires :meth:`SarcAsM.analyze_track_motion`.
-        * **Motion** (legacy LOI): the original stacked per-sarcomere ΔSL view,
+        * **Motion** (LOI): the stacked per-sarcomere ΔSL view,
           one inset row per sarcomere.
 
         The two branches take different parameters — ``group``/``kind``/``max_lines``/

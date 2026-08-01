@@ -260,9 +260,9 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         :func:`Utils.process_profiles_batch` (fast, batched, honours
         ``peak_prominence`` / ``interp_factor`` / ``interpolation_method``);
         ``'loi'`` routes every profile through
-        :func:`Utils.process_profiles_batch_loi`, the peak-detection +
-        Akima-upsampling + COM-refinement pipeline used by the LOI analysis
-        (slower). Default is 'default'.
+        :func:`Utils.process_profiles_batch_loi`, which upsamples further and
+        refines peaks by centre of mass over a wider window (slower). Default is
+        'default'.
 
     Returns
     -------
@@ -335,8 +335,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
         if peak_algorithm == 'loi':
-            # Route through Utils.peakdetekt — the same pipeline the LOI analysis
-            # uses, with matching preset parameters.
+            # Route through Utils.peakdetekt, which fixes its own presets.
             sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch_loi(
                 profiles, pixelsize, slen_lims=slen_lims,
             )

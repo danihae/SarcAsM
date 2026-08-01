@@ -835,8 +835,8 @@ class Utils:
             Default is 'linear'.
         prominence : float, optional
             ``scipy.signal.find_peaks`` prominence threshold; lower values
-            accept weaker, noisier peaks. Default is 0.5 (matches the LOI
-            :func:`Utils.peakdetekt` setting).
+            accept weaker, noisier peaks. Default is 0.5, matching the value fixed
+            in :func:`Utils.peakdetekt`.
 
         Returns
         -------
@@ -1048,17 +1048,16 @@ class Utils:
             width: float = 0.5,
             interp_factor: int = 6,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """LOI-algorithm batch variant of :func:`process_profiles_batch`.
+        """Batch variant of :func:`process_profiles_batch` using
+        :func:`Utils.peakdetekt`.
 
-        Routes every profile through :func:`Utils.peakdetekt` (the exact peak
-        detector used by :meth:`sarcasm.motion.Motion.detekt_peaks` for LOI
-        analysis) and returns one sarcomere length + center offset per
-        profile using the pair straddling the profile centre.
+        Routes every profile through :func:`Utils.peakdetekt` and returns one
+        sarcomere length + center offset per profile, using the peak pair
+        straddling the profile centre.
 
-        The difference versus ``process_profiles_batch`` is parameter presets:
-        ``interp_factor`` defaults to 6 (vs 4), the underlying Akima + COM
-        pipeline is identical, and :func:`peakdetekt` hard-codes
-        ``prominence=0.5`` matching LOI.
+        Relative to :func:`process_profiles_batch` the Akima + COM pipeline is the
+        same; the presets differ — ``interp_factor`` defaults to 6 rather than 4,
+        and :func:`peakdetekt` fixes ``prominence=0.5``.
 
         Parameters
         ----------

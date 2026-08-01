@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Legacy JSON (de)serialization of SarcAsM results (``IOUtils``).
+"""JSON (de)serialization of SarcAsM results (``IOUtils``).
 
 Round-trips nested results dicts to/from the ``structure.json`` format,
 preserving numpy arrays, scalars and scipy sparse matrices.
