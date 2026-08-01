@@ -453,6 +453,7 @@ def track_sarcomere_vectors(
     retire_after_s: Optional[float] = None,
     min_track_duration_s: float = 0.08,
     max_gap_interpolation: int = 3,
+    progress_notifier=None,
 ) -> Dict[str, object]:
     """Run the 2D full-field sarcomere-vector tracker on a detection sequence.
 
@@ -689,7 +690,10 @@ def track_sarcomere_vectors(
 
     # --- frame-to-frame: advect, snap, spawn ---
     logger.info("Tracking frames…")
-    for t in range(T - 1):
+    _frames = range(T - 1)
+    if progress_notifier is not None:
+        _frames = progress_notifier.iterator(_frames)
+    for t in _frames:
         # 1. advect unmatched tracks along their sarcomere axis only. Motion
         # perpendicular to the axis can only come from the snap residual,
         # hard-capped at max_disp_perp_px (anti-perpendicular-jump guarantee).
