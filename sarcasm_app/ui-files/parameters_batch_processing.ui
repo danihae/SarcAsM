@@ -154,7 +154,7 @@
        <widget class="QLineEdit" name="le_batch_axes"/>
       </item>
       <item row="7" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout">
+       <layout class="QVBoxLayout" name="verticalLayout">
         <item>
          <widget class="QCheckBox" name="chk_force_override">
           <property name="toolTip">

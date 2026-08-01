@@ -65,17 +65,20 @@ class StructureAnalysisControl:
         return progress_notifier
 
     def __on_auto_patch_size_toggled(self, checked: bool):
+        # Hidden rather than disabled: greyed-out boxes still claim their width, and
+        # this row is the widest in the tab. Hiding them lets the panel be narrow in
+        # the default (Auto) state and grow only when manual sizes are asked for.
         widget = self.__structure_parameters_widget
         for element in (widget.sb_predict_size_width, widget.sb_predict_size_height,
                         widget.label_11, widget.label_10):
-            element.setEnabled(not checked)
+            element.setVisible(not checked)
 
     def __on_fast_movie_auto_patch_size_toggled(self, checked: bool):
         widget = self.__structure_parameters_widget
         for element in (widget.sb_fast_movie_width, widget.sb_fast_movie_height,
                         widget.sb_fast_movie_n_frames, widget.label_34, widget.label_33,
                         widget.label_31):
-            element.setEnabled(not checked)
+            element.setVisible(not checked)
 
     def __predict_call(self, worker, model: ApplicationModel):
 

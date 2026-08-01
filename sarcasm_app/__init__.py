@@ -28,7 +28,8 @@ from PyQt5.QtGui import QPalette, QColor, QIcon, QDesktopServices
 from PyQt5.QtWidgets import (QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox,
                              QAction, QMenuBar, QMessageBox, QSplitter, QTabWidget,
                              QPushButton, QRadioButton, QButtonGroup, QFormLayout, QFrame)
-from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QProgressBar, QTextEdit
+from PyQt5.QtWidgets import (QLabel, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QProgressBar,
+                             QTextEdit)
 
 _ICON_DIR = Path(__file__).parent / "icons"
 # Prefer platform-native icon format at runtime (Windows reads .ico, macOS .icns,
@@ -393,6 +394,13 @@ class Application:
         for w in (widget_structure_parameters,
                   widget_motion_analysis, widget_batch_processing):
             _apply_spinbox_unit_suffixes(w)
+            # Let long rows put their label above the field when the dock is
+            # narrow. Without this the tabs demand the width of their longest
+            # label plus their widest field on one line -- 941 px for Structure --
+            # which no sensible dock width satisfies. The wrap only engages when
+            # squeezed, so a wide dock looks exactly as before.
+            for form in w.findChildren(QFormLayout):
+                form.setRowWrapPolicy(QFormLayout.WrapLongRows)
 
         model = self.__control.model
         tabs = [
@@ -417,7 +425,9 @@ class Application:
         widget_parameter_scrollbox = QScrollArea()
         widget_parameter_scrollbox.setWidget(widget_parameter_tabs)
         widget_parameter_scrollbox.setWidgetResizable(True)
-        widget_parameter_scrollbox.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # AsNeeded, not AlwaysOff: with the bar off, a tab wider than the dock is
+        # silently clipped and the controls at the right edge become unreachable.
+        widget_parameter_scrollbox.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         return widget_parameter_scrollbox
 
     def __bind_events(self):

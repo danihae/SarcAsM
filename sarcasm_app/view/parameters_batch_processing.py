@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file './sarcasm_app/ui-files/parameters_batch_processing.ui'
+# Form implementation generated from reading ui file 'sarcasm_app/ui-files/parameters_batch_processing.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -79,19 +79,19 @@ class Ui_Form(object):
         self.le_batch_axes = QtWidgets.QLineEdit(self.groupBox)
         self.le_batch_axes.setObjectName("le_batch_axes")
         self.formLayout.setWidget(6, QtWidgets.QFormLayout.FieldRole, self.le_batch_axes)
-        self.horizontalLayout = QtWidgets.QHBoxLayout()
-        self.horizontalLayout.setObjectName("horizontalLayout")
+        self.verticalLayout = QtWidgets.QVBoxLayout()
+        self.verticalLayout.setObjectName("verticalLayout")
         self.chk_force_override = QtWidgets.QCheckBox(self.groupBox)
         self.chk_force_override.setObjectName("chk_force_override")
-        self.horizontalLayout.addWidget(self.chk_force_override)
+        self.verticalLayout.addWidget(self.chk_force_override)
         self.chk_delete_intermediary_tiffs = QtWidgets.QCheckBox(self.groupBox)
         self.chk_delete_intermediary_tiffs.setObjectName("chk_delete_intermediary_tiffs")
-        self.horizontalLayout.addWidget(self.chk_delete_intermediary_tiffs)
+        self.verticalLayout.addWidget(self.chk_delete_intermediary_tiffs)
         self.chk_calc_lois = QtWidgets.QCheckBox(self.groupBox)
         self.chk_calc_lois.setChecked(False)
         self.chk_calc_lois.setObjectName("chk_calc_lois")
-        self.horizontalLayout.addWidget(self.chk_calc_lois)
-        self.formLayout.setLayout(7, QtWidgets.QFormLayout.FieldRole, self.horizontalLayout)
+        self.verticalLayout.addWidget(self.chk_calc_lois)
+        self.formLayout.setLayout(7, QtWidgets.QFormLayout.FieldRole, self.verticalLayout)
         self.groupBox_2 = QtWidgets.QGroupBox(self.groupBox)
         self.groupBox_2.setObjectName("groupBox_2")
         self.formLayout_2 = QtWidgets.QFormLayout(self.groupBox_2)
