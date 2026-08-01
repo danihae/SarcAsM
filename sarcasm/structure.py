@@ -2107,7 +2107,7 @@ class SarcAsM(SarcAsMBase):
         Aggregates the member tracks' ``slen(t)`` into one signal per group and
         runs the shared ContractionNet engine. Grouping-blind: it analyzes
         whatever :meth:`group_tracks` produced. Pass ``by=`` to run grouping
-        inline (the convenient one-call front door for ``'pool'`` / ``'mband'``).
+        inline — the one-call front door for every level but ``'custom'``.
 
         Outputs are written under a ``<kind>_*`` prefix (e.g. ``pool_beating_rate``,
         ``mband_slen_timeseries``, ``mband_contr``), mirroring the ``domain_*``
@@ -2117,11 +2117,12 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        by : {'pool', 'mband', 'domain'} or None, optional
-            If given, run ``group_tracks(by=..., reference_frame=..., min_coverage=...)``
-            first. If None, use the existing grouping. (``'custom'`` must be set up
-            via a separate :meth:`group_tracks` call with ``labels``.)
-            Default is None.
+        by : {'pool', 'mband', 'myofibril', 'loi', 'domain'} or None, optional
+            If given, run ``group_tracks(by=..., reference_frame=..., min_coverage=...,
+            min_group_size=..., max_drift_slen=...)`` first — the one-call front door
+            for every grouping level except ``'custom'``, which needs its own
+            :meth:`group_tracks` call to pass ``labels``. If None, use the existing
+            grouping (whatever :meth:`group_tracks` produced last). Default is None.
         aggregate : {'nanmedian', 'nanmean'} or None, optional
             Reduction of member ``slen(t)`` into the per-group signal. None
             resolves to ``'nanmean'`` for ``domain`` and ``'nanmedian'``
