@@ -81,7 +81,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_track_ori">
         <property name="toolTip">
-         <string>Orientation tolerance for snapping (degrees)</string>
+         <string>Orientation tolerance for matching (degrees)</string>
         </property>
         <property name="text">
          <string>Orient. tol. [deg]</string>
@@ -91,7 +91,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_ori_tol">
         <property name="toolTip">
-         <string>Orientation tolerance for snapping (degrees)</string>
+         <string>Orientation tolerance for matching (degrees)</string>
         </property>
         <property name="decimals">
          <number>1</number>

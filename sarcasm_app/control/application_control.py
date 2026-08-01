@@ -286,11 +286,11 @@ class ApplicationControl:
             return
         n_tracks = pos.shape[0]
         mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])
-        snapped = cell.data.get('tracks_snapped')
-        if snapped is not None:
-            snapped = np.asarray(snapped)
-            if snapped.shape == mask.shape:
-                mask &= snapped.astype(bool)
+        observed = cell.data.get('tracks_observed')
+        if observed is not None:
+            observed = np.asarray(observed)
+            if observed.shape == mask.shape:
+                mask &= observed.astype(bool)
         # colour by group when a grouping exists; drop unassigned (gid < 0) tracks
         gid = cell.data.get('track_group_id')
         gid = None if gid is None else np.asarray(gid).reshape(-1)
@@ -346,11 +346,11 @@ class ApplicationControl:
             return  # stale grouping (track count changed); skip until re-grouped
         multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
         mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])       # (N, T)
-        snapped = cell.data.get('tracks_snapped')
-        if snapped is not None:
-            snapped = np.asarray(snapped)
-            if snapped.shape == mask.shape:
-                mask &= snapped.astype(bool)
+        observed = cell.data.get('tracks_observed')
+        if observed is not None:
+            observed = np.asarray(observed)
+            if observed.shape == mask.shape:
+                mask &= observed.astype(bool)
         mask &= (gid >= 0)[:, None]
         ii, tt = np.nonzero(mask)
         if ii.size == 0:

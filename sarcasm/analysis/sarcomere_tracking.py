@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""2D full-field sarcomere tracking (snap-to-detection).
+"""2D full-field sarcomere tracking (per-frame optimal assignment).
 
 Complements the 1D LOI-based tracker in :mod:`sarcasm.motion` by following every
 sarcomere vector across the whole image automatically. The tracker works purely
@@ -24,12 +24,13 @@ The tracker does **not** track M-bands as a separate entity. Instead each
 "query point" represents one sarcomere vector (position, length, orientation)
 and is carried forward as follows:
 
-1. **Prediction.** A query point that snapped last frame holds its fresh
+1. **Prediction.** A query point that was observed last frame holds its fresh
    position; a point that did *not* is advected by the local coherent motion of
-   the tracks around it (median step of the nearby tracks that snapped in both of
+   the tracks around it (median step of the nearby tracks observed in both of
    the last two frames), projected onto its own sarcomere axis. Perpendicular
-   motion can therefore only come from the snap residual, which is hard-capped —
-   the anti-perpendicular-jump guarantee. The advection is load-bearing: without
+   motion can therefore only come from the match residual — how far the matched
+   detection sits off the prediction — which is hard-capped, the
+   anti-perpendicular-jump guarantee. The advection is load-bearing: without
    it a query point that misses several frames is left behind by a moving field
    and is far more likely to drift away from its neighbourhood.
 2. **Gating.** Each query point's candidate detections are those inside the
@@ -49,18 +50,18 @@ and is carried forward as follows:
    both effects. Because each detection is consumed by at most one query point,
    two query points can never collapse onto one detection.
 4. **Gaps and identity.** A query point that finds no consistent detection
-   records an honest gap frame: position = its prediction, ``snapped=False``, and
+   records an honest gap frame: position = its prediction, ``observed=False``, and
    slen/orientation NaN unless a short interior gap is interpolated
-   (``max_gap_interpolation``, which never sets ``snapped``). It keeps its identity
+   (``max_gap_interpolation``, which never sets ``observed``). It keeps its identity
    and re-enters the assignment on later frames, so a dropout of *any* length does
    not end a trajectory. Tracks therefore do not retire by default
    (``retire_after_s=None``), and no post-hoc fragment stitching is needed.
 
-A query point's **trailing coast** — the frames after its *final* snap — is
+A query point's **trailing coast** — the frames after its *last observed* frame — is
 blanked to NaN (position, slen, orientation) in the output: a lost track does not
 freeze in place at its last position. Interior gaps are anchored on both sides,
 keep their predicted position, and have their slen/orientation interpolated when
-the gap is short (``max_gap_interpolation``); ``tracks_snapped`` still marks which
+the gap is short (``max_gap_interpolation``); ``tracks_observed`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
 """
 
@@ -79,9 +80,9 @@ from scipy.spatial import cKDTree
 logger = logging.getLogger(__name__)
 
 # Scale-invariance safety caps (fractions of the sarcomere length). The
-# along/perpendicular snap gates are reduced to at most these fractions of the
+# along/perpendicular match gates are reduced to at most these fractions of the
 # median sarcomere length in pixels, so that — regardless of pixel size — a
-# single-frame snap can never reach a neighbouring sarcomere (a swap). At the
+# single-frame match can never reach a neighbouring sarcomere (a swap). At the
 # calibration scale (slen ≈ 30 px, along gate 15 px) these are no-ops; they only
 # bind at coarse pixel sizes where the structure shrinks toward the raw gate.
 _ALONG_SLEN_FRAC = 0.6
@@ -98,7 +99,7 @@ _LAP_MAX_COMPONENT = 1500
 # same physical duration is used at any frame rate — the frametime
 # scale-invariance requirement; a fixed frame count would mean 10x the physical
 # time at 10x the fps).
-_MIN_SNAPS_FALLBACK = 5
+_MIN_OBSERVATIONS_FALLBACK = 5
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +134,7 @@ def _neighbor_displacement(query_yx: np.ndarray, ref_yx: np.ndarray,
     within ``radius``: how the tissue around a query point just moved. Used to
     carry a coasting track forward with its neighbourhood, so its anchor cannot go
     stale and let the neighbouring sarcomere into the re-acquisition gate. Median
-    rather than mean, so a few mis-snapped neighbours cannot drag the estimate.
+    rather than mean, so a few mismatched neighbours cannot drag the estimate.
 
     Parameters
     ----------
@@ -176,7 +177,7 @@ def _neighbor_displacement(query_yx: np.ndarray, ref_yx: np.ndarray,
     return np.nan_to_num(med).astype(np.float32)
 
 
-def compute_track_drift(positions_px: np.ndarray, snapped: np.ndarray,
+def compute_track_drift(positions_px: np.ndarray, observed: np.ndarray,
                         median_slen_px: Optional[float],
                         pixelsize: float, n_segments: int = 8) -> np.ndarray:
     """Per-track drift away from the coherent motion of its neighbours, in µm.
@@ -191,8 +192,8 @@ def compute_track_drift(positions_px: np.ndarray, snapped: np.ndarray,
     ----------
     positions_px : np.ndarray
         ``(N, T, 2)`` track positions in px.
-    snapped : np.ndarray
-        ``(N, T)`` bool, True where the track snapped to a real detection.
+    observed : np.ndarray
+        ``(N, T)`` bool, True where the track was matched to a real detection.
     median_slen_px : float or None
         Median sarcomere length in px; sets the neighbourhood radius (3 slen).
     pixelsize : float
@@ -207,8 +208,8 @@ def compute_track_drift(positions_px: np.ndarray, snapped: np.ndarray,
         window (too short to score).
     """
     positions_px = np.asarray(positions_px, dtype=float)
-    snapped = np.asarray(snapped, dtype=bool)
-    N, T = snapped.shape
+    observed = np.asarray(observed, dtype=bool)
+    N, T = observed.shape
     resid = np.zeros((N, 2))
     scored = np.zeros(N, dtype=bool)
     if N == 0 or T < 2:
@@ -218,7 +219,7 @@ def compute_track_drift(positions_px: np.ndarray, snapped: np.ndarray,
     for a, b in zip(edges[:-1], edges[1:]):
         if b <= a:
             continue
-        both = snapped[:, a] & snapped[:, b]
+        both = observed[:, a] & observed[:, b]
         idx = np.flatnonzero(both)
         if idx.size < 6:          # too few references to define a local motion
             continue
@@ -363,7 +364,7 @@ def _interpolate_short_gaps(
     n_tracks: int,
     tracks_slen: np.ndarray,
     tracks_ori: np.ndarray,
-    tracks_snapped: np.ndarray,
+    tracks_observed: np.ndarray,
     max_gap: int,
 ) -> int:
     """Fill sarcomere length / orientation across short INTERIOR gaps, in place.
@@ -371,12 +372,12 @@ def _interpolate_short_gaps(
     A gap frame carries a predicted position but no detection, so its slen and
     orientation are NaN. Those holes break downstream traces (contraction
     detection, per-group time series) even when the gap is a single flickered
-    frame, so runs of at most ``max_gap`` consecutive unsnapped frames that are
-    anchored by a real snap on *both* sides are filled by interpolation.
+    frame, so runs of at most ``max_gap`` consecutive gap frames that are
+    anchored by a real observation on *both* sides are filled by interpolation.
 
     Only interior runs are touched: leading/trailing frames have no second anchor,
     and extrapolating there would invent data at the ends of a trajectory.
-    ``tracks_snapped`` is deliberately left False on filled frames, so every
+    ``tracks_observed`` is deliberately left False on filled frames, so every
     real-observation metric, coverage figure and QC guard still counts only
     genuine detections — the fill is a convenience for continuous traces, never
     evidence.
@@ -389,10 +390,10 @@ def _interpolate_short_gaps(
     ----------
     n_tracks : int
         Number of active tracks in the SoA arrays.
-    tracks_slen, tracks_ori, tracks_snapped : np.ndarray
+    tracks_slen, tracks_ori, tracks_observed : np.ndarray
         ``(capacity, T)`` track state; slen/ori are modified in place.
     max_gap : int
-        Longest run of unsnapped frames to fill. ``<= 0`` disables the pass.
+        Longest run of gap frames to fill. ``<= 0`` disables the pass.
 
     Returns
     -------
@@ -403,7 +404,7 @@ def _interpolate_short_gaps(
         return 0
     filled = 0
     for i in range(n_tracks):
-        fr = np.flatnonzero(tracks_snapped[i])
+        fr = np.flatnonzero(tracks_observed[i])
         if fr.size < 2:
             continue
         gaps = np.diff(fr)
@@ -412,7 +413,7 @@ def _interpolate_short_gaps(
             if span - 1 > int(max_gap):
                 continue
             w = np.arange(1, span) / float(span)
-            # A snapped anchor can still carry a NaN length (its detection had
+            # An observed anchor can still carry a NaN length (its detection had
             # none), in which case there is nothing to interpolate between.
             s_a, s_b = tracks_slen[i, a], tracks_slen[i, b]
             if np.isfinite(s_a) and np.isfinite(s_b):
@@ -459,8 +460,8 @@ def track_sarcomere_vectors(
 
     The tracker does not persist M-band identity, and reads no image data: every
     query point is a sarcomere-vector marker that is predicted from the coherent
-    motion of its neighbours and snapped to a consistent detection each frame.
-    Outputs are dense ``(n_tracks, T)`` arrays. Snap gates are capped relative to
+    motion of its neighbours and matched to a consistent detection each frame.
+    Outputs are dense ``(n_tracks, T)`` arrays. Match gates are capped relative to
     the sarcomere length so the tracker stays scale-invariant across pixel size /
     frame time.
 
@@ -474,12 +475,12 @@ def track_sarcomere_vectors(
        tracks and spawning duplicates. Each detection is consumed by at most one
        query point — the anti-convergence guarantee.
     2. **Identity that survives a gap of any length.** An unmatched track records
-       an honest gap frame (``snapped=False``, slen/orientation NaN) and re-enters
+       an honest gap frame (``observed=False``, slen/orientation NaN) and re-enters
        the assignment later, so detection dropout does not end a trajectory and
        no post-hoc fragment stitching is required.
 
     Each (track, frame) also records ``tracks_detection_id`` (index of the
-    snapped detection into ``pos_vectors_px_all[frame]``) and
+    matched detection into ``pos_vectors_px_all[frame]``) and
     ``tracks_midline_id`` (that detection's entry in ``midline_ids_all``); both
     are ``-1`` on gap/interpolated frames, giving an exact join back to the
     per-frame vector / domain / myofibril analyses.
@@ -500,16 +501,16 @@ def track_sarcomere_vectors(
         Frame time in s; converts the seconds-valued horizons below to frames.
         Default is None.
     max_disp_along_um : float, optional
-        Snap gate along the sarcomere axis, in µm — i.e. the maximum distance a
+        Match gate along the sarcomere axis, in µm — i.e. the maximum distance a
         track may move along its axis between consecutive frames. This is the
         per-frame "max step": at the default 1.0 µm a track can never jump more
         than ~1 µm regardless of pixel size. Default is 1.0.
     max_disp_perp_um : float, optional
-        Snap gate perpendicular to the sarcomere axis, in µm; kept far tighter
+        Match gate perpendicular to the sarcomere axis, in µm; kept far tighter
         than the along gate (perpendicular jumps onto a neighbouring myofibril
         are the dangerous swap). Default is 0.2.
     ori_tol_deg : float, optional
-        Orientation tolerance for snapping in degrees. Default is 45.0.
+        Orientation tolerance for matching, in degrees. Default is 45.0.
     retire_after_s : float or None, optional
         Time a track may go unmatched before it is closed, in seconds. ``None``
         (default) means tracks never retire: because an unmatched track is carried
@@ -519,13 +520,14 @@ def track_sarcomere_vectors(
         sarcomeres genuinely appear and disappear, to bound the track count.
     min_track_duration_s : float, optional
         Minimum accumulated real observation time to keep a track, in seconds
-        (converted via ``frametime``; falls back to ``_MIN_SNAPS_FALLBACK`` real
-        snaps when ``frametime`` is None). Default is 0.08.
+        (converted via ``frametime``; falls back to
+        ``_MIN_OBSERVATIONS_FALLBACK`` real observations when ``frametime`` is
+        None). Default is 0.08.
     max_gap_interpolation : int, optional
         Longest run of consecutive gap frames whose sarcomere length / orientation
-        is filled by interpolation between the real snaps on either side, so short
+        is filled by interpolation between the real observations on either side, so short
         detection flicker does not punch holes in the per-track traces. Interior
-        gaps only, and ``tracks_snapped`` stays False there, so no
+        gaps only, and ``tracks_observed`` stays False there, so no
         real-observation metric is affected. Set to 0 to keep every gap frame NaN.
         Kept deliberately short (default 3): a longer fill would start to span a
         contraction and invent length dynamics.
@@ -536,7 +538,7 @@ def track_sarcomere_vectors(
         Result dictionary with keys: ``'n_tracks'``, ``'track_ids'``,
         ``'track_start_frame'``, ``'track_lengths'``, ``'tracks_positions_um'``,
         ``'tracks_positions_px'``, ``'tracks_slen'`` (µm),
-        ``'tracks_orientations'`` (rad), ``'tracks_snapped'`` (bool),
+        ``'tracks_orientations'`` (rad), ``'tracks_observed'`` (bool),
         ``'tracks_detection_id'``, ``'tracks_midline_id'``,
         ``'fragmentation_ratio'`` (tracks per median detections-per-frame; ideal
         1.0 — the headline continuity QC number) and ``'n_tracks_retired'``.
@@ -554,11 +556,11 @@ def track_sarcomere_vectors(
         if frametime and frametime > 0:
             return max(1, int(round(float(seconds) / float(frametime))))
         return int(fallback_frames)
-    min_snaps = _to_frames(min_track_duration_s, _MIN_SNAPS_FALLBACK)
+    min_observations = _to_frames(min_track_duration_s, _MIN_OBSERVATIONS_FALLBACK)
     retire_frames = (np.inf if retire_after_s is None
                      else _to_frames(retire_after_s, 10 ** 9))
     logger.info(
-        f"Tracking: min_track_duration={min_track_duration_s} s ({min_snaps} snaps), "
+        f"Tracking: min_track_duration={min_track_duration_s} s ({min_observations} observations), "
         f"retire_after={retire_after_s} s (frametime={frametime}).")
 
     if not pixelsize or pixelsize <= 0:
@@ -575,8 +577,8 @@ def track_sarcomere_vectors(
     max_disp_along_px = float(max_disp_along_um) / px
     max_disp_perp_px = float(max_disp_perp_um) / px
 
-    # Secondary scale-invariance safety net: also cap the snap gates relative to
-    # the measured sarcomere length so a snap can never cross to a neighbour even
+    # Secondary scale-invariance safety net: also cap the match gates relative to
+    # the measured sarcomere length so a match can never cross to a neighbour even
     # if the µm gate is set unusually large for the local sarcomere spacing. No-op
     # at the default gates / typical sarcomere lengths.
     median_slen_px = _median_slen_px(sarcomere_lengths_all, pixelsize)
@@ -603,7 +605,7 @@ def track_sarcomere_vectors(
 
     # --- struct-of-arrays track state ---
     # History arrays (grow in chunks when capacity exceeded). Live state
-    # (last_* / frames_since_snap / alive) mirrors only the tracks that are
+    # (last_* / frames_since_observation / alive) mirrors only the tracks that are
     # still alive, but is kept at the same size as the history arrays so that
     # indexing by absolute slot is always valid.
     pos0_raw = pos_vectors_px_all[0]
@@ -613,23 +615,23 @@ def track_sarcomere_vectors(
     positions_px = np.full((capacity, T, 2), np.nan, dtype=np.float32)
     tracks_slen = np.full((capacity, T), np.nan, dtype=np.float32)
     tracks_ori = np.full((capacity, T), np.nan, dtype=np.float32)
-    tracks_snapped = np.zeros((capacity, T), dtype=bool)
-    # Per-(track, frame) provenance: index of the snapped detection into
-    # pos_vectors_px_all[frame], and that detection's midline id. -1 = no snap.
+    tracks_observed = np.zeros((capacity, T), dtype=bool)
+    # Per-(track, frame) provenance: index of the matched detection into
+    # pos_vectors_px_all[frame], and that detection's midline id. -1 = no match.
     tracks_detection_id = np.full((capacity, T), -1, dtype=np.int32)
     tracks_midline_id = np.full((capacity, T), -1, dtype=np.int32)
     start_frame_arr = np.zeros(capacity, dtype=np.int32)
     last_y = np.full(capacity, np.nan, dtype=np.float32)
     last_x = np.full(capacity, np.nan, dtype=np.float32)
     last_ori = np.zeros(capacity, dtype=np.float32)
-    frames_since_snap = np.zeros(capacity, dtype=np.int32)
+    frames_since_observation = np.zeros(capacity, dtype=np.int32)
     alive = np.zeros(capacity, dtype=bool)
 
     def _grow(needed: int):
         """Double capacity until >= ``needed`` and resize all SoA arrays."""
-        nonlocal capacity, positions_px, tracks_slen, tracks_ori, tracks_snapped
+        nonlocal capacity, positions_px, tracks_slen, tracks_ori, tracks_observed
         nonlocal tracks_detection_id, tracks_midline_id
-        nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_snap, alive
+        nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_observation, alive
         if needed <= capacity:
             return
         new_cap = capacity
@@ -645,14 +647,14 @@ def track_sarcomere_vectors(
         positions_px = _resize(positions_px, np.nan)
         tracks_slen = _resize(tracks_slen, np.nan)
         tracks_ori = _resize(tracks_ori, np.nan)
-        tracks_snapped = _resize(tracks_snapped, False)
+        tracks_observed = _resize(tracks_observed, False)
         tracks_detection_id = _resize(tracks_detection_id, -1)
         tracks_midline_id = _resize(tracks_midline_id, -1)
         start_frame_arr = _resize(start_frame_arr, 0)
         last_y = _resize(last_y, np.nan)
         last_x = _resize(last_x, np.nan)
         last_ori = _resize(last_ori, 0.0)
-        frames_since_snap = _resize(frames_since_snap, 0)
+        frames_since_observation = _resize(frames_since_observation, 0)
         alive = _resize(alive, False)
         capacity = new_cap
 
@@ -674,7 +676,7 @@ def track_sarcomere_vectors(
         positions_px[sl, 0, 1] = pos0[:, 1]
         tracks_slen[sl, 0] = slen0
         tracks_ori[sl, 0] = ori0
-        tracks_snapped[sl, 0] = True
+        tracks_observed[sl, 0] = True
         # Frame-0 seeds map 1:1 onto frame-0 detections (slot i == detection i).
         tracks_detection_id[sl, 0] = np.arange(n0, dtype=np.int32)
         tracks_midline_id[sl, 0] = _as_arr_padded(
@@ -688,19 +690,19 @@ def track_sarcomere_vectors(
         alive[sl] = True
         n_tracks = n0
 
-    # --- frame-to-frame: advect, snap, spawn ---
+    # --- frame-to-frame: advect, match, spawn ---
     logger.info("Tracking frames…")
     _frames = range(T - 1)
     if progress_notifier is not None:
         _frames = progress_notifier.iterator(_frames)
     for t in _frames:
         # 1. advect unmatched tracks along their sarcomere axis only. Motion
-        # perpendicular to the axis can only come from the snap residual,
+        # perpendicular to the axis can only come from the match residual,
         # hard-capped at max_disp_perp_px (anti-perpendicular-jump guarantee).
-        # A track that snapped last frame already has a fresh anchor and is left
+        # A track that was observed last frame already has a fresh anchor and is left
         # alone (nudging it only adds noise); a track that has gone unmatched is
         # carried by the tissue around it, so its anchor stays valid however long
-        # the dropout lasts. Reference set = tracks that snapped in both of the
+        # the dropout lasts. Reference set = tracks observed in both of the
         # last two frames, so their step is a real observation, not a prediction.
         # Load-bearing: without this advection an unmatched track is left behind by
         # a moving field and drifts away from its neighbourhood.
@@ -708,9 +710,9 @@ def track_sarcomere_vectors(
         if live.size > 0:
             ys = last_y[live]
             xs = last_x[live]
-            coasting = np.flatnonzero(frames_since_snap[live] > 0)
-            ref = (np.flatnonzero(tracks_snapped[:n_tracks, t]
-                                  & tracks_snapped[:n_tracks, t - 1])
+            coasting = np.flatnonzero(frames_since_observation[live] > 0)
+            ref = (np.flatnonzero(tracks_observed[:n_tracks, t]
+                                  & tracks_observed[:n_tracks, t - 1])
                    if t >= 1 else np.empty(0, dtype=np.int64))
             if coasting.size and ref.size:
                 disp = _neighbor_displacement(
@@ -745,7 +747,7 @@ def track_sarcomere_vectors(
         claimed_det_mask = np.zeros(n_det, dtype=bool)
 
         # 3. build kd-tree and vectorized gate on all (qp, candidate) pairs.
-        # The gate is the SAME whether a track snapped last frame or has been
+        # The gate is the SAME whether a track was observed last frame or has been
         # unmatched for a hundred frames: a gap does not license a longer jump,
         # it only means the track kept waiting. Widening the gate with gap length
         # would trade identity for fragmentation.
@@ -834,7 +836,7 @@ def track_sarcomere_vectors(
                     positions_px[qp_acc, t + 1, 1] = cx_acc
                     tracks_slen[qp_acc, t + 1] = sl_acc
                     tracks_ori[qp_acc, t + 1] = co_acc
-                    tracks_snapped[qp_acc, t + 1] = True
+                    tracks_observed[qp_acc, t + 1] = True
                     tracks_detection_id[qp_acc, t + 1] = det_acc.astype(np.int32)
                     tracks_midline_id[qp_acc, t + 1] = det_mids[det_acc]
                     last_y[qp_acc] = cy_acc
@@ -843,7 +845,7 @@ def track_sarcomere_vectors(
                     finite_det = np.isfinite(co_acc)
                     if finite_det.any():
                         last_ori[qp_acc[finite_det]] = co_acc[finite_det]
-                    frames_since_snap[qp_acc] = 0
+                    frames_since_observation[qp_acc] = 0
 
         # 5. unmatched live tracks → gap frame
         if live.size > 0:
@@ -852,10 +854,10 @@ def track_sarcomere_vectors(
             if unclaimed_live.size > 0:
                 positions_px[unclaimed_live, t + 1, 0] = last_y[unclaimed_live]
                 positions_px[unclaimed_live, t + 1, 1] = last_x[unclaimed_live]
-                # tracks_slen / tracks_ori already NaN; tracks_snapped already False.
-                frames_since_snap[unclaimed_live] += 1
+                # tracks_slen / tracks_ori already NaN; tracks_observed already False.
+                frames_since_observation[unclaimed_live] += 1
                 if np.isfinite(retire_frames):
-                    died_local = frames_since_snap[unclaimed_live] > retire_frames
+                    died_local = frames_since_observation[unclaimed_live] > retire_frames
                     if died_local.any():
                         alive[unclaimed_live[died_local]] = False
 
@@ -878,47 +880,47 @@ def track_sarcomere_vectors(
                 positions_px[new_slots, t + 1, 1] = new_x
                 tracks_slen[new_slots, t + 1] = new_slen
                 tracks_ori[new_slots, t + 1] = new_ori
-                tracks_snapped[new_slots, t + 1] = True
+                tracks_observed[new_slots, t + 1] = True
                 tracks_detection_id[new_slots, t + 1] = unclaimed_det.astype(np.int32)
                 tracks_midline_id[new_slots, t + 1] = det_mids[unclaimed_det]
                 start_frame_arr[new_slots] = t + 1
                 last_y[new_slots] = new_y
                 last_x[new_slots] = new_x
                 last_ori[new_slots] = new_ori
-                frames_since_snap[new_slots] = 0
+                frames_since_observation[new_slots] = 0
                 alive[new_slots] = True
                 n_tracks += n_new
 
     # --- blank the trailing coast of lost tracks (no constant hold-over) ---
-    # The frames after a track's final snap carried its last *predicted* position
+    # The frames after a track's last observation carried its last *predicted* position
     # with NaN slen / orientation — a dead-end, not a real observation. Blank them
     # so a lost track does not appear to freeze in place at its last position.
     # Interior gap frames are anchored on both sides and kept; only frames strictly
-    # after a track's final snap are cleared. tracks_snapped is left untouched, so
-    # the short-track filter below still counts real snaps.
+    # after a track's last observation are cleared. tracks_observed is left untouched,
+    # so the short-track filter below still counts real observations.
     if n_tracks > 0:
-        snap_view = tracks_snapped[:n_tracks]
-        has_snap = snap_view.any(axis=1)
+        observed_view = tracks_observed[:n_tracks]
+        has_observation = observed_view.any(axis=1)
         # Index of the last True per row (all-False rows → -1 → whole row blanked;
-        # those have 0 snaps and are dropped by the short-track filter anyway).
-        last_snap_idx = np.where(
-            has_snap,
-            (T - 1) - np.argmax(snap_view[:, ::-1], axis=1),
+        # those have 0 observations and are dropped by the short-track filter anyway).
+        last_observed_idx = np.where(
+            has_observation,
+            (T - 1) - np.argmax(observed_view[:, ::-1], axis=1),
             -1,
         )
-        trailing = np.arange(T)[None, :] > last_snap_idx[:, None]
+        trailing = np.arange(T)[None, :] > last_observed_idx[:, None]
         positions_px[:n_tracks][trailing] = np.nan
         tracks_slen[:n_tracks][trailing] = np.nan
         tracks_ori[:n_tracks][trailing] = np.nan
 
     # --- interpolate slen / orientation across SHORT interior gaps ---
     _interpolate_short_gaps(
-        n_tracks, tracks_slen, tracks_ori, tracks_snapped, max_gap_interpolation)
+        n_tracks, tracks_slen, tracks_ori, tracks_observed, max_gap_interpolation)
 
-    # --- filter short tracks (count of actual snaps) ---
+    # --- filter short tracks (count of actual observations) ---
     logger.info("Filtering short tracks…")
-    snapped_counts = tracks_snapped[:n_tracks].sum(axis=1)
-    keep_mask = snapped_counts >= int(min_snaps)
+    observed_counts = tracks_observed[:n_tracks].sum(axis=1)
+    keep_mask = observed_counts >= int(min_observations)
     kept = np.flatnonzero(keep_mask)
     n = int(kept.size)
 
@@ -926,21 +928,21 @@ def track_sarcomere_vectors(
     out_positions_um = (out_positions_px * pixelsize).astype(np.float32)
     out_tracks_slen = tracks_slen[kept].copy()
     out_tracks_ori = tracks_ori[kept].copy()
-    out_tracks_snapped = tracks_snapped[kept].copy()
+    out_tracks_observed = tracks_observed[kept].copy()
     out_tracks_detection_id = tracks_detection_id[kept].copy()
     out_tracks_midline_id = tracks_midline_id[kept].copy()
     out_start_frame = start_frame_arr[kept].astype(np.int64)
     out_track_ids = kept.astype(np.int64)
-    out_track_lengths = snapped_counts[kept].astype(np.int64)
+    out_track_lengths = observed_counts[kept].astype(np.int64)
 
     # Counted on the KEPT tracks, so it matches the returned arrays exactly:
-    # a finite slen on an unsnapped frame can only come from the interpolation.
-    n_interpolated = int(np.isfinite(out_tracks_slen[~out_tracks_snapped]).sum())
+    # a finite slen on a gap frame can only come from the interpolation.
+    n_interpolated = int(np.isfinite(out_tracks_slen[~out_tracks_observed]).sum())
     if n_interpolated:
         logger.info(
             f"Interpolated sarcomere length / orientation on {n_interpolated} gap "
             f"frames (gaps of at most {max_gap_interpolation} frames); "
-            f"'tracks_snapped' stays False there, so no coverage metric counts them.")
+            f"'tracks_observed' stays False there, so no coverage metric counts them.")
 
     # Headline continuity QC: tracks per median detections-per-frame. 1.0 means one
     # track per sarcomere vector over the whole recording; larger means the same
@@ -952,7 +954,7 @@ def track_sarcomere_vectors(
         f"(fragmentation ratio {frag_ratio:.2f}, ideal 1.0).")
 
     track_drift_um = compute_track_drift(
-        out_positions_px, out_tracks_snapped, median_slen_px, pixelsize)
+        out_positions_px, out_tracks_observed, median_slen_px, pixelsize)
     n_drifted = int(np.count_nonzero(
         np.isfinite(track_drift_um) & (track_drift_um > (median_slen_px or 0) * pixelsize)))
     if n_drifted:
@@ -971,7 +973,7 @@ def track_sarcomere_vectors(
         'tracks_positions_px': out_positions_px,
         'tracks_slen': out_tracks_slen,
         'tracks_orientations': out_tracks_ori,
-        'tracks_snapped': out_tracks_snapped,
+        'tracks_observed': out_tracks_observed,
         'tracks_detection_id': out_tracks_detection_id,
         'tracks_midline_id': out_tracks_midline_id,
         'fragmentation_ratio': frag_ratio,

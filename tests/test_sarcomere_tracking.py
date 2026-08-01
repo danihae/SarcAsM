@@ -59,7 +59,7 @@ def _make_detection_sequence(T=6, n_points=20, shift_per_frame=1.0, orientation=
     return pos_px_all, slen_all, ori_all
 
 
-def test_seed_and_snap_recovers_uniform_translation():
+def test_seed_and_match_recovers_uniform_translation():
     """Static detections must simply stay on the same detections."""
     T = 3
     pos_px_all, slen_all, ori_all = _make_detection_sequence(
@@ -72,9 +72,9 @@ def test_seed_and_snap_recovers_uniform_translation():
     )
     # All 10 detections should produce persistent tracks.
     assert out['n_tracks'] == 10
-    # Every track should be continuously snapped across all frames.
-    snapped = out['tracks_snapped']
-    assert np.all(snapped == True)  # noqa: E712 — explicit test of boolean array
+    # Every track should be continuously observed across all frames.
+    observed = out['tracks_observed']
+    assert np.all(observed == True)  # noqa: E712 — explicit test of boolean array
 
 
 def test_anti_convergence_tracks_stay_separated():
@@ -103,12 +103,12 @@ def test_anti_convergence_tracks_stay_separated():
         assert d >= 30.0, f"tracks collapsed at frame {t}: distance = {d:.1f}"
 
 
-def test_gap_frame_is_not_snapped_and_carries_no_measured_slen():
+def test_gap_frame_is_not_observed_and_carries_no_measured_slen():
     """If a detection disappears for a frame, the query point stays alive at its
-    predicted position, and that frame is marked as not snapped — it carries no
+    predicted position, and that frame is marked as not observed — it carries no
     *measured* sarcomere length. With gap interpolation disabled its slen is NaN;
     the interpolated value that the default fills in is a convenience for
-    continuous traces, and ``tracks_snapped`` remains the record of what is real."""
+    continuous traces, and ``tracks_observed`` remains the record of what is real."""
     T = 4
 
     pos_full = np.array([[25.0, 40.0]], dtype=np.float32)
@@ -125,21 +125,21 @@ def test_gap_frame_is_not_snapped_and_carries_no_measured_slen():
         max_gap_interpolation=0, **common)
     assert out['n_tracks'] >= 1
     slens = out['tracks_slen']
-    snapped = out['tracks_snapped']
+    observed = out['tracks_observed']
     # At least one track has a NaN slen at frame 1 but valid slen at frames 0/2/3,
     # and frame 1 is not counted as an observation.
     assert any(
         np.isnan(slens[i, 1]) and np.isfinite(slens[i, 0]) and np.isfinite(slens[i, 2])
-        and not snapped[i, 1]
+        and not observed[i, 1]
         for i in range(slens.shape[0])
     )
     # The position is kept (predicted), not blanked, since the gap is interior.
     assert np.all(np.isfinite(out['tracks_positions_px'][0, 1]))
 
 
-def test_frames_after_final_snap_are_nan():
+def test_frames_after_last_observation_are_nan():
     """A track that permanently loses its detection must not freeze in place at
-    its last position: every frame after the final snap is blanked to NaN —
+    its last position: every frame after the last observation is blanked to NaN —
     position, slen and orientation alike."""
     T = 8
     pos = np.array([[25.0, 40.0]], dtype=np.float32)
@@ -156,17 +156,17 @@ def test_frames_after_final_snap_are_nan():
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
     )
     assert out['n_tracks'] == 1
-    snapped = out['tracks_snapped'][0]
-    assert snapped.tolist() == [True, True, True, True, False, False, False, False]
+    observed = out['tracks_observed'][0]
+    assert observed.tolist() == [True, True, True, True, False, False, False, False]
     pos_out = out['tracks_positions_px'][0]
     pos_um = out['tracks_positions_um'][0]
     slens = out['tracks_slen'][0]
     oris = out['tracks_orientations'][0]
-    # Snapped frames keep their real values...
+    # Observed frames keep their real values...
     np.testing.assert_allclose(pos_out[:4, 0], 25.0, atol=1.0)
     np.testing.assert_allclose(pos_out[:4, 1], 40.0, atol=1.0)
     assert np.all(np.isfinite(slens[:4]))
-    # ...and every frame after the final snap is NaN (no constant hold-over).
+    # ...and every frame after the last observation is NaN (no constant hold-over).
     assert np.all(np.isnan(pos_out[4:]))
     assert np.all(np.isnan(pos_um[4:]))
     assert np.all(np.isnan(slens[4:]))
@@ -200,10 +200,10 @@ def test_optimal_assignment_handles_a_shifted_1px_row():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.06, frametime=0.01, min_track_duration_s=0.02)
-    snapped = out['tracks_snapped']
-    # One track per surviving sample, each snapped in every frame: no duplicates.
+    observed = out['tracks_observed']
+    # One track per surviving sample, each observed in every frame: no duplicates.
     assert out['n_tracks'] == n - 1, f"expected {n - 1} tracks, got {out['n_tracks']}"
-    assert snapped.all(), 'every sample must stay matched through the shift'
+    assert observed.all(), 'every sample must stay matched through the shift'
     # And each track stayed on its own lateral row (no swap with a neighbour).
     rows = out['tracks_positions_px'][:, :, 0]
     assert np.allclose(rows, rows[:, :1]), 'a track changed lateral position'
@@ -212,7 +212,7 @@ def test_optimal_assignment_handles_a_shifted_1px_row():
 def test_track_survives_a_gap_far_longer_than_the_old_memory_horizon():
     """Identity now survives a dropout of any length, with no merge pass: the
     unmatched track keeps its anchor and re-acquires the same detection. The gap
-    frames stay honest — snapped False and slen NaN, never a fabricated length."""
+    frames stay honest — observed False and slen NaN, never a fabricated length."""
     T = 40
     pos = np.array([[25.0, 40.0]], np.float32)
     empty = np.zeros((0, 2), np.float32)
@@ -229,14 +229,14 @@ def test_track_survives_a_gap_far_longer_than_the_old_memory_horizon():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
     assert out['n_tracks'] == 1, 'the 30-frame gap must not split the trajectory'
-    snapped = out['tracks_snapped'][0]
-    assert snapped[:5].all() and snapped[35:].all()
-    assert not snapped[gap].any()
+    observed = out['tracks_observed'][0]
+    assert observed[:5].all() and observed[35:].all()
+    assert not observed[gap].any()
     # gap frames carry no fabricated length
     assert np.all(np.isnan(out['tracks_slen'][0][gap]))
 
 
-def test_a_gap_never_widens_the_snap_gate():
+def test_a_gap_never_widens_the_match_gate():
     """Waiting longer does not license a longer jump: a detection outside the
     single-frame gate is never claimed, however long the track has been unmatched.
     (The previous design widened the gate with the gap, which measurably traded
@@ -260,7 +260,7 @@ def test_a_gap_never_widens_the_snap_gate():
 
 def test_unmatched_track_advection_is_along_the_axis_only():
     """An unmatched track is carried by its neighbourhood, but only along its own
-    sarcomere axis: perpendicular motion can come solely from a snap residual,
+    sarcomere axis: perpendicular motion can come solely from a match residual,
     which the perpendicular gate hard-caps. Here the neighbours move purely
     perpendicular to the axis, so the unmatched track must not follow them."""
     T = 6
@@ -289,14 +289,14 @@ def test_unmatched_track_advection_is_along_the_axis_only():
         f'unmatched track drifted perpendicular to its axis: {finite}')
 
 
-def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
-    """The along snap gate is a fixed physical distance (max_disp_along_um), so
+def test_scale_aware_along_gate_cap_prevents_neighbour_match():
+    """The along match gate is a fixed physical distance (max_disp_along_um), so
     tracking is pixel-size invariant: the SAME 12 px offset is accepted at fine
     pixel size (where 12 px is well under 1 µm) and rejected at coarse pixel size
     (where 12 px exceeds the 1 µm gate and would reach a neighbour). Same
     masks/positions/offset — only pixelsize (hence the gate in px) differs.
 
-    offset = 12 px. fine (pixelsize 0.05): gate 1.0 µm = 20 px -> 12<20 snapped ->
+    offset = 12 px. fine (pixelsize 0.05): gate 1.0 µm = 20 px -> 12<20 matched ->
     1 track. coarse (pixelsize 0.12): gate 1.0 µm = 8.3 px -> 12>8.3 rejected ->
     fragments into 2 tracks (12 px ~ 1.4 µm = a neighbouring sarcomere).
     """
@@ -314,7 +314,7 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
     out_fine = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.05, **common)
-    assert out_fine['n_tracks'] == 1     # cap inactive -> 12 px snapped
+    assert out_fine['n_tracks'] == 1     # cap inactive -> 12 px matched
 
     out_coarse = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
@@ -322,19 +322,19 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_snap():
     assert out_coarse['n_tracks'] == 2   # cap (9 px) rejects the 12 px neighbour
 
 
-def test_short_interior_gaps_are_interpolated_but_not_marked_snapped():
+def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
     """``max_gap_interpolation`` fills slen/orientation across brief flicker so the
     per-track traces have no holes — but the filled frames must stay False in
-    ``tracks_snapped``, so coverage and every real-observation metric still count
+    ``tracks_observed``, so coverage and every real-observation metric still count
     only genuine detections. Gaps longer than the limit stay NaN, and nothing is
-    ever extrapolated past the final snap."""
+    ever extrapolated past the last observation."""
     T = 12
     pos = np.array([[25.0, 40.0]], dtype=np.float32)
     empty = np.zeros((0, 2), dtype=np.float32)
     sl_a, sl_b = np.array([1.6], np.float32), np.array([2.0], np.float32)
     ori = np.array([0.0], np.float32)
     sl0 = np.zeros(0, np.float32)
-    # snap 0,1 -> 2-frame gap -> snap 4 -> 5-frame gap -> snap 10, 11
+    # obs 0,1 -> 2-frame gap -> obs 4 -> 5-frame gap -> obs 10, 11
     present = [True, True, False, False, True, False, False, False, False, False, True, True]
     pos_px_all = [pos.copy() if p else empty for p in present]
     slen_all = [(sl_a if t < 5 else sl_b) if present[t] else sl0 for t in range(T)]
@@ -345,10 +345,10 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_snapped():
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation=3)
     assert out['n_tracks'] == 1
-    snapped = out['tracks_snapped'][0]
+    observed = out['tracks_observed'][0]
     slen = out['tracks_slen'][0]
 
-    assert snapped.tolist() == present, 'interpolation must not fabricate snaps'
+    assert observed.tolist() == present, 'interpolation must not fabricate observations'
     # the 2-frame gap is filled, and monotonically between its anchors
     assert np.all(np.isfinite(slen[2:4]))
     assert slen[1] <= slen[2] <= slen[3] <= slen[4]
@@ -361,7 +361,7 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_snapped():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation=0)
-    assert np.all(np.isnan(off['tracks_slen'][0][~off['tracks_snapped'][0]]))
+    assert np.all(np.isnan(off['tracks_slen'][0][~off['tracks_observed'][0]]))
     assert off['n_interpolated_gap_frames'] == 0
 
 

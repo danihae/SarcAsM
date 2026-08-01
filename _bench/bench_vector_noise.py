@@ -8,7 +8,7 @@ Run against a store that has already been analysed *and tracked*, e.g.::
 
     python _bench/bench_vector_noise.py test_data/high_speed_single_ACTN2-citrine_CM/20kPa.ome.zarr
 
-Metrics, computed only on frames where the tracker actually snapped to a
+Metrics, computed only on frames where the tracker actually matched to a
 detection (interpolated gap frames are excluded — they are smooth by
 construction and would flatter the noise figure):
 
@@ -74,15 +74,15 @@ def measure(store_path: str, min_coverage: float = 0.9, window: int = 5,
 
     slen = np.asarray(tracks['slen'][:], dtype=np.float64)
     ori = np.asarray(tracks['orientations'][:], dtype=np.float64)
-    snapped = np.asarray(tracks['snapped'][:], dtype=bool)
+    observed = np.asarray(tracks['observed'][:], dtype=bool)
 
     n_tracks, n_frames = slen.shape
-    keep = snapped.mean(axis=1) >= min_coverage
-    slen, ori, snapped = slen[keep], ori[keep], snapped[keep]
+    keep = observed.mean(axis=1) >= min_coverage
+    slen, ori, observed = slen[keep], ori[keep], observed[keep]
 
     slen_noise, ori_jitter, coupling = [], [], []
     for i in range(slen.shape[0]):
-        measured = snapped[i] & np.isfinite(slen[i]) & np.isfinite(ori[i])
+        measured = observed[i] & np.isfinite(slen[i]) & np.isfinite(ori[i])
         if measured.sum() < min_frames:
             continue
 
@@ -112,8 +112,8 @@ def measure(store_path: str, min_coverage: float = 0.9, window: int = 5,
         'slen_noise_p90_nm': float(np.percentile(slen_noise, 90) * 1e3),
         'ori_jitter_deg': float(np.degrees(np.median(ori_jitter))),
         'coupling': float(np.mean(coupling)) if coupling else float('nan'),
-        'mean_slen_um': float(np.nanmean(slen[snapped])),
-        'valid_pct': float(np.isfinite(slen[snapped]).mean() * 100),
+        'mean_slen_um': float(np.nanmean(slen[observed])),
+        'valid_pct': float(np.isfinite(slen[observed]).mean() * 100),
     }
 
 
@@ -122,7 +122,7 @@ def main(argv=None) -> int:
     parser.add_argument('stores', nargs='*', default=[DEFAULT_STORE],
                         help='paths to analysed+tracked .ome.zarr stores')
     parser.add_argument('--min-coverage', type=float, default=0.9,
-                        help='minimum snapped fraction for a track to count (default 0.9)')
+                        help='minimum observed fraction for a track to count (default 0.9)')
     parser.add_argument('--window', type=int, default=5,
                         help='running-median window in frames (default 5)')
     args = parser.parse_args(argv)

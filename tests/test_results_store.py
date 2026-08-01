@@ -31,7 +31,7 @@ def _sample_data():
         "n_tracks": 40,
         "tracks_slen": slen,                              # (n,T) float32 + NaN
         "tracks_positions_um": rng.random((40, 30, 2)).astype(np.float32),
-        "tracks_snapped": live,                           # bool
+        "tracks_observed": live,                           # bool
         "tracks_detection_id": rng.integers(-1, 50, (40, 30)).astype(np.int32),
         "sarcomere_oop": np.float64(0.73),                # numpy scalar
         "sarcomere_length_mean": np.array([1.7, 1.8, np.nan]),  # small array w/ NaN
@@ -86,9 +86,20 @@ def test_dtype_and_nan_preserved(store):
     r = Results(store)
     assert r["tracks_slen"].dtype == np.float32
     assert r["tracks_detection_id"].dtype == np.int32
-    assert r["tracks_snapped"].dtype == bool
+    assert r["tracks_observed"].dtype == bool
     assert np.isnan(r["tracks_slen"]).any()
     assert isinstance(r["sarcomere_oop"], np.floating)
+
+
+def test_tracks_prefix_maps_to_zarr_member_names(store):
+    """`tracks_<x>` is stored as the zarr member `tracks/<x>`.
+
+    The physical name is derived by stripping the prefix, so renaming a flat key
+    silently renames the on-disk array with no change to results_store.py.
+    Pin it, or a rename lands in the store unnoticed.
+    """
+    members = set(zarr.open_group(store)["tracks"])
+    assert {"slen", "positions_um", "observed", "detection_id"} <= members
 
 
 def test_ragged_rank_preserved(store):

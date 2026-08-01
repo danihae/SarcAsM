@@ -4,7 +4,7 @@
 The tracker consumes only per-frame sarcomere vectors, so these scenes generate
 ground-truth trajectories plus the detections they would produce, and score:
 
-  - track PURITY            (fraction of a track's snaps on its dominant GT id)
+  - track PURITY            (fraction of a track's observations on its dominant GT id)
   - identity swaps          (tracks whose purity < 0.8)
   - fragments per GT track   (ideal 1)
   - GT detection coverage
@@ -110,7 +110,7 @@ def _make_detections(gt_pos, gt_ori, gt_slen_px, p_drop=0.15, burst=0.04,
 
 
 def _evaluate(res, detgt_all, G, T):
-    snapped = res["tracks_snapped"]
+    observed = res["tracks_observed"]
     detid = res["tracks_detection_id"]
     n = res["n_tracks"]
     if n == 0:
@@ -119,7 +119,7 @@ def _evaluate(res, detgt_all, G, T):
     purities, frags = [], {}
     covered = np.zeros((T, G), bool)
     for i in range(n):
-        fr = np.flatnonzero(snapped[i])
+        fr = np.flatnonzero(observed[i])
         gids = []
         for t in fr:
             j = detid[i, t]
@@ -218,8 +218,8 @@ def test_track_drift_flags_a_swapped_track():
     pos[:, :, 1] += 0.5 * np.arange(T)[None, :]
     # ... except track 0, which additionally walks 30 px away (~1 slen at L0=30)
     pos[0, :, 1] += np.linspace(0, 30, T)
-    snapped = np.ones((N, T), bool)
-    drift = stk.compute_track_drift(pos, snapped, median_slen_px=30.0, pixelsize=PX)
+    observed = np.ones((N, T), bool)
+    drift = stk.compute_track_drift(pos, observed, median_slen_px=30.0, pixelsize=PX)
     assert np.isfinite(drift).all()
     assert drift[0] > 5 * np.median(drift[1:])       # the walker stands out
     assert drift[0] > 25 * PX                        # ~30 px of extra travel
@@ -228,7 +228,7 @@ def test_track_drift_flags_a_swapped_track():
 def test_scale_invariant_no_neighbour_swaps_at_coarse_pixelsize():
     """Scale-invariance guard: with a ~14 px sarcomere spacing the raw 15 px
     along gate would exceed one sarcomere — the slen-relative gate caps must
-    keep the snap/merge from reaching a neighbour, so swaps stay rare."""
+    keep the match/merge from reaching a neighbour, so swaps stay rare."""
     scene = _build_scene(L0=14.0, seed=0)
     G = scene[0].shape[1]
     dets = _make_detections(scene[0], scene[1], scene[2], p_drop=0.15, seed=1)
@@ -278,7 +278,7 @@ def _build_row_scene(T=250, n_mid=12, extent_um=8.5, slen_um=1.715,
     The sparse scenes above place ONE detection per sarcomere, which is not what
     the detector produces: sarcomere vectors are skeleton pixels of the M-band
     midlines, ~1 px apart, so one midline carries tens of them and the
-    perpendicular snap gate spans several lateral neighbours. Calibrated to the
+    perpendicular match gate spans several lateral neighbours. Calibrated to the
     real 20 kPa movie: |along| motion per frame p50/p90/p99 = 0.010/0.057/0.111 µm,
     lateral p90 0.013 µm, in-frame nearest-neighbour distance exactly 1 px, and a
     ~24 % beat-locked swing in the number of detections.
@@ -423,13 +423,13 @@ def test_dense_rows_are_tracked_without_fragmenting():
     # 1 px = 0.06 µm apart, so that is sub-resolution), but it must never move to
     # another M-band, which would be a real swap onto a different myofibril.
     mid_of_site = scene[3]
-    snapped = res['tracks_snapped']
+    observed = res['tracks_observed']
     detid = res['tracks_detection_id']
     crossed = 0
     scored = 0
     for i in range(res['n_tracks']):
         mids = [mid_of_site[dets[4][t][detid[i, t]]]
-                for t in np.flatnonzero(snapped[i]) if 0 <= detid[i, t] < len(dets[4][t])]
+                for t in np.flatnonzero(observed[i]) if 0 <= detid[i, t] < len(dets[4][t])]
         if len(mids) > 1:
             scored += 1
             crossed += len(set(mids)) > 1

@@ -53,7 +53,7 @@ data = {
     "tracks_positions_px": pos_um / 0.65,
     "tracks_slen": slen,
     "tracks_orientations": f32(1.0),
-    "tracks_snapped": live & (rng.random((N, T)) > 0.1),
+    "tracks_observed": live & (rng.random((N, T)) > 0.1),
     "tracks_detection_id": np.where(live, rng.integers(0, 5000, (N, T)), -1).astype(np.int32),
     "tracks_midline_id": np.where(live, rng.integers(0, 800, (N, T)), -1).astype(np.int32),
     "displacement_magnitude": f32(2.0),

@@ -21,7 +21,7 @@ structure, so it is browsable with any Zarr tool::
     data.zarr/
       params/<step>/        (attrs)   analysis parameters, one subgroup per step
       tracks/                         dense per-track block, row-chunked + zstd
-        slen positions_um positions_px orientations snapped detection_id
+        slen positions_um positions_px orientations observed detection_id
         midline_id ids start_frame lengths group_id ...   each (n_tracks, T) | (n_tracks,)
       structure/                      morphology / per-frame analysis
         sarcomere/  vectors/  domain/  myofibril/  pool/  mband/

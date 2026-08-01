@@ -196,7 +196,7 @@ def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
     # beating-like signal: baseline 1.95 µm with periodic contractions to ~1.72
     base = 1.95 - 0.22 * np.clip(np.sin(2 * np.pi * t / 16.0), 0, None)
     slen = np.stack([base + 0.01 * rng.standard_normal(T) for _ in range(n_tracks)])
-    snapped = np.ones((n_tracks, T), bool)
+    observed = np.ones((n_tracks, T), bool)
     # two M-bands: tracks 0,1,2 -> midline 5 ; tracks 3,4,5 -> midline 9
     mids = np.where(np.arange(n_tracks)[:, None] < n_tracks // 2, 5, 9).astype(np.int32)
     mids = np.broadcast_to(mids, (n_tracks, T)).copy()
@@ -208,13 +208,13 @@ def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
         'n_tracks': n_tracks,
         'track_ids': np.arange(n_tracks),
         'track_start_frame': np.zeros(n_tracks, int),
-        'track_lengths': snapped.sum(axis=1),
+        'track_lengths': observed.sum(axis=1),
         'tracks_slen': slen.astype(np.float32),
         'tracks_positions_px': pos,
         'tracks_positions_um': pos * 0.1,
-        'tracks_snapped': snapped,
+        'tracks_observed': observed,
         'tracks_midline_id': mids,
-        # track i is snapped to detection (vector) index i at every frame
+        # track i is matched to detection (vector) index i at every frame
         'tracks_detection_id': np.broadcast_to(
             np.arange(n_tracks, dtype=np.int32)[:, None], (n_tracks, T)).copy(),
         'tracks_orientations': np.zeros((n_tracks, T), np.float32),
@@ -247,9 +247,9 @@ def test_group_tracks_mband():
 def test_group_tracks_custom_and_min_coverage():
     sarc = _fake_structure(n_tracks=4)
     # make track 3 low coverage so min_coverage drops it
-    snp = sarc.data['tracks_snapped'].copy()
+    snp = sarc.data['tracks_observed'].copy()
     snp[3, 10:] = False
-    sarc.data['tracks_snapped'] = snp
+    sarc.data['tracks_observed'] = snp
     sarc.data['track_lengths'] = snp.sum(axis=1)
     labels = np.array([0, 0, 1, 1])
     sarc.group_tracks(by='custom', labels=labels, min_coverage=0.5)
@@ -589,9 +589,9 @@ def test_group_tracks_chain_keeps_partially_tracked_sarcomeres():
     sarc = _fake_structure(n_tracks=4)
     T = sarc.data['tracks_slen'].shape[1]
     # member 2 is only tracked 30% of the time -> below the 0.5 pooled floor
-    snp = sarc.data['tracks_snapped'].copy()
+    snp = sarc.data['tracks_observed'].copy()
     snp[2, int(0.3 * T):] = False
-    sarc.data['tracks_snapped'] = snp
+    sarc.data['tracks_observed'] = snp
     sarc.data['track_lengths'] = snp.sum(axis=1)
     pos = np.zeros((4, T, 2), np.float32)
     pos[:, :, 0] = (np.arange(4) * _SLEN_PX)[:, None]

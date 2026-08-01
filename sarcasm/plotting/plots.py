@@ -2022,7 +2022,7 @@ class Plots:
 
     @staticmethod
     def plot_tracks(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'coverage',
-                    cmap: str = 'viridis', linewidth: float = 0.8, only_snapped: bool = True,
+                    cmap: str = 'viridis', linewidth: float = 0.8, only_observed: bool = True,
                     max_tracks: Optional[int] = 2000, alpha: float = 0.8,
                     scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
                     show_image: bool = False, show_z_bands: bool = False,
@@ -2047,15 +2047,15 @@ class Plots:
             Movie frame used for the **background** image/Z-bands only (the
             trajectories always span the full movie). Default is 0.
         color_by : {'coverage', 'slen', 'group'}, optional
-            Per-track colour: snap coverage, the track's mean sarcomere length, or
+            Per-track colour: observation coverage, the track's mean sarcomere length, or
             ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`). Default is 'coverage'.
         cmap : str, optional
             Colormap for the 'coverage'/'slen' colourings ('group' always uses a
             discrete ``gist_rainbow``). Default is 'viridis'.
         linewidth : float, optional
             Width of the trajectory lines. Default is 0.8.
-        only_snapped : bool, optional
-            Only link frames where the track actually snapped to a detection
+        only_observed : bool, optional
+            Only link frames where the track was actually observed (vs a predicted gap frame)
             (vs a predicted gap frame); the line bridges across the skipped frames.
             Default is True.
         max_tracks : int or None, optional
@@ -2091,14 +2091,14 @@ class Plots:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         n_tracks = int(sarc_obj.data.get('n_tracks', 0))
         pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)
-        snapped = np.asarray(sarc_obj.data['tracks_snapped']).reshape(n_tracks, -1).astype(bool)
+        observed = np.asarray(sarc_obj.data['tracks_observed']).reshape(n_tracks, -1).astype(bool)
         n_t = pos.shape[1]
 
         # Per-track colour scalar (computed once per track, not per frame).
         if color_by == 'slen':
             slen = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
             with np.errstate(invalid='ignore'):
-                c = np.nanmean(np.where(snapped, slen, np.nan), axis=1)
+                c = np.nanmean(np.where(observed, slen, np.nan), axis=1)
             clabel = 'Sarcomere length [µm]'
         elif color_by == 'group':
             if 'track_group_id' not in sarc_obj.data:
@@ -2110,7 +2110,7 @@ class Plots:
             clabel = 'Track coverage'
 
         # Build one (x, y) polyline per track from its finite (and, if requested,
-        # snapped) centre positions in time order; gaps are dropped, not split.
+        # observed) centre positions in time order; gaps are dropped, not split.
         segments, seg_vals = [], []
         for k in range(n_tracks):
             if color_by != 'group' and not np.isfinite(c[k]):
@@ -2118,8 +2118,8 @@ class Plots:
             if color_by == 'group' and c[k] < 0:
                 continue          # dropped by min_coverage / unassigned
             keep = np.isfinite(pos[k, :, 0]) & np.isfinite(pos[k, :, 1])
-            if only_snapped:
-                keep &= snapped[k]
+            if only_observed:
+                keep &= observed[k]
             if keep.sum() < 2:
                 continue          # need >= 2 vertices to draw a line
             p = pos[k][keep]      # (m, 2) yx in time order
@@ -2618,7 +2618,7 @@ class Plots:
     def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0,
                               color_by: str = 'group', cmap: str = 'gist_rainbow',
                               linewidth: float = 1.5, show_points: bool = True, markersize: float = 6,
-                              only_snapped: bool = False,
+                              only_observed: bool = False,
                               scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
                               show_image: bool = False, show_z_bands: bool = False,
                               invert_image: bool = False, invert_z_bands: bool = False,
@@ -2654,8 +2654,8 @@ class Plots:
             Whether to mark the member sarcomeres as points. Default is True.
         markersize : float, optional
             Size of the member sarcomere markers. Default is 6.
-        only_snapped : bool, optional
-            Only draw members that actually snapped at this frame. Default is False.
+        only_observed : bool, optional
+            Only draw members that were actually observed at this frame. Default is False.
         scalebar : bool, optional
             Whether to add a scalebar to the plot. Default is True.
         colorbar : bool, optional
@@ -2690,7 +2690,7 @@ class Plots:
         pos = np.asarray(sarc_obj.data['tracks_positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
         gid = np.asarray(sarc_obj.data['track_group_id']).reshape(-1)
         order = np.asarray(sarc_obj.data['track_group_order']).reshape(-1)
-        snapped = np.asarray(sarc_obj.data['tracks_snapped']).reshape(n_tracks, -1)[:, t].astype(bool)
+        observed = np.asarray(sarc_obj.data['tracks_observed']).reshape(n_tracks, -1)[:, t].astype(bool)
         slen_t = np.asarray(sarc_obj.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)[:, t]
 
         # Per-fibre colour value.
@@ -2723,8 +2723,8 @@ class Plots:
             members = members[np.argsort(order[members])]  # head -> tail
             p = pos[members]
             keep = np.isfinite(p[:, 0]) & np.isfinite(p[:, 1])
-            if only_snapped:
-                keep &= snapped[members]
+            if only_observed:
+                keep &= observed[members]
             if keep.sum() < 2:
                 continue
             p = p[keep]

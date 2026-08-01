@@ -26,7 +26,7 @@ Each query point:
 2. A query point that matched last frame keeps its own fresh position. One that did *not* is advected by the **local coherent motion of its neighbours** (median step of the nearby tracks that matched in both of the last two frames), projected onto its own sarcomere axis. No optical flow is involved — the tracker reads no image data.
 3. Its candidate detections are those passing an **anisotropic position gate** (`max_disp_along_um` along the sarcomere axis, `max_disp_perp_um` perpendicular; motion along the axis is contraction and gets a generous budget, perpendicular is kept tight) and an **orientation gate** (`ori_tol_deg`, modulo π since sarcomeres are undirected).
 4. **Optimal assignment.** The candidate pairs form a bipartite graph; each connected component is solved exactly — minimum-cost, maximum-cardinality — with the gate-normalised cost `along²/along_budget + perp²/perp_budget`. Each detection is matched at most once, which is the anti-convergence mechanism.
-5. If nothing consistent is available, the query point records an **honest gap frame**: its predicted position, `snapped=False`, and NaN `slen`/`orientation` (a length is never fabricated). It keeps its identity and re-enters the assignment later, so a dropout of any length no longer ends the trajectory; by default tracks never retire.
+5. If nothing consistent is available, the query point records an **honest gap frame**: its predicted position, `observed=False`, and NaN `slen`/`orientation` (a length is never fabricated). It keeps its identity and re-enters the assignment later, so a dropout of any length no longer ends the trajectory; by default tracks never retire.
 6. **Unmatched detections spawn new query points** (appearance).
 
 No M-band identity, no arc-position, no slots, no post-hoc fragment stitching.
@@ -43,8 +43,8 @@ No M-band identity, no arc-position, no slots, no post-hoc fragment stitching.
 ```python
 sarc.track_sarcomere_vectors(
     frames='all',
-    max_disp_along_um=1.0,     # sarcomere-axis snap gate (µm)
-    max_disp_perp_um=0.2,      # perpendicular snap gate (µm)
+    max_disp_along_um=1.0,     # sarcomere-axis match gate (µm)
+    max_disp_perp_um=0.2,      # perpendicular match gate (µm)
     ori_tol_deg=45.0,          # orientation tolerance (wraps modulo π)
     retire_after_s=None,       # None = tracks never retire (identity survives any gap)
     min_track_duration_s=0.08, # min accumulated real observation time to keep a track
@@ -69,8 +69,8 @@ stitching is needed.
 Dense arrays shape `(n_tracks, T)` or `(n_tracks, T, 2)`:
 
 - `tracks_positions_px`, `tracks_positions_um` — pixel / µm positions. NaN before the track's `start_frame` and after close.
-- `tracks_slen`, `tracks_orientations` — NaN additionally on gap frames (no snap).
-- `tracks_snapped` — bool mask: True where a real detection was snapped, False on predicted-position gap frames.
+- `tracks_slen`, `tracks_orientations` — NaN additionally on gap frames (no observation).
+- `tracks_observed` — bool mask: True where a real detection was matched, False on predicted-position gap frames.
 - `track_ids`, `track_start_frame`, `track_lengths`.
 
 Quality scalars:
@@ -91,18 +91,18 @@ Parameters prefixed `params.track_sarcomere_vectors.*`.
 | | 10 kPa | 20 kPa | 30 kPa |
 |---|---|---|---|
 | `fragmentation_ratio` | 1.27 | 1.23 | 1.38 |
-| median real snaps / T | 0.95 | 0.97 | 0.86 |
+| median observed frames / T | 0.95 | 0.97 | 0.86 |
 | detection coverage | 99.99 % | 99.99 % | 99.98 % |
 | `track_drift_um` p90 | 0.15 | 0.12 | 0.16 |
 
-Mean fill (snaps per track span) stays ~0.72–0.81: the detector misses each vector
+Mean fill (observations per track span) stays ~0.72–0.81: the detector misses each vector
 ~15 % of frames, phase-locked to contraction. That is a **detection** ceiling, not a
 tracking one — lifting it needs a temporal M-band model, the analogue of
 `detect_z_bands_fast_movie` for Z-bands.
 
 ## Tests
 
-- [`tests/test_sarcomere_tracking.py`](../tests/test_sarcomere_tracking.py) — unit + behavioural: anti-convergence, gap-frame NaN slen, frames-after-final-snap blanking, a gap never widening the gate, unmatched-track advection staying on-axis, the scale-aware gate cap, and the decisive `test_optimal_assignment_handles_a_shifted_1px_row` (a 1-px-spaced row shifted by 1 px with one sample lost and one gained — greedy-by-Euclidean fails it).
+- [`tests/test_sarcomere_tracking.py`](../tests/test_sarcomere_tracking.py) — unit + behavioural: anti-convergence, gap-frame NaN slen, frames-after-last-observation blanking, a gap never widening the gate, unmatched-track advection staying on-axis, the scale-aware gate cap, and the decisive `test_optimal_assignment_handles_a_shifted_1px_row` (a 1-px-spaced row shifted by 1 px with one sample lost and one gained — greedy-by-Euclidean fails it).
 - [`tests/test_tracking_synthetic_gt.py`](../tests/test_tracking_synthetic_gt.py) — ground-truth scenes: sparse (dropout, drift, coarse pixel size) and **dense 1-px rows** calibrated to the real detection statistics, with a guard test asserting the scene actually reproduces them.
 
 ## Related

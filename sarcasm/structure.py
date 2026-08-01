@@ -1315,7 +1315,7 @@ class SarcAsM(SarcAsMBase):
         exact minimum-cost assignment, solved per connected component of the
         candidate graph — which, because the vectors densely sample each M-band
         midline, means each midline row is aligned jointly. A query point with no
-        consistent detection records an honest gap frame (``tracks_snapped`` False,
+        consistent detection records an honest gap frame (``tracks_observed`` False,
         length NaN) and keeps its identity, so a detection dropout of any length no
         longer ends a trajectory. No M-band identity is tracked; anti-convergence
         is guaranteed because each detection is matched at most once.
@@ -1328,16 +1328,16 @@ class SarcAsM(SarcAsMBase):
             Frames to track ('all', a single frame index, or selected frames).
             Default is 'all'.
         max_disp_along_um : float, optional
-            Snap-gate tolerance for motion along the sarcomere axis, in µm — the
+            Match-gate tolerance for motion along the sarcomere axis, in µm — the
             maximum a track may move along its axis per frame. At the default
             1.0 µm tracks cannot jump more than ~1 µm regardless of pixel size.
             Default is 1.0.
         max_disp_perp_um : float, optional
-            Snap-gate tolerance for motion perpendicular to the sarcomere axis,
+            Match-gate tolerance for motion perpendicular to the sarcomere axis,
             in µm; far tighter than the along gate (a perpendicular jump is a
             swap onto a neighbouring myofibril). Default is 0.2.
         ori_tol_deg : float, optional
-            Orientation tolerance for the snap gate, in degrees (compared
+            Orientation tolerance for the match gate, in degrees (compared
             modulo π). Default is 45.0.
         retire_after_s : float or None, optional
             Time a track may go unmatched before it is closed, in seconds.
@@ -1349,16 +1349,16 @@ class SarcAsM(SarcAsMBase):
             bound the track count.
         min_track_duration_s : float, optional
             Minimum accumulated real observation time required to keep a track, in
-            seconds. Falls back to 5 real snaps when frametime is unknown.
+            seconds. Falls back to 5 real observations when frametime is unknown.
             Default is 0.08.
         progress_notifier : ProgressNotifier, optional
             Reports per-frame progress, for GUI integration. Default is None
             (no reporting).
         max_gap_interpolation : int, optional
             Longest run of consecutive gap frames whose sarcomere length and
-            orientation are filled by interpolating between the real snaps on
+            orientation are filled by interpolating between the real observations on
             either side, so brief detection flicker does not punch holes in the
-            per-track traces. Interior gaps only, and ``tracks_snapped`` stays
+            per-track traces. Interior gaps only, and ``tracks_observed`` stays
             False on filled frames, so coverage and every real-observation metric
             are unaffected. Set to 0 to leave all gap frames NaN. Default is 3.
         """
@@ -1454,7 +1454,7 @@ class SarcAsM(SarcAsMBase):
             'tracks_positions_px': out['tracks_positions_px'],
             'tracks_slen': out['tracks_slen'],
             'tracks_orientations': out['tracks_orientations'],
-            'tracks_snapped': out['tracks_snapped'],
+            'tracks_observed': out['tracks_observed'],
             'tracks_detection_id': out['tracks_detection_id'],
             'tracks_midline_id': out['tracks_midline_id'],
             'fragmentation_ratio': out['fragmentation_ratio'],
@@ -1495,13 +1495,13 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         min_coverage : float, optional
-            Only return tracks whose snap coverage (snapped frames / n_frames)
+            Only return tracks whose coverage (observed frames / n_frames)
             is at least this value. Default 0.0 (all kept tracks).
 
         Returns
         -------
         pandas.DataFrame
-            Columns: ``track_id``, ``start_frame``, ``length`` (number of snapped
+            Columns: ``track_id``, ``start_frame``, ``length`` (number of observed
             frames), ``n_frames``, ``coverage``, ``mean_slen``, ``std_slen``,
             ``drift_um`` (how far the track wandered from the coherent motion of
             its neighbours — roughly one sarcomere length means it probably
@@ -1524,13 +1524,13 @@ class SarcAsM(SarcAsMBase):
 
         slen = np.asarray(self.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
         T = slen.shape[1]
-        snapped = np.asarray(self.data['tracks_snapped']).astype(bool).reshape(n_tracks, T)
+        observed = np.asarray(self.data['tracks_observed']).astype(bool).reshape(n_tracks, T)
         pos = np.asarray(self.data['tracks_positions_um'], dtype=float).reshape(n_tracks, T, 2)
         det_mid = np.asarray(self.data.get('tracks_midline_id', np.full((n_tracks, T), -1))).reshape(n_tracks, T)
 
         track_ids = np.asarray(self.data.get('track_ids', np.arange(n_tracks)))
         start_frame = np.asarray(self.data.get('track_start_frame', np.zeros(n_tracks, int))).astype(int)
-        length = np.asarray(self.data.get('track_lengths', snapped.sum(axis=1))).astype(int)
+        length = np.asarray(self.data.get('track_lengths', observed.sum(axis=1))).astype(int)
         coverage = length / float(T) if T else np.zeros(n_tracks)
 
         rows = np.arange(n_tracks)
@@ -1707,7 +1707,7 @@ class SarcAsM(SarcAsMBase):
         ----------
         by : {'pool', 'mband', 'myofibril', 'loi', 'domain', 'custom'}, optional
             Grouping level. ``'pool'`` = all eligible tracks in one group;
-            ``'mband'`` = group tracks by the M-band (midline) they snapped to at
+            ``'mband'`` = group tracks by the M-band (midline) they were matched to at
             ``reference_frame`` (laterally-registered sarcomeres); ``'myofibril'`` =
             order tracks into fibre chains from the ``reference_frame`` myofibril
             lines (requires :meth:`analyze_myofibrils`; sets ``track_group_order``
@@ -1728,7 +1728,7 @@ class SarcAsM(SarcAsMBase):
             For ``'loi'`` this should match the ``frame`` passed to
             :meth:`detect_lois`. Default is 0.
         min_coverage : float or None, optional
-            Tracks snapped in fewer than this fraction of frames are dropped
+            Tracks observed in fewer than this fraction of frames are dropped
             (group id ``-1``). ``None`` (default) picks the floor from the
             grouping: 0.1 for the chain kinds ``'myofibril'`` / ``'loi'``, 0.5
             otherwise. A chain represents the fibre's geometry, so dropping a
@@ -1790,7 +1790,7 @@ class SarcAsM(SarcAsMBase):
             slen = np.asarray(self.data['tracks_slen'], dtype=float).reshape(n_tracks, -1)
             T = slen.shape[1]
             length = np.asarray(self.data.get('track_lengths',
-                                np.asarray(self.data['tracks_snapped']).reshape(n_tracks, T).sum(axis=1)))
+                                np.asarray(self.data['tracks_observed']).reshape(n_tracks, T).sum(axis=1)))
             coverage = length / float(T) if T else np.zeros(n_tracks)
             eligible = coverage >= min_coverage
 

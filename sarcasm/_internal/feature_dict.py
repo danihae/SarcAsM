@@ -703,7 +703,7 @@ structure_feature_dict = {
         'name': 'Track start frame'
     },
     'track_lengths': {
-        'description': 'Number of frames each track actually snapped to a detection. np.ndarray, shape (n_tracks,).',
+        'description': 'Number of frames in which each track was matched to a real detection. np.ndarray, shape (n_tracks,).',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track length [frames]'
@@ -731,7 +731,7 @@ structure_feature_dict = {
     },
     'tracks_slen': {
         'description': 'Per-track sarcomere length over time in µm. np.ndarray, shape (n_tracks, T); '
-                       'NaN on gap (non-snapped) frames. The core per-sarcomere length-vs-time signal.',
+                       'NaN on gap (unobserved) frames. The core per-sarcomere length-vs-time signal.',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track sarcomere length [µm]'
@@ -743,22 +743,22 @@ structure_feature_dict = {
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track orientation [rad]'
     },
-    'tracks_snapped': {
+    'tracks_observed': {
         'description': 'Boolean mask, True where a real detection was matched (vs a predicted gap frame). '
                        'np.ndarray, shape (n_tracks, T).',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
-        'name': 'Track snapped mask'
+        'name': 'Track observed mask'
     },
     'tracks_detection_id': {
-        'description': 'Index of the snapped detection into pos_vectors_px of that frame (-1 on gap frames). '
+        'description': 'Index of the matched detection into pos_vectors_px of that frame (-1 on gap frames). '
                        'np.ndarray, shape (n_tracks, T). Joins a track back to the per-frame vector analysis.',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track detection id'
     },
     'tracks_midline_id': {
-        'description': 'M-band (midline) id of the snapped detection per frame (-1 on gap frames). '
+        'description': 'M-band (midline) id of the matched detection per frame (-1 on gap frames). '
                        'np.ndarray, shape (n_tracks, T). Basis for M-band-level grouping.',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
@@ -776,7 +776,7 @@ structure_feature_dict = {
     'n_interpolated_gap_frames': {
         'description': 'Number of (track, frame) entries whose sarcomere length / orientation was '
                        'filled by interpolation across a short interior gap '
-                       '(max_gap_interpolation). These frames stay False in tracks_snapped, so no '
+                       '(max_gap_interpolation). These frames stay False in tracks_observed, so no '
                        'coverage or real-observation metric counts them.',
         'data type': int,
         'function': 'SarcAsM.track_sarcomere_vectors',
