@@ -110,11 +110,11 @@ def _make_detections(gt_pos, gt_ori, gt_slen_px, p_drop=0.15, burst=0.04,
 
 
 def _evaluate(res, detgt_all, G, T):
-    observed = res["tracks_observed"]
-    detid = res["tracks_detection_id"]
-    n = res["n_tracks"]
+    observed = res["motion.tracks.observed"]
+    detid = res["motion.tracks.detection_id"]
+    n = res["motion.tracks.n"]
     if n == 0:
-        return {"n_tracks": 0, "purity_mean": 0.0, "n_swap": 0,
+        return {"motion.tracks.n": 0, "purity_mean": 0.0, "n_swap": 0,
                 "frags_per_gt_mean": 0.0, "det_coverage_pct": 0.0}
     purities, frags = [], {}
     covered = np.zeros((T, G), bool)
@@ -135,7 +135,7 @@ def _evaluate(res, detgt_all, G, T):
     frag_counts = np.array([len(v) for v in frags.values()]) if frags else np.array([0])
     total_gt = sum(len(d) for d in detgt_all)
     return {
-        "n_tracks": int(n),
+        "motion.tracks.n": int(n),
         "purity_mean": float(purities.mean()),
         "n_swap": int((purities < 0.80).sum()),
         "frags_per_gt_mean": float(frag_counts.mean()),
@@ -252,7 +252,7 @@ def test_unmatched_track_advection_is_load_bearing():
         res = stk.track_sarcomere_vectors(
             pos_all, mid_all, slen_all, ori_all,
             pixelsize=PX, frametime=FT)
-        d = np.asarray(res['track_drift_um'], float)
+        d = np.asarray(res['motion.tracks.drift_um'], float)
         d = d[np.isfinite(d)]
         return float(np.percentile(d, 90)) if d.size else 0.0
 
@@ -416,18 +416,18 @@ def test_dense_rows_are_tracked_without_fragmenting():
     assert m['frags_per_gt_mean'] <= 1.3, m
     assert m['det_coverage_pct'] >= 98.0, m
     # one track per GT site, within 10 %
-    assert 0.9 * G <= res['n_tracks'] <= 1.1 * G, (res['n_tracks'], G)
-    assert res['fragmentation_ratio'] <= 1.35
+    assert 0.9 * G <= res['motion.tracks.n'] <= 1.1 * G, (res['motion.tracks.n'], G)
+    assert res['motion.tracks.fragmentation_ratio'] <= 1.35
 
     # Identity: a track may slide by a lateral sample or two (the sites are only
     # 1 px = 0.06 µm apart, so that is sub-resolution), but it must never move to
     # another M-band, which would be a real swap onto a different myofibril.
     mid_of_site = scene[3]
-    observed = res['tracks_observed']
-    detid = res['tracks_detection_id']
+    observed = res['motion.tracks.observed']
+    detid = res['motion.tracks.detection_id']
     crossed = 0
     scored = 0
-    for i in range(res['n_tracks']):
+    for i in range(res['motion.tracks.n']):
         mids = [mid_of_site[dets[4][t][detid[i, t]]]
                 for t in np.flatnonzero(observed[i]) if 0 <= detid[i, t] < len(dets[4][t])]
         if len(mids) > 1:

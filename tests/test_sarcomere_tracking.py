@@ -71,9 +71,9 @@ def test_seed_and_match_recovers_uniform_translation():
         min_track_duration_s=0.02,
     )
     # All 10 detections should produce persistent tracks.
-    assert out['n_tracks'] == 10
+    assert out['motion.tracks.n'] == 10
     # Every track should be continuously observed across all frames.
-    observed = out['tracks_observed']
+    observed = out['motion.tracks.observed']
     assert np.all(observed == True)  # noqa: E712 — explicit test of boolean array
 
 
@@ -96,8 +96,8 @@ def test_anti_convergence_tracks_stay_separated():
         min_track_duration_s=0.02,
     )
     # 2 tracks, 40 px apart in every frame.
-    assert out['n_tracks'] == 2
-    p = out['tracks_positions_px']  # (2, T, 2)
+    assert out['motion.tracks.n'] == 2
+    p = out['motion.tracks.positions_px']  # (2, T, 2)
     for t in range(T):
         d = np.linalg.norm(p[0, t] - p[1, t])
         assert d >= 30.0, f"tracks collapsed at frame {t}: distance = {d:.1f}"
@@ -123,9 +123,9 @@ def test_gap_frame_is_not_observed_and_carries_no_measured_slen():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         max_gap_interpolation=0, **common)
-    assert out['n_tracks'] >= 1
-    slens = out['tracks_slen']
-    observed = out['tracks_observed']
+    assert out['motion.tracks.n'] >= 1
+    slens = out['motion.tracks.slen']
+    observed = out['motion.tracks.observed']
     # At least one track has a NaN slen at frame 1 but valid slen at frames 0/2/3,
     # and frame 1 is not counted as an observation.
     assert any(
@@ -134,7 +134,7 @@ def test_gap_frame_is_not_observed_and_carries_no_measured_slen():
         for i in range(slens.shape[0])
     )
     # The position is kept (predicted), not blanked, since the gap is interior.
-    assert np.all(np.isfinite(out['tracks_positions_px'][0, 1]))
+    assert np.all(np.isfinite(out['motion.tracks.positions_px'][0, 1]))
 
 
 def test_frames_after_last_observation_are_nan():
@@ -155,13 +155,13 @@ def test_frames_after_last_observation_are_nan():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
     )
-    assert out['n_tracks'] == 1
-    observed = out['tracks_observed'][0]
+    assert out['motion.tracks.n'] == 1
+    observed = out['motion.tracks.observed'][0]
     assert observed.tolist() == [True, True, True, True, False, False, False, False]
-    pos_out = out['tracks_positions_px'][0]
-    pos_um = out['tracks_positions_um'][0]
-    slens = out['tracks_slen'][0]
-    oris = out['tracks_orientations'][0]
+    pos_out = out['motion.tracks.positions_px'][0]
+    pos_um = out['motion.tracks.positions_um'][0]
+    slens = out['motion.tracks.slen'][0]
+    oris = out['motion.tracks.orientations'][0]
     # Observed frames keep their real values...
     np.testing.assert_allclose(pos_out[:4, 0], 25.0, atol=1.0)
     np.testing.assert_allclose(pos_out[:4, 1], 40.0, atol=1.0)
@@ -200,12 +200,12 @@ def test_optimal_assignment_handles_a_shifted_1px_row():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.06, frametime=0.01, min_track_duration_s=0.02)
-    observed = out['tracks_observed']
+    observed = out['motion.tracks.observed']
     # One track per surviving sample, each observed in every frame: no duplicates.
-    assert out['n_tracks'] == n - 1, f"expected {n - 1} tracks, got {out['n_tracks']}"
+    assert out['motion.tracks.n'] == n - 1, f"expected {n - 1} tracks, got {out['motion.tracks.n']}"
     assert observed.all(), 'every sample must stay matched through the shift'
     # And each track stayed on its own lateral row (no swap with a neighbour).
-    rows = out['tracks_positions_px'][:, :, 0]
+    rows = out['motion.tracks.positions_px'][:, :, 0]
     assert np.allclose(rows, rows[:, :1]), 'a track changed lateral position'
 
 
@@ -228,12 +228,12 @@ def test_track_survives_a_gap_far_longer_than_the_old_memory_horizon():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
-    assert out['n_tracks'] == 1, 'the 30-frame gap must not split the trajectory'
-    observed = out['tracks_observed'][0]
+    assert out['motion.tracks.n'] == 1, 'the 30-frame gap must not split the trajectory'
+    observed = out['motion.tracks.observed'][0]
     assert observed[:5].all() and observed[35:].all()
     assert not observed[gap].any()
     # gap frames carry no fabricated length
-    assert np.all(np.isnan(out['tracks_slen'][0][gap]))
+    assert np.all(np.isnan(out['motion.tracks.slen'][0][gap]))
 
 
 def test_a_gap_never_widens_the_match_gate():
@@ -255,7 +255,7 @@ def test_a_gap_never_widens_the_match_gate():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
     # two separate tracks: the far reappearance is a different sarcomere
-    assert out['n_tracks'] == 2
+    assert out['motion.tracks.n'] == 2
 
 
 def test_unmatched_track_advection_is_along_the_axis_only():
@@ -279,8 +279,8 @@ def test_unmatched_track_advection_is_along_the_axis_only():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
     # find the track that owned the target and check it never moved in rows
-    pos_out = out['tracks_positions_px']
-    which = [i for i in range(out['n_tracks'])
+    pos_out = out['motion.tracks.positions_px']
+    which = [i for i in range(out['motion.tracks.n'])
              if np.isfinite(pos_out[i, 0]).all() and abs(pos_out[i, 0, 0] - 100.0) < 1.0]
     assert which, 'the target detection was not tracked'
     row = pos_out[which[0], :, 0]
@@ -314,12 +314,12 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_match():
     out_fine = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.05, **common)
-    assert out_fine['n_tracks'] == 1     # cap inactive -> 12 px matched
+    assert out_fine['motion.tracks.n'] == 1     # cap inactive -> 12 px matched
 
     out_coarse = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.12, **common)
-    assert out_coarse['n_tracks'] == 2   # cap (9 px) rejects the 12 px neighbour
+    assert out_coarse['motion.tracks.n'] == 2   # cap (9 px) rejects the 12 px neighbour
 
 
 def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
@@ -344,9 +344,9 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation=3)
-    assert out['n_tracks'] == 1
-    observed = out['tracks_observed'][0]
-    slen = out['tracks_slen'][0]
+    assert out['motion.tracks.n'] == 1
+    observed = out['motion.tracks.observed'][0]
+    slen = out['motion.tracks.slen'][0]
 
     assert observed.tolist() == present, 'interpolation must not fabricate observations'
     # the 2-frame gap is filled, and monotonically between its anchors
@@ -354,15 +354,15 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
     assert slen[1] <= slen[2] <= slen[3] <= slen[4]
     # the 5-frame gap exceeds the limit and stays NaN
     assert np.all(np.isnan(slen[5:10]))
-    assert out['n_interpolated_gap_frames'] == 2
+    assert out['motion.tracks.n_interpolated_gap_frames'] == 2
 
     # disabling it leaves every gap frame NaN
     off = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation=0)
-    assert np.all(np.isnan(off['tracks_slen'][0][~off['tracks_observed'][0]]))
-    assert off['n_interpolated_gap_frames'] == 0
+    assert np.all(np.isnan(off['motion.tracks.slen'][0][~off['motion.tracks.observed'][0]]))
+    assert off['motion.tracks.n_interpolated_gap_frames'] == 0
 
 
 def test_interpolated_orientation_is_axial():
@@ -381,5 +381,5 @@ def test_interpolated_orientation_is_axial():
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation=3)
-    mid = float(out['tracks_orientations'][0][1])
+    mid = float(out['motion.tracks.orientations'][0][1])
     assert abs(st._angular_diff(mid, 0.0)) < 0.05, mid

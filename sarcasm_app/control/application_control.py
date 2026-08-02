@@ -274,25 +274,25 @@ class ApplicationControl:
         point colours). Both are static 2D overlays, so each trajectory reads
         as a continuous line across the whole movie rather than a fading tail."""
         cell = self.model.cell
-        if cell is None or 'tracks_positions_px' not in cell.data:
+        if cell is None or 'motion.tracks.positions_px' not in cell.data:
             return
         if cell.metadata.n_stack is None or cell.metadata.n_stack <= 1:
             return  # tracking requires a time series
         for name in ('Tracks', 'TrackPoints'):
             if name in self.viewer.layers:
                 self.viewer.layers.remove(self.viewer.layers[name])
-        pos = np.asarray(cell.data['tracks_positions_px'], dtype=float)  # (N, T, 2) yx, px
+        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)  # (N, T, 2) yx, px
         if pos.ndim != 3 or pos.shape[0] == 0:
             return
         n_tracks = pos.shape[0]
         mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])
-        observed = cell.data.get('tracks_observed')
+        observed = cell.data.get('motion.tracks.observed')
         if observed is not None:
             observed = np.asarray(observed)
             if observed.shape == mask.shape:
                 mask &= observed.astype(bool)
         # colour by group when a grouping exists; drop unassigned (gid < 0) tracks
-        gid = cell.data.get('track_group_id')
+        gid = cell.data.get('motion.tracks.group_id')
         gid = None if gid is None else np.asarray(gid).reshape(-1)
         if gid is not None and gid.shape[0] == n_tracks:
             mask &= (gid >= 0)[:, None]
@@ -302,7 +302,7 @@ class ApplicationControl:
         import matplotlib.pyplot as plt
         if gid is not None:
             # match TrackGroups colouring so lines and group dots agree
-            n_groups = max(1, int(cell.data.get('n_groups', int(gid.max()) + 1)))
+            n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
             track_colors = plt.get_cmap('gist_rainbow')((gid % n_groups) / n_groups)
         else:
             track_colors = plt.get_cmap('turbo')(np.arange(n_tracks) / max(1.0, n_tracks - 1))
@@ -334,19 +334,19 @@ class ApplicationControl:
     def init_track_groups_stack(self, visible=True):
         """napari Points layer of tracked sarcomeres colored by their group."""
         cell = self.model.cell
-        if cell is None or 'tracks_positions_px' not in cell.data or 'track_group_id' not in cell.data:
+        if cell is None or 'motion.tracks.positions_px' not in cell.data or 'motion.tracks.group_id' not in cell.data:
             return
         if 'TrackGroups' in self.viewer.layers:
             self.viewer.layers.remove(self.viewer.layers['TrackGroups'])
-        pos = np.asarray(cell.data['tracks_positions_px'], dtype=float)  # (N, T, 2) yx, px
-        gid = np.asarray(cell.data['track_group_id'])                    # (N,)
+        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)  # (N, T, 2) yx, px
+        gid = np.asarray(cell.data['motion.tracks.group_id'])                    # (N,)
         if pos.ndim != 3 or pos.shape[0] == 0:
             return
         if gid.shape[0] != pos.shape[0]:
             return  # stale grouping (track count changed); skip until re-grouped
         multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
         mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])       # (N, T)
-        observed = cell.data.get('tracks_observed')
+        observed = cell.data.get('motion.tracks.observed')
         if observed is not None:
             observed = np.asarray(observed)
             if observed.shape == mask.shape:
@@ -357,7 +357,7 @@ class ApplicationControl:
             return
         ys, xs = pos[ii, tt, 0], pos[ii, tt, 1]
         points = np.column_stack([tt.astype(float), ys, xs]) if multi_frame else np.column_stack([ys, xs])
-        n_groups = max(1, int(cell.data.get('n_groups', int(gid.max()) + 1)))
+        n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
         import matplotlib.pyplot as plt
         face = plt.get_cmap('gist_rainbow')((gid[ii] % n_groups) / n_groups)
         self.viewer.add_points(points, name='TrackGroups', face_color=face,
@@ -483,7 +483,7 @@ class ApplicationControl:
 
     def init_z_lateral_connections(self, visible=True):
         cell = self.model.cell
-        if cell is None or 'z_labels' not in cell.data:
+        if cell is None or 'structure.zbands.labels' not in cell.data:
             return
         for name in ('ZbandLatGroups', 'ZbandLatConnections', 'ZbandEnds'):
             if name in self.viewer.layers:
@@ -497,10 +497,10 @@ class ApplicationControl:
         labels_groups = np.zeros((n_stack, *cell.metadata.size), dtype='uint16')
         connections = []
         for frame in range(n_stack):
-            if frame not in analyzed_frames or cell.data['z_labels'][frame] is None:
+            if frame not in analyzed_frames or cell.data['structure.zbands.labels'][frame] is None:
                 continue
-            labels_frame = cell.data['z_labels'][frame].toarray()
-            groups_frame = cell.data['z_lat_groups'][frame]
+            labels_frame = cell.data['structure.zbands.labels'][frame].toarray()
+            groups_frame = cell.data['structure.zbands.lat_groups'][frame]
             labels_groups_frame = np.zeros_like(labels_frame)
             for i, group in enumerate(groups_frame[1:]):
                 mask = np.zeros_like(labels_frame, dtype=bool)
@@ -509,8 +509,8 @@ class ApplicationControl:
                 labels_groups_frame[mask] = i + 1
             labels_groups[frame] = Utils.shuffle_labels(labels_groups_frame)
 
-            z_ends_frame = np.asarray(cell.data['z_ends'][frame], dtype=float) / pixelsize
-            z_links_frame = cell.data['z_lat_links'][frame]
+            z_ends_frame = np.asarray(cell.data['structure.zbands.ends'][frame], dtype=float) / pixelsize
+            z_links_frame = cell.data['structure.zbands.lat_links'][frame]
             if z_links_frame is None or z_links_frame.size == 0:
                 continue
             for (i, k, j, l) in z_links_frame.T:
@@ -532,7 +532,7 @@ class ApplicationControl:
 
     def init_myofibril_lines_stack(self, visible=True):
         cell = self.model.cell
-        if cell is None or 'myof_lines' not in cell.data:
+        if cell is None or 'structure.myofibril.lines' not in cell.data:
             return
         if 'MyofibrilLines' in self.viewer.layers:
             self.viewer.layers.remove(self.viewer.layers['MyofibrilLines'])
@@ -541,8 +541,8 @@ class ApplicationControl:
         pixelsize = cell.metadata.pixelsize
         multi_frame = n_stack > 1
 
-        myof_lines = cell.data['myof_lines']
-        pos_vectors_px = cell.data['pos_vectors_px']
+        myof_lines = cell.data['structure.myofibril.lines']
+        pos_vectors_px = cell.data['structure.sarcomere.pos_px']
         paths = []
         for frame, (lines_i, pv_i) in enumerate(zip(myof_lines, pos_vectors_px)):
             if lines_i is None or pv_i is None:
@@ -568,7 +568,7 @@ class ApplicationControl:
                                visible=visible, scale=scale, ndim=ndim)
 
     def init_sarcomere_vector_stack(self, visible=True):
-        if self.model.cell is not None and 'pos_vectors' in self.model.cell.data.keys():
+        if self.model.cell is not None and 'structure.sarcomere.pos' in self.model.cell.data.keys():
             if self.viewer.layers.__contains__('SarcomereVectors'):
                 layer = self.viewer.layers.__getitem__('SarcomereVectors')
                 self.viewer.layers.remove(layer)
@@ -582,12 +582,12 @@ class ApplicationControl:
             pos_vectors = []
             for frame in range(self.model.cell.metadata.n_stack):
                 if 'params.analyze_sarcomere_vectors.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_sarcomere_vectors.frames'] and self.model.cell.data['pos_vectors'][frame] is not None:
-                    pos_vectors_frame = self.model.cell.data['pos_vectors'][frame] / self.model.cell.metadata.pixelsize
+                        self.model.cell.data['params.analyze_sarcomere_vectors.frames'] and self.model.cell.data['structure.sarcomere.pos'][frame] is not None:
+                    pos_vectors_frame = self.model.cell.data['structure.sarcomere.pos'][frame] / self.model.cell.metadata.pixelsize
                     if len(pos_vectors_frame) > 0:
-                        sarc_orientation_vectors = self.model.cell.data['sarcomere_orientation_vectors'][
+                        sarc_orientation_vectors = self.model.cell.data['structure.sarcomere.orientation'][
                             frame]
-                        sarc_length_vectors = self.model.cell.data['sarcomere_length_vectors'][frame] / \
+                        sarc_length_vectors = self.model.cell.data['structure.sarcomere.slen'][frame] / \
                                               self.model.cell.metadata.pixelsize
                         orientation_vectors = np.asarray(
                             [np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
@@ -636,7 +636,7 @@ class ApplicationControl:
                                   visible=visible, scale=self.model.cell.scale)
 
     def init_sarcomere_domain_stack(self, visible=True):
-        if self.model.cell is None or 'domains' not in self.model.cell.data:
+        if self.model.cell is None or 'structure.domain.members' not in self.model.cell.data:
             return
         if 'SarcomereDomains' in self.viewer.layers:
             self.viewer.layers.remove('SarcomereDomains')
@@ -658,10 +658,10 @@ class ApplicationControl:
         pixelsize = cell.metadata.pixelsize
 
         def process_frame(frame, cell, area_min, dilation_radius, pixelsize, size):
-            domains = cell.data['domains'][frame]
-            pos_vectors = cell.data['pos_vectors'][frame]
-            sarcomere_orientation_vectors = cell.data['sarcomere_orientation_vectors'][frame]
-            sarcomere_length_vectors = cell.data['sarcomere_length_vectors'][frame]
+            domains = cell.data['structure.domain.members'][frame]
+            pos_vectors = cell.data['structure.sarcomere.pos'][frame]
+            sarcomere_orientation_vectors = cell.data['structure.sarcomere.orientation'][frame]
+            sarcomere_length_vectors = cell.data['structure.sarcomere.slen'][frame]
 
             domain_mask = analyze_domains(
                 domains,

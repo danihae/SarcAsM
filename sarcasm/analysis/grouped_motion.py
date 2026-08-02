@@ -57,7 +57,7 @@ def aggregate_group_slen(
     n_groups : int
         Number of groups (labels ``0 .. n_groups-1``).
     aggregate : {'nanmedian', 'nanmean'}, optional
-        Reduction used for the primary ``slen_timeseries`` (the signal fed to
+        Reduction used for the primary ``slen`` (the signal fed to
         the contraction engine). The full distribution (median/std/q25/q75) is
         always returned for plotting regardless of this choice.
         Default is 'nanmedian'.
@@ -68,9 +68,9 @@ def aggregate_group_slen(
     Returns
     -------
     dict
-        ``slen_timeseries`` (the chosen aggregate), ``slen_median_timeseries``,
-        ``slen_std_timeseries``, ``slen_q25_timeseries``, ``slen_q75_timeseries``,
-        and ``n_members_timeseries`` (int count of members with a finite length
+        ``slen`` (the chosen aggregate), ``slen_median``,
+        ``slen_std``, ``slen_q25``, ``slen_q75``,
+        and ``n_members`` (int count of members with a finite length
         per frame), each shape ``(n_groups, T)``.
     """
     tracks_slen = np.asarray(tracks_slen, dtype=float)
@@ -108,12 +108,12 @@ def aggregate_group_slen(
             q75_ts[g] = np.nanpercentile(sub, 75, axis=0)
 
     return {
-        'slen_timeseries': slen_ts,
-        'slen_median_timeseries': median_ts,
-        'slen_std_timeseries': std_ts,
-        'slen_q25_timeseries': q25_ts,
-        'slen_q75_timeseries': q75_ts,
-        'n_members_timeseries': n_members,
+        'slen': slen_ts,
+        'slen_median': median_ts,
+        'slen_std': std_ts,
+        'slen_q25': q25_ts,
+        'slen_q75': q75_ts,
+        'n_members': n_members,
     }
 
 
@@ -221,25 +221,25 @@ def run_cycle_engine(
     n_groups, T = group_slen.shape
     if n_groups == 0:
         return {
-            'domain_contr': np.zeros((0, T), dtype=bool),
-            'domain_n_contr': np.zeros(0, dtype=np.int32),
-            'domain_n_contr_complete': np.zeros(0, dtype=np.int32),
-            'domain_contr_complete': np.zeros((0, 1)),
-            'domain_labels_contr': np.zeros((0, T), dtype=np.int32),
-            'domain_beating_rate': np.zeros(0),
-            'domain_beating_rate_variability': np.zeros(0),
-            'domain_equ': np.zeros(0),
-            'domain_contr_max': np.zeros((0, 1)),
-            'domain_elong_max': np.zeros((0, 1)),
-            'domain_vel_contr_max': np.zeros((0, 1)),
-            'domain_vel_elong_max': np.zeros((0, 1)),
-            'domain_time_to_peak': np.zeros((0, 1)),
-            'domain_time_to_relax': np.zeros((0, 1)),
-            'domain_time_contr': np.zeros((0, 1)),
+            'contr': np.zeros((0, T), dtype=bool),
+            'n_contr': np.zeros(0, dtype=np.int32),
+            'n_contr_complete': np.zeros(0, dtype=np.int32),
+            'contr_complete': np.zeros((0, 1)),
+            'labels_contr': np.zeros((0, T), dtype=np.int32),
+            'beating_rate': np.zeros(0),
+            'beating_rate_variability': np.zeros(0),
+            'equ': np.zeros(0),
+            'contr_max': np.zeros((0, 1)),
+            'elong_max': np.zeros((0, 1)),
+            'vel_contr_max': np.zeros((0, 1)),
+            'vel_elong_max': np.zeros((0, 1)),
+            'time_to_peak': np.zeros((0, 1)),
+            'time_to_relax': np.zeros((0, 1)),
+            'time_contr': np.zeros((0, 1)),
         }
 
     contr = contraction_analysis.detect_contractions(
-        domain_slen_timeseries=group_slen,
+        group_slen=group_slen,
         frametime=frametime,
         model_path=model_path,
         threshold=threshold,
@@ -251,9 +251,9 @@ def run_cycle_engine(
         id_offset=id_offset,
     )
     params = contraction_analysis.analyze_contraction_parameters(
-        domain_slen_timeseries=group_slen,
-        domain_labels_contr=contr['domain_labels_contr'],
-        domain_n_contr=contr['domain_n_contr'],
+        group_slen=group_slen,
+        group_labels_contr=contr['labels_contr'],
+        domain_n_contr=contr['n_contr'],
         frametime=frametime,
         filter_params=filter_params,
         buffer_frames=buffer_frames,

@@ -11,51 +11,72 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Single Zarr store for SarcAsM analysis + track results.
+"""Single Zarr store for SarcAsM analysis + motion results.
 
 A self-describing Zarr group tree — used standalone as ``data.zarr`` and, in
 production, re-parented under the ``sarcasm/`` group of the OME-Zarr container
-(see :mod:`sarcasm.io.ome_store`). The physical layout mirrors the logical
-structure, so it is browsable with any Zarr tool::
+(see :mod:`sarcasm.io.ome_store`).
+
+**A result key is its path.** ``'motion.pool.slen'`` is member ``slen`` of group
+``motion/pool``, so the logical name and the physical location are the same
+thing, routing is a split rather than a table of prefix rules, and two keys can
+never claim the same home. There are three namespaces::
 
     data.zarr/
-      params/<step>/        (attrs)   analysis parameters, one subgroup per step
-      tracks/                         dense per-track block, row-chunked + zstd
-        slen positions_um positions_px orientations observed detection_id
-        midline_id ids start_frame lengths group_id ...   each (n_tracks, T) | (n_tracks,)
-      structure/                      morphology / per-frame analysis
-        sarcomere/  vectors/  domain/  myofibril/  pool/  mband/
+      structure/                per-frame / single-frame morphology
+        cell/ zbands/ sarcomere/ myofibril/ domain/
+      motion/                   everything derived from the sarcomere tracks
+        tracks/                 dense per-track block, row-chunked + zstd
+        groups/                 which grouping was built, and from what
+        pool/ mband/ myofibril/ domain/ loi/ custom/   per-group contraction metrics
+                                (loi/ also holds the LOI geometry, loi.data)
+      params/<step>/  (attrs)   what each analysis step ran with
 
 Small things (scalars, params, strings) live as JSON-shaped Zarr **attributes**
 (human-readable inside each group's ``zarr.json``); large numeric arrays live as
 binary Zarr arrays next to them. JSON becomes an explicit *export*, not the
 storage format.
 
-Access (see :class:`Results`)::
+Access (see :class:`Results`) — one name, two spellings::
 
-    r = Results("…/data.zarr")
-    r.tracks.slen               # lazy zarr array — nothing read yet
-    r.tracks.slen[5]            # one track, reads a single chunk
-    r.structure.sarcomere.oop   # eager value
+    r = Results("…/<name>.ome.zarr/sarcasm")
+    r['motion.tracks.slen']                  # dict
+    r.motion.tracks.slen                     # attribute path — the same object
+    r.structure.sarcomere.oop
     r.params.track_sarcomere_vectors.max_disp_along_um
-    r['tracks_slen']            # flat-key dict access (materialised)
 
-This store holds the analysis, tracking and motion results plus their
-parameters, with image metadata mirrored into the root attrs. Image pixel data and segmentation masks live
-alongside these groups in the same OME-Zarr container
-(:mod:`sarcasm.io.ome_store`).
+Both materialise, so a value's type never depends on whether it happened to be
+small enough to be stored inline. :meth:`Results.handle` is the explicit opt-in
+for a lazy ``zarr.Array`` when you want one row of a large ``(n_tracks, T)``
+block without loading it all.
+
+The namespace is derived from the keys, not from the physical group tree, so it
+also covers staged, not-yet-flushed writes, and a store whose members were
+written under a different layout still presents the current namespace (the
+manifest pins each key's physical home). Stores written before the dotted-key
+rename hold the old names and must be regenerated.
+
+Image pixel data and segmentation masks live alongside these groups in the same
+OME-Zarr container (:mod:`sarcasm.io.ome_store`); image metadata is mirrored into
+the root attrs.
 """
 
 from __future__ import annotations
 
+import difflib
+import fnmatch
 import logging
+import re
+import textwrap
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import zarr
 from scipy import sparse
+
+from sarcasm.features import describe_key, pretty_name
 
 logger = logging.getLogger(__name__)
 
@@ -68,46 +89,71 @@ _VERSION = "_format_version"
 
 
 # --------------------------------------------------------------------------- #
-# routing schema: flat result key -> (group path, member name)
+# routing: a key IS its path
 # --------------------------------------------------------------------------- #
+#: The three top-level namespaces. ``structure`` is per-frame / single-frame
+#: morphology, ``motion`` is everything derived from the sarcomere tracks, and
+#: ``params`` records the arguments each analysis step ran with.
+TOP_GROUPS = ("structure", "motion", "params")
+
+#: Subgroup display order within each namespace — pipeline order, so the repr
+#: reads the way the analysis runs. Unlisted subgroups sort after, alphabetically.
+_GROUP_ORDER = {
+    "structure": ("cell", "zbands", "sarcomere", "myofibril", "domain"),
+    "motion": ("tracks", "groups", "pool", "mband", "myofibril", "domain", "loi",
+               "custom"),
+}
+
+
 def _route(key: str) -> Tuple[str, str]:
-    """Map a flat key to its home in the store.
+    """Split a result key into its group path and member name.
+
+    A key is a dotted path — ``'motion.pool.slen'`` is member ``slen`` of group
+    ``motion/pool`` — so routing is a split, not a table of prefix rules, and two
+    keys can never claim the same home.
 
     Parameters
     ----------
     key : str
-        Flat result key (e.g. ``'tracks_slen'``, ``'sarcomere_oop'``).
+        Dotted result key (e.g. ``'motion.tracks.slen'``).
 
     Returns
     -------
     tuple of (str, str)
         The ``(group_path, member_name)`` where the value is stored.
     """
-    if key.startswith("params."):
-        parts = key.split(".")
-        step = parts[1]
-        member = ".".join(parts[2:]) if len(parts) > 2 else step
-        return f"params/{step}", member
-    if key.startswith("tracks_"):
-        return "tracks", key[len("tracks_"):]
-    if key.startswith("track_"):
-        return "tracks", key[len("track_"):]
-    if key in ("n_tracks", "fragmentation_ratio", "n_tracks_retired",
-               "n_interpolated_gap_frames", "n_groups", "group_kind", "grouping_hash"):
-        return "tracks", key
-    if key.startswith("sarcomere_"):
-        return "structure/sarcomere", key[len("sarcomere_"):]
-    if key.startswith(("pos_vectors", "midline_")):
-        return "structure/vectors", key
-    if key == "domains" or key.startswith("domain_"):
-        return "structure/domain", key[len("domain_"):] if key.startswith("domain_") else key
-    if key.startswith(("myof_", "myofibril_")):
-        return "structure/myofibril", key.split("_", 1)[1]
-    if key.startswith("pool_"):
-        return "structure/pool", key[len("pool_"):]
-    if key.startswith("mband_"):
-        return "structure/mband", key[len("mband_"):]
-    return "structure", key
+    group, _, member = key.rpartition(".")
+    return group.replace(".", "/"), member
+
+
+def _check_key(key: str) -> None:
+    """Reject keys that are not dotted paths under a known namespace.
+
+    This is what makes attribute access safe: a key always has at least one dot,
+    so it can never be a bare identifier shadowing an accessor method, and it
+    always starts with a known namespace, so it can never invent a top-level
+    group. Checked at write time, where the traceback still points at the
+    analysis code that produced the key.
+
+    Parameters
+    ----------
+    key : str
+        Result key.
+
+    Raises
+    ------
+    TypeError
+        If ``key`` is not a non-empty string.
+    KeyError
+        If ``key`` is not ``<namespace>.<...>.<member>`` with a known namespace.
+    """
+    if not isinstance(key, str) or not key:
+        raise TypeError(f"result keys must be non-empty strings, got {key!r}")
+    head, _, rest = key.partition(".")
+    if head not in TOP_GROUPS or not rest:
+        raise KeyError(
+            f"{key!r} is not a valid result key: keys are dotted paths under "
+            f"{', '.join(TOP_GROUPS)} (e.g. 'motion.pool.slen').")
 
 
 # --------------------------------------------------------------------------- #
@@ -515,6 +561,7 @@ def _write_key(root: "zarr.Group", key: str, val: Any,
     overwrite : bool, optional
         If True, remove any existing member before writing. Default is False.
     """
+    _check_key(key)
     group, member = _route(key)
     if key in manifest:                            # keep a stable overwrite target
         group, member = manifest[key][0], manifest[key][1]
@@ -625,7 +672,7 @@ def export_to_json(data, path: Union[str, Path], *,
     Parameters
     ----------
     data : Mapping
-        Results mapping (e.g. :class:`Results` or :class:`ResultsDict`).
+        Results mapping (e.g. a :class:`Results` accessor or a plain dict).
     path : str or Path
         Output JSON path.
     keys : iterable of str or None, optional
@@ -656,198 +703,384 @@ def export_to_json(data, path: Union[str, Path], *,
 
 
 # --------------------------------------------------------------------------- #
-# accessor
+# logical namespace
 # --------------------------------------------------------------------------- #
-def _resolve_member(grp: "zarr.Group", name: str):
-    """Resolve a member name within a group to a value or namespace.
+def _tree_from_keys(keys: Iterable[str]) -> Dict[str, Any]:
+    """Build the grouped namespace from flat keys via :func:`_route`.
+
+    The tree is derived from the routing schema, not from the physical Zarr
+    tree, so it is identical across store vintages, covers staged (unflushed)
+    keys, and cannot expose non-result groups such as ``masks/``. Leaves hold
+    the **flat key**, so every read goes through the single materialising path
+    :meth:`Results.__getitem__`.
 
     Parameters
     ----------
-    grp : zarr.Group
-        Group to look in.
-    name : str
-        Member name (array, subgroup or attr).
+    keys : iterable of str
+        Flat result keys.
 
     Returns
     -------
-    Any
-        A lazy zarr array, a materialised ragged/sparse value, a nested
-        :class:`_GroupView`, or an attr value.
-
-    Raises
-    ------
-    KeyError
-        If no member ``name`` exists.
+    dict
+        Nested ``{segment: {member: flat_key | subtree}}`` mapping.
     """
-    if name in grp.array_keys():
-        return grp[name]                          # lazy zarr array
-    if name in grp.group_keys():
-        sub = grp[name]
-        kind = sub.attrs.get(_KIND)
-        if kind == "ragged":
-            return _read_ragged(sub)
-        if kind == "sparse":
-            return _read_sparse(sub)
-        if kind == "sparse_seq":
-            return _read_sparse_seq(sub)
-        return _GroupView(sub)                    # nested namespace
-    if name in grp.attrs:
-        return _from_attr(grp.attrs[name])
-    raise KeyError(name)
+    root: Dict[str, Any] = {}
+    for key in keys:
+        group, member = _route(key)
+        node = root
+        for seg in group.split("/"):
+            child = node.setdefault(seg, {})
+            if not isinstance(child, dict):
+                logger.warning("namespace clash at %r; %r stays reachable via data[%r]",
+                               seg, key, key)
+                node = None
+                break
+            node = child
+        if node is None:
+            continue
+        if isinstance(node.get(member), dict):
+            logger.warning("%r is shadowed by subgroup %r; use data[%r]",
+                           key, member, key)
+            continue
+        node[member] = key
+    return root
 
 
-class _GroupView:
-    """Attribute view over one Zarr group.
+class _KeyInfo(NamedTuple):
+    """Cheap, metadata-only description of one stored key."""
 
-    Subgroups resolve to nested namespaces, arrays to lazy handles, and attrs
-    to values.
+    key: str
+    group: str
+    kind: str
+    shape: Optional[tuple]
+    dtype: Optional[str]
+    staged: bool
 
-    Parameters
-    ----------
-    grp : zarr.Group
-        The group to wrap.
+
+_DTYPE_ABBREV = {"float64": "f64", "float32": "f32", "float16": "f16",
+                 "int64": "i64", "int32": "i32", "int16": "i16", "int8": "i8",
+                 "uint64": "u64", "uint32": "u32", "uint16": "u16", "uint8": "u8",
+                 "bool": "bool"}
+
+
+def _fmt_dtype(dtype: Optional[str]) -> str:
+    """Abbreviate a dtype name for compact table output."""
+    if not dtype:
+        return ""
+    return _DTYPE_ABBREV.get(dtype, dtype)
+
+
+def _fmt_shape(shape: Optional[tuple]) -> str:
+    """Render a shape tuple compactly (``''`` for scalars/unknown)."""
+    if shape is None or len(shape) == 0:
+        return ""
+    return "(" + ",".join(str(d) for d in shape) + ")"
+
+
+def _fmt_spec(info: "_KeyInfo") -> str:
+    """One compact ``shape dtype`` cell, disambiguating the storage kinds.
+
+    Ragged and sparse-sequence values are per-frame lists, so their leading
+    dimension is a frame count, not an array axis — render them as
+    ``ragged[500]`` rather than ``(500)``.
+    """
+    dtype = _fmt_dtype(info.dtype)
+    n = info.shape[0] if info.shape else None
+    if info.kind == "ragged":
+        return f"ragged[{n}] {dtype}".strip()
+    if info.kind == "sparse_seq":
+        return f"sparse[{n}] {dtype}".strip()
+    if info.kind == "sparse":
+        return f"sparse{_fmt_shape(info.shape)} {dtype}".strip()
+    return f"{_fmt_shape(info.shape)} {dtype}".strip()
+
+
+def _describe_value(val: Any) -> Tuple[str, Optional[tuple], Optional[str]]:
+    """Infer ``(kind, shape, dtype)`` from an in-memory (staged) value."""
+    if isinstance(val, np.ndarray):
+        return ("array" if val.size > _INLINE_MAX else "attr"), val.shape, val.dtype.name
+    if sparse.issparse(val):
+        return "sparse", tuple(val.shape), val.dtype.name
+    if _is_sparse_seq(val):
+        return "sparse_seq", (len(val),), None
+    if _is_ragged(val):
+        first = next((np.asarray(x) for x in val if x is not None), None)
+        return "ragged", (len(val),), (first.dtype.name if first is not None else None)
+    if isinstance(val, (list, tuple)):
+        return "attr", (len(val),), None
+    if isinstance(val, np.generic):
+        return "attr", (), val.dtype.name
+    return "attr", (), type(val).__name__
+
+
+# --------------------------------------------------------------------------- #
+# rendering helpers
+# --------------------------------------------------------------------------- #
+def _html_escape(text: Any) -> str:
+    """Minimal HTML escaping for repr tables."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
+def _display_name(key: str) -> str:
+    """Registry label for ``key``, blank when it just restates the key.
+
+    ``params.group_tracks.by`` is labelled ``by``, which adds nothing next to
+    the key itself — drop it rather than print the same word twice.
+    """
+    name = pretty_name(key)
+    return "" if name == key or key.endswith(name) else name
+
+
+class KeyTable(list):
+    """A list of result keys that prints as a table.
+
+    Subclasses :class:`list`, so it iterates and indexes as plain key strings
+    (``for k in sarc.data.find('slen'): sarc.data[k]``) while rendering a
+    readable key/kind/shape/dtype/name table at the REPL and in Jupyter.
     """
 
-    __slots__ = ("_grp",)
+    def __init__(self, keys: Iterable[str], results: "Results" = None,
+                 pattern: str = "", searched: int = 0):
+        super().__init__(keys)
+        self._results = results
+        self._pattern = pattern
+        self._searched = searched
 
-    def __init__(self, grp: "zarr.Group"):
-        object.__setattr__(self, "_grp", grp)
+    def _rows(self) -> List[_KeyInfo]:
+        if self._results is None:
+            return []
+        return [self._results._key_info(k) for k in self]
 
-    def __getattr__(self, name: str):
+    def __repr__(self) -> str:
+        if not self:
+            what = f" match {self._pattern!r}" if self._pattern else ""
+            return f"no keys{what} ({self._searched} keys searched)"
+        rows = self._rows()
+        if not rows:
+            return super().__repr__()
+        wk = max(len(r.key) for r in rows)
+        ws = max(len(_fmt_spec(r)) for r in rows)
+        out = []
+        for r in rows:
+            spec = _fmt_spec(r)
+            out.append(f"  {r.key:<{wk}}  {spec:<{ws}}  {_display_name(r.key)}".rstrip())
+        head = f"{len(self)} key{'s' if len(self) != 1 else ''}"
+        if self._pattern:
+            head += f" matching {self._pattern!r}"
+        return head + "\n" + "\n".join(out)
+
+    def _repr_html_(self) -> str:
+        if not self:
+            what = f" match <code>{_html_escape(self._pattern)}</code>" if self._pattern else ""
+            return f"<p><em>no keys{what} ({self._searched} keys searched)</em></p>"
+        cells = "".join(
+            "<tr>"
+            f"<td><code>{_html_escape(r.key)}</code></td>"
+            f"<td>{_html_escape(r.kind)}</td>"
+            f"<td><code>{_html_escape(_fmt_spec(r))}</code></td>"
+            f"<td>{_html_escape(_display_name(r.key))}</td>"
+            "</tr>"
+            for r in self._rows())
+        return ("<table><thead><tr><th>key</th><th>kind</th><th>shape</th>"
+                "<th>name</th></tr></thead>"
+                f"<tbody>{cells}</tbody></table>")
+
+
+class FeatureInfo:
+    """What one result key is, where it lives, and how it is stored.
+
+    Returned by :meth:`Results.describe`. ``registry`` is None when the key is
+    written by the pipeline but not documented in :mod:`sarcasm.features`.
+    """
+
+    __slots__ = ("key", "name", "description", "function", "registry",
+                 "kind", "group", "shape", "dtype")
+
+    def __init__(self, key, info: _KeyInfo, entry: Optional[dict]):
+        entry = entry or {}
+        self.key = key
+        self.name = entry.get("name", key)
+        self.description = entry.get("description")
+        self.function = entry.get("function")
+        self.registry = entry.get("registry")
+        self.kind = info.kind
+        self.group = info.group
+        self.shape = info.shape
+        self.dtype = info.dtype
+
+    def __repr__(self) -> str:
+        spec = _fmt_spec(_KeyInfo(self.key, self.group, self.kind, self.shape,
+                                  self.dtype, False))
+        lines = [f"{self.key}",
+                 f"  stored     {self.group} · {spec or self.kind}"]
+        if self.registry:
+            lines.append(f"  name       {self.name}")
+            lines.append(f"  written by {self.function}")
+            lines.append("  " + _wrap_field("about", self.description or ""))
+        else:
+            lines.append("  registry   no entry — this key is written by the pipeline but "
+                         "not documented in sarcasm.features")
+        return "\n".join(lines)
+
+    def _repr_html_(self) -> str:
+        spec = _fmt_spec(_KeyInfo(self.key, self.group, self.kind, self.shape,
+                                  self.dtype, False))
+        rows = [("stored", f"<code>{_html_escape(self.group)}</code> · "
+                           f"{_html_escape(spec or self.kind)}")]
+        if self.registry:
+            rows += [("name", _html_escape(self.name)),
+                     ("written by", f"<code>{_html_escape(self.function)}</code>"),
+                     ("about", _html_escape(self.description or ""))]
+        else:
+            rows.append(("registry", "<em>no entry in sarcasm.features</em>"))
+        body = "".join(f"<tr><th align='left'>{k}</th><td>{v}</td></tr>" for k, v in rows)
+        return (f"<p><code><b>{_html_escape(self.key)}</b></code></p>"
+                f"<table><tbody>{body}</tbody></table>")
+
+
+def _wrap_field(label: str, text: str, width: int = 88) -> str:
+    """Wrap ``text`` under a fixed-width label, continuation lines aligned.
+
+    The caller prefixes two spaces, so continuation lines are indented by
+    ``2 + 9 + 2`` to line up under the start of ``text``.
+    """
+    body = textwrap.fill(text, width=width, initial_indent="",
+                         subsequent_indent=" " * 13)
+    return f"{label:<9}  {body}"
+
+
+# --------------------------------------------------------------------------- #
+# accessor
+# --------------------------------------------------------------------------- #
+class _NodeView:
+    """One node of the grouped namespace (e.g. ``sarc.data.structure.sarcomere``).
+
+    Read-only and deliberately free of public methods: every public name here
+    would be a name a future result key could not use. All helpers
+    (``keys``, ``find``, ``describe``, …) live on :class:`Results`.
+    """
+
+    __slots__ = ("_res", "_node", "_path")
+
+    def __init__(self, res: "Results", node: Dict[str, Any], path: str):
+        object.__setattr__(self, "_res", res)
+        object.__setattr__(self, "_node", node)
+        object.__setattr__(self, "_path", path)
+
+    def __getitem__(self, name: str) -> Any:
+        child = self._node[name]
+        if isinstance(child, dict):
+            return _NodeView(self._res, child, f"{self._path}.{name}")
+        return self._res[child]
+
+    def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)
         try:
-            return _resolve_member(self._grp, name)
+            return self[name]
         except KeyError:
             raise AttributeError(
-                f"group {self._grp.path!r} has no member {name!r}") from None
+                f"'{self._path}' has no member {name!r}. Available: "
+                f"{', '.join(self.__dir__())}") from None
 
-    def __getitem__(self, name: str):
-        return _resolve_member(self._grp, name)
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError(
+            f"'{self._path}' is read-only. Write with "
+            f"sarc.data['<flat_key>'] = ... (then sarc.commit()).")
 
-    def __dir__(self):
-        members = (list(self._grp.array_keys()) + list(self._grp.group_keys())
-                   + [k for k in self._grp.attrs if not k.startswith("_")])
-        return sorted(members)
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"'{self._path}' is read-only; use del sarc.data['<flat_key>'].")
 
-    def __repr__(self):
-        return f"<group {self._grp.path or '/'}: {self.__dir__()}>"
+    def __contains__(self, name: str) -> bool:
+        return name in self._node
 
+    def __iter__(self):
+        return iter(sorted(self._node))
 
-class Results:
-    """Lazy attribute-and-dict accessor over a ``data.zarr`` results store.
+    def __len__(self) -> int:
+        return len(self._node)
 
-    Read-only. Supports both grouped attribute access (``r.tracks.slen``,
-    nested namespaces, lazy zarr arrays) and flat-key dict access
-    (``r['tracks_slen']``, materialised numpy).
+    def __dir__(self) -> List[str]:
+        return sorted(self._node)
 
-    Parameters
-    ----------
-    store_path : str or Path
-        Path to the ``data.zarr`` store.
-    """
+    def _flat_keys(self) -> List[str]:
+        """All flat keys at or below this node, in namespace order."""
+        out: List[str] = []
+        for name in sorted(self._node):
+            child = self._node[name]
+            if isinstance(child, dict):
+                out.extend(_NodeView(self._res, child, f"{self._path}.{name}")._flat_keys())
+            else:
+                out.append(child)
+        return out
 
-    def __init__(self, store_path: Union[str, Path]):
-        self._root = zarr.open_group(str(Path(store_path)), mode="r")
-        self._manifest: Dict[str, list] = dict(self._root.attrs.get(_MANIFEST, {}))
-        self._view = _GroupView(self._root)
+    def _direct_keys(self) -> List[str]:
+        """Flat keys of this node itself, excluding its subgroups."""
+        return [self._node[n] for n in sorted(self._node)
+                if not isinstance(self._node[n], dict)]
 
-    # -- dict interface (legacy flat keys, materialised numpy) ------------- #
-    def __getitem__(self, key: str) -> Any:
-        """Materialise the value for a flat ``key``.
+    def _subgroup_summary(self) -> List[str]:
+        """``name (n)`` for each subgroup, so drilling down is guided."""
+        out = []
+        for name in sorted(n for n, v in self._node.items() if isinstance(v, dict)):
+            n_keys = len(_NodeView(self._res, self._node[name],
+                                   f"{self._path}.{name}")._flat_keys())
+            out.append(f"{name} ({n_keys})")
+        return out
 
-        Parameters
-        ----------
-        key : str
-            Flat result key.
+    def __repr__(self) -> str:
+        # only this node's own keys — subgroups are listed, not expanded, so
+        # `sarc.data.structure` stays readable instead of dumping 165 rows
+        direct = self._direct_keys()
+        subs = self._subgroup_summary()
+        head = f"<{self._path} · {len(self._flat_keys())} keys>"
+        parts = [head]
+        if subs:
+            parts.append(f"  subgroups: {', '.join(subs)}")
+        if direct:
+            parts.append(repr(KeyTable(direct, self._res)))
+        return "\n".join(parts)
 
-        Returns
-        -------
-        Any
-            The materialised value.
-
-        Raises
-        ------
-        KeyError
-            If ``key`` is not in the manifest.
-        """
-        if key not in self._manifest:
-            raise KeyError(key)
-        return _read_entry(self._root, self._manifest[key])
-
-    @property
-    def metadata(self) -> Optional[dict]:
-        """Image metadata mirrored into the store root attrs, if present."""
-        meta = self._root.attrs.get("metadata")
-        return _from_attr(meta) if meta is not None else None
-
-    def __contains__(self, key: str) -> bool:
-        """Return True if ``key`` is a known flat key."""
-        return key in self._manifest
-
-    def keys(self):
-        """Return the list of flat keys in the store."""
-        return list(self._manifest.keys())
-
-    def get(self, key: str, default=None):
-        """Return the value for ``key``, or ``default`` if absent.
-
-        Parameters
-        ----------
-        key : str
-            Flat key.
-        default : Any, optional
-            Value returned if ``key`` is absent. Default is None.
-
-        Returns
-        -------
-        Any
-            The materialised value or ``default``.
-        """
-        return self[key] if key in self._manifest else default
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Materialise the whole store into a plain flat-key dict.
-
-        Returns
-        -------
-        dict of str to Any
-            All keys mapped to their materialised values.
-        """
-        return {k: self[k] for k in self._manifest}
-
-    # -- attribute / namespace interface (native group tree) --------------- #
-    def __getattr__(self, name: str):
-        if name.startswith("_"):
-            raise AttributeError(name)
-        try:
-            return _resolve_member(self._root, name)
-        except KeyError:
-            raise AttributeError(f"Results has no group/key {name!r}") from None
-
-    def __dir__(self):
-        return self._view.__dir__() + ["keys", "to_dict", "get"]
-
-    def __repr__(self):
-        return (f"<Results {len(self._manifest)} keys, "
-                f"groups={sorted(self._root.group_keys())}>")
+    def _repr_html_(self) -> str:
+        subs = self._subgroup_summary()
+        head = f"<p><code><b>{_html_escape(self._path)}</b></code></p>"
+        if subs:
+            head += f"<p>subgroups: <code>{_html_escape(', '.join(subs))}</code></p>"
+        direct = self._direct_keys()
+        return head + (KeyTable(direct, self._res)._repr_html_() if direct else "")
 
 
-class ResultsDict(MutableMapping):
-    """Lazy, dict-compatible backing for ``SarcAsM.data`` over ``data.zarr``.
+class Results(MutableMapping):
+    """Lazy, Zarr-backed results of one recording — ``SarcAsM.data``.
 
-    Reads materialise (numpy/objects) on first access and cache; writes stage
-    in memory and persist incrementally via :meth:`flush` (only the changed
-    members are rewritten). Implements the full ``dict`` surface the codebase
-    uses (``[]``, ``get``, ``update``, ``keys``, ``pop``, ``in``, iteration).
-    For the ergonomic grouped/lazy view use :meth:`view` (``SarcAsM.results``).
+    A key is its path, so there is one name with two spellings::
+
+        sarc.data['motion.tracks.slen']  ==  sarc.data.motion.tracks.slen
+        sarc.data['structure.sarcomere.oop']
+        sarc.data['params.detect_sarcomeres.frames']
+
+    ``structure`` holds per-frame morphology, ``motion`` everything derived from
+    the sarcomere tracks, and ``params`` what each analysis step ran with.
+
+    Reads materialise on first access and are cached; writes are staged in
+    memory and persisted incrementally by :meth:`flush` (only changed members
+    are rewritten). **Attributes are read-only** — write with
+    ``sarc.data['key'] = value`` followed by ``sarc.commit()``. No read ever
+    touches the store on disk.
+
+    To explore: ``print(sarc.data)``, ``sarc.data.keys()``,
+    :meth:`find`, :meth:`describe`, and tab completion (``sarc.data.<TAB>``).
+    For chunk-wise access to a large array without materialising it, use
+    :meth:`handle`.
 
     Parameters
     ----------
     store_path : str or Path
-        Path to the ``data.zarr`` store (may not yet exist on disk).
+        Path to the results store (the ``sarcasm/`` group of the OME-Zarr
+        container). It need not exist yet.
     initial : dict or None, optional
-        Initial key/value pairs to stage on construction. Default is None.
+        Key/value pairs staged on construction. Default is None.
     """
 
     def __init__(self, store_path: Union[str, Path], *, initial: Optional[dict] = None):
@@ -856,6 +1089,8 @@ class ResultsDict(MutableMapping):
         self._staged: Dict[str, Any] = {}
         self._dirty: set = set()
         self._deleted: set = set()
+        self._tree_cache: Dict[str, Any] = {}
+        self._tree_stamp: Optional[tuple] = None
         self._open()
         if initial:
             for k, v in dict(initial).items():
@@ -863,6 +1098,9 @@ class ResultsDict(MutableMapping):
 
     def _open(self) -> None:
         """(Re)open the backing store read-only and load its manifest."""
+        # shape/dtype of persisted keys can only change through a flush, which
+        # comes back through here, so the info cache is invalidated for free
+        self._info_cache: Dict[str, _KeyInfo] = {}
         if self._path.exists():
             self._root = zarr.open_group(str(self._path), mode="r")
             self._manifest = dict(self._root.attrs.get(_MANIFEST, {}))
@@ -870,11 +1108,28 @@ class ResultsDict(MutableMapping):
             self._root = None
             self._manifest = {}
 
+    # -- key sets ---------------------------------------------------------- #
     def _live_keys(self) -> set:
-        """Return the currently visible keys (persisted + staged, minus deleted)."""
+        """Currently visible keys (persisted + staged, minus deleted)."""
         return (set(self._manifest) | set(self._staged)) - self._deleted
 
-    # -- MutableMapping abstract methods ----------------------------------- #
+    def _ordered_keys(self) -> List[str]:
+        """Visible keys in a stable order: manifest (write) order, then staged."""
+        deleted = self._deleted
+        out = [k for k in self._manifest if k not in deleted]
+        seen = set(out)
+        out += [k for k in self._staged if k not in seen and k not in deleted]
+        return out
+
+    def _tree(self) -> Dict[str, Any]:
+        """The grouped namespace, rebuilt when the key set changes."""
+        stamp = tuple(self._ordered_keys())
+        if self._tree_stamp != stamp:
+            self._tree_cache = _tree_from_keys(stamp)
+            self._tree_stamp = stamp
+        return self._tree_cache
+
+    # -- MutableMapping ----------------------------------------------------- #
     def __getitem__(self, key: str) -> Any:
         if key in self._deleted:
             raise KeyError(key)
@@ -889,6 +1144,7 @@ class ResultsDict(MutableMapping):
         raise KeyError(key)
 
     def __setitem__(self, key: str, val: Any) -> None:
+        _check_key(key)
         self._staged[key] = val
         self._dirty.add(key)
         self._deleted.discard(key)
@@ -903,17 +1159,220 @@ class ResultsDict(MutableMapping):
         self._cache.pop(key, None)
 
     def __iter__(self):
-        return iter(self._live_keys())
+        return iter(self._ordered_keys())
 
     def __len__(self) -> int:
-        return len(self._live_keys())
+        return len(self._ordered_keys())
 
     def __contains__(self, key: str) -> bool:
         return key in self._live_keys()
 
-    # -- persistence ------------------------------------------------------- #
+    def keys(self) -> List[str]:
+        """Flat result keys, in write order (never a scrambled set)."""
+        return self._ordered_keys()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Materialise every key into a plain flat-key dict."""
+        return {k: self[k] for k in self._ordered_keys()}
+
+    # -- attribute access --------------------------------------------------- #
+    def __getattr__(self, name: str) -> Any:
+        # Keys are dotted paths, so they are never bare identifiers and can never
+        # shadow a method here; only namespaces resolve as attributes.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        node = self._tree().get(name)
+        if isinstance(node, dict):
+            return _NodeView(self, node, f"data.{name}")
+        raise AttributeError(self._attr_error(name))
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        raise AttributeError(
+            f"results are read-only as attributes. Write with "
+            f"sarc.data[{name!r}] = ... (then sarc.commit()).")
+
+    def __delattr__(self, name: str) -> None:
+        if name.startswith("_"):
+            object.__delattr__(self, name)
+            return
+        raise AttributeError(f"results are read-only as attributes; "
+                             f"use del sarc.data[{name!r}].")
+
+    def _attr_error(self, name: str) -> str:
+        """Build an AttributeError message with close-match suggestions."""
+        paths = sorted({p for p, _ in self._group_rows()})
+        close = difflib.get_close_matches(name, paths + self._ordered_keys(),
+                                          n=3, cutoff=0.5)
+        msg = f"no result namespace {name!r} in this store"
+        if close:
+            msg += f". Did you mean: {', '.join(repr(c) for c in close)}?"
+        return (msg + f" — sarc.data holds {', '.join(sorted(self._tree()))}; "
+                      f"sarc.data.find({name!r}) searches all {len(self)} keys.")
+
+    def __dir__(self) -> List[str]:
+        base = [n for n in super().__dir__() if not n.startswith("_")]
+        groups = [g for g, v in self._tree().items() if isinstance(v, dict)]
+        return sorted(set(base + groups))
+
+    # -- introspection ------------------------------------------------------ #
+    def _key_info(self, key: str) -> _KeyInfo:
+        """Describe a key from store metadata alone — never reads a chunk."""
+        if key in self._staged:
+            kind, shape, dtype = _describe_value(self._staged[key])
+            return _KeyInfo(key, _route(key)[0], kind, shape, dtype, True)
+        cached = self._info_cache.get(key)
+        if cached is not None:
+            return cached
+        entry = self._manifest.get(key)
+        if entry is None:
+            raise KeyError(key)
+        group, member, kind = entry
+        group = _route(key)[0]        # logical home, not a stale physical one
+        shape: Optional[tuple] = None
+        dtype: Optional[str] = None
+        try:
+            if kind == "array":
+                arr = self._root[f"{group}/{member}"]
+                shape, dtype = tuple(arr.shape), arr.dtype.name
+            elif kind == "ragged":
+                sub = self._root[f"{group}/{member}"]
+                shape = (int(sub["none_mask"].shape[0]),)
+                dtype = sub["values"].dtype.name
+            elif kind in ("sparse", "sparse_seq"):
+                sub = self._root[f"{group}/{member}"]
+                shape = tuple(sub.attrs.get("shape", ()))
+                if kind == "sparse_seq":
+                    shape = (int(sub.attrs.get("n", 0)),) + shape
+                dtype = sub["data"].dtype.name
+            else:
+                _kind, shape, dtype = _describe_value(
+                    _from_attr(self._root[group].attrs[member]))
+        except (KeyError, AttributeError, TypeError):
+            pass
+        info = _KeyInfo(key, group, kind, shape, dtype, False)
+        self._info_cache[key] = info
+        return info
+
+    def handle(self, key: str) -> "zarr.Array":
+        """Lazy Zarr handle for a chunked array, for row-wise reads.
+
+        Attribute and dict access always materialise, so their type never
+        depends on how large the value happened to be. When you explicitly
+        want to read one row of a big ``(n_tracks, T)`` array without loading
+        all of it, ask for the handle::
+
+            sarc.data.handle('motion.tracks.slen')[5]
+
+        Parameters
+        ----------
+        key : str
+            Flat result key.
+
+        Returns
+        -------
+        zarr.Array
+            The on-disk array (nothing is read until you index it).
+
+        Raises
+        ------
+        KeyError
+            If ``key`` is not in the store.
+        TypeError
+            If the value is stored inline (small values live in group attrs and
+            have no handle) — read it with ``sarc.data[key]``.
+        RuntimeError
+            If ``key`` has unflushed staged writes — call ``sarc.commit()``
+            first. Reading never writes to disk.
+        """
+        if key not in self._live_keys():
+            raise KeyError(key)
+        if key in self._staged:
+            raise RuntimeError(
+                f"{key!r} has unflushed writes; call sarc.commit() before asking "
+                f"for a handle (reads never write to disk).")
+        group, member, kind = self._manifest[key]
+        if kind != "array":
+            raise TypeError(
+                f"{key!r} is stored inline (kind={kind!r}) and has no zarr handle; "
+                f"read it with sarc.data[{key!r}].")
+        return self._root[f"{group}/{member}"]
+
+    def find(self, pattern: str = "", *, group: Optional[str] = None,
+             regex: bool = False) -> KeyTable:
+        """Search the result keys.
+
+        Parameters
+        ----------
+        pattern : str, optional
+            Case-insensitive substring, or a glob if it contains ``*``, ``?``
+            or ``[``. Default is ``''`` (every key).
+        group : str or None, optional
+            Restrict to one namespace, given as a full path
+            (``'motion/pool'``) or its last segment (``'pool'``). Default is
+            None. Note that ``domain``, ``myofibril`` and ``loi`` name a group
+            on *both* branches, so the last-segment form returns the union —
+            use the full path to pick one.
+        regex : bool, optional
+            Treat ``pattern`` as a regular expression. Default is False.
+
+        Returns
+        -------
+        KeyTable
+            A list of matching keys that prints as a table.
+
+        Examples
+        --------
+        >>> sarc.data.find('slen')                    # doctest: +SKIP
+        >>> sarc.data.find('motion.*.beating_rate')   # doctest: +SKIP
+        >>> sarc.data.find(group='motion/tracks')     # doctest: +SKIP
+        """
+        keys = self._ordered_keys()
+        searched = len(keys)
+        if group:
+            want = group.strip("/")
+            keys = [k for k in keys
+                    if _route(k)[0] == want or _route(k)[0].split("/")[-1] == want]
+        if regex:
+            rx = re.compile(pattern, re.IGNORECASE)
+            keys = [k for k in keys if rx.search(k)]
+        elif any(c in pattern for c in "*?["):
+            low = pattern.lower()
+            keys = [k for k in keys if fnmatch.fnmatchcase(k.lower(), low)]
+        elif pattern:
+            low = pattern.lower()
+            keys = [k for k in keys if low in k.lower()]
+        return KeyTable(keys, self, pattern, searched)
+
+    def describe(self, key: Optional[str] = None) -> Union[FeatureInfo, KeyTable]:
+        """Explain what a result key means, how it is stored and who wrote it.
+
+        Parameters
+        ----------
+        key : str or None, optional
+            Flat result key. Default is None, which tables every key.
+
+        Returns
+        -------
+        FeatureInfo or KeyTable
+            Description of ``key``, or a table of all keys.
+
+        Raises
+        ------
+        KeyError
+            If ``key`` is not in this store.
+        """
+        if key is None:
+            return self.find("")
+        if key not in self._live_keys():
+            raise KeyError(self._attr_error(key))
+        return FeatureInfo(key, self._key_info(key), describe_key(key))
+
+    # -- persistence -------------------------------------------------------- #
     def flush(self) -> None:
-        """Persist staged writes/deletes to the store (incremental)."""
+        """Persist staged writes and deletes to the store (incremental)."""
         if not self._dirty and not self._deleted:
             return
         mapping = {k: self._staged[k] for k in self._dirty}
@@ -945,17 +1404,91 @@ class ResultsDict(MutableMapping):
         root = zarr.open_group(str(self._path), mode="a")
         root.attrs[name] = value
 
-    def view(self) -> "Results":
-        """Flush and return a read-only grouped/lazy :class:`Results` view.
+    # -- display ------------------------------------------------------------ #
+    def _group_rows(self) -> List[Tuple[str, List[str]]]:
+        """Flatten the namespace to ``(dotted_group_path, [keys])`` rows.
 
-        Returns
-        -------
-        Results
-            A read-only view of the current store contents.
+        Ordered for reading rather than alphabetically: the two result
+        namespaces first (``structure``, then ``motion``), provenance last, and
+        within each the subgroups in pipeline order.
         """
-        self.ensure_store()
-        return Results(self._path)
+        rows: List[Tuple[str, List[str]]] = []
 
-    def __repr__(self):
-        return (f"<ResultsDict {len(self)} keys ({len(self._dirty)} dirty) "
-                f"@ {self._path.name}>")
+        def rank(top: str, name: str):
+            order = _GROUP_ORDER.get(top, ())
+            return (order.index(name) if name in order else len(order)), name
+
+        def walk(node: Dict[str, Any], path: str, top: str) -> None:
+            leaves = [v for v in node.values() if isinstance(v, str)]
+            if leaves:
+                rows.append((path, leaves))
+            for name in sorted((k for k, v in node.items() if isinstance(v, dict)),
+                               key=lambda n: rank(top, n)):
+                walk(node[name], f"{path}.{name}", top)
+
+        root = self._tree()
+        for top in sorted(root, key=lambda x: (TOP_GROUPS.index(x) if x in TOP_GROUPS
+                                               else len(TOP_GROUPS), x)):
+            if isinstance(root[top], dict):
+                walk(root[top], top, top)
+        return rows
+
+    def __repr__(self) -> str:
+        try:
+            return self._render()
+        except Exception as e:                                  # never unprintable
+            logger.debug("Results repr failed: %s", e)
+            return f"<Results {len(self._manifest)} keys @ {self._path}>"
+
+    def _render(self, max_shown: int = 3) -> str:
+        n_staged = len(self._dirty)
+        head = (f"<Results · {len(self)} keys"
+                + (f" ({n_staged} unsaved)" if n_staged else "")
+                + f" · {self._path.parent.name}/{self._path.name}>")
+        rows = self._group_rows()
+        if not rows:
+            return head + "\n  (empty — run an analysis, e.g. sarc.detect_sarcomeres())"
+        body = [(q, ks) for q, ks in rows if q.partition(".")[0] != "params"]
+        params = [(q, ks) for q, ks in rows if q.partition(".")[0] == "params"]
+        width = max([len(q.partition(".")[2] or q) for q, _ in body] + [6])
+        lines, seen = [head], None
+        for path, keys in body:
+            top, _, sub = path.partition(".")
+            if top != seen:                       # one header per namespace
+                n_top = sum(len(k) for q, k in body if q.partition(".")[0] == top)
+                lines.append(f"  {top}  ·  {n_top} keys")
+                seen = top
+            shown = [f"{k.rpartition('.')[2]} {_fmt_spec(self._key_info(k))}".strip()
+                     for k in keys[:max_shown]]
+            more = f", +{len(keys) - max_shown}" if len(keys) > max_shown else ""
+            lines.append(f"    {sub or '·':<{width}}  {len(keys):>4}  "
+                         f"{', '.join(shown)}{more}")
+        if params:
+            steps = [q.partition(".")[2] for q, _ in params]
+            n_keys = sum(len(ks) for _, ks in params)
+            more = f", +{len(steps) - max_shown}" if len(steps) > max_shown else ""
+            lines.append(f"  params  ·  {n_keys} keys")
+            lines.append(f"    {len(steps)} steps: {', '.join(steps[:max_shown])}{more}")
+        lines.append("  sarc.data.find('slen')  ·  "
+                     "sarc.data.describe('structure.sarcomere.oop')")
+        return "\n".join(lines)
+
+    def _repr_html_(self) -> str:
+        blocks, seen = [], None
+        for path, keys in self._group_rows():
+            top, _, sub = path.partition(".")
+            if top != seen:                        # one heading per namespace
+                blocks.append(f"<p><b>{_html_escape(top)}</b></p>")
+                seen = top
+            opened = "" if top == "params" else " open"
+            table = KeyTable(keys, self)._repr_html_()
+            blocks.append(f"<details{opened}><summary><code>{_html_escape(sub or top)}"
+                          f"</code> — {len(keys)} keys</summary>{table}</details>")
+        head = (f"<p><b>Results</b> · {len(self)} keys · "
+                f"<code>{_html_escape(self._path.parent.name)}/"
+                f"{_html_escape(self._path.name)}</code></p>")
+        hint = ("<p><em>A key is its path: "
+                "<code>sarc.data['motion.tracks.slen']</code> and "
+                "<code>sarc.data.motion.tracks.slen</code> are the same value. "
+                "Search with <code>sarc.data.find('slen')</code>.</em></p>")
+        return head + "".join(blocks) + hint

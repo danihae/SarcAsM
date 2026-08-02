@@ -116,7 +116,7 @@ class MotionAnalysisControl:
         if by == 'loi':
             if self.__drawn_lois:
                 # user-drawn lines (yx-px polylines) feed the same loi grouping
-                cell.data['loi_data'] = {'loi_lines': self.__drawn_lois}
+                cell.data['motion.loi.data'] = {'loi_lines': self.__drawn_lois}
             else:
                 cell.detect_lois(
                     frame=ref,
@@ -221,8 +221,8 @@ class MotionAnalysisControl:
         w = self.__motion_analysis_widget
         cell = self.__main_control.model.cell
         w.cb_fibre_group.clear()
-        kind = cell.data.get('group_kind') if cell is not None else None
-        n_groups = int(cell.data.get('n_groups', 0)) if cell is not None else 0
+        kind = cell.data.get('motion.groups.kind') if cell is not None else None
+        n_groups = int(cell.data.get('motion.groups.n', 0)) if cell is not None else 0
         is_fibre = kind in _FIBRE_KINDS and n_groups > 0
         if is_fibre:
             w.cb_fibre_group.addItems([str(g) for g in range(n_groups)])
@@ -247,7 +247,7 @@ class MotionAnalysisControl:
         if not self.__chk_initialized():
             return
         cell = self.__main_control.model.cell
-        kind = cell.data.get('group_kind') if cell is not None else None
+        kind = cell.data.get('motion.groups.kind') if cell is not None else None
         if kind not in _FIBRE_KINDS:
             logger.warning("Per-fibre detail requires a 'myofibril' or 'loi' grouping.")
             return
@@ -269,7 +269,7 @@ class MotionAnalysisControl:
         if motion is None:
             return
         cell = self.__main_control.model.cell
-        kind = cell.data.get('group_kind', '') if cell is not None else ''
+        kind = cell.data.get('motion.groups.kind', '') if cell is not None else ''
         fig, axd = plt.subplot_mosaic([['zpos', 'phase'], ['dslen', 'dslen']],
                                       figsize=(12, 7), constrained_layout=True)
         for key, fn in (('zpos', lambda ax: Plots.plot_z_pos(ax, motion)),
@@ -294,7 +294,7 @@ class MotionAnalysisControl:
             return
         import matplotlib.pyplot as plt
         cell = self.__main_control.model.cell
-        kind = cell.data.get('track_motion_kind') if cell is not None else None
+        kind = cell.data.get('motion.groups.analyzed_kind') if cell is not None else None
         if kind is None:
             logger.warning('No track motion analyzed yet — run "Analyze track motion" first.')
             return
@@ -330,7 +330,7 @@ class MotionAnalysisControl:
         if not self.__chk_initialized():
             return
         cell = self.__main_control.model.cell
-        kind = cell.data.get('track_motion_kind', '') if cell is not None else ''
+        kind = cell.data.get('motion.groups.analyzed_kind', '') if cell is not None else ''
         stem = f'{Path(cell.file_path).stem}_{kind}'
         self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control,
                                           popup_type='motion', filename_stem=stem)

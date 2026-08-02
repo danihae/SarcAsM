@@ -28,7 +28,7 @@ Layout::
       labels/<name>/0      integer masks (cell_mask, sarcomere_mask) + image-label metadata
       sarcasm/
         masks/<name>       float prob maps (zbands, mbands, orientation, distance, …)
-        tracks/ motion/ structure/ params/   ← results_store groups
+        structure/ motion/ params/           ← results_store groups
         zarr.json          attrs: metadata, _manifest
 
 This module is storage-only: it takes/returns numpy arrays and plain dicts and
@@ -49,7 +49,7 @@ from typing import Any, List, Optional, Sequence, Union
 import numpy as np
 import zarr
 
-from sarcasm.io.results_store import ResultsDict, Results
+from sarcasm.io.results_store import Results
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +337,37 @@ class OmeZarrStore:
     def exists(self) -> bool:
         """bool: Whether the store exists on disk."""
         return self.path.exists()
+
+    def size_bytes(self, *, max_files: int = 200_000) -> Optional[int]:
+        """Total size of the store on disk, for display purposes.
+
+        A Zarr store is a directory of chunk files, so this walks the tree.
+
+        Parameters
+        ----------
+        max_files : int, optional
+            Give up (returning None) once this many files have been visited, so
+            printing an object can never become expensive. Default is 200000.
+
+        Returns
+        -------
+        int or None
+            Size in bytes, or None if the store is absent or too large to walk.
+        """
+        if not self.exists:
+            return None
+        total = 0
+        seen = 0
+        for dirpath, _dirnames, filenames in os.walk(self.path):
+            for name in filenames:
+                seen += 1
+                if seen > max_files:
+                    return None
+                try:
+                    total += os.path.getsize(os.path.join(dirpath, name))
+                except OSError:
+                    pass
+        return total
 
     def _root(self, mode: str = "r") -> "zarr.Group":
         """Open the store root group.
@@ -652,25 +683,16 @@ class OmeZarrStore:
         """Path: The ``sarcasm/`` results subgroup path inside the store."""
         return self.path / SARCASM
 
-    def results_dict(self) -> ResultsDict:
-        """Open the lazy, dict-compatible analysis store (``SarcAsM.data`` backing).
+    def results(self) -> Results:
+        """Open the lazy analysis results accessor (``SarcAsM.data`` backing).
 
-        Returns
-        -------
-        ResultsDict
-            The mutable results mapping.
-        """
-        return ResultsDict(self.results_path)
-
-    def results_view(self) -> Results:
-        """Open the grouped, lazy, read-only results view (``SarcAsM.results``).
+        Opening never creates the store on disk.
 
         Returns
         -------
         Results
-            The read-only grouped view.
+            The results mapping / namespace accessor.
         """
-        ResultsDict(self.results_path).ensure_store()
         return Results(self.results_path)
 
     # -- metadata --------------------------------------------------------- #

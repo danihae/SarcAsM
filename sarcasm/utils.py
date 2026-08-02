@@ -1265,19 +1265,19 @@ class Utils:
         pixelsize = sarc_obj.metadata.get('pixelsize', None)
 
         if not all(key in structure for key in
-                   ['pos_vectors', 'sarcomere_orientation_vectors', 'sarcomere_length_vectors']):
+                   ['structure.sarcomere.pos', 'structure.sarcomere.orientation', 'structure.sarcomere.slen']):
             raise Warning("Missing required data in sarc_obj.data.")
 
         if pixelsize is None:
             raise Warning("Missing 'pixelsize' in sarc_obj.metadata.")
 
         # Extract data from sarc_obj
-        pos_vectors = structure['pos_vectors'][0]
+        pos_vectors = structure['structure.sarcomere.pos'][0]
         orientation_vectors = np.asarray([
-            -np.sin(structure['sarcomere_orientation_vectors'][0]),
-            np.cos(structure['sarcomere_orientation_vectors'][0])
+            -np.sin(structure['structure.sarcomere.orientation'][0]),
+            np.cos(structure['structure.sarcomere.orientation'][0])
         ])
-        sarcomere_length_vectors = structure['sarcomere_length_vectors'][0] / pixelsize
+        sarcomere_length_vectors = structure['structure.sarcomere.slen'][0] / pixelsize
 
         # Calculate endpoints of each vector based on orientation and length
         ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors / 2  # End point 1

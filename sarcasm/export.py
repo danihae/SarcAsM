@@ -126,7 +126,7 @@ class BatchExport:
         for tif_file in tqdm(self.files):
             try:
                 sarc_obj = SarcAsM(file_path=tif_file)
-                if sarc_obj.data.get('track_motion_kind') is None:
+                if sarc_obj.data.get('motion.groups.analyzed_kind') is None:
                     logger.warning(f'{tif_file}: no track motion analyzed, skipping')
                     continue
                 records.extend(Export.get_motion_dict_per_group(
@@ -197,19 +197,19 @@ class Export:
         Default track-based motion feature suffixes.
     """
 
-    structure_keys_default = ['cell_mask_area', 'cell_mask_area_ratio', 'cell_mask_intensity',
-                              'domain_area_mean', 'domain_area_std', 'domain_oop_mean',
-                              'domain_oop_std', 'domain_slen_mean', 'n_domains',
-                              'myof_length_max', 'myof_length_mean', 'myof_length_std',
-                              'myof_bending_mean', 'myof_bending_std',
-                              'myof_straightness_mean', 'myof_straightness_std',
-                              'sarcomere_area', 'sarcomere_area_ratio', 'sarcomere_length_mean',
-                              'sarcomere_length_std', 'sarcomere_oop', 'n_zbands', 'n_mbands', 'n_vectors',
-                              'z_intensity_mean', 'z_intensity_std', 'z_lat_alignment_mean',
-                              'z_lat_alignment_std', 'z_lat_dist_mean', 'z_lat_dist_std', 'z_lat_length_groups_mean',
-                              'z_lat_neighbors_mean', 'z_lat_neighbors_std', 'z_length_max',
-                              'z_length_mean', 'z_length_std', 'z_oop', 'z_mask_area', 'z_mask_area_ratio',
-                              'z_mask_intensity', 'z_straightness_mean', 'z_straightness_std']
+    structure_keys_default = ['structure.cell.mask_area', 'structure.cell.mask_area_ratio', 'structure.cell.mask_intensity',
+                              'structure.domain.area_mean', 'structure.domain.area_std', 'structure.domain.oop_mean',
+                              'structure.domain.oop_std', 'structure.domain.slen_mean', 'structure.domain.n',
+                              'structure.myofibril.length_max', 'structure.myofibril.length_mean', 'structure.myofibril.length_std',
+                              'structure.myofibril.bending_mean', 'structure.myofibril.bending_std',
+                              'structure.myofibril.straightness_mean', 'structure.myofibril.straightness_std',
+                              'structure.sarcomere.area', 'structure.sarcomere.area_ratio', 'structure.sarcomere.slen_mean',
+                              'structure.sarcomere.slen_std', 'structure.sarcomere.oop', 'structure.zbands.n', 'structure.sarcomere.n_mbands', 'structure.sarcomere.n_vectors',
+                              'structure.zbands.intensity_mean', 'structure.zbands.intensity_std', 'structure.zbands.lat_alignment_mean',
+                              'structure.zbands.lat_alignment_std', 'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std', 'structure.zbands.lat_length_groups_mean',
+                              'structure.zbands.lat_neighbors_mean', 'structure.zbands.lat_neighbors_std', 'structure.zbands.length_max',
+                              'structure.zbands.length_mean', 'structure.zbands.length_std', 'structure.zbands.oop', 'structure.zbands.mask_area', 'structure.zbands.mask_area_ratio',
+                              'structure.zbands.mask_intensity', 'structure.zbands.straightness_mean', 'structure.zbands.straightness_std']
 
     # Track-based grouped-motion feature suffixes (resolved per grouping kind to
     # ``<kind>_<suffix>`` keys written by SarcAsM.analyze_track_motion). One value
@@ -311,7 +311,7 @@ class Export:
             Feature suffixes; uses :attr:`Export.motion_keys_default` when None.
             Default is None.
         kind : str or None, optional
-            Grouping kind; defaults to ``sarc_obj.data['track_motion_kind']``.
+            Grouping kind; defaults to ``sarc_obj.data['motion.groups.analyzed_kind']``.
             Default is None.
         **conditions
             Extra columns: constants or filename-regex functions.
@@ -322,15 +322,15 @@ class Export:
             One record per group (metadata + group_id + selected features).
         """
         data = sarc_obj.data
-        kind = kind or data.get('track_motion_kind')
+        kind = kind or data.get('motion.groups.analyzed_kind')
         if kind is None:
-            raise ValueError("No track motion found ('track_motion_kind' missing). "
+            raise ValueError("No track motion found ('motion.groups.analyzed_kind' missing). "
                              "Run analyze_track_motion() first.")
         if motion_keys is None:
             motion_keys = Export.motion_keys_default
         metadata_dict = sarc_obj.metadata.to_dict()
-        n_groups = int(data.get('n_groups', 0))
-        member_counts = np.asarray(data.get('group_member_counts', np.full(n_groups, np.nan)))
+        n_groups = int(data.get('motion.groups.n', 0))
+        member_counts = np.asarray(data.get('motion.groups.member_counts', np.full(n_groups, np.nan)))
 
         cond = {}
         for condition, value in conditions.items():
@@ -341,7 +341,7 @@ class Export:
             row = {**metadata_dict, 'kind': kind, 'group_id': g,
                    'group_member_count': float(member_counts[g]) if g < member_counts.size else np.nan}
             for suffix in motion_keys:
-                arr = data.get(f'{kind}_{suffix}')
+                arr = data.get(f'motion.{kind}.{suffix}')
                 row[suffix] = Export._group_feature_value(arr, g)
             row.update(cond)
             row['tif_name'] = sarc_obj.file_path

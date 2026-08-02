@@ -19,6 +19,8 @@ from .core import SarcAsMBase
 from .structure import SarcAsM
 from .motion import Motion
 from .utils import Utils
+from .features import (structure_feature_dict, motion_feature_dict,
+                       describe_key, pretty_name, MOTION_KINDS)
 from .io.ioutils import IOUtils
 from .plotting.plots import Plots
 from .plotting.plot_utils import PlotUtils

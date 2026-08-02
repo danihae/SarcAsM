@@ -535,15 +535,15 @@ def track_sarcomere_vectors(
     Returns
     -------
     dict
-        Result dictionary with keys: ``'n_tracks'``, ``'track_ids'``,
-        ``'track_start_frame'``, ``'track_lengths'``, ``'tracks_positions_um'``,
-        ``'tracks_positions_px'``, ``'tracks_slen'`` (µm),
-        ``'tracks_orientations'`` (rad), ``'tracks_observed'`` (bool),
-        ``'tracks_detection_id'``, ``'tracks_midline_id'``,
-        ``'fragmentation_ratio'`` (tracks per median detections-per-frame; ideal
-        1.0 — the headline continuity QC number) and ``'n_tracks_retired'``.
+        Result dictionary with keys: ``'motion.tracks.n'``, ``'motion.tracks.ids'``,
+        ``'motion.tracks.start_frame'``, ``'motion.tracks.n_frames'``, ``'motion.tracks.positions_um'``,
+        ``'motion.tracks.positions_px'``, ``'motion.tracks.slen'`` (µm),
+        ``'motion.tracks.orientations'`` (rad), ``'motion.tracks.observed'`` (bool),
+        ``'motion.tracks.detection_id'``, ``'motion.tracks.midline_id'``,
+        ``'motion.tracks.fragmentation_ratio'`` (tracks per median detections-per-frame; ideal
+        1.0 — the headline continuity QC number) and ``'motion.tracks.n_retired'``.
         Track arrays are dense ``(n_tracks, T)`` (positions ``(n_tracks, T, 2)``).
-        ``'n_interpolated_gap_frames'`` counts the entries filled by
+        ``'motion.tracks.n_interpolated_gap_frames'`` counts the entries filled by
         ``max_gap_interpolation``.
     """
     T = len(pos_vectors_px_all)
@@ -942,7 +942,7 @@ def track_sarcomere_vectors(
         logger.info(
             f"Interpolated sarcomere length / orientation on {n_interpolated} gap "
             f"frames (gaps of at most {max_gap_interpolation} frames); "
-            f"'tracks_observed' stays False there, so no coverage metric counts them.")
+            f"'motion.tracks.observed' stays False there, so no coverage metric counts them.")
 
     # Headline continuity QC: tracks per median detections-per-frame. 1.0 means one
     # track per sarcomere vector over the whole recording; larger means the same
@@ -960,25 +960,25 @@ def track_sarcomere_vectors(
     if n_drifted:
         logger.info(
             f"{n_drifted}/{n} tracks drift more than one sarcomere length away from "
-            f"their neighbours (see 'track_drift_um'); chain groupings "
+            f"their neighbours (see 'motion.tracks.drift_um'); chain groupings "
             f"(myofibril/loi) drop them by default.")
 
     result: Dict[str, object] = {
-        'n_tracks': n,
-        'track_ids': out_track_ids,
-        'track_start_frame': out_start_frame,
-        'track_lengths': out_track_lengths,
-        'track_drift_um': track_drift_um,
-        'tracks_positions_um': out_positions_um,
-        'tracks_positions_px': out_positions_px,
-        'tracks_slen': out_tracks_slen,
-        'tracks_orientations': out_tracks_ori,
-        'tracks_observed': out_tracks_observed,
-        'tracks_detection_id': out_tracks_detection_id,
-        'tracks_midline_id': out_tracks_midline_id,
-        'fragmentation_ratio': frag_ratio,
-        'n_tracks_retired': int(np.count_nonzero(~alive[:n_tracks])),
-        'n_interpolated_gap_frames': int(n_interpolated),
+        'motion.tracks.n': n,
+        'motion.tracks.ids': out_track_ids,
+        'motion.tracks.start_frame': out_start_frame,
+        'motion.tracks.n_frames': out_track_lengths,
+        'motion.tracks.drift_um': track_drift_um,
+        'motion.tracks.positions_um': out_positions_um,
+        'motion.tracks.positions_px': out_positions_px,
+        'motion.tracks.slen': out_tracks_slen,
+        'motion.tracks.orientations': out_tracks_ori,
+        'motion.tracks.observed': out_tracks_observed,
+        'motion.tracks.detection_id': out_tracks_detection_id,
+        'motion.tracks.midline_id': out_tracks_midline_id,
+        'motion.tracks.fragmentation_ratio': frag_ratio,
+        'motion.tracks.n_retired': int(np.count_nonzero(~alive[:n_tracks])),
+        'motion.tracks.n_interpolated_gap_frames': int(n_interpolated),
     }
 
     return result

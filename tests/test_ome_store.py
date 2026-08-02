@@ -178,16 +178,24 @@ def test_masks_label_and_float(tmp_path):
 def test_results_nested_and_isolated(tmp_path):
     img = _img()
     s = OmeZarrStore.create(tmp_path / "m.ome.zarr", img, axes="TYX")
-    rd = s.results_dict()
-    rd["tracks_slen"] = np.full((30, 5), 1.8, np.float32)
-    rd["n_tracks"] = 30
+    rd = s.results()
+    rd["motion.tracks.slen"] = np.full((30, 5), 1.8, np.float32)
+    rd["motion.tracks.n"] = 30
     rd.flush()
     # writing analysis did not disturb the image or masks
     assert np.array_equal(s.read_image(), img)
-    # grouped lazy view through the store
-    v = s.results_view()
-    assert v.tracks.slen.shape == (30, 5)
-    assert v["n_tracks"] == 30
+    # grouped namespace through the store
+    v = s.results()
+    assert v.motion.tracks.slen.shape == (30, 5)
+    assert v["motion.tracks.n"] == 30
+
+
+def test_results_accessor_does_not_create_a_store(tmp_path):
+    """Opening the accessor is a read; it must not write an empty store."""
+    path = tmp_path / "absent.ome.zarr"
+    s = OmeZarrStore(path)
+    assert list(s.results().keys()) == []
+    assert not path.exists()
 
 
 def test_metadata_roundtrip(tmp_path):
@@ -207,14 +215,14 @@ def test_everything_coexists(tmp_path):
                             pixelsize=0.65, frametime=0.1)
     s.write_mask("cell_mask", (img > 500).astype(np.uint8), as_label=True)
     s.write_mask("zbands", (img / 1000).astype(np.float32))
-    rd = s.results_dict()
-    rd["n_tracks"] = 7
+    rd = s.results()
+    rd["motion.tracks.n"] = 7
     rd.flush()
 
     s2 = OmeZarrStore(tmp_path / "m.ome.zarr")           # fresh handle
     assert np.array_equal(s2.read_image(), img)
     assert s2.has_mask("cell_mask") and s2.has_mask("zbands")
-    assert s2.results_view()["n_tracks"] == 7
+    assert s2.results()["motion.tracks.n"] == 7
     assert s2.read_metadata()["pixelsize"] == 0.65
     # napari/Fiji-visible top level is a valid OME image with labels
     root = zarr.open_group(str(s2.path), mode="r")

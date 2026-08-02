@@ -16,6 +16,7 @@
 import json
 import logging
 import os
+import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Union, Literal, Dict, Any, List
@@ -36,6 +37,16 @@ from sarcasm.io.ome_store import (
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
+
+
+def _format_bytes(n: int) -> str:
+    """Render a byte count in the largest unit that keeps it readable."""
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 class SarcAsMBase:
@@ -362,21 +373,79 @@ class SarcAsMBase:
         ]
         return sorted(set(standard_attrs + dynamic_attrs))
 
-    def __str__(self):
-        """Returns a pretty, concise string representation of the SarcAsM object."""
-        summary = [
-            "╔══════════════════════════════════════════════════════",
-            f"║ SarcAsM Analysis v{self.metadata.version}",
-            "║ ─────────────────────────────────────────────────────",
-            f"║ File path: {os.path.basename(self.file_path)}",
-            f"║ Base directory: {os.path.dirname(self.base_dir)}",
-            f"║ Device: {self.device}",
-            f"║ Pixel size: {round(self.metadata.pixelsize, 5) if self.metadata.pixelsize is not None else 'N/A'} µm",
-            f"║ Analysis timestamp: {self.metadata.timestamp_analysis}",
-            "╚══════════════════════════════════════════════════════"
-        ]
+    def _summary_rows(self) -> list[tuple[str, str]]:
+        """Label/value rows for :meth:`__str__`, cheap enough to print freely.
 
-        return "\n".join(summary)
+        Reads no pixels and materialises no result arrays — only in-memory
+        metadata plus the store's own group listings.
+
+        Returns
+        -------
+        list of (str, str)
+            Rows rendered by :meth:`__str__`, in display order.
+        """
+        md = self.metadata
+        rows = [("file", str(self.file_path))]
+
+        store = self.__dict__.get('store')
+        if store is None or not store.exists:
+            rows.append(("store", f"{os.path.basename(self.store_path)}  ·  not created"))
+        else:
+            size = store.size_bytes()
+            parts = [os.path.basename(self.store_path),
+                     _format_bytes(size) if size is not None else "size not measured",
+                     "image ingested" if store.has_image() else "image not yet ingested"]
+            rows.append(("store", "  ·  ".join(parts)))
+
+        if md.shape:
+            shape = "×".join(str(d) for d in md.shape)
+            extra = [f"axes {md.axes}" if md.axes else "",
+                     f"{md.n_stack} frames" if md.n_stack else ""]
+            rows.append(("image", "   ".join([shape] + [e for e in extra if e])))
+        else:
+            rows.append(("image", "—"))
+
+        cal = [f"{md.pixelsize:.4g} µm/px" if md.pixelsize else "pixel size —"]
+        if md.frametime:
+            cal.append(f"{md.frametime:g} s/frame ({1 / md.frametime:.4g} fps)")
+        cal.append(f"channel {md.channel}" if md.channel is not None else "channel —")
+        rows.append(("calibration", "  ·  ".join(cal)))
+
+        version = getattr(md, 'sarcasm_version', None)
+        stamp = (md.timestamp_analysis or "")[:10]
+        rows.append(("device", f"{self.device}  ·  SarcAsM {version or '?'}"
+                               + (f", analysed {stamp}" if stamp else "")))
+
+        masks = sorted(store.mask_names()) if (store is not None and store.exists) else []
+        rows.append(("masks", ", ".join(masks) if masks else "—"))
+        return rows
+
+    def __str__(self) -> str:
+        """A concise overview of the object: image, calibration, and progress."""
+        rows = self._summary_rows()
+        width = max(len(label) for label, _ in rows)
+        indent = " " * (width + 4)
+        head = f"{type(self).__name__} · {self.metadata.file_name or self.file_path}"
+        body = []
+        for label, value in rows:
+            text = textwrap.fill(str(value), width=96, subsequent_indent=indent,
+                                 break_long_words=False, break_on_hyphens=False)
+            body.append(f"  {label:<{width}}  {text}")
+        return "\n".join([head] + body)
+
+    def __repr__(self) -> str:
+        """One-line summary. Never raises — pytest calls it on assertion failure."""
+        try:
+            md = self.metadata
+            shape = "×".join(str(d) for d in (md.shape or ())) or "?"
+            bits = [f"<{type(self).__name__}", repr(md.file_name or self.file_path), shape]
+            if md.pixelsize:
+                bits.append(f"{md.pixelsize:.4g}µm/px")
+            if md.frametime:
+                bits.append(f"{md.frametime:g}s/frame")
+            return " ".join(bits) + ">"
+        except Exception:                       # partially constructed / patched objects
+            return object.__repr__(self)
 
     def open_base_dir(self):
         """Open the folder holding this file's analysis in the file explorer.

@@ -324,7 +324,7 @@ class BatchProcessingControl:
             max_gap_interpolation=int(_p('motion.track.max_gap_interp')))
 
         ref = int(_p('motion.group.reference_frame'))
-        if by == 'loi' and 'loi_data' not in sarc_obj.data:
+        if by == 'loi' and 'motion.loi.data' not in sarc_obj.data:
             sarc_obj.detect_lois(frame=ref)
         sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'))
 

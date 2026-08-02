@@ -81,7 +81,7 @@ def cycle_truncation_flags(labels: np.ndarray, n_cycles: int, buffer_frames: int
 
 
 def detect_contractions(
-    domain_slen_timeseries: np.ndarray,
+    group_slen: np.ndarray,
     frametime: float,
     model_path: str,
     threshold: Optional[float] = None,
@@ -104,7 +104,7 @@ def detect_contractions(
 
     Parameters
     ----------
-    domain_slen_timeseries : np.ndarray
+    group_slen : np.ndarray
         Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
     frametime : float
         Time between frames in s.
@@ -140,26 +140,26 @@ def detect_contractions(
         Per-group contraction detection results (``max_n_contr`` is the max cycle
         count across groups):
 
-        - 'domain_contr' : np.ndarray ``(n_domains, n_frames)``, binary contraction state
-        - 'domain_n_contr' : np.ndarray ``(n_domains,)``, number of contraction cycles
+        - 'contr' : np.ndarray ``(n_domains, n_frames)``, binary contraction state
+        - 'n_contr' : np.ndarray ``(n_domains,)``, number of contraction cycles
           detected per group, **including** incomplete ones at the recording edges
-        - 'domain_n_contr_complete' : np.ndarray ``(n_domains,)``, number of complete cycles
-        - 'domain_contr_complete' : np.ndarray ``(n_domains, max_n_contr)``, 1.0 for a
+        - 'n_contr_complete' : np.ndarray ``(n_domains,)``, number of complete cycles
+        - 'contr_complete' : np.ndarray ``(n_domains, max_n_contr)``, 1.0 for a
           complete cycle, 0.0 for an incomplete one, NaN padding. Its per-group mean is
           the fraction of complete cycles.
-        - 'domain_labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
-        - 'domain_beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
-        - 'domain_beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
+        - 'labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
+        - 'beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
+        - 'beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
     """
     if threshold is None:
         threshold = recommended_threshold(model_path)
 
-    n_domains, n_frames = domain_slen_timeseries.shape
+    n_domains, n_frames = group_slen.shape
     
     # Initialize output arrays
     domain_contr = np.zeros((n_domains, n_frames), dtype=bool)
     domain_n_contr = np.zeros(n_domains, dtype=np.int32)
-    domain_labels_contr = np.zeros((n_domains, n_frames), dtype=np.int32)
+    group_labels_contr = np.zeros((n_domains, n_frames), dtype=np.int32)
     domain_n_contr_complete = np.zeros(n_domains, dtype=np.int32)
     domain_beating_rate = np.full(n_domains, np.nan)
     domain_beating_rate_var = np.full(n_domains, np.nan)
@@ -171,7 +171,7 @@ def detect_contractions(
     
     # Process each domain
     for domain_idx in range(n_domains):
-        slen_timeseries = domain_slen_timeseries[domain_idx]
+        slen_timeseries = group_slen[domain_idx]
         
         # Check if domain has enough valid data
         valid_fraction = np.sum(~np.isnan(slen_timeseries)) / n_frames
@@ -204,7 +204,7 @@ def detect_contractions(
 
         # Label contraction cycles and flag the incomplete ones
         labels, n_contr = label(contr)
-        domain_labels_contr[domain_idx] = labels
+        group_labels_contr[domain_idx] = labels
         domain_n_contr[domain_idx] = n_contr
         trunc_start, trunc_end = cycle_truncation_flags(labels, n_contr, buffer_frames)
         complete = ~(trunc_start | trunc_end)
@@ -238,19 +238,19 @@ def detect_contractions(
             f"contraction mask but their duration-dependent metrics are NaN.")
 
     return {
-        'domain_contr': domain_contr,
-        'domain_n_contr': domain_n_contr,
-        'domain_n_contr_complete': domain_n_contr_complete,
-        'domain_contr_complete': domain_contr_complete,
-        'domain_labels_contr': domain_labels_contr,
-        'domain_beating_rate': domain_beating_rate,
-        'domain_beating_rate_variability': domain_beating_rate_var,
+        'contr': domain_contr,
+        'n_contr': domain_n_contr,
+        'n_contr_complete': domain_n_contr_complete,
+        'contr_complete': domain_contr_complete,
+        'labels_contr': group_labels_contr,
+        'beating_rate': domain_beating_rate,
+        'beating_rate_variability': domain_beating_rate_var,
     }
 
 
 def analyze_contraction_parameters(
-    domain_slen_timeseries: np.ndarray,
-    domain_labels_contr: np.ndarray,
+    group_slen: np.ndarray,
+    group_labels_contr: np.ndarray,
     domain_n_contr: np.ndarray,
     frametime: float,
     filter_params: Tuple[int, int] = (13, 5),
@@ -264,9 +264,9 @@ def analyze_contraction_parameters(
 
     Parameters
     ----------
-    domain_slen_timeseries : np.ndarray
+    group_slen : np.ndarray
         Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
-    domain_labels_contr : np.ndarray
+    group_labels_contr : np.ndarray
         Per-group contraction cycle labels, shape ``(n_domains, n_frames)``.
     domain_n_contr : np.ndarray
         Number of contractions per group, shape ``(n_domains,)``.
@@ -290,16 +290,16 @@ def analyze_contraction_parameters(
         Per-group contraction parameters (``max_n_contr`` is the max cycle count
         across groups). Entries for cycles that cannot support a given metric are NaN:
 
-        - 'domain_equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm)
-        - 'domain_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
-        - 'domain_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation per cycle (µm)
-        - 'domain_vel_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max shortening velocity (µm/s)
-        - 'domain_vel_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation velocity (µm/s)
-        - 'domain_time_to_peak' : np.ndarray ``(n_domains, max_n_contr)``, time to maximal contraction (s)
-        - 'domain_time_to_relax' : np.ndarray ``(n_domains, max_n_contr)``, time from peak to relaxation (s)
-        - 'domain_time_contr' : np.ndarray ``(n_domains, max_n_contr)``, contraction duration (s)
+        - 'equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm)
+        - 'contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
+        - 'elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation per cycle (µm)
+        - 'vel_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max shortening velocity (µm/s)
+        - 'vel_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation velocity (µm/s)
+        - 'time_to_peak' : np.ndarray ``(n_domains, max_n_contr)``, time to maximal contraction (s)
+        - 'time_to_relax' : np.ndarray ``(n_domains, max_n_contr)``, time from peak to relaxation (s)
+        - 'time_contr' : np.ndarray ``(n_domains, max_n_contr)``, contraction duration (s)
     """
-    n_domains = domain_slen_timeseries.shape[0]
+    n_domains = group_slen.shape[0]
     max_n_contr = int(np.max(domain_n_contr)) if np.max(domain_n_contr) > 0 else 1
     
     # Initialize output arrays
@@ -315,8 +315,8 @@ def analyze_contraction_parameters(
     window_length, polyorder = filter_params
     
     for domain_idx in range(n_domains):
-        slen = domain_slen_timeseries[domain_idx]
-        labels = domain_labels_contr[domain_idx]
+        slen = group_slen[domain_idx]
+        labels = group_labels_contr[domain_idx]
         n_contr = domain_n_contr[domain_idx]
         
         if n_contr == 0 or np.all(np.isnan(slen)):
@@ -389,14 +389,14 @@ def analyze_contraction_parameters(
                         domain_time_to_relax[domain_idx, contr_idx] = (n_cyc - peak_idx) * frametime
     
     return {
-        'domain_equ': domain_equ,
-        'domain_contr_max': domain_contr_max,
-        'domain_elong_max': domain_elong_max,
-        'domain_vel_contr_max': domain_vel_contr_max,
-        'domain_vel_elong_max': domain_vel_elong_max,
-        'domain_time_to_peak': domain_time_to_peak,
-        'domain_time_to_relax': domain_time_to_relax,
-        'domain_time_contr': domain_time_contr,
+        'equ': domain_equ,
+        'contr_max': domain_contr_max,
+        'elong_max': domain_elong_max,
+        'vel_contr_max': domain_vel_contr_max,
+        'vel_elong_max': domain_vel_elong_max,
+        'time_to_peak': domain_time_to_peak,
+        'time_to_relax': domain_time_to_relax,
+        'time_contr': domain_time_contr,
     }
 
 

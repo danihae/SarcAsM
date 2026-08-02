@@ -10,13 +10,13 @@
 Keys are organised into two tiers (Primary / Advanced) and, within each tier,
 into analysis sections that mirror the pipeline (Cell, Sarcomeres, Z-bands,
 Myofibrils, Domains, etc.). The popup uses this to present a discoverable,
-pre-curated list of metrics, and falls back to ``sarcasm.feature_dict`` for
+pre-curated list of metrics, and falls back to ``sarcasm.features`` for
 per-key descriptions (shown as tooltips).
 """
 
 from typing import Dict, List
 
-from sarcasm._internal.feature_dict import structure_feature_dict, motion_feature_dict
+from sarcasm.features import describe_key
 
 
 TierSections = Dict[str, Dict[str, List[str]]]
@@ -25,65 +25,65 @@ TierSections = Dict[str, Dict[str, List[str]]]
 STRUCTURE_TIERS: TierSections = {
     'Primary': {
         'Cell & coverage': [
-            'cell_mask_area', 'cell_mask_area_ratio',
-            'sarcomere_area', 'sarcomere_area_ratio',
+            'structure.cell.mask_area', 'structure.cell.mask_area_ratio',
+            'structure.sarcomere.area', 'structure.sarcomere.area_ratio',
         ],
         'Sarcomeres': [
-            'sarcomere_length_mean', 'sarcomere_length_std',
-            'sarcomere_oop',
-            'n_vectors',
+            'structure.sarcomere.slen_mean', 'structure.sarcomere.slen_std',
+            'structure.sarcomere.oop',
+            'structure.sarcomere.n_vectors',
         ],
         'Z-bands': [
-            'n_zbands', 'n_mbands',
-            'z_length_mean', 'z_length_std',
-            'z_intensity_mean',
-            'z_lat_alignment_mean', 'z_lat_alignment_std',
-            'z_lat_dist_mean', 'z_lat_dist_std',
+            'structure.zbands.n', 'structure.sarcomere.n_mbands',
+            'structure.zbands.length_mean', 'structure.zbands.length_std',
+            'structure.zbands.intensity_mean',
+            'structure.zbands.lat_alignment_mean', 'structure.zbands.lat_alignment_std',
+            'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std',
         ],
         'Myofibrils': [
-            'myof_length_mean', 'myof_length_max',
-            'myof_bending_mean',
-            'myof_straightness_mean',
+            'structure.myofibril.length_mean', 'structure.myofibril.length_max',
+            'structure.myofibril.bending_mean',
+            'structure.myofibril.straightness_mean',
         ],
         'Domains': [
-            'n_domains',
-            'domain_area_mean', 'domain_oop_mean', 'domain_slen_mean',
+            'structure.domain.n',
+            'structure.domain.area_mean', 'structure.domain.oop_mean', 'structure.domain.slen_mean',
         ],
     },
     'Advanced': {
         'Cell & coverage': [
-            'cell_mask_intensity',
+            'structure.cell.mask_intensity',
         ],
         'Sarcomeres': [
-            'sarcomere_orientation_mean', 'sarcomere_orientation_std',
+            'structure.sarcomere.orientation_mean', 'structure.sarcomere.orientation_std',
         ],
         'Z-bands': [
-            'z_intensity_std',
-            'z_length_max',
-            'z_oop',
-            'z_mask_area', 'z_mask_area_ratio', 'z_mask_intensity',
-            'z_straightness_mean', 'z_straightness_std',
-            'z_lat_neighbors_mean', 'z_lat_neighbors_std',
-            'z_lat_length_groups_mean', 'z_lat_length_groups_std',
-            'z_lat_size_groups_mean', 'z_lat_size_groups_std',
-            'z_lat_alignment_groups_mean', 'z_lat_alignment_groups_std',
+            'structure.zbands.intensity_std',
+            'structure.zbands.length_max',
+            'structure.zbands.oop',
+            'structure.zbands.mask_area', 'structure.zbands.mask_area_ratio', 'structure.zbands.mask_intensity',
+            'structure.zbands.straightness_mean', 'structure.zbands.straightness_std',
+            'structure.zbands.lat_neighbors_mean', 'structure.zbands.lat_neighbors_std',
+            'structure.zbands.lat_length_groups_mean', 'structure.zbands.lat_length_groups_std',
+            'structure.zbands.lat_size_groups_mean', 'structure.zbands.lat_size_groups_std',
+            'structure.zbands.lat_alignment_groups_mean', 'structure.zbands.lat_alignment_groups_std',
         ],
         'Myofibrils': [
-            'myof_length_std',
-            'myof_bending_std',
-            'myof_straightness_std',
+            'structure.myofibril.length_std',
+            'structure.myofibril.bending_std',
+            'structure.myofibril.straightness_std',
         ],
         'Domains': [
-            'domain_area_std', 'domain_oop_std',
+            'structure.domain.area_std', 'structure.domain.oop_std',
         ],
         'Raw distributions (full detail only)': [
-            'sarcomere_length_vectors', 'sarcomere_orientation_vectors',
-            'midline_length_vectors',
-            'z_length', 'z_intensity', 'z_straightness', 'z_orientation',
-            'z_lat_alignment', 'z_lat_dist',
-            'z_lat_neighbors', 'z_lat_length_groups', 'z_lat_size_groups',
-            'myof_length', 'myof_bending', 'myof_straightness',
-            'domain_area', 'domain_oop', 'domain_slen', 'domain_orientation',
+            'structure.sarcomere.slen', 'structure.sarcomere.orientation',
+            'structure.sarcomere.midline_length',
+            'structure.zbands.length', 'structure.zbands.intensity', 'structure.zbands.straightness', 'structure.zbands.orientation',
+            'structure.zbands.lat_alignment', 'structure.zbands.lat_dist',
+            'structure.zbands.lat_neighbors', 'structure.zbands.lat_length_groups', 'structure.zbands.lat_size_groups',
+            'structure.myofibril.length', 'structure.myofibril.bending', 'structure.myofibril.straightness',
+            'structure.domain.area', 'structure.domain.oop', 'structure.domain.slen', 'structure.domain.orientation',
         ],
     },
 }
@@ -116,8 +116,7 @@ def describe(key: str, kind: str) -> str:
 
     ``kind`` is ``'structure'`` or ``'motion'``.
     """
-    source = structure_feature_dict if kind == 'structure' else motion_feature_dict
-    entry = source.get(key)
+    entry = describe_key(key, registry=kind)
     if entry is None:
         return key
     name = entry.get('name', key)
@@ -126,8 +125,7 @@ def describe(key: str, kind: str) -> str:
 
 
 def pretty_name(key: str, kind: str) -> str:
-    source = structure_feature_dict if kind == 'structure' else motion_feature_dict
-    entry = source.get(key)
+    entry = describe_key(key, registry=kind)
     if entry is None:
         return key
     return entry.get('name', key)

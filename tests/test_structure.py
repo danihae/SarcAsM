@@ -77,9 +77,9 @@ class TestStructureTimelapseAnalysis:
         sarc.full_analysis_structure()
         
         # Verify analysis results
-        assert 'sarcomere_length_vectors' in sarc.data
-        assert 'myof_length' in sarc.data
-        assert 'domains' in sarc.data
+        assert 'structure.sarcomere.slen' in sarc.data
+        assert 'structure.myofibril.length' in sarc.data
+        assert 'structure.domain.members' in sarc.data
 
 
 class TestStructureSingleImageAnalysis:
@@ -102,9 +102,9 @@ class TestStructureSingleImageAnalysis:
         sarc.full_analysis_structure()
         
         # Verify analysis results
-        assert 'sarcomere_length_vectors' in sarc.data
-        assert 'myof_length' in sarc.data
-        assert 'domains' in sarc.data
+        assert 'structure.sarcomere.slen' in sarc.data
+        assert 'structure.myofibril.length' in sarc.data
+        assert 'structure.domain.members' in sarc.data
 
 
 class TestStructureErrors:
@@ -159,7 +159,7 @@ class TestStructureErrors:
         # The recorded frame list must match what was actually analyzed.
         stored = sarc.data['params.analyze_sarcomere_vectors.frames']
         assert len(stored) == 1, f'frames param should be trimmed to 1, got {stored}'
-        assert sarc.data['pos_vectors_px'][0] is not None
+        assert sarc.data['structure.sarcomere.pos_px'][0] is not None
 
 
 class TestStructureIntegration:
@@ -181,9 +181,9 @@ class TestStructureIntegration:
         
         # Verify all components completed successfully
         assert hasattr(sarc, 'zbands')
-        assert 'sarcomere_length_vectors' in sarc.data
-        assert 'myof_length' in sarc.data
-        assert 'domains' in sarc.data
+        assert 'structure.sarcomere.slen' in sarc.data
+        assert 'structure.myofibril.length' in sarc.data
+        assert 'structure.domain.members' in sarc.data
         assert sarc.metadata.user_info['experiment_type'] == 'timelapse'
         
     @pytest.mark.integration
@@ -202,9 +202,9 @@ class TestStructureIntegration:
         
         # Verify all components completed successfully
         assert hasattr(sarc, 'zbands')
-        assert 'sarcomere_length_vectors' in sarc.data
-        assert 'myof_length' in sarc.data
-        assert 'domains' in sarc.data
+        assert 'structure.sarcomere.slen' in sarc.data
+        assert 'structure.myofibril.length' in sarc.data
+        assert 'structure.domain.members' in sarc.data
         assert sarc.metadata.user_info['experiment_type'] == 'single_image'
 
     @pytest.mark.slow
@@ -221,9 +221,9 @@ class TestStructureIntegration:
         sarc.full_analysis_structure()
 
         assert hasattr(sarc, 'zbands')
-        assert 'sarcomere_length_vectors' in sarc.data
-        assert 'myof_length' in sarc.data
-        assert 'domains' in sarc.data
+        assert 'structure.sarcomere.slen' in sarc.data
+        assert 'structure.myofibril.length' in sarc.data
+        assert 'structure.domain.members' in sarc.data
 
 
 class TestStructurePlots:
@@ -246,6 +246,32 @@ class TestStructurePlots:
         sarc.analyze_sarcomere_domains(frames=0)
         sarc.analyze_myofibrils(frames=0)
         return sarc
+
+    def test_data_key_is_its_path_on_a_real_store(self, analyzed_structure):
+        """A key and its attribute path are one value, on a real analysis.
+
+        Lives here because this class owns the only fully-analysed fixture. A
+        single-frame crop stores its small arrays inline in the group attrs,
+        which is the branch that used to hand back a different type than the
+        array branch does on a long movie.
+        """
+        data = analyzed_structure.data
+        for key in ('structure.sarcomere.oop', 'structure.domain.area_mean',
+                    'structure.myofibril.length'):
+            node = data
+            for seg in key.split('.'):
+                node = getattr(node, seg)
+            assert node is data[key]
+        assert data.keys() == list(iter(data))
+        assert 'structure.sarcomere.oop' in list(data.find('oop'))
+        assert dir(data) == sorted(set(dir(data)))
+
+    def test_print_object_summary(self, analyzed_structure):
+        """print(sarc) reports the steps that actually ran."""
+        text = str(analyzed_structure)
+        assert 'detect_sarcomeres' in text and 'analyze_myofibrils' in text
+        assert 'vectors/frame' in text
+        assert '\n' not in repr(analyzed_structure)
 
     def test_plot_image(self, analyzed_structure):
         """Test plot_image function."""
@@ -322,7 +348,7 @@ class TestStructurePlots:
     def test_plot_myofibril_lines(self, analyzed_structure):
         """Test plot_myofibril_lines function."""
         # Skip if no myofibril lines were found
-        if analyzed_structure.data['myof_lines'][0] is None:
+        if analyzed_structure.data['structure.myofibril.lines'][0] is None:
             pytest.skip("No myofibril lines detected in test data")
         fig, ax = plt.subplots()
         Plots.plot_myofibril_lines(ax, analyzed_structure, frame=0)
@@ -333,7 +359,7 @@ class TestStructurePlots:
     def test_plot_myofibril_length_map(self, analyzed_structure):
         """Test plot_myofibril_length_map function."""
         # Skip if no myofibril lines were found or if method not available
-        if analyzed_structure.data['myof_lines'][0] is None:
+        if analyzed_structure.data['structure.myofibril.lines'][0] is None:
             pytest.skip("No myofibril lines detected in test data")
         # Note: This test may fail due to a bug in plots.py where create_myofibril_length_map
         # is called as a method on sarc_obj instead of from myofibril_analysis module
@@ -350,7 +376,7 @@ class TestStructurePlots:
     def test_plot_histogram_structure(self, analyzed_structure):
         """Test plot_histogram_structure function."""
         fig, ax = plt.subplots()
-        Plots.plot_histogram_structure(ax, analyzed_structure, feature='sarcomere_length_vectors', frame=0)
+        Plots.plot_histogram_structure(ax, analyzed_structure, feature='structure.sarcomere.slen', frame=0)
         # Check for histogram patches
         assert ax.patches, "No histogram was plotted"
         plt.close(fig)
@@ -399,7 +425,7 @@ class TestDomainMotionPlots:
         that drifts below two would weaken every other test in this class without
         failing any of them. This fails loudly instead.
         """
-        n_complete = np.asarray(analyzed_domain_motion.data['domain_n_contr_complete'])
+        n_complete = np.asarray(analyzed_domain_motion.data['motion.domain.n_contr_complete'])
         assert n_complete.size, "no domains were analysed"
         assert n_complete.min() >= 2, (
             f"only {n_complete.min()} complete contractions in the analysed window; "

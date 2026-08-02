@@ -93,6 +93,23 @@ class Motion(SarcAsMBase):
             obj.store_loi_data()
         return obj
 
+    def _summary_rows(self):
+        """Extend the base summary with the LOI this object wraps, if any."""
+        rows = super()._summary_rows()
+        loi_data = self.__dict__.get('loi_data')
+        if not loi_data:
+            return rows
+        slen = loi_data.get('slen')
+        shape = np.shape(slen) if slen is not None else ()
+        parts = [str(self.__dict__.get('loi_name', '—'))]
+        if len(shape) == 2:
+            parts.append(f"{shape[0]} sarcomeres × {shape[1]} frames")
+        if loi_data.get('synthetic'):
+            parts.append("synthetic")
+        rows.append(("loi", "  ·  ".join(parts)))
+        rows.append(("loi keys", str(len(loi_data))))
+        return rows
+
     @staticmethod
     def get_loi_name_from_file_name(file_name) -> str:
         """

@@ -7,6 +7,7 @@ import types
 import numpy as np
 import pytest
 
+from sarcasm.features import motion_feature_dict
 from sarcasm.structure import SarcAsM
 from sarcasm.analysis import contraction_analysis, grouped_motion
 from sarcasm.utils import Utils
@@ -26,10 +27,10 @@ def test_aggregate_group_slen_basic():
     ], dtype=float)
     gid = np.array([0, 0, 1, 1])
     out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=2, aggregate='nanmean')
-    assert out['slen_timeseries'].shape == (2, 3)
-    assert np.allclose(out['slen_timeseries'][0], 1.5)   # mean(2,1)
-    assert np.allclose(out['slen_timeseries'][1], 2.0)   # mean(3,1)
-    assert np.all(out['n_members_timeseries'] == 2)
+    assert out['slen'].shape == (2, 3)
+    assert np.allclose(out['slen'][0], 1.5)   # mean(2,1)
+    assert np.allclose(out['slen'][1], 2.0)   # mean(3,1)
+    assert np.all(out['n_members'] == 2)
 
 
 def test_aggregate_group_slen_median_nan_and_slen_lims():
@@ -42,27 +43,27 @@ def test_aggregate_group_slen_median_nan_and_slen_lims():
     out = grouped_motion.aggregate_group_slen(
         tracks_slen, gid, n_groups=1, aggregate='nanmedian', slen_lims=(1.0, 3.0))
     # frame 0: median(2.0, 2.2, 1.8) = 2.0 ; members = 3
-    assert out['slen_timeseries'][0, 0] == pytest.approx(2.0)
-    assert out['n_members_timeseries'][0, 0] == 3
+    assert out['slen'][0, 0] == pytest.approx(2.0)
+    assert out['n_members'][0, 0] == 3
     # frame 2: only 2.0 finite & in-range (5.0 clipped to NaN, 1.8->nan) -> 1 member
-    assert out['n_members_timeseries'][0, 2] == 1
-    assert out['slen_timeseries'][0, 2] == pytest.approx(2.0)
+    assert out['n_members'][0, 2] == 1
+    assert out['slen'][0, 2] == pytest.approx(2.0)
 
 
 def test_aggregate_group_slen_unassigned_excluded():
     tracks_slen = np.array([[2.0, 2.0], [9.0, 9.0]], dtype=float)
     gid = np.array([0, -1])   # second track unassigned
     out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=1, aggregate='nanmean')
-    assert np.allclose(out['slen_timeseries'][0], 2.0)
-    assert np.all(out['n_members_timeseries'][0] == 1)
+    assert np.allclose(out['slen'][0], 2.0)
+    assert np.all(out['n_members'][0] == 1)
 
 
 def test_run_cycle_engine_empty_groups():
     out = grouped_motion.run_cycle_engine(np.zeros((0, 20)), frametime=0.01, model_path='unused')
-    assert out['domain_contr'].shape == (0, 20)
-    assert out['domain_n_contr'].shape == (0,)
-    assert out['domain_n_contr_complete'].shape == (0,)
-    assert out['domain_contr_complete'].shape == (0, 1)
+    assert out['contr'].shape == (0, 20)
+    assert out['n_contr'].shape == (0,)
+    assert out['n_contr_complete'].shape == (0,)
+    assert out['contr_complete'].shape == (0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ def test_incomplete_cycles_have_nan_duration_but_keep_complete_ones():
     labels = _labelled_cycles(T, spans)[None, :]
     out = contraction_analysis.analyze_contraction_parameters(
         slen, labels, np.array([4]), frametime=_FT, buffer_frames=_BUF)
-    tc = out['domain_time_contr'][0]
+    tc = out['time_contr'][0]
     assert np.isnan(tc[0]) and np.isnan(tc[3])          # truncated at start / end
     assert tc[1] == pytest.approx(10 * _FT)            # complete cycles keep their duration
     assert tc[2] == pytest.approx(10 * _FT)
@@ -126,12 +127,12 @@ def test_incomplete_cycles_keep_the_timing_half_they_can_support():
     labels = _labelled_cycles(T, spans)[None, :]
     out = contraction_analysis.analyze_contraction_parameters(
         slen, labels, np.array([3]), frametime=_FT, buffer_frames=_BUF)
-    ttp, ttr = out['domain_time_to_peak'][0], out['domain_time_to_relax'][0]
+    ttp, ttr = out['time_to_peak'][0], out['time_to_relax'][0]
     assert np.isnan(ttp[0]) and np.isfinite(ttr[0])     # start-truncated
     assert np.isfinite(ttp[1]) and np.isfinite(ttr[1])  # complete
     assert np.isfinite(ttp[2]) and np.isnan(ttr[2])     # end-truncated
     # the V dip is real and inside the recording, so the amplitude survives
-    assert np.all(np.isfinite(out['domain_contr_max'][0][:3]))
+    assert np.all(np.isfinite(out['contr_max'][0][:3]))
 
 
 def test_extremum_on_a_truncated_boundary_is_dropped():
@@ -142,10 +143,10 @@ def test_extremum_on_a_truncated_boundary_is_dropped():
     labels = _labelled_cycles(T, [(54, 60)])
     out = contraction_analysis.analyze_contraction_parameters(
         slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
-    assert np.isnan(out['domain_contr_max'][0, 0])     # min sits on the truncated edge
-    assert np.isnan(out['domain_time_to_peak'][0, 0])
-    assert np.isnan(out['domain_time_to_relax'][0, 0])
-    assert np.isnan(out['domain_time_contr'][0, 0])
+    assert np.isnan(out['contr_max'][0, 0])     # min sits on the truncated edge
+    assert np.isnan(out['time_to_peak'][0, 0])
+    assert np.isnan(out['time_to_relax'][0, 0])
+    assert np.isnan(out['time_contr'][0, 0])
 
 
 def test_equilibrium_excludes_edge_contraction_frames():
@@ -205,19 +206,19 @@ def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
     pos[:, :, 1] = 20.0
 
     sarc.data = {
-        'n_tracks': n_tracks,
-        'track_ids': np.arange(n_tracks),
-        'track_start_frame': np.zeros(n_tracks, int),
-        'track_lengths': observed.sum(axis=1),
-        'tracks_slen': slen.astype(np.float32),
-        'tracks_positions_px': pos,
-        'tracks_positions_um': pos * 0.1,
-        'tracks_observed': observed,
-        'tracks_midline_id': mids,
+        'motion.tracks.n': n_tracks,
+        'motion.tracks.ids': np.arange(n_tracks),
+        'motion.tracks.start_frame': np.zeros(n_tracks, int),
+        'motion.tracks.n_frames': observed.sum(axis=1),
+        'motion.tracks.slen': slen.astype(np.float32),
+        'motion.tracks.positions_px': pos,
+        'motion.tracks.positions_um': pos * 0.1,
+        'motion.tracks.observed': observed,
+        'motion.tracks.midline_id': mids,
         # track i is matched to detection (vector) index i at every frame
-        'tracks_detection_id': np.broadcast_to(
+        'motion.tracks.detection_id': np.broadcast_to(
             np.arange(n_tracks, dtype=np.int32)[:, None], (n_tracks, T)).copy(),
-        'tracks_orientations': np.zeros((n_tracks, T), np.float32),
+        'motion.tracks.orientations': np.zeros((n_tracks, T), np.float32),
         'params.track_sarcomere_vectors.frames': list(range(T)),
     }
     return sarc
@@ -226,87 +227,87 @@ def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
 def test_group_tracks_pool():
     sarc = _fake_structure()
     sarc.group_tracks(by='pool')
-    assert sarc.data['group_kind'] == 'pool'
-    assert sarc.data['n_groups'] == 1
-    assert np.all(sarc.data['track_group_id'] == 0)
-    assert 'grouping_hash' in sarc.data
+    assert sarc.data['motion.groups.kind'] == 'pool'
+    assert sarc.data['motion.groups.n'] == 1
+    assert np.all(sarc.data['motion.tracks.group_id'] == 0)
+    assert 'motion.groups.hash' in sarc.data
 
 
 def test_group_tracks_mband():
     sarc = _fake_structure(n_tracks=6)
     sarc.group_tracks(by='mband', reference_frame=0)
-    gid = sarc.data['track_group_id']
-    assert sarc.data['n_groups'] == 2
+    gid = sarc.data['motion.tracks.group_id']
+    assert sarc.data['motion.groups.n'] == 2
     # tracks sharing an M-band id land in the same group
     assert gid[0] == gid[1] == gid[2]
     assert gid[3] == gid[4] == gid[5]
     assert gid[0] != gid[3]
-    assert sarc.data['group_member_counts'].tolist() == [3, 3]
+    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 3]
 
 
 def test_group_tracks_custom_and_min_coverage():
     sarc = _fake_structure(n_tracks=4)
     # make track 3 low coverage so min_coverage drops it
-    snp = sarc.data['tracks_observed'].copy()
+    snp = sarc.data['motion.tracks.observed'].copy()
     snp[3, 10:] = False
-    sarc.data['tracks_observed'] = snp
-    sarc.data['track_lengths'] = snp.sum(axis=1)
+    sarc.data['motion.tracks.observed'] = snp
+    sarc.data['motion.tracks.n_frames'] = snp.sum(axis=1)
     labels = np.array([0, 0, 1, 1])
     sarc.group_tracks(by='custom', labels=labels, min_coverage=0.5)
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     assert gid[0] == gid[1]
     assert gid[3] == -1               # dropped by min_coverage
-    assert sarc.data['n_groups'] == 2  # labels 0 and 1 both still present (track 2)
+    assert sarc.data['motion.groups.n'] == 2  # labels 0 and 1 both still present (track 2)
 
 
 def test_group_tracks_min_group_size_drops_and_renumbers():
     """Under-sized groups are unassigned and the survivors renumbered contiguously."""
     sarc = _fake_structure(n_tracks=6)
     # unbalanced M-bands: tracks 0-4 -> midline 5, track 5 alone -> midline 9
-    mids = np.full((6, sarc.data['tracks_slen'].shape[1]), 5, np.int32)
+    mids = np.full((6, sarc.data['motion.tracks.slen'].shape[1]), 5, np.int32)
     mids[5] = 9
-    sarc.data['tracks_midline_id'] = mids
+    sarc.data['motion.tracks.midline_id'] = mids
 
     sarc.group_tracks(by='mband', reference_frame=0, min_group_size=1)
-    assert sarc.data['n_groups'] == 2
-    assert sarc.data['group_member_counts'].tolist() == [5, 1]
+    assert sarc.data['motion.groups.n'] == 2
+    assert sarc.data['motion.groups.member_counts'].tolist() == [5, 1]
 
     sarc.group_tracks(by='mband', reference_frame=0, min_group_size=2)
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     assert gid[5] == -1                                   # the 1-track group is dropped
     assert gid[:5].tolist() == [0] * 5                    # survivor renumbered to 0
-    assert sarc.data['n_groups'] == 1
-    assert sarc.data['group_member_counts'].tolist() == [5]
+    assert sarc.data['motion.groups.n'] == 1
+    assert sarc.data['motion.groups.member_counts'].tolist() == [5]
     assert sarc.data['params.group_tracks.min_group_size'] == 2
 
 
 def test_group_tracks_min_group_size_keeps_fixed_label_space():
     """'domain' keeps its mask label space; an under-sized domain just empties out."""
     sarc = _fake_structure_domain(n_per=3)
-    pos = sarc.data['tracks_positions_px'].copy()
+    pos = sarc.data['motion.tracks.positions_px'].copy()
     pos[4:, :, 0] = 55.0        # rows 50-60 are between masks -> tracks 4,5 unassigned
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * sarc.metadata.pixelsize
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * sarc.metadata.pixelsize
 
     sarc.group_tracks(by='domain', reference_frame=0, min_group_size=1)
-    assert sarc.data['group_member_counts'].tolist() == [3, 1, 0]
+    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 1, 0]
 
     sarc.group_tracks(by='domain', reference_frame=0, min_group_size=2)
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     assert gid[:3].tolist() == [0, 0, 0]                  # label 1 -> group 0 unchanged
     assert gid[3] == -1                                   # the 1-track domain is dropped
-    assert sarc.data['n_groups'] == 3                     # label space preserved
-    assert sarc.data['group_member_counts'].tolist() == [3, 0, 0]
+    assert sarc.data['motion.groups.n'] == 3                     # label space preserved
+    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 0, 0]
 
 
 def test_analyze_track_motion_forwards_min_group_size():
     sarc = _fake_structure(n_tracks=6)
-    mids = np.full((6, sarc.data['tracks_slen'].shape[1]), 5, np.int32)
+    mids = np.full((6, sarc.data['motion.tracks.slen'].shape[1]), 5, np.int32)
     mids[5] = 9
-    sarc.data['tracks_midline_id'] = mids
+    sarc.data['motion.tracks.midline_id'] = mids
     sarc.analyze_track_motion(by='mband', reference_frame=0, min_group_size=2)
-    assert sarc.data['n_groups'] == 1
-    assert np.asarray(sarc.data['mband_slen_timeseries']).shape[0] == 1
+    assert sarc.data['motion.groups.n'] == 1
+    assert np.asarray(sarc.data['motion.mband.slen']).shape[0] == 1
 
 
 def test_group_tracks_custom_requires_labels():
@@ -331,13 +332,13 @@ def test_analyze_track_motion_pool_end_to_end():
     sarc = _fake_structure()
     sarc.analyze_track_motion(by='pool')   # front door: groups + analyzes
     # legacy-mirrored keys exist under the 'pool' prefix
-    for k in ['pool_slen_timeseries', 'pool_contr', 'pool_n_contr',
-              'pool_beating_rate', 'pool_equ', 'pool_contr_max']:
+    for k in ['motion.pool.slen', 'motion.pool.contr', 'motion.pool.n_contr',
+              'motion.pool.beating_rate', 'motion.pool.equ', 'motion.pool.contr_max']:
         assert k in sarc.data, k
-    assert sarc.data['pool_slen_timeseries'].shape == (1, 80)
-    assert sarc.data['pool_contr'].shape == (1, 80)
-    assert sarc.data['track_motion_kind'] == 'pool'
-    assert sarc.data['params.analyze_track_motion.grouping_hash'] == sarc.data['grouping_hash']
+    assert sarc.data['motion.pool.slen'].shape == (1, 80)
+    assert sarc.data['motion.pool.contr'].shape == (1, 80)
+    assert sarc.data['motion.groups.analyzed_kind'] == 'pool'
+    assert sarc.data['params.analyze_track_motion.grouping_hash'] == sarc.data['motion.groups.hash']
     # freshness guard passes right after analysis
     sarc._assert_track_motion_fresh()
 
@@ -345,8 +346,8 @@ def test_analyze_track_motion_pool_end_to_end():
 def test_analyze_track_motion_mband_shapes():
     sarc = _fake_structure(n_tracks=6)
     sarc.analyze_track_motion(by='mband', reference_frame=0)
-    assert sarc.data['mband_slen_timeseries'].shape == (2, 80)
-    assert sarc.data['mband_contr'].shape == (2, 80)
+    assert sarc.data['motion.mband.slen'].shape == (2, 80)
+    assert sarc.data['motion.mband.contr'].shape == (2, 80)
 
 
 def test_stale_grouping_hard_raises():
@@ -362,7 +363,7 @@ def test_analyze_refuses_stale_track_ids():
     sarc = _fake_structure()
     sarc.group_tracks(by='pool')
     # simulate re-tracking that changed the track set
-    sarc.data['track_ids'] = np.arange(99)
+    sarc.data['motion.tracks.ids'] = np.arange(99)
     with pytest.raises(ValueError):
         sarc.analyze_track_motion()
 
@@ -393,15 +394,15 @@ def _fake_structure_domain(n_per=3, T=80, frametime=0.01):
     pos = np.zeros((n, T, 2), np.float32)
     pos[:, :, 0] = rows[:, None]
     pos[:, :, 1] = 30.0
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * sarc.metadata.pixelsize  # pixelsize 0.1
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * sarc.metadata.pixelsize  # pixelsize 0.1
     mask = np.zeros((H, W), np.uint8)
     mask[0:50] = 1
     mask[60:110] = 2
     mask[115:140] = 3          # label 3 region has no tracks -> empty group preserved
-    sarc.data['domain_mask'] = [mask]
-    sarc.data['n_domains'] = np.array([3])
-    sarc.data['domains'] = [None]
+    sarc.data['structure.domain.mask'] = [mask]
+    sarc.data['structure.domain.n'] = np.array([3])
+    sarc.data['structure.domain.members'] = [None]
     sarc.data['params.analyze_sarcomere_domains.frames'] = [0]
     return sarc
 
@@ -409,41 +410,37 @@ def _fake_structure_domain(n_per=3, T=80, frametime=0.01):
 def test_group_tracks_domain_label_alignment_and_empty_group():
     sarc = _fake_structure_domain(n_per=3)
     sarc.group_tracks(by='domain', reference_frame=0)
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     # mask label 1 region -> group 0 ; label 2 region -> group 1
     assert gid[:3].tolist() == [0, 0, 0]
     assert gid[3:].tolist() == [1, 1, 1]
     # label space preserved: n_groups == n_domains (3) even though group 2 is empty
-    assert sarc.data['n_groups'] == 3
-    assert sarc.data['group_member_counts'].tolist() == [3, 3, 0]
+    assert sarc.data['motion.groups.n'] == 3
+    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 3, 0]
 
 
-def test_analyze_track_motion_domain_emits_legacy_keys():
+def test_analyze_track_motion_emits_the_full_member_set():
+    """Every kind writes the same 21 members under motion/<kind>/.
+
+    MOTION_SUFFIXES is the documented set; if the contraction engine grows an
+    output without a registry entry, this notices.
+    """
     sarc = _fake_structure_domain(n_per=3)
     sarc.analyze_track_motion(by='domain', reference_frame=0)
-    # exact legacy domain_* schema (what plot_domain_timeseries / feature_dict / export read)
-    legacy = [
-        'domain_slen_timeseries', 'domain_slen_median_timeseries', 'domain_slen_std_timeseries',
-        'domain_slen_q25_timeseries', 'domain_slen_q75_timeseries', 'domain_n_vectors_timeseries',
-        'domain_contr', 'domain_n_contr', 'domain_labels_contr', 'domain_beating_rate',
-        'domain_beating_rate_variability', 'domain_equ', 'domain_contr_max', 'domain_elong_max',
-        'domain_vel_contr_max', 'domain_vel_elong_max', 'domain_time_to_peak', 'domain_time_to_relax',
-        'domain_time_contr',
-    ]
-    for k in legacy:
-        assert k in sarc.data, k
-    assert sarc.data['domain_slen_timeseries'].shape == (3, 80)
-    assert sarc.data['domain_contr'].shape == (3, 80)
-    assert sarc.data['domain_n_contr'].shape == (3,)
+    written = {k for k in sarc.data if k.startswith('motion.domain.')}
+    assert {k.rpartition('.')[2] for k in written} == set(motion_feature_dict)
+    assert sarc.data['motion.domain.slen'].shape == (3, 80)
+    assert sarc.data['motion.domain.contr'].shape == (3, 80)
+    assert sarc.data['motion.domain.n_contr'].shape == (3,)
     # the empty domain (group 2) yields no contractions
-    assert sarc.data['domain_n_contr'][2] == 0
-    assert sarc.data['track_motion_kind'] == 'domain'
+    assert sarc.data['motion.domain.n_contr'][2] == 0
+    assert sarc.data['motion.groups.analyzed_kind'] == 'domain'
 
 
 def test_domain_front_door_and_unknown_level():
     sarc = _fake_structure_domain(n_per=3)
     sarc.analyze_track_motion(by='domain', reference_frame=0)   # front door works
-    assert sarc.data['group_kind'] == 'domain'
+    assert sarc.data['motion.groups.kind'] == 'domain'
     with pytest.raises(ValueError):
         sarc.group_tracks(by='nonsense')
 
@@ -587,28 +584,28 @@ def test_group_tracks_chain_keeps_partially_tracked_sarcomeres():
     the time must stay in it — dropping it punches a hole into z_pos. Pooled
     groupings keep the strict floor, where the filter removes noise from a mean."""
     sarc = _fake_structure(n_tracks=4)
-    T = sarc.data['tracks_slen'].shape[1]
+    T = sarc.data['motion.tracks.slen'].shape[1]
     # member 2 is only tracked 30% of the time -> below the 0.5 pooled floor
-    snp = sarc.data['tracks_observed'].copy()
+    snp = sarc.data['motion.tracks.observed'].copy()
     snp[2, int(0.3 * T):] = False
-    sarc.data['tracks_observed'] = snp
-    sarc.data['track_lengths'] = snp.sum(axis=1)
+    sarc.data['motion.tracks.observed'] = snp
+    sarc.data['motion.tracks.n_frames'] = snp.sum(axis=1)
     pos = np.zeros((4, T, 2), np.float32)
     pos[:, :, 0] = (np.arange(4) * _SLEN_PX)[:, None]
     pos[:, :, 1] = 20.0
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * 0.1
-    sarc.data['loi_data'] = {
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * 0.1
+    sarc.data['motion.loi.data'] = {
         'loi_lines': [np.array([[0, 20], [3 * _SLEN_PX, 20]], float)]}
 
     sarc.group_tracks(by='loi', reference_frame=0)          # chain default (0.1)
-    assert int((sarc.data['track_group_id'] >= 0).sum()) == 4, 'chain lost a sarcomere'
+    assert int((sarc.data['motion.tracks.group_id'] >= 0).sum()) == 4, 'chain lost a sarcomere'
 
     sarc.group_tracks(by='pool')                            # pooled default (0.5)
-    assert sarc.data['track_group_id'][2] == -1
+    assert sarc.data['motion.tracks.group_id'][2] == -1
     # an explicit value always wins over the per-kind default
     sarc.group_tracks(by='loi', reference_frame=0, min_coverage=0.5)
-    assert sarc.data['track_group_id'][2] == -1
+    assert sarc.data['motion.tracks.group_id'][2] == -1
 
 
 def test_synthesize_loi_chain_arc_is_monotone_on_a_curved_fibre():
@@ -657,11 +654,11 @@ def test_member_slen_falls_back_to_diff_for_a_legacy_loi():
 def test_group_tracks_myofibril_ordering():
     sarc = _fake_structure(n_tracks=6)
     # two fibres; fibre A lists vectors in reversed order [2,1,0]
-    sarc.data['myof_lines'] = [[np.array([2, 1, 0]), np.array([3, 4, 5])]]
+    sarc.data['structure.myofibril.lines'] = [[np.array([2, 1, 0]), np.array([3, 4, 5])]]
     sarc.group_tracks(by='myofibril', reference_frame=0)
-    gid = sarc.data['track_group_id']
-    order = sarc.data['track_group_order']
-    assert sarc.data['n_groups'] == 2
+    gid = sarc.data['motion.tracks.group_id']
+    order = sarc.data['motion.tracks.group_order']
+    assert sarc.data['motion.groups.n'] == 2
     # fibre A: tracks {0,1,2} share a group; ordering follows the vector order [2,1,0]
     assert gid[0] == gid[1] == gid[2]
     assert gid[3] == gid[4] == gid[5]
@@ -677,11 +674,11 @@ def test_group_tracks_myofibril_requires_lines():
 
 def test_analyze_track_motion_myofibril_coarse():
     sarc = _fake_structure(n_tracks=6)
-    sarc.data['myof_lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
+    sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
     sarc.analyze_track_motion(by='myofibril', reference_frame=0)
-    assert sarc.data['myofibril_slen_timeseries'].shape == (2, 80)
-    assert 'myofibril_contr' in sarc.data
-    assert sarc.data['track_motion_kind'] == 'myofibril'
+    assert sarc.data['motion.myofibril.slen'].shape == (2, 80)
+    assert 'motion.myofibril.contr' in sarc.data
+    assert sarc.data['motion.groups.analyzed_kind'] == 'myofibril'
 
 
 def test_plot_track_myofibrils_smoke():
@@ -695,7 +692,7 @@ def test_plot_track_myofibrils_smoke():
     Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
     try:
         sarc = _fake_structure(n_tracks=6)
-        sarc.data['myof_lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
+        sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
         sarc.group_tracks(by='myofibril', reference_frame=0)
         for cb in ('group', 'slen'):
             Plots.plot_track_myofibrils(plt.figure().gca(), sarc, frame=0, color_by=cb, scalebar=False)
@@ -721,9 +718,9 @@ def test_plot_tracks_lines_smoke():
     try:
         sarc = _fake_structure(n_tracks=6)
         # give the trajectories a little motion so the lines are non-degenerate
-        pos = np.asarray(sarc.data['tracks_positions_px'], dtype=np.float32)
+        pos = np.asarray(sarc.data['motion.tracks.positions_px'], dtype=np.float32)
         pos[:, :, 1] += np.linspace(0, 2, pos.shape[1])[None, :]
-        sarc.data['tracks_positions_px'] = pos
+        sarc.data['motion.tracks.positions_px'] = pos
         # color_by='group' requires a grouping first
         with pytest.raises(ValueError):
             Plots.plot_tracks(plt.figure().gca(), sarc, color_by='group')
@@ -737,6 +734,53 @@ def test_plot_tracks_lines_smoke():
         ax = plt.figure().gca()
         Plots.plot_tracks(ax, sarc, color_by='group', scalebar=False)
         assert any(isinstance(c, LineCollection) for c in ax.collections)
+    finally:
+        Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
+        plt.close('all')
+
+
+def test_plot_track_coverage_smoke():
+    """The two coverage control plots: percent scale, all tracks in the histogram."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from sarcasm.plotting.plots import Plots
+    # stub the image background (needs file IO)
+    orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
+    Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
+    Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
+    try:
+        sarc = _fake_structure(n_tracks=6)
+        T = sarc.data['motion.tracks.slen'].shape[1]
+        pos = np.asarray(sarc.data['motion.tracks.positions_px'], dtype=np.float32)
+        pos[:, :, 1] += np.linspace(0, 2, T)[None, :]
+        sarc.data['motion.tracks.positions_px'] = pos
+        # spread the coverage out: track k observed in (k + 1) / 6 of the frames
+        observed = np.zeros((6, T), bool)
+        for k in range(6):
+            observed[k, :int(round((k + 1) / 6 * T))] = True
+        sarc.data['motion.tracks.observed'] = observed
+        sarc.data['motion.tracks.n_frames'] = observed.sum(axis=1)
+
+        cov = Plots._track_coverage(sarc)
+        assert cov.shape == (6,)
+        np.testing.assert_allclose(cov, 100 * np.arange(1, 7) / 6, atol=1.0)
+
+        ax = plt.figure().gca()
+        Plots.plot_track_coverage_map(ax, sarc, scalebar=False)
+        lcs = [c for c in ax.collections if isinstance(c, LineCollection)]
+        assert lcs and lcs[0].norm.vmin == 0 and lcs[0].norm.vmax == 100  # fixed 0-100 %
+
+        ax = plt.figure().gca()
+        Plots.plot_track_coverage_histogram(ax, sarc, bins=10)
+        assert sum(p.get_height() for p in ax.patches) == 6  # every track counted
+        assert ax.get_xlim() == (0, 100)
+
+        # both refuse to guess when there are no tracks
+        sarc.data.pop('motion.tracks.n_frames')
+        with pytest.raises(ValueError):
+            Plots.plot_track_coverage_histogram(plt.figure().gca(), sarc)
     finally:
         Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
         plt.close('all')
@@ -778,27 +822,27 @@ _SLEN_PX = 19.5
 
 def test_group_tracks_loi_assigns_and_orders():
     sarc = _fake_structure(n_tracks=6)
-    T = sarc.data['tracks_slen'].shape[1]
+    T = sarc.data['motion.tracks.slen'].shape[1]
     # two well-separated fibres, each a chain of 3 sarcomeres one slen apart
     pos = np.zeros((6, T, 2), np.float32)
     rows = np.array([2 * _SLEN_PX, 0.0, _SLEN_PX,              # fibre 0, shuffled
                      150 + 2 * _SLEN_PX, 150.0, 150 + _SLEN_PX], float)
     pos[:, :, 0] = rows[:, None]; pos[:, :, 1] = 20.0
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * 0.1
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * 0.1
     # curated LOI polylines (px), each running along one fibre
     line0 = np.array([[0, 20], [2 * _SLEN_PX, 20]], float)
     line1 = np.array([[150, 20], [150 + 2 * _SLEN_PX, 20]], float)
-    sarc.data['loi_data'] = {'loi_lines': [line0, line1]}
+    sarc.data['motion.loi.data'] = {'loi_lines': [line0, line1]}
 
     sarc.group_tracks(by='loi', reference_frame=0)
-    gid = sarc.data['track_group_id']
-    assert sarc.data['group_kind'] == 'loi'
-    assert sarc.data['n_groups'] == 2
+    gid = sarc.data['motion.tracks.group_id']
+    assert sarc.data['motion.groups.kind'] == 'loi'
+    assert sarc.data['motion.groups.n'] == 2
     assert gid[[1, 2, 0]].tolist() == [0, 0, 0]
     assert gid[[4, 5, 3]].tolist() == [1, 1, 1]
     # order is rank along the line (by arc length / row), independent of track index
-    order = sarc.data['track_group_order']
+    order = sarc.data['motion.tracks.group_order']
     assert order[1] == 0 and order[2] == 1 and order[0] == 2
     assert order[4] == 0 and order[5] == 1 and order[3] == 2
 
@@ -807,57 +851,57 @@ def test_group_tracks_loi_is_a_thread_not_a_band():
     """Tracks stacked laterally at the same position along the line belong to
     *parallel* fibres. An LOI is one 1D thread, so only one per step is kept."""
     sarc = _fake_structure(n_tracks=6)
-    T = sarc.data['tracks_slen'].shape[1]
+    T = sarc.data['motion.tracks.slen'].shape[1]
     pos = np.zeros((6, T, 2), np.float32)
     # 3 arc positions x 2 lateral neighbours (cols 20 and 26 — under 0.5 slen away)
     pos[:, :, 0] = np.repeat([0.0, _SLEN_PX, 2 * _SLEN_PX], 2)[:, None]
     pos[:, :, 1] = np.tile([20.0, 26.0], 3)[:, None]
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * 0.1
-    sarc.data['loi_data'] = {
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * 0.1
+    sarc.data['motion.loi.data'] = {
         'loi_lines': [np.array([[0, 20], [2 * _SLEN_PX, 20]], float)]}
 
     sarc.group_tracks(by='loi', reference_frame=0)
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     assert int((gid == 0).sum()) == 3          # one per step, not all 6
     assert gid[[0, 2, 4]].tolist() == [0, 0, 0]   # the on-line ones (col 20) win
     assert gid[[1, 3, 5]].tolist() == [-1, -1, -1]
-    assert sorted(sarc.data['track_group_order'][gid == 0]) == [0, 1, 2]
+    assert sorted(sarc.data['motion.tracks.group_order'][gid == 0]) == [0, 1, 2]
 
 
 def test_group_tracks_loi_uses_the_detection_chain_when_available():
     """detect_lois keeps each LOI's ordered detection chain; grouping must follow it
     (identical mechanism to by='myofibril'), not re-derive membership from geometry."""
     sarc = _fake_structure(n_tracks=4)
-    T = sarc.data['tracks_slen'].shape[1]
+    T = sarc.data['motion.tracks.slen'].shape[1]
     # scatter the positions so a geometric assignment could not produce this order
     pos = np.zeros((4, T, 2), np.float32)
     pos[:, :, 0] = np.array([0.0, 300.0, 150.0, 900.0], float)[:, None]
     pos[:, :, 1] = 20.0
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['tracks_positions_um'] = pos * 0.1
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.tracks.positions_um'] = pos * 0.1
     # tracks_detection_id maps track i -> detection i in _fake_structure
-    sarc.data['loi_data'] = {
+    sarc.data['motion.loi.data'] = {
         'loi_lines': [np.array([[0, 20], [300, 20]], float)],
         'loi_index_lines': [np.array([2, 0, 1])],      # chain: track 2 -> 0 -> 1
     }
 
     sarc.group_tracks(by='loi', reference_frame=0)
-    gid, order = sarc.data['track_group_id'], sarc.data['track_group_order']
+    gid, order = sarc.data['motion.tracks.group_id'], sarc.data['motion.tracks.group_order']
     assert gid.tolist() == [0, 0, 0, -1]           # track 3 is not on the chain
     assert order[2] == 0 and order[0] == 1 and order[1] == 2   # chain order, not geometry
 
 
 def test_group_tracks_loi_far_tracks_unassigned():
     sarc = _fake_structure(n_tracks=3)
-    T = sarc.data['tracks_slen'].shape[1]
+    T = sarc.data['motion.tracks.slen'].shape[1]
     pos = np.zeros((3, T, 2), np.float32)
     pos[:, :, 0] = np.array([0.0, _SLEN_PX, 900.0], float)[:, None]  # track 2 far away
     pos[:, :, 1] = 20.0
-    sarc.data['tracks_positions_px'] = pos
-    sarc.data['loi_data'] = {'loi_lines': [np.array([[0, 20], [_SLEN_PX, 20]], float)]}
+    sarc.data['motion.tracks.positions_px'] = pos
+    sarc.data['motion.loi.data'] = {'loi_lines': [np.array([[0, 20], [_SLEN_PX, 20]], float)]}
     sarc.group_tracks(by='loi')
-    gid = sarc.data['track_group_id']
+    gid = sarc.data['motion.tracks.group_id']
     assert gid[0] == 0 and gid[1] == 0
     assert gid[2] == -1            # > 0.5*slen from the line -> dropped
 
