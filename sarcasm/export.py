@@ -109,7 +109,7 @@ class BatchExport:
         self.data = pd.DataFrame.from_records(self.data)
         self.save_data()
 
-    def get_motion_data(self, motion_keys=None):
+    def get_motion_data(self, motion_keys=None, kinds=None):
         """
         Iterate files and collect per-group track-based motion features.
 
@@ -121,16 +121,27 @@ class BatchExport:
         motion_keys : list or None, optional
             Feature suffixes to extract; uses
             :attr:`Export.motion_keys_default` when None. Default is None.
+        kinds : str, list of str or None, optional
+            Grouping kinds to export. ``None`` (default) exports every kind
+            analysed for the file (``track_motion_kinds``) rather than only
+            whichever ran last. Kinds missing from a file are skipped.
+            Default is None.
         """
+        if isinstance(kinds, str):
+            kinds = [kinds]
         records = []
         for tif_file in tqdm(self.files):
             try:
                 sarc_obj = SarcAsM(file_path=tif_file)
-                if sarc_obj.data.get('track_motion_kind') is None:
+                available = sarc_obj.data.get('track_motion_kinds') or []
+                wanted = [k for k in (kinds or available) if k in available]
+                if not wanted:
                     logger.warning(f'{tif_file}: no track motion analyzed, skipping')
                     continue
-                records.extend(Export.get_motion_dict_per_group(
-                    sarc_obj, motion_keys=motion_keys, experiment=self.experiment, **self.conditions))
+                for kind in wanted:
+                    records.extend(Export.get_motion_dict_per_group(
+                        sarc_obj, motion_keys=motion_keys, kind=kind,
+                        experiment=self.experiment, **self.conditions))
             except Exception as e:
                 logger.error(f'{tif_file} failed!')
                 logger.exception(f'Exception: {repr(e)}')
@@ -329,8 +340,17 @@ class Export:
         if motion_keys is None:
             motion_keys = Export.motion_keys_default
         metadata_dict = sarc_obj.metadata.to_dict()
-        n_groups = int(data.get('n_groups', 0))
-        member_counts = np.asarray(data.get('group_member_counts', np.full(n_groups, np.nan)))
+        # This kind's own group count, never the unsuffixed 'n_groups': that belongs
+        # to whichever grouping ran last, so on a multi-grouping store it iterates
+        # the wrong number of groups and reads <kind>_<suffix> out of range.
+        if f'n_groups_{kind}' not in data:
+            raise ValueError(
+                f"No '{kind}' track motion in this store. "
+                f"Run analyze_track_motion(by='{kind}') first; "
+                f"analysed kinds: {data.get('track_motion_kinds')}.")
+        n_groups = int(data[f'n_groups_{kind}'])
+        member_counts = np.asarray(data.get(f'group_member_counts_{kind}',
+                                            np.full(n_groups, np.nan)))
 
         cond = {}
         for condition, value in conditions.items():

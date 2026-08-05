@@ -1423,17 +1423,37 @@ class SarcAsM(SarcAsMBase):
         # grouping_hash / track_ids_snapshot) so the tracks dataframe and napari
         # overlays never mix an old grouping with the new tracks. Re-run
         # group_tracks (+ analyze_track_motion) to regroup.
-        for _stale in ('track_group_id', 'track_group_order', 'group_kind',
-                       'n_groups', 'group_member_counts', 'group_n_vectors_total',
-                       'group_n_vectors_in_long_tracks', 'track_ids_snapshot',
-                       'grouping_hash'):
-            if _stale in self.data:
-                del self.data[_stale]
+        self._invalidate_groupings()
         logger.info(f'Tracked {out["n_tracks"]} sarcomere query points over {len(list_frames)} frames.')
         if self.auto_save:
             self.store_structure_data()
 
-    def get_tracks(self, min_coverage: float = 0.0) -> pd.DataFrame:
+    # Mirrored per kind by group_tracks ('group_kind' is not — a kind's own name
+    # carries no information — but is still dropped on invalidation).
+    _GROUPING_KEYS = ('track_group_id', 'track_group_order',
+                      'n_groups', 'group_member_counts', 'group_n_vectors_total',
+                      'group_n_vectors_in_long_tracks', 'track_ids_snapshot',
+                      'grouping_hash')
+
+    def _invalidate_groupings(self) -> None:
+        """Drop every grouping artifact, current and per-kind.
+
+        A grouping labels *tracks*, so re-tracking makes it meaningless. Leaving a
+        mirror behind would let a stale grouping be read back afterwards.
+        """
+        stale = list(self._GROUPING_KEYS)
+        stale += ['group_kind', 'track_motion_kinds', 'track_motion_kind',
+                  'params.analyze_track_motion.grouping_hash',
+                  'params.analyze_track_motion.n_groups']
+        for lvl in self._GROUPING_LEVELS:
+            stale.extend(f'{key}_{lvl}' for key in self._GROUPING_KEYS)
+            stale.append(f'params.analyze_track_motion.grouping_hash_{lvl}')
+            stale.append(f'params.analyze_track_motion.n_groups_{lvl}')
+        for key in stale:
+            if key in self.data:
+                del self.data[key]
+
+    def get_tracks(self, min_coverage: float = 0.0, kind: Optional[str] = None) -> pd.DataFrame:
         """Tidy per-track summary of the 2D tracker output (one row per track).
 
         Discoverable accessor over the dense ``tracks_*`` arrays written by
@@ -1445,6 +1465,13 @@ class SarcAsM(SarcAsMBase):
         min_coverage : float, optional
             Only return tracks whose snap coverage (snapped frames / n_frames)
             is at least this value. Default 0.0 (all kept tracks).
+        kind : str or None, optional
+            Which grouping's labels to put in ``group_id`` / ``order_in_group``.
+            ``None`` (default) uses the grouping currently in effect. Name a kind
+            to read that grouping's labels instead — what you want after grouping
+            one tracking several ways, since otherwise the labels are those of
+            whichever grouping ran last. Raises if the kind was never grouped.
+            Default is None.
 
         Returns
         -------
@@ -1503,10 +1530,15 @@ class SarcAsM(SarcAsMBase):
             'ref_midline_id': ref_mid,
         })
         # Grouping columns appear once group_tracks has been run.
-        if 'track_group_id' in self.data:
-            df['group_id'] = np.asarray(self.data['track_group_id']).reshape(-1)[:n_tracks]
-        if 'track_group_order' in self.data:
-            df['order_in_group'] = np.asarray(self.data['track_group_order']).reshape(-1)[:n_tracks]
+        suffix = f'_{kind}' if kind else ''
+        if kind and f'track_group_id{suffix}' not in self.data:
+            raise ValueError(
+                f"No '{kind}' grouping in this store. Run group_tracks(by='{kind}') "
+                f"first; grouped kinds: {sorted(k[len('track_group_id_'):] for k in self.data if k.startswith('track_group_id_'))}.")
+        if f'track_group_id{suffix}' in self.data:
+            df['group_id'] = np.asarray(self.data[f'track_group_id{suffix}']).reshape(-1)[:n_tracks]
+        if f'track_group_order{suffix}' in self.data:
+            df['order_in_group'] = np.asarray(self.data[f'track_group_order{suffix}']).reshape(-1)[:n_tracks]
 
         if min_coverage > 0.0:
             df = df[df['coverage'] >= min_coverage].reset_index(drop=True)
@@ -1944,7 +1976,7 @@ class SarcAsM(SarcAsMBase):
             max_drift_slen=max_drift_slen,
             labels=labels if by == 'custom' else None)
 
-        self.data.update({
+        current = {
             'track_group_id': gid,
             'track_group_order': order,
             'group_kind': by,
@@ -1954,6 +1986,15 @@ class SarcAsM(SarcAsMBase):
             'group_n_vectors_in_long_tracks': int(n_vectors_long),
             'track_ids_snapshot': np.asarray(track_ids).copy(),
             'grouping_hash': grouping_hash,
+        }
+        # The unsuffixed keys mean "the grouping currently in effect" and are
+        # overwritten by the next group_tracks call; the <key>_<by> mirrors persist,
+        # so several groupings of one tracking stay independently readable.
+        per_kind = {f'{key}_{by}': value for key, value in current.items()
+                    if key != 'group_kind'}
+        self.data.update({
+            **current,
+            **per_kind,
             'params.group_tracks.by': by,
             'params.group_tracks.reference_frame': reference_frame,
             'params.group_tracks.min_coverage': min_coverage,
@@ -2173,27 +2214,46 @@ class SarcAsM(SarcAsMBase):
             'params.analyze_track_motion.min_valid_frames': min_valid_frames,
             'params.analyze_track_motion.filter_params': filter_params,
             'params.analyze_track_motion.n_groups': n_groups,
+            # Per-kind provenance, so an earlier kind stays validatable after a
+            # later grouping overwrote the unsuffixed keys.
+            f'params.analyze_track_motion.grouping_hash_{kind}': self.data['grouping_hash'],
+            f'params.analyze_track_motion.n_groups_{kind}': n_groups,
         })
+        kinds = list(self.data.get('track_motion_kinds') or [])
+        if kind not in kinds:
+            kinds.append(kind)
+        result['track_motion_kinds'] = kinds
         self.data.update(result)
         logger.info(f"analyze_track_motion complete ('{kind}', {n_groups} groups).")
         if self.auto_save:
             self.store_structure_data()
 
-    def _assert_track_motion_fresh(self) -> None:
+    def _assert_track_motion_fresh(self, kind: Optional[str] = None) -> None:
         """Hard-raise if grouped track-motion results are missing or stale.
 
         Guards getters/plots so a grouping changed after analysis can never
         silently return the previous grouping's numbers.
+
+        Parameters
+        ----------
+        kind : str or None, optional
+            Grouping kind to validate. ``None`` (default) checks the grouping
+            currently in effect — the pre-1.0.1 behaviour. Naming a kind checks
+            that kind's own recorded grouping against the current tracks, so a
+            kind analysed before a later ``group_tracks`` call stays readable.
+            Default is None.
         """
-        used = self.data.get('params.analyze_track_motion.grouping_hash')
+        suffix = f'_{kind}' if kind else ''
+        used = self.data.get(f'params.analyze_track_motion.grouping_hash{suffix}')
         if used is None:
-            raise ValueError('No grouped track-motion analysis found. '
+            which = f" for kind '{kind}'" if kind else ''
+            raise ValueError(f'No grouped track-motion analysis found{which}. '
                              'Run analyze_track_motion() first.')
-        cur = self.data.get('grouping_hash')
+        cur = self.data.get(f'grouping_hash{suffix}')
         if cur is None or cur != used:
             raise ValueError('Track grouping changed since analyze_track_motion() was run. '
                              'Re-run analyze_track_motion() before reading grouped results.')
-        snap = np.asarray(self.data.get('track_ids_snapshot', []))
+        snap = np.asarray(self.data.get(f'track_ids_snapshot{suffix}', []))
         cur_ids = np.asarray(self.data.get('track_ids', []))
         if not np.array_equal(snap, cur_ids):
             raise ValueError('Tracks changed since grouping. Re-run track_sarcomere_vectors '

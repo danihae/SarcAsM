@@ -2315,7 +2315,8 @@ class Plots:
     @staticmethod
     def _resolve_kind(sarc_obj, kind):
         """Resolve and validate the grouping kind, defaulting to the last analyzed one."""
-        sarc_obj._assert_track_motion_fresh()
+        # Validate the kind being plotted, not just the current grouping.
+        sarc_obj._assert_track_motion_fresh(kind)
         if kind is None:
             kind = sarc_obj.data.get('track_motion_kind')
         if f'{kind}_slen_timeseries' not in sarc_obj.data:
