@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
-from scipy.signal import savgol_filter
+from scipy.signal import lfilter, savgol_filter
 
 __all__ = [
     'Trace',
@@ -43,10 +43,12 @@ __all__ = [
     'simulate_dataset',
     'make_stress_set',
     'estimate_noise_params',
+    'renoise',
     'velocity_channel',
     'REGIMES',
     'FRAMES_PER_EVENT',
     'FRAMETIME_S',
+    'SNR_RANGE',
 ]
 
 #: Contraction regimes the generator can produce.
@@ -84,6 +86,12 @@ HARSH_MULTIPLIER = 1.3
 #: twitches need some diastole, so ``regular`` and ``arrhythmic`` saturate here; higher
 #: duty is only physical as a sustained (``tonic``) or fused contraction.
 SEPARATED_BEAT_DUTY_MAX = 0.75
+
+#: Range of contraction-amplitude-to-noise ratios sampled when ``snr`` is drawn rather
+#: than derived from ``noise_rel``. Decoupling the two is what produces low-amplitude
+#: traces: real tracking noise is set by the measurement, not by how hard the cell beats,
+#: so a suppressed cell has a poor SNR while ``noise_rel`` alone always gives 1/noise_rel.
+SNR_RANGE = (1.5, 40.0)
 
 
 @dataclass
@@ -172,12 +180,7 @@ def _ar1(n: int, rho: float, rng: np.random.Generator) -> np.ndarray:
     noise = rng.standard_normal(n)
     if rho == 0.0:
         return noise
-    out = np.empty(n)
-    out[0] = noise[0]
-    for i in range(1, n):
-        out[i] = rho * out[i - 1] + noise[i]
-    # scale back to unit variance
-    return out * np.sqrt(1 - rho ** 2)
+    return lfilter([1.0], [1.0, -rho], noise) * np.sqrt(1 - rho ** 2)
 
 
 def estimate_noise_params(traces: Sequence[np.ndarray], quiet_window: int = 25
@@ -385,11 +388,71 @@ def _apply_nuisances(clean, rng, *, noise_rel, noise_rho, drift_rel,
     return sig
 
 
+def _sample_nuisances(rng, *, noise_rel, noise_rho, extreme, snr=None):
+    """Draw one realisation of the artefact parameters :func:`_apply_nuisances` takes."""
+    harsh = HARSH_MULTIPLIER if extreme else 1.0
+    # noise is capped on the noise_rel path so the ground truth stays recoverable; an
+    # explicit snr bypasses the cap because it is the caller's stated difficulty
+    noise = (1.0 / float(snr) if snr is not None
+             else min(noise_rel * rng.uniform(0.3, 2.0) * harsh, 0.35))
+    return dict(
+        noise_rel=float(noise),
+        noise_rho=float(np.clip(noise_rho * rng.uniform(0.5, 1.5), 0, 0.95)),
+        drift_rel=float(rng.uniform(0, 0.3 * harsh)),
+        bleach_rel=float(rng.uniform(-0.3, 0.3) * harsh),
+        n_steps=int(rng.integers(0, 6 if extreme else 3)),
+        step_rel=float(rng.uniform(0.05, 0.4 * harsh)),
+        n_outliers=int(rng.integers(0, 20 if extreme else 8)),
+        outlier_rel=float(rng.uniform(0.2, 1.0 * harsh)),
+        quantise_rel=float(rng.uniform(0, 0.15)) if rng.random() < 0.3 else 0.0,
+        gap_frac=(float(rng.uniform(0, 0.25 if extreme else 0.15))
+                  if rng.random() < 0.4 else 0.0),
+    )
+
+
+def renoise(trace: 'Trace', rng: np.random.Generator, *,
+            extreme: Optional[bool] = None) -> np.ndarray:
+    """Redraw the artefacts on a trace's clean signal, keeping its ground truth.
+
+    Lets a dataset show the network a fresh realisation of the same simulated trace on
+    every epoch instead of one frozen draw.
+
+    Parameters
+    ----------
+    trace : Trace
+        A trace from :func:`simulate_trace`; its ``clean``, ``label`` and ``meta`` are used.
+    rng : np.random.Generator
+        Generator for the new draw.
+    extreme : bool or None, optional
+        Override the trace's own nuisance severity. None keeps it.
+
+    Returns
+    -------
+    np.ndarray
+        A new signal of the same shape as ``trace.clean``.
+    """
+    meta = trace.meta
+    amplitude = float(meta.get('amplitude', 0.0))
+    if extreme is None:
+        extreme = bool(meta.get('extreme', False))
+    snr = meta.get('snr')
+    params = _sample_nuisances(rng, noise_rel=meta.get('noise_rel', 0.05),
+                               noise_rho=meta.get('noise_rho', 0.5),
+                               extreme=extreme, snr=snr)
+    noise_eff = (1.0 / float(snr) if snr is not None
+                 else min(meta.get('noise_rel', 0.05)
+                          * (HARSH_MULTIPLIER if extreme else 1.0), 0.35))
+    artefact_amp = amplitude if trace.label.any() else amplitude * noise_eff * 0.5
+    return _apply_nuisances(trace.clean, rng, amplitude=amplitude,
+                            artefact_amp=artefact_amp, **params)
+
+
 def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                    n_frames: Optional[int] = None, frametime: Optional[float] = None,
                    rng: Optional[np.random.Generator] = None,
                    noise_rel: float = 0.05, noise_rho: float = 0.5,
-                   amplitude: Optional[float] = None, extreme: bool = False) -> Trace:
+                   amplitude: Optional[float] = None, extreme: bool = False,
+                   polarity: Optional[int] = None, snr: Optional[float] = None) -> Trace:
     """
     Simulate one sarcomere-length trace with exact ground truth.
 
@@ -427,6 +490,15 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
     extreme : bool, optional
         Push the nuisance parameters to the edge of their ranges. Used to build the
         held-out stress set. Default is False.
+    polarity : int or None, optional
+        ``+1`` builds the contraction as a downward excursion (the sarcomere-length
+        convention); ``-1`` mirrors the clean signal about its baseline so the excursion
+        points up, leaving the label untouched. Z-band position traces carry either sign
+        depending on which side of the contraction node a band sits. Sampled 50/50 if None.
+    snr : float or None, optional
+        Contraction amplitude divided by noise standard deviation. None derives the noise
+        from ``noise_rel`` instead, which fixes the ratio at ``1 / noise_rel`` regardless
+        of amplitude. Values below ``SNR_RANGE[0]`` are refused.
 
     Returns
     -------
@@ -436,12 +508,21 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
     Raises
     ------
     ValueError
-        If ``regime`` is unknown or ``duty`` is outside ``[0, 0.97]``.
+        If ``regime`` is unknown, ``duty`` is outside ``[0, 0.97]``, ``polarity`` is not
+        ``+1``/``-1``, or ``snr`` is below ``SNR_RANGE[0]``.
     """
     if regime not in REGIMES:
         raise ValueError(f'Unknown regime {regime!r}; expected one of {REGIMES}.')
     if rng is None:
         rng = np.random.default_rng()
+    if polarity is None:
+        polarity = int(rng.choice((-1, 1)))
+    elif polarity not in (-1, 1):
+        raise ValueError(f'polarity must be +1 or -1, got {polarity}.')
+    if snr is not None and float(snr) < SNR_RANGE[0]:
+        raise ValueError(f'snr must be at least {SNR_RANGE[0]}, got {snr}. Below that the '
+                         'contraction is buried and the ground truth is not recoverable '
+                         'from the trace.')
     if duty is not None and not 0.0 <= duty <= 0.97:
         raise ValueError(f'duty must lie in [0, 0.97], got {duty}. A fully contracted '
                          'trace has no visible transition and no absolute reference, so '
@@ -463,12 +544,17 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
         duty = float(rng.uniform(0.0, 0.97))
 
     rise = float(rng.uniform(0.15, 0.40))
-    plateau = float(rng.uniform(0.0, 0.35))
-    relax_k = float(rng.uniform(1.5, 5.0))
+    # plateau and relaxation reach further than physiological control: myosin activators
+    # prolong systole and slow relaxation well beyond it
+    plateau = float(rng.uniform(0.0, 0.60))
+    relax_k = float(rng.uniform(0.8, 5.0))
 
     clean = np.full(n_frames, baseline)
     meta = {'baseline': baseline, 'amplitude': amplitude, 'rise_frac': rise,
-            'plateau_frac': plateau, 'relax_k': relax_k, 'duty_target': duty}
+            'plateau_frac': plateau, 'relax_k': relax_k, 'duty_target': duty,
+            'polarity': polarity, 'snr': None if snr is None else float(snr),
+            'noise_rel': float(noise_rel), 'noise_rho': float(noise_rho),
+            'extreme': bool(extreme)}
 
     if regime == 'quiescent':
         pass
@@ -566,32 +652,20 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 
     label = _label_from_clean(clean, baseline, amplitude)
 
-    # On a trace with no contraction there is no contraction amplitude to reference, so
-    # scaling baseline artefacts by the sampled one would inject drift and steps many times
-    # the noise -- excursions that look exactly like contractions in a trace labelled as
-    # having none. Size them against the noise instead, so a quiescent trace really is flat
-    # plus noise and its ground truth is unambiguous.
-    noise_eff = min(noise_rel * (HARSH_MULTIPLIER if extreme else 1.0), 0.35)
+    # mirror about the baseline: the excursion changes sign, the ground truth does not
+    if polarity == -1:
+        clean = 2 * baseline - clean
+
+    # a quiescent trace carries no contraction amplitude to size artefacts against, so
+    # scale them by the noise instead and keep it unambiguously flat
+    noise_eff = (1.0 / float(snr) if snr is not None
+                 else min(noise_rel * (HARSH_MULTIPLIER if extreme else 1.0), 0.35))
     artefact_amp = amplitude if label.any() else amplitude * noise_eff * 0.5
 
-    # The stress set is meant to be hard, not impossible: noise is allowed to reach ~35% of
-    # contraction amplitude, beyond which the ground truth stops being recoverable from the
-    # trace at all and the benchmark would measure the noise floor rather than the model.
-    harsh = HARSH_MULTIPLIER if extreme else 1.0
     signal = _apply_nuisances(
-        clean, rng,
-        noise_rel=min(noise_rel * rng.uniform(0.3, 2.0) * harsh, 0.35),
-        noise_rho=float(np.clip(noise_rho * rng.uniform(0.5, 1.5), 0, 0.95)),
-        drift_rel=float(rng.uniform(0, 0.3 * harsh)),
-        bleach_rel=float(rng.uniform(-0.3, 0.3) * harsh),
-        n_steps=int(rng.integers(0, 6 if extreme else 3)),
-        step_rel=float(rng.uniform(0.05, 0.4 * harsh)),
-        n_outliers=int(rng.integers(0, 20 if extreme else 8)),
-        outlier_rel=float(rng.uniform(0.2, 1.0 * harsh)),
-        quantise_rel=float(rng.uniform(0, 0.15)) if rng.random() < 0.3 else 0.0,
-        gap_frac=float(rng.uniform(0, 0.25 if extreme else 0.15)) if rng.random() < 0.4 else 0.0,
-        amplitude=amplitude, artefact_amp=artefact_amp,
-    )
+        clean, rng, amplitude=amplitude, artefact_amp=artefact_amp,
+        **_sample_nuisances(rng, noise_rel=noise_rel, noise_rho=noise_rho,
+                            extreme=extreme, snr=snr))
 
     meta['duty_actual'] = float(label.mean())
     return Trace(signal=signal, label=label, clean=clean,
@@ -601,14 +675,16 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 #: Sampling weights per regime. ``regular`` dominates because that is what most recordings
 #: look like; ``tonic`` and ``fused`` are over-represented relative to reality because they
 #: are the regimes a duty-coupled detector fails on, and real data cannot supply them.
-REGIME_WEIGHTS = {'regular': 0.34, 'tonic': 0.22, 'fused': 0.20,
-                  'arrhythmic': 0.16, 'quiescent': 0.08}
+REGIME_WEIGHTS = {'regular': 0.31, 'tonic': 0.20, 'fused': 0.18,
+                  'arrhythmic': 0.16, 'quiescent': 0.15}
 
 
 def simulate_dataset(n: int = 1000, seed: int = 0,
                      regimes: Optional[Sequence[str]] = None,
                      noise_rel: float = 0.05, noise_rho: float = 0.5,
-                     stratify_duty: bool = True, extreme: bool = False) -> List[Trace]:
+                     stratify_duty: bool = True, extreme: bool = False,
+                     p_sampled_snr: float = 0.35,
+                     polarity: Optional[int] = None) -> List[Trace]:
     """
     Simulate a dataset stratified over duty cycle and regime.
 
@@ -632,6 +708,15 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
         Default is True.
     extreme : bool, optional
         Push nuisance parameters to their limits. Default is False.
+    p_sampled_snr : float, optional
+        Fraction of traces whose noise is set by an SNR drawn log-uniformly from
+        :data:`SNR_RANGE` rather than by ``noise_rel``. The rest keep the fitted-noise
+        behaviour. Default is 0.35. Without this the amplitude-to-noise ratio is fixed at
+        ``1 / noise_rel`` for every trace, and the low-amplitude, poorly-resolved regime
+        that drug-suppressed cells occupy is never generated.
+    polarity : int or None, optional
+        Fix the excursion direction for every trace. None (the default) mixes both signs
+        50/50; ``1`` gives the downward-only set used before polarity invariance.
 
     Returns
     -------
@@ -663,12 +748,16 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
         regime = pick(duty)
         if regime == 'quiescent':
             duty = 0.0
+        snr = (float(np.exp(rng.uniform(*np.log(SNR_RANGE))))
+               if rng.random() < p_sampled_snr else None)
         traces.append(simulate_trace(regime, duty=duty, rng=rng, noise_rel=noise_rel,
-                                     noise_rho=noise_rho, extreme=extreme))
+                                     noise_rho=noise_rho, extreme=extreme, snr=snr,
+                                     polarity=polarity))
     return traces
 
 
-def make_stress_set(n: int = 400, seed: int = 99999) -> List[Trace]:
+def make_stress_set(n: int = 400, seed: int = 99999,
+                    polarity: Optional[int] = 1) -> List[Trace]:
     """
     Held-out benchmark set, generated with a different seed and harsher parameters.
 
@@ -683,10 +772,13 @@ def make_stress_set(n: int = 400, seed: int = 99999) -> List[Trace]:
         Number of traces. Default is 400.
     seed : int, optional
         Random seed, deliberately far from the training seeds. Default is 99999.
+    polarity : int or None, optional
+        Default ``1`` keeps the downward-only set, so scores stay comparable with those
+        published for the 1.0 model. Pass None for the mixed-polarity set.
 
     Returns
     -------
     list of Trace
     """
     return simulate_dataset(n=n, seed=seed, noise_rel=0.07, noise_rho=0.7,
-                            stratify_duty=True, extreme=True)
+                            stratify_duty=True, extreme=True, polarity=polarity)

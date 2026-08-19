@@ -20,6 +20,21 @@ from sarcasm import SarcAsM, TypeUtils
 from typing import Optional
 
 
+def _default_contraction_threshold(fallback: float = 0.5) -> float:
+    """Operating point the bundled ContractionNet was tuned for.
+
+    Read from the checkpoint rather than hard-coded, so the app and the Python API, which
+    resolves it the same way, cannot disagree about the same model.
+    """
+    try:
+        from contraction_net.prediction import recommended_threshold
+        from sarcasm.utils import Utils
+        return float(recommended_threshold(
+            str(Utils.get_models_dir() / 'model_ContractionNet.pt'), default=fallback))
+    except Exception:
+        return fallback
+
+
 class ApplicationModel:
     """
     The ApplicationModel concentrates all necessary parameters for calling the sarcasm_old backend methods
@@ -163,7 +178,8 @@ class ApplicationModel:
 
         # Analyze track motion (ContractionNet)
         self.__parameters.get_parameter(name='motion.analyze.aggregate').set_value('auto')
-        self.__parameters.get_parameter(name='motion.analyze.threshold').set_value(0.3)
+        self.__parameters.get_parameter(name='motion.analyze.threshold').set_value(
+            _default_contraction_threshold())
         self.__parameters.get_parameter(name='motion.analyze.contr_time_min').set_value(0.2)
         self.__parameters.get_parameter(name='motion.analyze.merge_time_max').set_value(0.05)
         self.__parameters.get_parameter(name='motion.analyze.buffer_frames').set_value(3)

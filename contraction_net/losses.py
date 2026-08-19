@@ -61,17 +61,27 @@ class MaskBoundaryLoss(nn.Module):
         dict
             The individual terms, for logging.
         """
-        mask_logits, boundary_logits = logits[:, :1], logits[:, 1:]
-        mask_target, boundary_target = targets[:, :1], targets[:, 1:]
+        n_out = logits.shape[1]
+        mask_logits, mask_target = logits[:, :1], targets[:, :1]
 
         bce = F.binary_cross_entropy_with_logits(mask_logits, mask_target)
         dice = self.per_sample_dice(mask_logits, mask_target)
-        boundary = F.binary_cross_entropy_with_logits(
-            boundary_logits, boundary_target,
-            pos_weight=self.boundary_pos_weight.to(boundary_logits.device))
+        total = bce + self.dice_weight * dice
+        terms = {'bce': bce.item(), 'dice': dice.item(), 'boundary': 0.0}
 
-        total = bce + self.dice_weight * dice + self.boundary_weight * boundary
-        return total, {'bce': bce.item(), 'dice': dice.item(), 'boundary': boundary.item()}
+        if n_out > 1:
+            boundary_logits = logits[:, 1:]
+            if n_out == 2:
+                # a single head for both transitions: target either one
+                boundary_target = targets[:, 1:3].max(dim=1, keepdim=True).values
+            else:
+                boundary_target = targets[:, 1:n_out]
+            boundary = F.binary_cross_entropy_with_logits(
+                boundary_logits, boundary_target,
+                pos_weight=self.boundary_pos_weight.to(boundary_logits.device))
+            total = total + self.boundary_weight * boundary
+            terms['boundary'] = boundary.item()
+        return total, terms
 
 
 def iou_score(logits, targets, threshold=0.0):
@@ -83,3 +93,28 @@ def iou_score(logits, targets, threshold=0.0):
     union = (pred | true).sum(dim=dims).float()
     # a correctly empty prediction on a quiescent trace scores 1, not 0/0
     return torch.where(union > 0, inter / union.clamp(min=1), torch.ones_like(union)).mean()
+
+
+def iou_at_thresholds(logits, targets, thresholds):
+    """Per-sample IoU of the mask channel at several **probability** thresholds.
+
+    Returned per sample rather than averaged so a caller can accumulate over an epoch and
+    weight the pools itself. Scoring at one fixed threshold would penalise a model that is
+    better but calibrated differently.
+
+    Returns
+    -------
+    torch.Tensor
+        Shape ``(len(thresholds), batch)``.
+    """
+    probs = torch.sigmoid(logits[:, 0])
+    true = targets[:, 0] > 0.5
+    dims = tuple(range(1, true.dim()))
+    rows = []
+    for threshold in thresholds:
+        pred = probs > float(threshold)
+        inter = (pred & true).sum(dim=dims).float()
+        union = (pred | true).sum(dim=dims).float()
+        rows.append(torch.where(union > 0, inter / union.clamp(min=1),
+                                torch.ones_like(union)))
+    return torch.stack(rows)

@@ -36,6 +36,12 @@ from .simulation import (REST_TOL, Trace, make_stress_set, twitch_waveform,
 __all__ = [
     'PredictFn',
     'model_predictor',
+    'model_predictor_full',
+    'boundary_report',
+    'polarity_invariance_report',
+    'polarity_cost_probe',
+    'cross_grouping_consistency',
+    'corpus_report',
     'grid_trace',
     'oracle_amplitude_detector',
     'reference_ceiling',
@@ -61,7 +67,7 @@ DEFAULT_DUTIES = (0.20, 0.40, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85)
 _REAL_DATA = 'test_data/high_speed_single_ACTN2-citrine_CM'
 
 
-def model_predictor(model_path: str) -> PredictFn:
+def model_predictor(model_path: str, channel: int = 0) -> PredictFn:
     """
     Wrap a checkpoint into a :data:`PredictFn`.
 
@@ -69,16 +75,29 @@ def model_predictor(model_path: str) -> PredictFn:
     ----------
     model_path : str
         Path to a ContractionNet ``.pt`` checkpoint.
+    channel : int, optional
+        Output channel to return. 0 is the contraction state, 1 and 2 the onset and offset
+        heads. Default is 0.
 
     Returns
     -------
     PredictFn
-        Callable returning the per-frame contraction probability.
+        Callable returning the per-frame probability of the chosen channel.
     """
     from .prediction import predict_contractions
 
     def _predict(signal: np.ndarray, frametime: float) -> np.ndarray:
-        return predict_contractions(np.asarray(signal, dtype=float), model_path)[0]
+        return predict_contractions(np.asarray(signal, dtype=float), model_path)[channel]
+
+    return _predict
+
+
+def model_predictor_full(model_path: str):
+    """Wrap a checkpoint into a callable returning **all** output channels."""
+    from .prediction import predict_contractions
+
+    def _predict(signal: np.ndarray, frametime: float) -> np.ndarray:
+        return predict_contractions(np.asarray(signal, dtype=float), model_path)
 
     return _predict
 
@@ -626,6 +645,257 @@ def offset_invariance_report(predict: PredictFn, signal: np.ndarray,
         out[f'offset_{off:+g}'] = float((base != shifted).mean())
     centred = _binary(predict(np.asarray(signal) - np.median(signal), frametime), threshold)
     out['centred'] = float((base != centred).mean())
+    return out
+
+
+# --------------------------------------------------------------------------------------
+# polarity, boundaries and distilled-corpus probes
+# --------------------------------------------------------------------------------------
+
+def boundary_report(predict_full, traces: Sequence[Trace], tol_frames: int = 3,
+                    threshold: float = 0.5) -> Dict[str, float]:
+    """Score the onset and offset heads, which nothing else in this harness looks at.
+
+    Beating rate comes from onsets and cycle duration from onset/offset pairs, so a model
+    can score well on the mask and still be the wrong choice downstream.
+
+    Parameters
+    ----------
+    predict_full : callable
+        Returns all output channels, e.g. :func:`model_predictor_full`.
+    traces : sequence of Trace
+    tol_frames : int, optional
+        Frames within which a predicted transition counts as matched. Default is 3.
+    threshold : float, optional
+        Threshold on the boundary channels. Default is 0.5.
+
+    Returns
+    -------
+    dict
+        ``onset_f1``, ``offset_f1`` and ``onset_median_error`` in frames.
+    """
+    stats = {'onset': [0, 0, 0, []], 'offset': [0, 0, 0, []]}   # tp, fp, fn, errors
+    for trace in traces:
+        out = predict_full(trace.signal, trace.frametime)
+        if out.shape[0] < 3:
+            continue
+        edges = np.diff(np.asarray(trace.label, np.int8))
+        truth = {'onset': np.flatnonzero(edges > 0) + 1,
+                 'offset': np.flatnonzero(edges < 0) + 1}
+        for k, channel in (('onset', 1), ('offset', 2)):
+            peaks = _peaks(out[channel], threshold)
+            matched, used = 0, set()
+            for position in truth[k]:
+                near = [p for p in peaks if abs(p - position) <= tol_frames and p not in used]
+                if near:
+                    best = min(near, key=lambda p: abs(p - position))
+                    used.add(best)
+                    matched += 1
+                    stats[k][3].append(abs(best - position))
+            stats[k][0] += matched
+            stats[k][1] += len(peaks) - len(used)
+            stats[k][2] += len(truth[k]) - matched
+    out = {}
+    for k, (tp, fp, fn, errors) in stats.items():
+        precision = tp / (tp + fp) if tp + fp else np.nan
+        recall = tp / (tp + fn) if tp + fn else np.nan
+        f1 = (2 * precision * recall / (precision + recall)
+              if np.isfinite(precision) and np.isfinite(recall) and precision + recall > 0
+              else np.nan)
+        out[f'{k}_f1'] = float(f1)
+        out[f'{k}_median_error'] = float(np.median(errors)) if errors else np.nan
+    return out
+
+
+def _peaks(prob: np.ndarray, threshold: float) -> List[int]:
+    """One position per supra-threshold run: the boundary heads emit short tents."""
+    mask = np.asarray(prob) > threshold
+    lab, n = _label(mask)
+    return [int(np.argmax(np.asarray(prob) * (lab == i))) for i in range(1, n + 1)]
+
+
+def polarity_invariance_report(predict: PredictFn, traces: Sequence[Trace],
+                               threshold: float = 0.5) -> Dict[str, float]:
+    """How much a model's answer changes when its input is negated.
+
+    Z-band position rows carry either sign depending on which side of the contraction node
+    a band sits, and :meth:`sarcasm.motion.Motion.predict_contractions` feeds both to the
+    network, so a polarity-dependent model is answering two different questions on one cell.
+
+    Returns
+    -------
+    dict
+        ``iou_upright`` and ``iou_flipped`` against the ground truth, and ``disagreement``
+        -- the fraction of frames whose binary answer differs between the two. An invariant
+        model gives ~0 for the last.
+    """
+    upright, flipped, disagree = [], [], []
+    for trace in traces:
+        baseline = float(np.median(trace.signal))
+        a = predict(trace.signal, trace.frametime)
+        b = predict(2 * baseline - trace.signal, trace.frametime)
+        upright.append(iou(a, trace.label, threshold))
+        flipped.append(iou(b, trace.label, threshold))
+        disagree.append(float((_binary(a, threshold) != _binary(b, threshold)).mean()))
+    return {'iou_upright': float(np.mean(upright)),
+            'iou_flipped': float(np.mean(flipped)),
+            'disagreement': float(np.mean(disagree)),
+            'n': len(traces)}
+
+
+def polarity_cost_probe(predict: PredictFn, threshold: float = 0.5,
+                        duties: Sequence[float] = (0.20, 0.40, 0.60, 0.75, 0.85, 0.95),
+                        duration: int = 80, n_frames: int = 1200) -> Dict[str, object]:
+    """What polarity invariance costs, resolved by duty cycle.
+
+    A polarity-invariant model cannot use "rest is the high side" and has to read rest off
+    the waveform asymmetry instead -- fast rise, plateau, slow relaxation. That cue is
+    weakest at high duty, where a single sustained event offers one transition, so this is
+    where invariance should cost something if it costs anything.
+
+    The symmetric-waveform control is the floor: with a linear relaxation and rise equal to
+    relax, the two polarities are genuinely indistinguishable and **any** model must be at
+    chance. Reporting it separates "the model lost the cue" from "the cue is not there".
+
+    Returns
+    -------
+    dict
+        ``duties``, ``iou_upright``, ``iou_flipped`` and ``gap`` per duty, plus
+        ``symmetric_control`` holding the same for a waveform carrying no asymmetry.
+    """
+    frametime = 0.0164
+    up, down, sym_up, sym_down = [], [], [], []
+    for duty in duties:
+        for signal, label, into_up, into_down in (
+                grid_trace(duration, duty, n_frames=n_frames, seed=7) + (up, down),
+                _symmetric_waveform_trace(duration, duty, n_frames) + (sym_up, sym_down)):
+            base = float(np.median(signal))
+            into_up.append(iou(predict(signal, frametime), label, threshold))
+            into_down.append(iou(predict(2 * base - signal, frametime), label, threshold))
+    up, down = np.asarray(up), np.asarray(down)
+    return {'duties': np.asarray(duties), 'iou_upright': up, 'iou_flipped': down,
+            'gap': up - down,
+            'symmetric_control': {'iou_upright': np.asarray(sym_up),
+                                  'iou_flipped': np.asarray(sym_down)}}
+
+
+def _symmetric_waveform_trace(duration: int, duty: float, n_frames: int):
+    """``(signal, label)`` whose twitch is time-symmetric, so polarity says nothing."""
+    period = max(int(round(duration / max(duty, 1e-6))), duration + 2)
+    amplitude, baseline = 0.15, 1.75
+    clean = np.full(n_frames, baseline)
+    half = max(duration // 2, 1)
+    shape = np.concatenate([np.linspace(0, 1, half), np.linspace(1, 0, duration - half)])
+    for start in range(0, n_frames - duration, period):
+        clean[start:start + duration] -= amplitude * shape
+    label = _label_from_clean(clean, baseline, amplitude)
+    rng = np.random.default_rng(11)
+    return clean + rng.normal(0, 0.015, n_frames), label
+
+
+def cross_grouping_consistency(predict: PredictFn, store_paths: Sequence[str],
+                               threshold: float = 0.5,
+                               kinds: Sequence[str] = ('pool', 'mband', 'myofibril')
+                               ) -> Dict[str, object]:
+    """Agreement between a model's answers on the different groupings of one cell.
+
+    Uses no labels at all: pool, M-band and myofibril signals describe the same cell, so a
+    model that answers them consistently is measuring the cell rather than the aggregation.
+
+    Returns
+    -------
+    dict
+        Median pairwise IoU and duty correlation per kind pair, over the given stores.
+    """
+    from sarcasm.io.results_store import Results
+
+    pairs, duties = {}, {}
+    for path in store_paths:
+        try:
+            res = Results(path if path.rstrip('/').endswith('sarcasm')
+                          else os.path.join(path, 'sarcasm'))
+            frametime = float(res.metadata['frametime'])
+            masks = {}
+            for kind in kinds:
+                rows = np.asarray(getattr(res.structure, kind).slen_timeseries, float)
+                if rows.size == 0:
+                    continue
+                preds = [_binary(predict(_fill_nans(row), frametime), threshold)
+                         for row in rows]
+                masks[kind] = preds
+        except Exception:
+            continue
+        for i, a in enumerate(kinds):
+            for b in kinds[i + 1:]:
+                if a not in masks or b not in masks:
+                    continue
+                score = np.median([[iou(x.astype(float), y, 0.5) for y in masks[b]]
+                                   for x in masks[a]])
+                pairs.setdefault(f'{a}_vs_{b}', []).append(float(score))
+                duties.setdefault(f'{a}_vs_{b}', []).append(
+                    (float(np.mean([m.mean() for m in masks[a]])),
+                     float(np.mean([m.mean() for m in masks[b]]))))
+    out = {}
+    for key, values in pairs.items():
+        out[f'{key}_iou'] = float(np.median(values))
+        d = np.asarray(duties[key])
+        out[f'{key}_duty_r'] = (float(np.corrcoef(d[:, 0], d[:, 1])[0, 1])
+                                if len(d) > 2 else np.nan)
+    out['n_cells'] = len(next(iter(pairs.values()))) if pairs else 0
+    return out
+
+
+def corpus_report(predict: PredictFn, corpus_path: str, threshold: float = 0.5,
+                  by: Sequence[str] = ('trace_type', 'drug'),
+                  wells: Optional[Sequence[str]] = None) -> Dict[str, object]:
+    """Score a model against a distilled corpus, broken down by provenance.
+
+    The labels in such a corpus are the shipped model's own output on a higher-SNR
+    aggregation of the same cell, so this measures **imitation fidelity, not accuracy**. A
+    model can only look perfect here by reproducing the teacher, including its mistakes.
+    Read it alongside the synthetic scores, which carry exact labels.
+
+    Parameters
+    ----------
+    predict : PredictFn
+    corpus_path : str
+        Corpus of real traces, in the layout
+        :meth:`~contraction_net.data.ContractionDataset.load_corpus` reads.
+    threshold : float, optional
+    by : sequence of str, optional
+        Metadata columns to break the score down by.
+    wells : sequence of str or None, optional
+        Restrict to these wells, e.g. the ones held out of training.
+    """
+    from .data import ContractionDataset
+
+    data = ContractionDataset.load_corpus(corpus_path)
+    n = len(data['signals'])
+    keep = np.ones(n, dtype=bool)
+    if wells is not None and 'well_uid' in data:
+        keep = np.isin(data['well_uid'], list(wells))
+    frametimes = data.get('frametime', np.full(n, 0.0164))
+
+    scores, duty_pred, duty_true = [], [], []
+    for i in range(n):
+        if not keep[i]:
+            continue
+        prob = predict(data['signals'][i], float(frametimes[i]))
+        scores.append(iou(prob, data['labels'][i], threshold))
+        duty_pred.append(float(_binary(prob, threshold).mean()))
+        duty_true.append(float(data['labels'][i].mean()))
+    out = {'overall': float(np.mean(scores)) if scores else np.nan,
+           'n': len(scores),
+           'duty_pred': float(np.mean(duty_pred)) if duty_pred else np.nan,
+           'duty_true': float(np.mean(duty_true)) if duty_true else np.nan,
+           'CIRCULAR': 'labels are the shipped model on an aggregated signal'}
+    idx = np.flatnonzero(keep)
+    for column in by:
+        if column not in data:
+            continue
+        values = np.asarray(data[column])[idx]
+        out[column] = {str(v): float(np.mean(np.asarray(scores)[values == v]))
+                       for v in np.unique(values)}
     return out
 
 
