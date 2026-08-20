@@ -28,6 +28,23 @@ from sarcasm.utils import Utils
 logger = logging.getLogger(__name__)
 
 
+# Named generalist checkpoints: alias -> (filename, validated pixel-size range in µm).
+#
+# 'generalist' (default) was trained with scale augmentation and on corrected orientation
+# labels, so it measures the same tissue consistently from 0.11 to 0.40 µm/px: median
+# sarcomere length drifts 0.12 µm across that range against 0.35 µm for 'legacy', and it
+# still returns ~5900 vectors at 0.40 µm/px where 'legacy' returns none.
+#
+# 'legacy' is the pre-v1.0.0 checkpoint, kept unchanged so published results can be
+# reproduced. It is NOT interchangeable with the default: it predicts a smaller cell mask
+# (-2.2 % against the label, where the new model runs +4 %), which shifts the denominator
+# of sarcomere_area_ratio. Do not mix the two within one study. See sarcasm/models/README.md.
+GENERALIST_MODELS = {
+    'generalist': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
+    'legacy':     ('model_sarcomeres_generalist.pt',    (0.10, 0.35)),
+}
+
+
 def _resize_xy_back(arr: np.ndarray, target_xy: Tuple[int, int]) -> np.ndarray:
     """
     Resize an array's trailing (Y, X) dims to ``target_xy``.
@@ -256,19 +273,21 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
     n_frames = images.shape[0] if is_stack else 1
 
     logger.info('Predicting sarcomeres ...')
-    if model_path is None or model_path == 'generalist':
-        model_path = os.path.join(model_dir, 'model_sarcomeres_generalist.pt')
-        if pixelsize is not None and pixelsize < 0.1:
+    if model_path is None or model_path in GENERALIST_MODELS:
+        key = model_path or 'generalist'
+        filename, (px_lo, px_hi) = GENERALIST_MODELS[key]
+        model_path = os.path.join(model_dir, filename)
+        if pixelsize is not None and pixelsize < px_lo:
             logger.warning(
-                f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the optimal range "
-                f"(0.1-0.35 µm) for generalist model. Pixelsize might be too small. "
+                f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the validated range "
+                f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too small. "
                 f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
-        elif pixelsize is not None and pixelsize > 0.35:
+        elif pixelsize is not None and pixelsize > px_hi:
             logger.warning(
-                f"Pixel size ({round(pixelsize, 3)} µm) is larger than the optimal range "
-                f"(0.1-0.35 µm) for generalist model. Pixelsize might be too large. "
+                f"Pixel size ({round(pixelsize, 3)} µm) is larger than the validated range "
+                f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too large. "
                 f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
-        logger.info(f"Using default model: {model_path}")
+        logger.info(f"Using model '{key}': {model_path}")
 
     # Size the blocks from the whole working set of one block, not just the
     # result: the float32 input, the extracted patches, the float16 patch
