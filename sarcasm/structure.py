@@ -19,7 +19,7 @@ import logging
 import os
 import shutil
 import warnings
-from typing import Optional, Tuple, Union, List, Literal, Any
+from typing import Optional, Sequence, Tuple, Union, List, Literal, Any
 
 import numpy as np
 import pandas as pd
@@ -224,7 +224,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save and getattr(self.data, "_dirty", None):
             self.store_structure_data()
 
-    def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
+    def detect_sarcomeres(self, frames: Union[str, int, Sequence[int]] = 'all',
                           model_path: str = None, max_patch_size: Union[Tuple[int, int], str] = 'auto',
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           rescale_factor: float = 1.0, batch_size: Union[int, str] = 'auto',
@@ -235,7 +235,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames for sarcomere detection ('all', a single frame index, or
             selected frames). Default is 'all'.
         model_path : str or None, optional
@@ -275,6 +275,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if isinstance(frames, str) and frames == 'all':
             # Hand the detector a lazy handle so the raw stack is read block by
@@ -455,20 +456,21 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_cell_mask(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1) -> None:
+    def analyze_cell_mask(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.1) -> None:
         """
         Analyze the area occupied by cells and compute average cell intensity and
         cell area ratio.
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold : float, optional
             Threshold for binarizing the cell mask; pixels above it are cell.
             Default is 0.1.
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('cell_mask'):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
@@ -518,7 +520,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
+    def analyze_z_bands(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
                         a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -527,7 +529,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold : float, optional
@@ -557,6 +559,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
@@ -714,7 +717,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
+    def analyze_sarcomere_vectors(self, frames: Union[str, int, Sequence[int]] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.2, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
@@ -728,7 +731,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold_mbands : float, optional
@@ -787,6 +790,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
@@ -978,7 +982,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_myofibrils(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
                            n_min: int = 4, median_filter_radius: float = 0.5,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -987,7 +991,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray} or None, optional
+        frames : {'all', int, sequence of int} or None, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             If None, frames from sarcomere vector analysis are used.
             Default is None.
@@ -1010,6 +1014,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
@@ -1028,9 +1033,9 @@ class SarcAsM(SarcAsMBase):
         if frames == 'all':
             n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
-        elif isinstance(frames, int):
-            list_frames = [frames]
-        elif isinstance(frames, list) or type(frames) is np.ndarray:
+        elif np.issubdtype(type(frames), np.integer):
+            list_frames = [int(frames)]
+        elif isinstance(frames, (list, np.ndarray)):
             list_frames = list(frames)
         else:
             raise ValueError('Selection of frames not valid!')
@@ -1127,7 +1132,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                                   d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
                                   random_seed: int = 42, area_min: float = 20.0, dilation_radius: float = 0.3,
                                   store_mask: bool = False,
@@ -1138,7 +1143,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray} or None, optional
+        frames : {'all', int, sequence of int} or None, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             If None, frames from sarcomere vector analysis are used.
             Default is None.
@@ -1165,6 +1170,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if 'pos_vectors' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
@@ -1183,10 +1189,10 @@ class SarcAsM(SarcAsMBase):
         if frames == 'all':
             n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
-        elif isinstance(frames, int):
+        elif np.issubdtype(type(frames), np.integer):
             n_imgs = 1
-            list_frames = [frames]
-        elif isinstance(frames, list) or type(frames) is np.ndarray:
+            list_frames = [int(frames)]
+        elif isinstance(frames, (list, np.ndarray)):
             n_imgs = len(frames)
             list_frames = list(frames)
         else:
@@ -1273,7 +1279,7 @@ class SarcAsM(SarcAsMBase):
 
     def track_sarcomere_vectors(
         self,
-        frames: Union[str, int, List[int], np.ndarray] = 'all',
+        frames: Union[str, int, Sequence[int]] = 'all',
         max_disp_along_um: float = 1.0,
         max_disp_perp_um: float = 0.2,
         ori_tol_deg: float = 45.0,
@@ -1299,7 +1305,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to track ('all' or a contiguous selection). 'all' resolves to
             every frame that carries sarcomere vectors, which is the frame range
             analyze_sarcomere_vectors actually covered, not necessarily the whole
@@ -1336,6 +1342,7 @@ class SarcAsM(SarcAsMBase):
             False on filled frames, so coverage and every real-observation metric
             are unaffected. Set to 0 to leave all gap frames NaN. Default is 3.
         """
+        frames = self._normalize_frames(frames)
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
 
@@ -2706,10 +2713,11 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         """
+        frames = self._normalize_frames(frames)
         self.auto_save = False
         self.analyze_cell_mask()
         self.analyze_z_bands(frames=frames)

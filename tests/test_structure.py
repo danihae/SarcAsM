@@ -116,6 +116,56 @@ class TestStructureErrors:
             SarcAsM('nonexistent_file.tif')
 
 
+class TestFramesAcceptsAnySequence:
+    """``frames=range(0, 400)`` used to raise ValueError('frames argument not valid').
+
+    Only ``list`` and ``np.ndarray`` were accepted, so the natural spelling of a
+    contiguous window failed at the first pipeline step — and two methods also
+    rejected a numpy integer as a single frame.
+    """
+
+    @pytest.mark.parametrize('frames, expected', [
+        (range(0, 3), [0, 1, 2]),
+        ((4, 5), [4, 5]),
+        (np.arange(2), [0, 1]),
+        ([1, 2], [1, 2]),
+        (np.array(7), [7]),
+        ('all', 'all'),        # passed through for the callers to interpret
+        (0, 0),
+        (np.int64(3), np.int64(3)),
+        (None, None),
+    ])
+    def test_normalize_frames(self, frames, expected):
+        result = SarcAsM._normalize_frames(frames)
+        assert result == expected
+        if isinstance(expected, list):
+            assert all(type(f) is int for f in result)
+
+    def test_a_range_survives_the_real_pipeline(self, structure_crop_file_path_class):
+        by_range = SarcAsM(structure_crop_file_path_class, restart=True)
+        by_range.detect_sarcomeres(frames=range(0, 2))
+        by_range.analyze_sarcomere_vectors(frames=range(0, 2))
+
+        by_list = SarcAsM(structure_crop_file_path_class, restart=True)
+        by_list.detect_sarcomeres(frames=[0, 1])
+        by_list.analyze_sarcomere_vectors(frames=[0, 1])
+
+        for key in ('params.detect_sarcomeres.frames',
+                    'params.analyze_sarcomere_vectors.frames'):
+            assert list(by_range.data[key]) == list(by_list.data[key]) == [0, 1]
+        assert [len(v) for v in by_range.data['pos_vectors_px']] == \
+               [len(v) for v in by_list.data['pos_vectors_px']]
+
+    def test_numpy_integer_is_a_valid_single_frame(self, structure_crop_file_path_class):
+        """analyze_myofibrils and analyze_sarcomere_domains rejected np.int64."""
+        sarc = SarcAsM(structure_crop_file_path_class, restart=True)
+        sarc.detect_sarcomeres(frames=np.int64(0))
+        sarc.analyze_sarcomere_vectors(frames=np.int64(0))
+        sarc.analyze_myofibrils(frames=np.int64(0))
+        sarc.analyze_sarcomere_domains(frames=np.int64(0))
+        assert list(sarc.data['params.detect_sarcomeres.frames']) == [0]
+
+
 class TestPartialDetectionIsNotSilent:
     """A detection that covered fewer frames than the analysis asks for.
 

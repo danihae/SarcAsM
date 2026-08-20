@@ -329,9 +329,25 @@ class SarcAsMBase:
         store = self.__dict__.get('store')
         return store is not None and store.has_mask(name)
 
+    @staticmethod
+    def _normalize_frames(frames):
+        """Accept any sequence of frame indices, not just a list.
+
+        ``frames=range(0, 400)`` is the natural way to write a contiguous window,
+        and a tuple or an array is no less reasonable, while everything
+        downstream wants a plain list of ints. ``'all'``, ``None`` and a single
+        integer pass through untouched -- the callers tell those cases apart
+        themselves.
+        """
+        if isinstance(frames, np.ndarray):
+            return [int(f) for f in frames.ravel()]
+        if isinstance(frames, (list, tuple, range)):
+            return [int(f) for f in frames]
+        return frames
+
     def _read_mask(self, name: str, frames=None) -> np.ndarray:
-        """Read a mask from the store, optionally selecting ``frames`` (int / list /
-        slice), mirroring the old ``tifffile.imread(..., key=frames)`` behaviour."""
+        """Read a mask from the store, optionally selecting ``frames`` (int, slice or
+        any sequence of ints), mirroring ``tifffile.imread(..., key=frames)``."""
         if not self._mask_exists(name):
             raise FileNotFoundError(
                 f"Required analysis mask '{name}' not found in the store.\n"
@@ -348,8 +364,7 @@ class SarcAsMBase:
             or (isinstance(detected, (list, tuple, np.ndarray)) and len(detected) == 1))
         if single_frame_store and isinstance(frames, (int, np.integer)):
             return self.store.read_mask(name)
-        if isinstance(frames, np.ndarray):
-            frames = list(frames)
+        frames = self._normalize_frames(frames)
         # Slice inside the store so only the requested chunks (one frame each)
         # load, instead of materialising the whole stack and slicing in numpy.
         return self.store.read_mask(name, frames=frames)
@@ -487,8 +502,9 @@ class SarcAsMBase:
 
         Parameters
         ----------
-        frames : int, list, slice, or None, optional
-            Frame selection for stacks. None loads all frames. Default is None.
+        frames : int, slice, sequence of int, or None, optional
+            Frame selection for stacks; any sequence works, including
+            ``range(0, 400)``. None loads all frames. Default is None.
         axes : str or None, optional
             Dimension order override (e.g. 'TXYC'). Auto-detected if None.
             Default is None.
@@ -504,18 +520,14 @@ class SarcAsMBase:
             if (frames is None or (isinstance(frames, str) and frames == 'all')
                     or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
                 return arr[...]
-            if isinstance(frames, np.ndarray):
-                frames = list(frames)
-            return arr[frames]
+            return arr[self._normalize_frames(frames)]
 
         # First open of a TIFF: read it, ingest into the store, then slice.
         data = self._read_source_tif(axes=axes)
         if (frames is None or (isinstance(frames, str) and frames == 'all')
                 or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
             return data
-        if isinstance(frames, np.ndarray):
-            frames = list(frames)
-        return data[frames]
+        return data[self._normalize_frames(frames)]
 
     def _read_source_tif(self, axes=None):
         """Read the full source TIFF into internal format and ingest it into the store."""

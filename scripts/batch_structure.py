@@ -16,7 +16,7 @@ folder = 'D:/2023_SarcAsM_drugs_chronic/'
 
 # Frames to analyze. 'all' takes every frame of a time-lapse; 0 analyzes the
 # first frame only, which is what a folder of single images needs. A subset must
-# start at frame 0, e.g. list(range(0, 10)) -- pass a list, not a range object.
+# start at frame 0, e.g. range(0, 10).
 frames = 'all'
 
 # --- how much GPU each worker may take ---------------------------------------

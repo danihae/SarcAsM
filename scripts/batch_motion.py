@@ -19,9 +19,8 @@ from sarcasm import SarcAsM, BatchExport
 folder = 'D:/SarcAsM_drugs/'
 
 # Frames to track. 'all' takes the whole movie. A subset must be contiguous and
-# start at frame 0, e.g. list(range(0, 400)) -- masks are stored one page per
-# detected frame, so a later window would be indexed against the wrong pages.
-# Pass a list, not a range object.
+# start at frame 0, e.g. range(0, 400) -- masks are stored one page per detected
+# frame, so a later window would be indexed against the wrong pages.
 frames = 'all'
 
 # High-speed movies: the 3D U-Net gives Z-bands that are far less noisy from
