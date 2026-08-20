@@ -116,6 +116,46 @@ class TestStructureErrors:
             SarcAsM('nonexistent_file.tif')
 
 
+class TestPartialDetectionIsNotSilent:
+    """A detection that covered fewer frames than the analysis asks for.
+
+    ``detect_sarcomeres(frames=0)`` used to be the documented first step of the
+    motion workflow, but M-bands, orientation and the sarcomere mask are needed in
+    every tracked frame and only ``detect_sarcomeres`` produces them. The mask
+    store then held one page while ``analyze_sarcomere_vectors(frames='all')``
+    asked for the whole movie; ``zip`` stopped at the shortest input, so all but
+    the first frame went unanalysed while the stored params still claimed the full
+    stack. The failure only surfaced in ``track_sarcomere_vectors``, as vectors
+    "missing" for every frame but one.
+    """
+
+    @pytest.fixture(scope="class")
+    def partially_detected(self, structure_crop_file_path_class):
+        sarc = SarcAsM(structure_crop_file_path_class, restart=True)
+        sarc.detect_sarcomeres(frames=0)
+        sarc.analyze_sarcomere_vectors(frames='all')
+        return sarc
+
+    def test_params_record_only_the_frames_analyzed(self, partially_detected):
+        """Downstream steps trust these params, so they must not overclaim."""
+        assert partially_detected.metadata.n_stack > 1, "fixture needs a multi-frame file"
+        assert list(partially_detected.data['params.analyze_sarcomere_vectors.frames']) == [0]
+
+    def test_only_the_detected_frame_carries_vectors(self, partially_detected):
+        pos = partially_detected.data['pos_vectors_px']
+        assert pos[0] is not None
+        assert all(v is None for v in pos[1:])
+
+    def test_tracking_names_the_cause(self, partially_detected):
+        """The old message blamed an interrupted analyze_sarcomere_vectors run."""
+        with pytest.raises(ValueError, match='detect_sarcomeres'):
+            partially_detected.track_sarcomere_vectors()
+
+    def test_analyze_z_bands_records_only_the_frames_analyzed(self, partially_detected):
+        partially_detected.analyze_z_bands(frames='all')
+        assert list(partially_detected.data['params.analyze_z_bands.frames']) == [0]
+
+
 class TestStructureIntegration:
     """Integration tests combining multiple features."""
     

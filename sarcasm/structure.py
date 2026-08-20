@@ -586,7 +586,15 @@ class SarcAsM(SarcAsMBase):
             images = np.expand_dims(images, 0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, 0)
-        n_imgs = len(zbands)
+        # One mask page per detected frame — see the same guard in
+        # analyze_sarcomere_vectors.
+        n_imgs = min(len(zbands), len(images), len(orientation_field))
+        if n_imgs < len(list_frames):
+            logger.warning(
+                f'detect_sarcomeres covered {n_imgs} frame(s), but {len(list_frames)} were '
+                f'requested — analyzing the first {n_imgs}. Run detect_sarcomeres on the '
+                'frames you want to analyze.')
+            list_frames = list_frames[:n_imgs]
 
         # create empty lists
         def none_lists():
@@ -829,6 +837,21 @@ class SarcAsM(SarcAsMBase):
             sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, axis=0)
+
+        # detect_sarcomeres writes one mask page per DETECTED frame, so after a partial
+        # detection there are fewer pages than frames requested here. The zip() below
+        # stops at the shortest input, which would leave the rest of the movie silently
+        # unanalysed while params.analyze_sarcomere_vectors.frames still claimed it —
+        # and the failure would only surface much later, in track_sarcomere_vectors.
+        n_available = min(len(z_bands), len(mbands), len(orientation_field), len(sarcomere_mask))
+        if n_available < len(list_frames):
+            logger.warning(
+                f'detect_sarcomeres covered {n_available} frame(s), but {len(list_frames)} were '
+                f'requested — analyzing the first {n_available}. M-bands, sarcomere orientation '
+                'and the sarcomere mask are needed per frame and only detect_sarcomeres produces '
+                'them (detect_z_bands_fast_movie replaces the Z-band mask alone). For motion '
+                'analysis, run detect_sarcomeres on every frame you want to track.')
+            list_frames = list_frames[:n_available]
 
         # Optional temporal smoothing of the orientation field.
         if smooth_orientation_sigma > 0 and orientation_field.shape[0] > 1:
@@ -1277,8 +1300,10 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         frames : {'all', int, list of int, np.ndarray}, optional
-            Frames to track ('all', a single frame index, or selected frames).
-            Default is 'all'.
+            Frames to track ('all' or a contiguous selection). 'all' resolves to
+            every frame that carries sarcomere vectors, which is the frame range
+            analyze_sarcomere_vectors actually covered, not necessarily the whole
+            movie. Default is 'all'.
         max_disp_along_um : float, optional
             Snap-gate tolerance for motion along the sarcomere axis, in µm — the
             maximum a track may move along its axis per frame. At the default
@@ -1314,12 +1339,15 @@ class SarcAsM(SarcAsMBase):
         if 'pos_vectors_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
 
-        # Frame selection matches the pattern in analyze_sarcomere_vectors.
-        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if ((isinstance(frames, str) and frames == 'all')
-                or (self.metadata.n_stack == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.metadata.n_stack))
+        # 'all' means every frame that actually carries vectors. Detection and vector
+        # analysis may have covered only part of the movie, and the stored params can
+        # be stale (an interrupted run leaves them claiming the whole stack), so the
+        # data itself decides — not params.
+        pv = self.data['pos_vectors_px']
+        n_analysable = min(self.metadata.n_stack, len(pv))
+        analysed = [t for t in range(n_analysable) if pv[t] is not None]
+        if isinstance(frames, str) and frames == 'all':
+            list_frames = analysed
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [int(frames)]
@@ -1329,7 +1357,12 @@ class SarcAsM(SarcAsMBase):
             raise ValueError('frames argument not valid')
 
         if len(list_frames) < 2:
-            raise ValueError('Need at least 2 frames for tracking.')
+            raise ValueError(
+                f'Need at least 2 frames for tracking; sarcomere vectors exist for '
+                f'{len(analysed)} of {self.metadata.n_stack} frames (e.g. {analysed[:8]}). '
+                'Run detect_sarcomeres and then analyze_sarcomere_vectors on the frames you '
+                'want to track — detect_sarcomeres(frames=0) covers the first frame only, '
+                'and M-bands and orientation are needed in every tracked frame.')
 
         # Tracking is temporal: real-time gaps between non-contiguous frames would
         # be treated as single-frame steps (the seconds-valued horizons assume
@@ -1340,9 +1373,6 @@ class SarcAsM(SarcAsMBase):
                 'The tracker assumes a single-frame step between consecutive entries.')
 
         # The per-frame vectors must ACTUALLY be present for every tracked frame.
-        # (params.analyze_sarcomere_vectors.frames can be stale — e.g. left claiming
-        # all frames after an interrupted run — so check the data itself, not params.)
-        pv = self.data['pos_vectors_px']
         missing = [t for t in list_frames if t >= len(pv) or pv[t] is None]
         if missing:
             preview = missing[:8]
