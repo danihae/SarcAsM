@@ -38,6 +38,19 @@ from sarcasm.utils import Utils
 logger = logging.getLogger(__name__)
 
 
+def _is_ome_zarr(path: str) -> bool:
+    """Does ``path`` look like an OME-Zarr (NGFF) image group?
+
+    Accepts a ``*.zarr`` / ``*.ome.zarr`` suffix, or any directory already carrying
+    NGFF v0.4 (``.zattrs``) or v0.5 (``zarr.json``) metadata.
+    """
+    p = Path(path)
+    name = p.name.lower()
+    if name.endswith('.ome.zarr') or name.endswith('.zarr'):
+        return True
+    return p.is_dir() and ((p / '.zattrs').exists() or (p / 'zarr.json').exists())
+
+
 class SarcAsMBase:
     """
     Base class for sarcomere structural and functional analysis.
@@ -217,6 +230,12 @@ class SarcAsMBase:
             # Extract metadata without loading full image data (fast, even for large files on HDD).
             # Honour an explicit axes argument (e.g. 'TYX') so stacks aren't misread as channels.
             self._extract_metadata_only(axes=axes)
+        elif _is_ome_zarr(self.file_path):
+            # A third-party NGFF store carries its calibration in the multiscales
+            # metadata. Without this the pixel size stays None and the user has to
+            # supply it by hand for every store — and pixel size is exactly what the
+            # generalist model is calibrated on.
+            self._extract_metadata_only_ngff(axes=axes)
 
         # Create the sibling '<name>.ome.zarr' store eagerly so it exists (and is
         # inspectable) right after construction. Only the small metadata is written
@@ -488,6 +507,168 @@ class SarcAsMBase:
             # Save metadata
             if self.auto_save:
                 self.save_metadata()
+
+    # ------------------------------------------------------------------
+    # OME-Zarr (NGFF) metadata
+    # ------------------------------------------------------------------
+
+    def _read_ngff_attrs(self):
+        """Open the input as an NGFF image group and return what is needed to parse it.
+
+        Returns ``(root, axes_str, level0_path, scale, units)``. ``scale`` already has
+        any multiscales-level transform folded into the dataset-level one, and is in the
+        axis order of ``axes_str``.
+        """
+        try:
+            import zarr
+        except ImportError as e:
+            raise ImportError(
+                "OME-Zarr input requires the 'zarr' package."
+            ) from e
+
+        root = zarr.open(self.file_path, mode='r')
+        attrs = dict(root.attrs)
+        # v0.5 nests the whole OME block under 'ome'; v0.4 puts it at the top level.
+        ome = attrs.get('ome') if isinstance(attrs.get('ome'), dict) else attrs
+        if 'multiscales' not in ome:
+            if 'plate' in ome:
+                raise MetaDataError(
+                    f"{self.file_path} is an NGFF HCS plate root, not an image. Point "
+                    "SarcAsM at a per-FOV image group inside the plate (e.g. .../A/1/0/)."
+                )
+            raise MetaDataError(
+                f"No NGFF 'multiscales' metadata found at {self.file_path}. "
+                "Is this a valid OME-Zarr image group?"
+            )
+
+        ms = ome['multiscales'][0]
+        axes_meta = ms.get('axes') or []
+        axes_str = ''.join(a.get('name', '?') for a in axes_meta).upper()
+        units = [a.get('unit') for a in axes_meta]
+
+        ds0 = ms['datasets'][0]
+        level0_path = ds0['path']
+
+        scale = None
+        for t in ds0.get('coordinateTransformations', []):
+            if t.get('type') == 'scale':
+                scale = list(t['scale'])
+                break
+        if scale is None:
+            scale = [1.0] * len(axes_meta)
+        for t in ms.get('coordinateTransformations', []):
+            if t.get('type') == 'scale':
+                scale = [a * b for a, b in zip(scale, t['scale'])]
+
+        return root, axes_str, level0_path, scale, units
+
+    @staticmethod
+    def _scale_to_pixelsize(axes_str, scale, units):
+        """XY pixel size in micrometres from an NGFF scale + unit, or None."""
+        per_axis = []
+        for ax in ('X', 'Y'):
+            if ax not in axes_str:
+                continue
+            i = axes_str.index(ax)
+            s = float(scale[i])
+            u = (units[i] or 'micrometer').lower()
+            if u in ('micrometer', 'microns', 'micron', 'um', 'µm', 'μm'):
+                pass
+            elif u in ('nanometer', 'nm'):
+                s *= 1e-3
+            elif u in ('millimeter', 'mm'):
+                s *= 1e3
+            elif u in ('meter', 'm'):
+                s *= 1e6
+            else:
+                logger.warning(
+                    f"Unknown spatial unit '{u}' on NGFF axis '{ax}' — assuming micrometres.")
+            per_axis.append(s)
+        if not per_axis:
+            return None
+        if len(per_axis) == 2 and not np.isclose(per_axis[0], per_axis[1]):
+            logger.warning(
+                f"Anisotropic XY pixel size from NGFF (x={per_axis[0]:.6g}, "
+                f"y={per_axis[1]:.6g} µm). Using the mean.")
+        return float(np.mean(per_axis))
+
+    @staticmethod
+    def _scale_to_frametime(axes_str, scale, units):
+        """Frame time in seconds from an NGFF scale + unit, or None when there is no T axis."""
+        if 'T' not in axes_str:
+            return None
+        i = axes_str.index('T')
+        s = float(scale[i])
+        u = (units[i] or 'second').lower()
+        if u in ('second', 's', 'sec'):
+            pass
+        elif u in ('millisecond', 'ms'):
+            s *= 1e-3
+        elif u in ('minute', 'min'):
+            s *= 60.0
+        elif u in ('hour', 'h'):
+            s *= 3600.0
+        else:
+            logger.warning(f"Unknown time unit '{u}' on the NGFF T axis — assuming seconds.")
+        return s
+
+    def _extract_metadata_only_ngff(self, axes=None) -> None:
+        """NGFF counterpart of :meth:`_extract_metadata_only`.
+
+        Values passed to the constructor always win; this only fills what the user left
+        unset, so an explicit ``pixelsize=`` still overrides a store's own calibration.
+        """
+        root, axes_str, level0_path, scale, units = self._read_ngff_attrs()
+        if axes is not None:
+            axes_str = str(axes).upper()
+        self._validate_axes(axes_str)
+
+        if self.metadata.pixelsize is None:
+            self.metadata.pixelsize = self._scale_to_pixelsize(axes_str, scale, units)
+        if self.metadata.frametime is None:
+            self.metadata.frametime = self._scale_to_frametime(axes_str, scale, units)
+        self.metadata.axes = axes_str
+
+        shape_orig = tuple(root[level0_path].shape)
+        if len(shape_orig) != len(axes_str):
+            raise MetaDataError(
+                f"NGFF axes '{axes_str}' do not match the array shape {shape_orig} "
+                f"at {self.file_path}.")
+        self.metadata.shape_orig = shape_orig
+
+        processed_axes = axes_str
+        if 'C' in axes_str:
+            c_axis = axes_str.index('C')
+            shape_after_channel = tuple(d for j, d in enumerate(shape_orig) if j != c_axis)
+            processed_axes = axes_str.replace('C', '')
+        else:
+            shape_after_channel = shape_orig
+
+        stack_axis = 'T' if 'T' in processed_axes else ('Z' if 'Z' in processed_axes else None)
+        target_axes = ([stack_axis] if stack_axis else [])
+        target_axes += [ax for ax in ('Y', 'X') if ax in processed_axes]
+        perm = [processed_axes.index(ax) for ax in target_axes]
+        final_shape = tuple(shape_after_channel[i] for i in perm)
+        final_shape = tuple(d for d in final_shape if d > 1) or final_shape
+
+        self.metadata.shape = final_shape
+        self.metadata.size = (final_shape[-2], final_shape[-1]) if len(final_shape) >= 2 else None
+
+        stack_len = 1
+        if 'T' in axes_str:
+            stack_len = int(shape_orig[axes_str.index('T')])
+        elif 'Z' in axes_str:
+            stack_len = int(shape_orig[axes_str.index('Z')])
+        self.metadata.n_stack = stack_len
+
+        if self.metadata.frametime and stack_len > 1:
+            self.metadata.time = np.arange(0, stack_len * self.metadata.frametime,
+                                           self.metadata.frametime)
+        else:
+            self.metadata.time = None
+
+        if self.auto_save:
+            self.save_metadata()
 
     def _internal_axes(self, ndim: int) -> str:
         """OME axes string for the internal (channel-selected, permuted) image."""
