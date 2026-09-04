@@ -50,10 +50,14 @@ contractions of *groups* of tracks. More detailed instructions see
     file_path = '/path/to/movie.tif'
     sarc_obj = SarcAsM(file_path)
 
-    # detect sarcomere Z-bands, M-bands, orientation and masks
-    sarc_obj.detect_sarcomeres(frames=0)
+    # detect sarcomere Z-bands, M-bands, orientation and masks in every frame to
+    # be tracked. Motion analysis needs M-bands and orientation per frame, so a
+    # single-frame detection is not enough here (pass frames=range(a, b) to
+    # restrict the analysis to part of the movie).
+    sarc_obj.detect_sarcomeres(frames='all')
 
-    # detect Z-bands in all frames with the time-consistent 3D U-Net
+    # optional, for high-speed movies: replace the per-frame Z-band mask with the
+    # temporally consistent 3D U-Net output
     sarc_obj.detect_z_bands_fast_movie()
 
     # analyze sarcomere vectors in all frames

@@ -152,6 +152,25 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 
 `track_motion_kind` (written by `analyze_track_motion`) becomes `motion.groups.analyzed_kind`, next to the `kind` the grouping was built with.
 
+The keys below describe **the grouping currently in effect** and are overwritten by the
+next `group_tracks` call. Each is additionally mirrored under `motion.groups.<kind>.<leaf>`
+(`motion.groups.pool.n`, `motion.groups.mband.member_counts`, ...), so grouping one tracking
+several ways keeps every grouping independently readable. `analyze_track_motion` accumulates
+the kinds it has run in `motion.groups.analyzed_kinds`, and readers that name a kind
+(`get_tracks(kind=...)`, `Export.get_motion_dict_per_group`) read that kind's mirror and
+raise if it is absent, rather than silently falling back to the current grouping.
+
+| current | per-kind mirror |
+|---|---|
+| `motion.tracks.group_id` | `motion.groups.<kind>.track_group_id` |
+| `motion.tracks.group_order` | `motion.groups.<kind>.track_group_order` |
+| `motion.groups.n` | `motion.groups.<kind>.n` |
+| `motion.groups.member_counts` | `motion.groups.<kind>.member_counts` |
+| `motion.groups.n_vectors_total` | `motion.groups.<kind>.n_vectors_total` |
+| `motion.groups.n_vectors_in_long_tracks` | `motion.groups.<kind>.n_vectors_in_long_tracks` |
+| `motion.groups.track_ids` | `motion.groups.<kind>.track_ids` |
+| `motion.groups.hash` | `motion.groups.<kind>.hash` |
+
 | old | new |
 |---|---|
 | `group_kind` | `motion.groups.kind` |

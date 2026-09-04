@@ -162,6 +162,96 @@ class TestStructureErrors:
         assert sarc.data['structure.sarcomere.pos_px'][0] is not None
 
 
+class TestFramesAcceptsAnySequence:
+    """``frames=range(0, 400)`` used to raise ValueError('frames argument not valid').
+
+    Only ``list`` and ``np.ndarray`` were accepted, so the natural spelling of a
+    contiguous window failed at the first pipeline step — and two methods also
+    rejected a numpy integer as a single frame.
+    """
+
+    @pytest.mark.parametrize('frames, expected', [
+        (range(0, 3), [0, 1, 2]),
+        ((4, 5), [4, 5]),
+        (np.arange(2), [0, 1]),
+        ([1, 2], [1, 2]),
+        (np.array(7), [7]),
+        ('all', 'all'),        # passed through for the callers to interpret
+        (0, 0),
+        (np.int64(3), np.int64(3)),
+        (None, None),
+    ])
+    def test_normalize_frames(self, frames, expected):
+        result = SarcAsM._normalize_frames(frames)
+        assert result == expected
+        if isinstance(expected, list):
+            assert all(type(f) is int for f in result)
+
+    def test_a_range_survives_the_real_pipeline(self, structure_crop_file_path_class):
+        by_range = SarcAsM(structure_crop_file_path_class, restart=True)
+        by_range.detect_sarcomeres(frames=range(0, 2))
+        by_range.analyze_sarcomere_vectors(frames=range(0, 2))
+
+        by_list = SarcAsM(structure_crop_file_path_class, restart=True)
+        by_list.detect_sarcomeres(frames=[0, 1])
+        by_list.analyze_sarcomere_vectors(frames=[0, 1])
+
+        for key in ('params.detect_sarcomeres.frames',
+                    'params.analyze_sarcomere_vectors.frames'):
+            assert list(by_range.data[key]) == list(by_list.data[key]) == [0, 1]
+        assert [len(v) for v in by_range.data['structure.sarcomere.pos_px']] == \
+               [len(v) for v in by_list.data['structure.sarcomere.pos_px']]
+
+    def test_numpy_integer_is_a_valid_single_frame(self, structure_crop_file_path_class):
+        """analyze_myofibrils and analyze_sarcomere_domains rejected np.int64."""
+        sarc = SarcAsM(structure_crop_file_path_class, restart=True)
+        sarc.detect_sarcomeres(frames=np.int64(0))
+        sarc.analyze_sarcomere_vectors(frames=np.int64(0))
+        sarc.analyze_myofibrils(frames=np.int64(0))
+        sarc.analyze_sarcomere_domains(frames=np.int64(0))
+        assert list(sarc.data['params.detect_sarcomeres.frames']) == [0]
+
+
+class TestPartialDetectionIsNotSilent:
+    """A detection that covered fewer frames than the analysis asks for.
+
+    ``detect_sarcomeres(frames=0)`` used to be the documented first step of the
+    motion workflow, but M-bands, orientation and the sarcomere mask are needed in
+    every tracked frame and only ``detect_sarcomeres`` produces them. The mask
+    store then held one page while ``analyze_sarcomere_vectors(frames='all')``
+    asked for the whole movie; ``zip`` stopped at the shortest input, so all but
+    the first frame went unanalysed while the stored params still claimed the full
+    stack. The failure only surfaced in ``track_sarcomere_vectors``, as vectors
+    "missing" for every frame but one.
+    """
+
+    @pytest.fixture(scope="class")
+    def partially_detected(self, structure_crop_file_path_class):
+        sarc = SarcAsM(structure_crop_file_path_class, restart=True)
+        sarc.detect_sarcomeres(frames=0)
+        sarc.analyze_sarcomere_vectors(frames='all')
+        return sarc
+
+    def test_params_record_only_the_frames_analyzed(self, partially_detected):
+        """Downstream steps trust these params, so they must not overclaim."""
+        assert partially_detected.metadata.n_stack > 1, "fixture needs a multi-frame file"
+        assert list(partially_detected.data['params.analyze_sarcomere_vectors.frames']) == [0]
+
+    def test_only_the_detected_frame_carries_vectors(self, partially_detected):
+        pos = partially_detected.data['structure.sarcomere.pos_px']
+        assert pos[0] is not None
+        assert all(v is None for v in pos[1:])
+
+    def test_tracking_names_the_cause(self, partially_detected):
+        """The old message blamed an interrupted analyze_sarcomere_vectors run."""
+        with pytest.raises(ValueError, match='detect_sarcomeres'):
+            partially_detected.track_sarcomere_vectors()
+
+    def test_analyze_z_bands_records_only_the_frames_analyzed(self, partially_detected):
+        partially_detected.analyze_z_bands(frames='all')
+        assert list(partially_detected.data['params.analyze_z_bands.frames']) == [0]
+
+
 class TestStructureIntegration:
     """Integration tests combining multiple features."""
     

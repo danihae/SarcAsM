@@ -19,7 +19,7 @@ import logging
 import os
 import shutil
 import warnings
-from typing import Optional, Tuple, Union, List, Literal, Any
+from typing import Optional, Sequence, Tuple, Union, List, Literal, Any
 
 import numpy as np
 import pandas as pd
@@ -227,7 +227,7 @@ class SarcAsM(SarcAsMBase):
         """Bind the lazy results store (the ``sarcasm/`` group of the OME-Zarr store)."""
         self.data = Results(self.__get_store_path())
 
-    def detect_sarcomeres(self, frames: Union[str, int, List[int], np.ndarray] = 'all',
+    def detect_sarcomeres(self, frames: Union[str, int, Sequence[int]] = 'all',
                           model_path: str = None, max_patch_size: Union[Tuple[int, int], str] = 'auto',
                           normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
                           rescale_factor: float = 1.0, batch_size: Union[int, str] = 'auto',
@@ -238,7 +238,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames for sarcomere detection ('all', a single frame index, or
             selected frames). Default is 'all'.
         model_path : str or None, optional
@@ -277,6 +277,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
         if isinstance(frames, str) and frames == 'all':
             # Hand the detector a lazy handle so the raw stack is read block by
@@ -457,20 +458,21 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_cell_mask(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.1) -> None:
+    def analyze_cell_mask(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.1) -> None:
         """
         Analyze the area occupied by cells and compute average cell intensity and
         cell area ratio.
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold : float, optional
             Threshold for binarizing the cell mask; pixels above it are cell.
             Default is 0.1.
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('cell_mask'):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
@@ -520,7 +522,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_z_bands(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold: float = 0.5,
+    def analyze_z_bands(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
                         a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -529,7 +531,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold : float, optional
@@ -559,6 +561,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
@@ -588,7 +591,15 @@ class SarcAsM(SarcAsMBase):
             images = np.expand_dims(images, 0)
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, 0)
-        n_imgs = len(zbands)
+        # One mask page per detected frame — see the same guard in
+        # analyze_sarcomere_vectors.
+        n_imgs = min(len(zbands), len(images), len(orientation_field))
+        if n_imgs < len(list_frames):
+            logger.warning(
+                f'detect_sarcomeres covered {n_imgs} frame(s), but {len(list_frames)} were '
+                f'requested — analyzing the first {n_imgs}. Run detect_sarcomeres on the '
+                'frames you want to analyze.')
+            list_frames = list_frames[:n_imgs]
 
         # create empty lists
         def none_lists():
@@ -708,7 +719,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_vectors(self, frames: Union[str, int, List[int], np.ndarray] = 'all', threshold_mbands: float = 0.25,
+    def analyze_sarcomere_vectors(self, frames: Union[str, int, Sequence[int]] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.3, interp_factor: int = 4,
                                   slen_lims: Tuple[float, float] = (1, 3), threshold_sarcomere_mask=0.1,
                                   interpolation_method: str = 'akima',
@@ -721,7 +732,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         threshold_mbands : float, optional
@@ -827,6 +838,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
@@ -878,26 +890,26 @@ class SarcAsM(SarcAsMBase):
         if len(orientation_field.shape) == 3:
             orientation_field = np.expand_dims(orientation_field, axis=0)
 
-        # The loop below zips list_frames against the mask stacks, so a stack that
-        # is shorter than the requested range would silently analyse fewer frames
-        # while params.analyze_sarcomere_vectors.frames still claimed the full
-        # range. Downstream that surfaces far away and confusingly — as
-        # track_sarcomere_vectors reporting missing vectors. Trim to what is
-        # actually available and say so, so the stored params stay truthful.
-        _stack_lengths = {'zbands': len(z_bands), 'mbands': len(mbands),
-                          'orientation': len(orientation_field),
-                          'sarcomere_mask': len(sarcomere_mask)}
-        _n_available = min(_stack_lengths.values())
-        if _n_available < len(list_frames):
-            _short = ', '.join(f'{k} ({v})' for k, v in _stack_lengths.items()
-                               if v == _n_available)
+        # detect_sarcomeres writes one mask page per DETECTED frame, so after a partial
+        # detection there are fewer pages than frames requested here. The zip() below
+        # stops at the shortest input, which would leave the rest of the movie silently
+        # unanalysed while params.analyze_sarcomere_vectors.frames still claimed it —
+        # and the failure would only surface much later, in track_sarcomere_vectors.
+        stack_lengths = {'zbands': len(z_bands), 'mbands': len(mbands),
+                         'orientation': len(orientation_field),
+                         'sarcomere_mask': len(sarcomere_mask)}
+        n_available = min(stack_lengths.values())
+        if n_available < len(list_frames):
+            shortest = ', '.join(f'{name} ({n})' for name, n in stack_lengths.items()
+                                 if n == n_available)
             logger.warning(
-                f'Only {_n_available} of the {len(list_frames)} requested frames have '
-                f'masks for every input (shortest: {_short}); analyzing frames '
-                f'{list_frames[0]}-{list_frames[_n_available - 1]} only. Re-run '
-                f'detect_sarcomeres() over the full range if you expected all of them.'
-            )
-            list_frames = list_frames[:_n_available]
+                f'Only {n_available} of the {len(list_frames)} requested frames have masks for '
+                f'every input (shortest: {shortest}) — analyzing the first {n_available}. '
+                'M-bands, sarcomere orientation and the sarcomere mask are needed per frame '
+                'and only detect_sarcomeres produces them (detect_z_bands_fast_movie replaces '
+                'the Z-band mask alone). For motion analysis, run detect_sarcomeres on every '
+                'frame you want to track.')
+            list_frames = list_frames[:n_available]
 
         # Optional temporal smoothing of the orientation field.
         if smooth_orientation_sigma > 0 and orientation_field.shape[0] > 1:
@@ -1005,7 +1017,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_myofibrils(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_myofibrils(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
                            n_min: int = 4, median_filter_radius: float = 0.5,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
@@ -1014,7 +1026,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray} or None, optional
+        frames : {'all', int, sequence of int} or None, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             If None, frames from sarcomere vector analysis are used.
             Default is None.
@@ -1037,6 +1049,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos_px' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
@@ -1055,9 +1068,9 @@ class SarcAsM(SarcAsMBase):
         if frames == 'all':
             n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
-        elif isinstance(frames, int):
-            list_frames = [frames]
-        elif isinstance(frames, list) or type(frames) is np.ndarray:
+        elif np.issubdtype(type(frames), np.integer):
+            list_frames = [int(frames)]
+        elif isinstance(frames, (list, np.ndarray)):
             list_frames = list(frames)
         else:
             raise ValueError('Selection of frames not valid!')
@@ -1154,7 +1167,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, List[int], np.ndarray]] = None,
+    def analyze_sarcomere_domains(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                                   d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
                                   random_seed: int = 42, area_min: float = 20.0, dilation_radius: float = 0.3,
                                   store_mask: bool = False,
@@ -1165,7 +1178,7 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray} or None, optional
+        frames : {'all', int, sequence of int} or None, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             If None, frames from sarcomere vector analysis are used.
             Default is None.
@@ -1192,6 +1205,7 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
+        frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
         if frames is not None:
@@ -1210,10 +1224,10 @@ class SarcAsM(SarcAsMBase):
         if frames == 'all':
             n_imgs = self.metadata.n_stack
             list_frames = list(range(n_imgs))
-        elif isinstance(frames, int):
+        elif np.issubdtype(type(frames), np.integer):
             n_imgs = 1
-            list_frames = [frames]
-        elif isinstance(frames, list) or type(frames) is np.ndarray:
+            list_frames = [int(frames)]
+        elif isinstance(frames, (list, np.ndarray)):
             n_imgs = len(frames)
             list_frames = list(frames)
         else:
@@ -1300,7 +1314,7 @@ class SarcAsM(SarcAsMBase):
 
     def track_sarcomere_vectors(
         self,
-        frames: Union[str, int, List[int], np.ndarray] = 'all',
+        frames: Union[str, int, Sequence[int]] = 'all',
         max_disp_along_um: float = 1.0,
         max_disp_perp_um: float = 0.2,
         ori_tol_deg: float = 45.0,
@@ -1327,9 +1341,11 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
-            Frames to track ('all', a single frame index, or selected frames).
-            Default is 'all'.
+        frames : {'all', int, sequence of int}, optional
+            Frames to track ('all' or a contiguous selection). 'all' resolves to
+            every frame that carries sarcomere vectors, which is the frame range
+            analyze_sarcomere_vectors actually covered, not necessarily the whole
+            movie. Default is 'all'.
         max_disp_along_um : float, optional
             Match-gate tolerance for motion along the sarcomere axis, in µm — the
             maximum a track may move along its axis per frame. At the default
@@ -1365,15 +1381,19 @@ class SarcAsM(SarcAsMBase):
             False on filled frames, so coverage and every real-observation metric
             are unaffected. Set to 0 to leave all gap frames NaN. Default is 3.
         """
+        frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
 
-        # Frame selection matches the pattern in analyze_sarcomere_vectors.
-        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if ((isinstance(frames, str) and frames == 'all')
-                or (self.metadata.n_stack == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.metadata.n_stack))
+        # 'all' means every frame that actually carries vectors. Detection and vector
+        # analysis may have covered only part of the movie, and the stored params can
+        # be stale (an interrupted run leaves them claiming the whole stack), so the
+        # data itself decides — not params.
+        pv = self.data['structure.sarcomere.pos_px']
+        n_analysable = min(self.metadata.n_stack, len(pv))
+        analysed = [t for t in range(n_analysable) if pv[t] is not None]
+        if isinstance(frames, str) and frames == 'all':
+            list_frames = analysed
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
             if np.issubdtype(type(frames), np.integer):
                 list_frames = [int(frames)]
@@ -1383,7 +1403,12 @@ class SarcAsM(SarcAsMBase):
             raise ValueError('frames argument not valid')
 
         if len(list_frames) < 2:
-            raise ValueError('Need at least 2 frames for tracking.')
+            raise ValueError(
+                f'Need at least 2 frames for tracking; sarcomere vectors exist for '
+                f'{len(analysed)} of {self.metadata.n_stack} frames (e.g. {analysed[:8]}). '
+                'Run detect_sarcomeres and then analyze_sarcomere_vectors on the frames you '
+                'want to track — detect_sarcomeres(frames=0) covers the first frame only, '
+                'and M-bands and orientation are needed in every tracked frame.')
 
         # Tracking is temporal: real-time gaps between non-contiguous frames would
         # be treated as single-frame steps (the seconds-valued horizons assume
@@ -1394,9 +1419,6 @@ class SarcAsM(SarcAsMBase):
                 'The tracker assumes a single-frame step between consecutive entries.')
 
         # The per-frame vectors must ACTUALLY be present for every tracked frame.
-        # (params.analyze_sarcomere_vectors.frames can be stale — e.g. left claiming
-        # all frames after an interrupted run — so check the data itself, not params.)
-        pv = self.data['structure.sarcomere.pos_px']
         missing = [t for t in list_frames if t >= len(pv) or pv[t] is None]
         if missing:
             preview = missing[:8]
@@ -1474,21 +1496,66 @@ class SarcAsM(SarcAsMBase):
         self.data.update(tracking_data)
         # Re-tracking changes track identities, so any prior grouping no longer
         # matches the new tracks. Drop the stale grouping keys (grouped-motion
-        # getters are additionally guarded by _assert_track_motion_fresh via the
-        # grouping_hash / track_ids_snapshot) so the tracks dataframe and napari
+        # getters are additionally guarded by _assert_track_motion_fresh via
+        # motion.groups.hash / motion.groups.track_ids) so the tracks dataframe and napari
         # overlays never mix an old grouping with the new tracks. Re-run
         # group_tracks (+ analyze_track_motion) to regroup.
-        for _stale in ('motion.tracks.group_id', 'motion.tracks.group_order', 'motion.groups.kind',
-                       'motion.groups.n', 'motion.groups.member_counts', 'motion.groups.n_vectors_total',
-                       'motion.groups.n_vectors_in_long_tracks', 'motion.groups.track_ids',
-                       'motion.groups.hash', 'motion.groups.analyzed_kind'):
-            if _stale in self.data:
-                del self.data[_stale]
+        self._invalidate_groupings()
         logger.info(f'Tracked {out["motion.tracks.n"]} sarcomere query points over {len(list_frames)} frames.')
         if self.auto_save:
             self.store_structure_data()
 
-    def get_tracks(self, min_coverage: float = 0.0) -> pd.DataFrame:
+    #: Grouping artifacts of the grouping currently in effect, each mapped to the leaf
+    #: it is mirrored under at ``motion.groups.<kind>.<leaf>`` by group_tracks.
+    #: ``motion.groups.kind`` is not mirrored — once the kind is a path segment its own
+    #: name carries no information — but it is still dropped on invalidation.
+    _GROUPING_MIRRORS = {
+        'motion.tracks.group_id': 'track_group_id',
+        'motion.tracks.group_order': 'track_group_order',
+        'motion.groups.n': 'n',
+        'motion.groups.member_counts': 'member_counts',
+        'motion.groups.n_vectors_total': 'n_vectors_total',
+        'motion.groups.n_vectors_in_long_tracks': 'n_vectors_in_long_tracks',
+        'motion.groups.track_ids': 'track_ids',
+        'motion.groups.hash': 'hash',
+    }
+
+    @classmethod
+    def _grouping_key(cls, kind: Optional[str], current_key: str) -> str:
+        """Key holding ``current_key``'s value for ``kind``.
+
+        ``kind=None`` means the grouping currently in effect, which lives in the
+        unqualified key; naming a kind selects that kind's own mirror.
+        """
+        if kind is None:
+            return current_key
+        return f'motion.groups.{kind}.{cls._GROUPING_MIRRORS[current_key]}'
+
+    def _grouped_kinds(self) -> List[str]:
+        """Kinds whose grouping is mirrored in this store, in grouping-level order."""
+        return [lvl for lvl in self._GROUPING_LEVELS
+                if self._grouping_key(lvl, 'motion.tracks.group_id') in self.data]
+
+    def _invalidate_groupings(self) -> None:
+        """Drop every grouping artifact, current and per-kind.
+
+        A grouping labels *tracks*, so re-tracking makes it meaningless. Leaving a
+        mirror behind would let a stale grouping be read back afterwards.
+        """
+        stale = list(self._GROUPING_MIRRORS)
+        stale += ['motion.groups.kind', 'motion.groups.analyzed_kind',
+                  'motion.groups.analyzed_kinds',
+                  'params.analyze_track_motion.grouping_hash',
+                  'params.analyze_track_motion.n_groups']
+        for lvl in self._GROUPING_LEVELS:
+            stale.extend(self._grouping_key(lvl, key) for key in self._GROUPING_MIRRORS)
+            stale.append(f'params.analyze_track_motion.grouping_hash_{lvl}')
+            stale.append(f'params.analyze_track_motion.n_groups_{lvl}')
+        for key in stale:
+            if key in self.data:
+                del self.data[key]
+
+    def get_tracks(self, min_coverage: float = 0.0, kind: Optional[str] = None) -> pd.DataFrame:
         """Tidy per-track summary of the 2D tracker output (one row per track).
 
         Discoverable accessor over the dense ``tracks_*`` arrays written by
@@ -1500,6 +1567,13 @@ class SarcAsM(SarcAsMBase):
         min_coverage : float, optional
             Only return tracks whose coverage (observed frames / n_frames)
             is at least this value. Default 0.0 (all kept tracks).
+        kind : str or None, optional
+            Which grouping's labels to put in ``group_id`` / ``order_in_group``.
+            ``None`` (default) uses the grouping currently in effect. Name a kind
+            to read that grouping's labels instead — what you want after grouping
+            one tracking several ways, since otherwise the labels are those of
+            whichever grouping ran last. Raises if the kind was never grouped.
+            Default is None.
 
         Returns
         -------
@@ -1558,10 +1632,16 @@ class SarcAsM(SarcAsMBase):
             'ref_midline_id': ref_mid,
         })
         # Grouping columns appear once group_tracks has been run.
-        if 'motion.tracks.group_id' in self.data:
-            df['group_id'] = np.asarray(self.data['motion.tracks.group_id']).reshape(-1)[:n_tracks]
-        if 'motion.tracks.group_order' in self.data:
-            df['order_in_group'] = np.asarray(self.data['motion.tracks.group_order']).reshape(-1)[:n_tracks]
+        gid_key = self._grouping_key(kind, 'motion.tracks.group_id')
+        order_key = self._grouping_key(kind, 'motion.tracks.group_order')
+        if kind and gid_key not in self.data:
+            raise ValueError(
+                f"No '{kind}' grouping in this store. Run group_tracks(by='{kind}') "
+                f"first; grouped kinds: {self._grouped_kinds()}.")
+        if gid_key in self.data:
+            df['group_id'] = np.asarray(self.data[gid_key]).reshape(-1)[:n_tracks]
+        if order_key in self.data:
+            df['order_in_group'] = np.asarray(self.data[order_key]).reshape(-1)[:n_tracks]
 
         if min_coverage > 0.0:
             df = df[df['coverage'] >= min_coverage].reset_index(drop=True)
@@ -1770,11 +1850,14 @@ class SarcAsM(SarcAsMBase):
 
         Notes
         -----
-        Stores ``track_group_id`` / ``track_group_order`` ``(n_tracks,)``,
-        ``group_kind``, ``n_groups``, ``group_member_counts``,
-        ``track_ids_snapshot`` and ``grouping_hash`` into ``self.data``. The
-        ``grouping_hash`` changes whenever the tracks or the recipe change; a
-        stale :meth:`analyze_track_motion` result is then detected on read.
+        Stores ``motion.tracks.group_id`` / ``motion.tracks.group_order``
+        ``(n_tracks,)``, ``motion.groups.kind``, ``motion.groups.n``,
+        ``motion.groups.member_counts``, ``motion.groups.track_ids`` and
+        ``motion.groups.hash`` into ``self.data``, and mirrors all of them (bar the
+        kind's own name) under ``motion.groups.<by>.*`` so a later grouping of the
+        same tracking cannot overwrite this one. The hash changes whenever the tracks
+        or the recipe change; a stale :meth:`analyze_track_motion` result is then
+        detected on read.
         """
         if 'motion.tracks.slen' not in self.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
@@ -2012,16 +2095,24 @@ class SarcAsM(SarcAsMBase):
             max_drift_slen=max_drift_slen,
             labels=labels if by == 'custom' else None)
 
-        self.data.update({
+        current = {
             'motion.tracks.group_id': gid,
             'motion.tracks.group_order': order,
-            'motion.groups.kind': by,
             'motion.groups.n': n_groups,
             'motion.groups.member_counts': counts,
             'motion.groups.n_vectors_total': int(n_vectors_total),
             'motion.groups.n_vectors_in_long_tracks': int(n_vectors_long),
             'motion.groups.track_ids': np.asarray(track_ids).copy(),
             'motion.groups.hash': grouping_hash,
+        }
+        # The keys above mean "the grouping currently in effect" and are overwritten by
+        # the next group_tracks call; the motion.groups.<by>.* mirrors persist, so
+        # several groupings of one tracking stay independently readable.
+        per_kind = {self._grouping_key(by, key): value for key, value in current.items()}
+        self.data.update({
+            **current,
+            **per_kind,
+            'motion.groups.kind': by,
             'params.group_tracks.by': by,
             'params.group_tracks.reference_frame': reference_frame,
             'params.group_tracks.min_coverage': min_coverage,
@@ -2230,27 +2321,47 @@ class SarcAsM(SarcAsMBase):
             'params.analyze_track_motion.min_valid_frames': min_valid_frames,
             'params.analyze_track_motion.filter_params': filter_params,
             'params.analyze_track_motion.n_groups': n_groups,
+            # Per-kind provenance, so an earlier kind stays validatable after a later
+            # grouping overwrote the keys of the grouping currently in effect.
+            f'params.analyze_track_motion.grouping_hash_{kind}': self.data['motion.groups.hash'],
+            f'params.analyze_track_motion.n_groups_{kind}': n_groups,
         })
+        kinds = list(self.data.get('motion.groups.analyzed_kinds') or [])
+        if kind not in kinds:
+            kinds.append(kind)
+        result['motion.groups.analyzed_kinds'] = kinds
         self.data.update(result)
         logger.info(f"analyze_track_motion complete ('{kind}', {n_groups} groups).")
         if self.auto_save:
             self.store_structure_data()
 
-    def _assert_track_motion_fresh(self) -> None:
+    def _assert_track_motion_fresh(self, kind: Optional[str] = None) -> None:
         """Hard-raise if grouped track-motion results are missing or stale.
 
         Guards getters/plots so a grouping changed after analysis can never
         silently return the previous grouping's numbers.
+
+        Parameters
+        ----------
+        kind : str or None, optional
+            Grouping kind to validate. ``None`` (default) checks the grouping
+            currently in effect — the pre-1.0.1 behaviour. Naming a kind checks
+            that kind's own recorded grouping against the current tracks, so a
+            kind analysed before a later ``group_tracks`` call stays readable.
+            Default is None.
         """
-        used = self.data.get('params.analyze_track_motion.grouping_hash')
+        suffix = f'_{kind}' if kind else ''
+        used = self.data.get(f'params.analyze_track_motion.grouping_hash{suffix}')
         if used is None:
-            raise ValueError('No grouped track-motion analysis found. '
+            which = f" for kind '{kind}'" if kind else ''
+            raise ValueError(f'No grouped track-motion analysis found{which}. '
                              'Run analyze_track_motion() first.')
-        cur = self.data.get('motion.groups.hash')
+        cur = self.data.get(self._grouping_key(kind, 'motion.groups.hash'))
         if cur is None or cur != used:
             raise ValueError('Track grouping changed since analyze_track_motion() was run. '
                              'Re-run analyze_track_motion() before reading grouped results.')
-        snapshot_ids = np.asarray(self.data.get('motion.groups.track_ids', []))
+        snapshot_ids = np.asarray(
+            self.data.get(self._grouping_key(kind, 'motion.groups.track_ids'), []))
         cur_ids = np.asarray(self.data.get('motion.tracks.ids', []))
         if not np.array_equal(snapshot_ids, cur_ids):
             raise ValueError('Tracks changed since grouping. Re-run track_sarcomere_vectors '
@@ -2673,10 +2784,11 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, list of int, np.ndarray}, optional
+        frames : {'all', int, sequence of int}, optional
             Frames to analyze ('all', a single frame index, or selected frames).
             Default is 'all'.
         """
+        frames = self._normalize_frames(frames)
         self.auto_save = False
         self.analyze_cell_mask()
         self.analyze_z_bands(frames=frames)

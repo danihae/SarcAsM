@@ -1168,6 +1168,7 @@ class Utils:
     def get_orientation_angle_map(orientation_field: np.ndarray,
                                   use_median_filter: bool = True,
                                   radius: int = 3,
+                                  min_magnitude: float = 0.0,
                                   progress_notifier=None) -> np.ndarray:
         """
         Convert a polar vector field into a map of angles for sarcomere orientations.
@@ -1181,6 +1182,9 @@ class Utils:
         orientation_field : np.ndarray
             Polar vector field(s). For a single image, shape ``(2, H, W)``.
             For multiple images, shape ``(N, 2, H, W)``.
+        min_magnitude : float, optional
+            Pixels whose predicted vector is shorter than this are returned as NaN
+            instead of an arbitrary angle. Default 0.0 (previous behaviour).
         use_median_filter : bool, optional
             Whether to apply a median filter to the resulting angle map.
             Default is True.
@@ -1205,6 +1209,18 @@ class Utils:
                 "orientation_field must have shape (2, H, W) or (N, 2, H, W)."
             )
 
+        # Pixels with no meaningful orientation (near-zero vector = no confidence).
+        # The U-Net's orientation head outputs a near-zero vector wherever no sarcomere
+        # orientation is defined, and arctan2 of a near-zero vector is an arbitrary angle
+        # — numerically valid, statistically meaningless. Without a gate those pixels
+        # enter area-wide statistics as uniformly distributed noise indistinguishable
+        # from real measurements. The default 0.0 reproduces the previous behaviour;
+        # 0.3-0.5 suits the current models, but inspect your own magnitude histogram.
+        undefined = None
+        if min_magnitude > 0:
+            magnitude = np.sqrt((orientation_field ** 2).sum(axis=1))
+            undefined = magnitude < min_magnitude
+
         # Compute angles
         angles = np.arctan2(orientation_field[:, 1], orientation_field[:, 0])
         angles = (angles + 2 * np.pi) % (2 * np.pi)
@@ -1225,6 +1241,17 @@ class Utils:
                 x = np.cos(doubled_angles)
                 y = np.sin(doubled_angles)
 
+                # Undefined pixels must not contribute their arbitrary direction to a
+                # neighbour's median, so blank them and use the NaN-aware filter.
+                if undefined is not None:
+                    x = np.where(undefined[i], np.nan, x)
+                    y = np.where(undefined[i], np.nan, y)
+                    filtered_doubled = np.arctan2(
+                        Utils.nanmedian_filter_numba(y, window_size=2 * radius + 1),
+                        Utils.nanmedian_filter_numba(x, window_size=2 * radius + 1))
+                    filtered[i] = ((filtered_doubled + 2 * np.pi) % (2 * np.pi)) / 2
+                    continue
+
                 # Apply median filter to vector components
                 x_filtered = Utils.median_filter_numba(x, footprint=footprint)
                 y_filtered = Utils.median_filter_numba(y, footprint=footprint)
@@ -1239,6 +1266,9 @@ class Utils:
                 filtered[i] = filtered_doubled_angles / 2
 
             angles = filtered
+
+        if undefined is not None:
+            angles = np.where(undefined, np.nan, angles)
 
         return angles.squeeze()
 

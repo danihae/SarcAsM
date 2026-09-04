@@ -2345,7 +2345,8 @@ class Plots:
     @staticmethod
     def _resolve_kind(sarc_obj, kind):
         """Resolve and validate the grouping kind, defaulting to the last analyzed one."""
-        sarc_obj._assert_track_motion_fresh()
+        # Validate the kind being plotted, not just the current grouping.
+        sarc_obj._assert_track_motion_fresh(kind)
         if kind is None:
             kind = sarc_obj.data.get('motion.groups.analyzed_kind')
         if f'motion.{kind}.slen' not in sarc_obj.data:
@@ -2374,7 +2375,7 @@ class Plots:
             The SarcAsM object with track motion analysis results.
         kind : str, optional
             Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
-            grouping (``track_motion_kind``) is used. Default is None.
+            grouping (``motion.groups.analyzed_kind``) is used. Default is None.
         t_lim : tuple of float, optional
             The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple of float, optional
@@ -2414,7 +2415,7 @@ class Plots:
             The SarcAsM object with track motion analysis results.
         kind : str, optional
             Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
-            grouping (``track_motion_kind``) is used. Default is None.
+            grouping (``motion.groups.analyzed_kind``) is used. Default is None.
         t_lim : tuple of float, optional
             The time limits for the plot in seconds. Default is (0, 12).
         y_lim : tuple of float, optional
