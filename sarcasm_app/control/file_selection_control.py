@@ -220,7 +220,7 @@ class FileSelectionControl:
         self.__main_control.model.init_cell(file)
         self.__main_control.init_scale_bar()
         self.__main_control.init_image_stack()
-        self.__main_control.init_z_band_stack(fastmovie=True)
+        self.__main_control.init_z_band_stack()
         self.__main_control.init_m_band_stack(visible=False)
         self.__main_control.init_z_lateral_connections(visible=False)
         self.__main_control.init_cell_mask_stack()

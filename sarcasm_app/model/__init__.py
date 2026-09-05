@@ -99,13 +99,6 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.98)
 
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.auto_patch_size').set_value(True)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(256)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.size_height').set_value(256)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.98)
 
 
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
@@ -220,13 +213,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.network_path')
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.auto_patch_size', value=True)
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.n_frames')
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.size_width')
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.size_height')
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_min')
-        self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_max')
 
 
         self.__parameters.set_parameter(name='structure.frames')

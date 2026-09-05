@@ -73,13 +73,6 @@ class StructureAnalysisControl:
                         widget.label_11, widget.label_10):
             element.setVisible(not checked)
 
-    def __on_fast_movie_auto_patch_size_toggled(self, checked: bool):
-        widget = self.__structure_parameters_widget
-        for element in (widget.sb_fast_movie_width, widget.sb_fast_movie_height,
-                        widget.sb_fast_movie_n_frames, widget.label_34, widget.label_33,
-                        widget.label_31):
-            element.setVisible(not checked)
-
     def __predict_call(self, worker, model: ApplicationModel):
 
         progress_notifier = self.__get_progress_notifier(worker)
@@ -98,31 +91,6 @@ class StructureAnalysisControl:
                                progress_notifier=progress_notifier)
 
         pass
-
-    def __predict_call_fast_movie(self, worker, model: ApplicationModel):
-        progress_notifier = self.__get_progress_notifier(worker)
-
-        network_model = model.parameters.get_parameter('structure.predict_fast_movie.network_path').get_value()
-        if network_model == 'generalist':
-            network_model = None
-        cell: SarcAsM = TypeUtils.unbox(model.cell)
-        size = patch_size_from_parameters(model.parameters, 'structure.predict_fast_movie')
-        cell.detect_z_bands_fast_movie(model_path=network_model,
-                                       max_patch_size=size,
-                                       clip_thres=(
-                                           model.parameters.get_parameter(
-                                               'structure.predict_fast_movie.clip_thresh_min').get_value(),
-                                           model.parameters.get_parameter(
-                                               'structure.predict_fast_movie.clip_thresh_max').get_value()),
-                                       progress_notifier=progress_notifier)
-        pass
-
-    def __chk_prediction_network_fast_movie(self):
-        if self.__main_control.model.parameters.get_parameter(
-                'structure.predict_fast_movie.network_path').get_value() == '':
-            logger.warning('No network file was chosen for fast movie prediction')
-            return False
-        return True
 
     def __chk_prediction_network(self):
         if self.__main_control.model.parameters.get_parameter('structure.predict.network_path').get_value() == '':
@@ -157,22 +125,6 @@ class StructureAnalysisControl:
                                                    start_message='Start prediction of sarcomere z-bands',
                                                    finished_message=message_finished,
                                                    finished_action=self.__detect_sarcomeres_finished,
-                                                   finished_successful_action=cell.commit)
-        self.__worker = worker
-        return worker
-
-    def on_btn_z_bands_predict_fast_movies(self):
-        if not self.__chk_initialized():
-            return
-        if not self.__chk_prediction_network_fast_movie():
-            return
-        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = f'Z-bands in fast movies detected and saved in {cell.store_path}'
-        worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
-                                                   call_lambda=self.__predict_call_fast_movie,
-                                                   start_message='Start prediction of sarcomere z-bands fast movies',
-                                                   finished_message=message_finished,
-                                                   finished_action=self.__detect_z_bands_fast_movie_finished,
                                                    finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
@@ -340,12 +292,6 @@ class StructureAnalysisControl:
         if f_name is not None:
             self.__structure_parameters_widget.le_network.setText(f_name[0])
 
-    def on_btn_fast_movie_search_network(self):
-        f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
-        if f_name is not None:
-            self.__structure_parameters_widget.le_fast_movie_network_model.setText(f_name[0])
-        pass
-
     def __filter_input_prediction_size(self, element):
         if not (hasattr(element, 'value') and hasattr(element, 'setValue')):
             return
@@ -415,8 +361,6 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.btn_structure_myofibril.clicked.connect(self.on_btn_myofibril)
         self.__structure_parameters_widget.btn_search_network.clicked.connect(self.on_btn_search_network)
         self.__structure_parameters_widget.btn_structure_domain_analysis.clicked.connect(self.on_btn_domain_analysis)
-        self.__structure_parameters_widget.btn_fast_movie_search.clicked.connect(self.on_btn_fast_movie_search_network)
-        self.__structure_parameters_widget.btn_fast_movie.clicked.connect(self.on_btn_z_bands_predict_fast_movies)
 
         parameters = self.__main_control.model.parameters
         widget = self.__structure_parameters_widget
@@ -430,24 +374,11 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.predict.clip_thresh_min').connect(widget.dsb_predict_clip_thresh_min)
         parameters.get_parameter(name='structure.predict.clip_thresh_max').connect(widget.dsb_predict_clip_thresh_max)
 
-        parameters.get_parameter(name='structure.predict_fast_movie.network_path').connect(
-            widget.le_fast_movie_network_model)
-        parameters.get_parameter(name='structure.predict_fast_movie.auto_patch_size').connect(
-            widget.chk_fast_movie_auto_patch_size)
-        parameters.get_parameter(name='structure.predict_fast_movie.n_frames').connect(widget.sb_fast_movie_n_frames)
-        parameters.get_parameter(name='structure.predict_fast_movie.size_width').connect(widget.sb_fast_movie_width)
-        parameters.get_parameter(name='structure.predict_fast_movie.size_height').connect(widget.sb_fast_movie_height)
 
         # Grey out the manual size boxes while 'Auto' is on, so it is visible that
         # they are not what the prediction will use.
         widget.chk_predict_auto_patch_size.toggled.connect(self.__on_auto_patch_size_toggled)
-        widget.chk_fast_movie_auto_patch_size.toggled.connect(self.__on_fast_movie_auto_patch_size_toggled)
         self.__on_auto_patch_size_toggled(widget.chk_predict_auto_patch_size.isChecked())
-        self.__on_fast_movie_auto_patch_size_toggled(widget.chk_fast_movie_auto_patch_size.isChecked())
-        parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').connect(
-            widget.dsb_fast_movie_clip_thresh_min)
-        parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').connect(
-            widget.dsb_fast_movie_clip_thresh_max)
 
 
         parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
@@ -496,9 +427,6 @@ class StructureAnalysisControl:
         self.__main_control.init_m_band_stack()
         self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
-
-    def __detect_z_bands_fast_movie_finished(self):
-        self.__main_control.init_z_band_stack(fastmovie=True)
 
     def __z_band_analysis_finished(self):
         self.__main_control.init_z_lateral_connections()

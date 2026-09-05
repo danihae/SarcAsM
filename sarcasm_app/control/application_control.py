@@ -674,12 +674,9 @@ class ApplicationControl:
         current_index = list(self.viewer.layers).index(self.viewer.layers['ImageData'])
         self.viewer.layers.move(current_index, 0)
 
-    def init_z_band_stack(self, visible=True, fastmovie=False):
-        if fastmovie and not self.model.cell._mask_exists('zbands_fast_movie'):
-            fastmovie = False
+    def init_z_band_stack(self, visible=True):
         if self.model.cell is not None:
-            tmp = self.model.cell.load_mask_full_stack(
-                'zbands_fast_movie' if fastmovie else 'zbands')
+            tmp = self.model.cell.load_mask_full_stack('zbands')
             if tmp is None:
                 return
             if self.viewer.layers.__contains__('ZbandMask'):
