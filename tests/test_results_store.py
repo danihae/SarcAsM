@@ -42,7 +42,7 @@ def _sample_data():
                         sparse.eye(15).tocoo()],          # per-frame sparse
         "params.track_sarcomere_vectors.frames": list(range(30)),
         "params.track_sarcomere_vectors.max_disp_along_um": 1.0,
-        "params.detect_sarcomeres.model": "model_v3",
+        "params.detect_sarcomeres.model_path": "model_v3",
     }
 
 
@@ -128,7 +128,7 @@ def test_route_is_the_path():
     assert _route("motion.pool.slen") == ("motion/pool", "slen")
     assert _route("structure.domain.slen") == ("structure/domain", "slen")
     assert _route("structure.sarcomere.oop") == ("structure/sarcomere", "oop")
-    assert _route("params.detect_sarcomeres.model") == ("params/detect_sarcomeres", "model")
+    assert _route("params.detect_sarcomeres.model_path") == ("params/detect_sarcomeres", "model_path")
 
 
 def test_structure_and_motion_never_collide():
@@ -157,7 +157,7 @@ def test_attribute_access(store):
     assert r.structure.sarcomere.oop == r["structure.sarcomere.oop"]
     assert type(r.structure.sarcomere.oop) is type(r["structure.sarcomere.oop"])
     assert r.params.track_sarcomere_vectors.max_disp_along_um == 1.0
-    assert r.params.detect_sarcomeres.model == "model_v3"
+    assert r.params.detect_sarcomeres.model_path == "model_v3"
 
 
 
@@ -274,7 +274,7 @@ def test_describe_structure_and_motion_and_params(store):
     assert "sarcomere length" in r.describe("motion.tracks.slen").name.lower()
     info = r.describe("motion.pool.beating_rate")
     assert info.registry == "motion" and "beating" in info.description.lower()
-    assert r.describe("params.detect_sarcomeres.model").registry == "params"
+    assert r.describe("params.detect_sarcomeres.model_path").registry == "params"
 
 
 @pytest.mark.parametrize("kind", MOTION_KINDS)

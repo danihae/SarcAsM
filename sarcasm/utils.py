@@ -17,8 +17,6 @@ import datetime
 import glob
 import logging
 import os
-import platform
-import subprocess
 import warnings
 from pathlib import Path
 from typing import Tuple, Any, List, Union
@@ -303,24 +301,6 @@ class Utils:
         files = glob.glob(folder + '*.tif')
         logger.info(f'{len(files)} files found')
         return files
-
-    @staticmethod
-    def open_folder(path: str):
-        """
-        Open a folder in the file explorer.
-
-        Parameters
-        ----------
-        path : str
-            Path to the folder.
-        """
-        if platform.system() == "Windows":
-            subprocess.Popen(["explorer", path])
-        elif platform.system() == "Darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
-
 
     @staticmethod
     def check_and_round_max_patch_size(max_patch_size):
@@ -864,10 +844,7 @@ class Utils:
         width_pixels = int(np.round(width / pixelsize, 0))
         window_size = width_pixels * max(interp_factor, 1)
 
-        # Fast path: all profiles share the same length (typical case when the
-        # caller uses ``fast_profile_lines`` with uniform endpoints). Build the
-        # interpolator once over the full (N, L) batch instead of once per
-        # profile, since constructing it is the expensive part.
+        # fast path for uniform profile length: one interpolator over the (N, L) batch
         lengths0 = len(profiles[0])
         uniform_length = all(len(p) == lengths0 for p in profiles)
 
@@ -1209,13 +1186,7 @@ class Utils:
                 "orientation_field must have shape (2, H, W) or (N, 2, H, W)."
             )
 
-        # Pixels with no meaningful orientation (near-zero vector = no confidence).
-        # The U-Net's orientation head outputs a near-zero vector wherever no sarcomere
-        # orientation is defined, and arctan2 of a near-zero vector is an arbitrary angle
-        # — numerically valid, statistically meaningless. Without a gate those pixels
-        # enter area-wide statistics as uniformly distributed noise indistinguishable
-        # from real measurements. The default 0.0 reproduces the previous behaviour;
-        # 0.3-0.5 suits the current models, but inspect your own magnitude histogram.
+        # a near-zero orientation vector has an arbitrary angle: gate it out
         undefined = None
         if min_magnitude > 0:
             magnitude = np.sqrt((orientation_field ** 2).sum(axis=1))
@@ -1424,10 +1395,7 @@ class Utils:
         lengths = np.ceil(np.sqrt(np.sum(vectors ** 2, axis=1)) + 1).astype(int)
         n_lines = len(start_points)
 
-        # Fast path: when all profile lengths are identical (typical case in
-        # sarcomere vector analysis where endpoints are derived from a constant
-        # half-length scale), build coordinates fully vectorized instead of
-        # per-line Python loop.
+        # fast path for uniform profile length: fully vectorized coordinates
         if n_lines > 0 and int(lengths.min()) == int(lengths.max()):
             L = int(lengths[0])
             t = np.linspace(0.0, 1.0, L)  # (L,)

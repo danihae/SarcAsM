@@ -29,7 +29,7 @@ from sarcasm.features import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plotting.plot_utils import PlotUtils
 from sarcasm.structure import SarcAsM
-from sarcasm.analysis import domain_clustering, grouped_motion, myofibril_analysis
+from sarcasm.analysis import domain_clustering, grouped_motion, heterogeneity, myofibril_analysis
 from sarcasm.utils import Utils
 
 # Canonical axis labels (kept consistent with the symbols used across the
@@ -82,7 +82,7 @@ class Plots:
             ax_t.set_ylim(ylim)
 
     @staticmethod
-    def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, 12), t_lim_overlay=(-0.1, 2.9),
+    def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, None), t_lim_overlay=(-0.1, 2.9),
                                 file_path=None):
         """
         Plot a summary of the motion of the line of interest (LOI).
@@ -94,7 +94,8 @@ class Plots:
         number_contr : int, optional
             The index of the contraction to plot. Default is 0.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         t_lim_overlay : tuple of float, optional
             The time limits for the overlay plots in seconds. Default is (-0.1, 2.9).
         file_path : str, optional
@@ -395,11 +396,7 @@ class Plots:
             Plots.plot_z_bands(ax, sarc_obj, frame=frame, cmap=cmap_z_bands, alpha=alpha_z_bands,
                                invert=invert_z_bands, scalebar=scalebar)
         else:
-            # No background image: nothing establishes image coordinates, so set them
-            # here. Without this the overlay inherits matplotlib's y-up default and
-            # renders vertically mirrored w.r.t. the image (and w.r.t. the zoom insets,
-            # which invert explicitly), while collection-only plots (plot_tracks) never
-            # autoscale at all and come out blank.
+            # no imshow to establish image coordinates: set them (y down, full extent)
             size = getattr(sarc_obj.metadata, 'size', None)
             if size is not None and len(size) >= 2:
                 h, w = int(size[-2]), int(size[-1])
@@ -1543,8 +1540,9 @@ class Plots:
             Object holding ``loi_data['start_contr']`` / ``['n_contr']`` / ``['time']``.
         number_contr : int or None
             Index of the contraction to center on; None disables centering.
-        t_lim : tuple of float
+        t_lim : tuple of float or None
             Window around the contraction onset, in seconds (may start negative).
+            ``None`` on either side means "up to the recording boundary".
 
         Returns
         -------
@@ -1552,28 +1550,24 @@ class Plots:
             Absolute time limits, or ``(None, None)`` when not centering.
         i0, i1 : int or None
             Frame slice bounds, or ``(None, None)`` when not centering, so that
-            ``arr[i0:i1]`` yields the full series.
-
-        Notes
-        -----
-        A cycle beginning at or near frame 0 — which the incomplete-cycle handling
-        deliberately keeps — makes ``tlim[0]`` negative. An unclamped negative start
-        index is interpreted as "from the end" and silently produces an EMPTY slice,
-        so both bounds are clamped into ``[0, len(time)]``.
+            ``arr[i0:i1]`` yields the full series. Both are clamped into
+            ``[0, len(time)]`` (a negative start index would silently yield an
+            empty slice).
         """
         if number_contr is None or motion_obj.loi_data['n_contr'] <= 0:
             return (None, None), None, None
         start_contr_t = motion_obj.loi_data['start_contr'][number_contr]
-        tlim = (start_contr_t + t_lim[0], start_contr_t + t_lim[1])
         n = len(motion_obj.loi_data['time'])
         frametime = motion_obj.metadata.frametime
-        i0 = min(max(0, int(tlim[0] / frametime)), n)
-        i1 = min(max(i0, int(tlim[1] / frametime)), n)
-        return tlim, i0, i1
+        lo = 0.0 if t_lim[0] is None else start_contr_t + t_lim[0]
+        hi = n * frametime if t_lim[1] is None else start_contr_t + t_lim[1]
+        i0 = min(max(0, int(lo / frametime)), n)
+        i1 = min(max(i0, int(hi / frametime)), n)
+        return (lo, hi), i0, i1
 
     @staticmethod
-    def plot_z_pos(ax: Axes, motion_obj: Motion, number_contr=None, show_contr=True, show_kymograph=False, color='k',
-                   t_lim=(None, None), y_lim=(None, None)):
+    def plot_z_pos(ax: Axes, motion_obj: Motion, number_contr=None, show_contr=True, color='k',
+                   t_lim=(0, None), y_lim=(None, None)):
         """
         Plot the Z-band trajectories of the motion object.
 
@@ -1588,12 +1582,11 @@ class Plots:
             time series is shown. Default is None.
         show_contr : bool, optional
             Whether to shade the contraction periods. Default is True.
-        show_kymograph : bool, optional
-            Whether to show the kymograph. Default is False.
         color : str, optional
             The color of the trajectories. Default is 'k'.
         t_lim : tuple, optional
-            The time limits for the plot in seconds. Default is (None, None).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple, optional
             The y-axis limits for the plot. Default is (None, None).
         """
@@ -1601,9 +1594,6 @@ class Plots:
         tlim, i0, i1 = Plots._contr_window(motion_obj, number_contr, t_lim)
         centered = i0 is not None
 
-        if show_kymograph:
-            ax.pcolorfast(motion_obj.loi_data['time'], motion_obj.loi_data['x_pos'], motion_obj.loi_data['y_int'].T,
-                          cmap='Greys')
         # get data
         time = motion_obj.loi_data['time']
         z_pos = motion_obj.loi_data['z_pos']
@@ -1629,7 +1619,7 @@ class Plots:
         PlotUtils.polish_xticks(ax)
 
     @staticmethod
-    def _plot_delta_slen_loi(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, 12), y_lim=(-0.3, 0.4), n_rows=6,
+    def _plot_delta_slen_loi(ax: Axes, motion_obj: Motion, frame=None, t_lim=(0, None), y_lim=(-0.3, 0.4), n_rows=6,
                              n_start=1, show_contr=True):
         """
         Plot the change in sarcomere length over time (stacked rows) for a motion object.
@@ -1643,7 +1633,8 @@ class Plots:
         frame : int, optional
             Mark this frame with a vertical dashed line. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple, optional
             The y-axis limits for the plot. Default is (-0.3, 0.4).
         n_rows : int, optional
@@ -1699,7 +1690,8 @@ class Plots:
             The index of a single contraction to center on. If None, the full time
             series is shown. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot in seconds. Default is (0, 1).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple, optional
             The y-axis limits for the plot. Default is (-0.35, 0.5).
         show_contr : bool, optional
@@ -1739,7 +1731,7 @@ class Plots:
         PlotUtils.polish_xticks(ax)
 
     @staticmethod
-    def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, 0.9), y_lim=(-9, 12),
+    def plot_overlay_velocity(ax, motion_obj: Motion, number_contr=None, t_lim=(0, None), y_lim=(-9, 12),
                               show_contr=True):
         """
         Plot an overlay of the sarcomere velocity time series of the motion object.
@@ -1754,7 +1746,8 @@ class Plots:
             The index of a single contraction to center on. If None, the full time
             series is shown. Default is None.
         t_lim : tuple, optional
-            The time limits for the plot in seconds. Default is (0, 0.9).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple, optional
             The y-axis limits for the plot. Default is (-9, 12).
         show_contr : bool, optional
@@ -1787,7 +1780,7 @@ class Plots:
             ax.plot(time, vel.T, linewidth=0.5)
             ax.plot(time, vel_avg, c='k', linewidth=2,
                     linestyle='-')
-            ax.set_xlim(0, time.max())
+            ax.set_xlim(t_lim)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('V [µm/s]')
         ax.set_ylim(y_lim)
@@ -1795,7 +1788,7 @@ class Plots:
         PlotUtils.polish_xticks(ax)
 
     @staticmethod
-    def plot_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
+    def plot_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
                                y_lim: Tuple[float, float] = (1.6, 2.2), n_rows: Optional[int] = None,
                                show_contr: bool = True, use_median: bool = False):
         """
@@ -1813,7 +1806,8 @@ class Plots:
         sarc_obj : SarcAsM
             The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
             The y-axis limits for sarcomere length in µm. Default is (1.6, 2.2).
         n_rows : int, optional
@@ -1840,7 +1834,7 @@ class Plots:
                                   t_lim, y_lim, n_rows, show_contr, label_offset=1)
 
     @staticmethod
-    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[float, float] = (0, 12),
+    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
                                        y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True,
                                        show_average: bool = True, use_median: bool = False,
                                        domain_indices: Optional[list] = None):
@@ -1857,7 +1851,8 @@ class Plots:
         sarc_obj : SarcAsM
             The SarcAsM object with domain motion analysis results.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
             The y-axis limits for sarcomere length in µm. Default is (1.4, 2.2).
         show_contr : bool, optional
@@ -1924,7 +1919,7 @@ class Plots:
         ax.legend(loc='upper right', fontsize='x-small')
 
     @staticmethod
-    def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, 4), number_contr=None, frame=None):
+    def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, None), number_contr=None, frame=None):
         """
         Plot the sarcomere trajectory in length-change vs. velocity phase space.
 
@@ -1935,7 +1930,8 @@ class Plots:
         motion_obj : Motion
             The motion object to plot.
         t_lim : tuple, optional
-            The time limits for the plot in seconds. Default is (0, 4).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         number_contr : int, optional
             The index of a single contraction to plot. If None, all contractions are
             overlaid. Default is None.
@@ -2356,7 +2352,7 @@ class Plots:
 
     @staticmethod
     def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
-                       t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.3, 2.0),
+                       t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (1.3, 2.0),
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False):
         """
@@ -2377,7 +2373,8 @@ class Plots:
             Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
             grouping (``motion.groups.analyzed_kind``) is used. Default is None.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
             The y-axis limits for sarcomere length in µm. Default is (1.3, 2.0).
         n_rows : int, optional
@@ -2396,7 +2393,7 @@ class Plots:
 
     @staticmethod
     def plot_delta_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
-                             t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
+                             t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (-0.4, 0.4),
                              n_rows: Optional[int] = None, show_contr: bool = True,
                              use_median: bool = False):
         """
@@ -2417,7 +2414,8 @@ class Plots:
             Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
             grouping (``motion.groups.analyzed_kind``) is used. Default is None.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
             The y-axis limits for ΔSL in µm. Default is (-0.4, 0.4).
         n_rows : int, optional
@@ -2440,7 +2438,7 @@ class Plots:
 
     @staticmethod
     def _track_group_overlay(ax, sarc_obj, *, mode, group=0, kind=None,
-                             t_lim=(0, 12), y_lim=None, show_contr=True, show_mean=True,
+                             t_lim=(0, None), y_lim=None, show_contr=True, show_mean=True,
                              max_lines=300, color=None, mean_color='k'):
         """Overlay the individual member sarcomeres of one track group + the group mean.
 
@@ -2519,7 +2517,7 @@ class Plots:
         ax.plot(time, slen.T, c=col, lw=0.4, alpha=alpha)
         if show_mean:
             ax.plot(time, slen_avg, c=mean_color, lw=2, zorder=3)
-        ax.set_xlim(t_lim if t_lim != (None, None) else (float(time.min()), float(time.max())))
+        ax.set_xlim(t_lim)
         ax.set_ylim(y_lim)
         ax.set_xlabel(_LABEL_TIME)
         ax.set_ylabel(_LABEL_SL)
@@ -2527,7 +2525,8 @@ class Plots:
 
     @staticmethod
     def plot_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
-                  t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (1.4, 2.2),
+                  t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
+                  y_lim: Optional[Tuple[float, float]] = None,
                   show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                   color: Optional[str] = None, mean_color: str = 'k'):
         """
@@ -2556,9 +2555,11 @@ class Plots:
             Grouping prefix (SarcAsM only). If None, the last analyzed grouping is
             used. Default is None.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Default is (1.4, 2.2).
+            The y-axis limits for sarcomere length in µm. If None, a ``Motion``
+            object is auto-scaled and a track group uses (1.4, 2.2). Default is None.
         show_contr : bool, optional
             Whether to shade contraction periods. Default is True.
         show_mean : bool, optional
@@ -2571,18 +2572,19 @@ class Plots:
             Colour of the mean trace. Default is 'k'.
         """
         if isinstance(obj, Motion):
-            return Plots._plot_slen_loi(ax, obj, t_lim=t_lim if t_lim != (0, 12) else (None, None),
-                                        y_lim=y_lim if y_lim != (1.4, 2.2) else (None, None),
+            return Plots._plot_slen_loi(ax, obj, t_lim=t_lim,
+                                        y_lim=y_lim if y_lim is not None else (None, None),
                                         show_contr=show_contr, show_mean=show_mean,
                                         color=color, mean_color=mean_color)
         return Plots._track_group_overlay(ax, obj, mode='slen', group=group, kind=kind,
-                                          t_lim=t_lim, y_lim=y_lim, show_contr=show_contr,
+                                          t_lim=t_lim, y_lim=y_lim if y_lim is not None else (1.4, 2.2),
+                                          show_contr=show_contr,
                                           show_mean=show_mean, max_lines=max_lines,
                                           color=color, mean_color=mean_color)
 
     @staticmethod
     def plot_delta_slen(ax: Axes, obj: Union[SarcAsM, Motion], *, group: int = 0, kind: Optional[str] = None,
-                        t_lim: Tuple[float, float] = (0, 12), y_lim: Tuple[float, float] = (-0.4, 0.4),
+                        t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (-0.4, 0.4),
                         show_contr: bool = True, show_mean: bool = True, max_lines: Optional[int] = 300,
                         color: Optional[str] = None, mean_color: str = 'k',
                         frame: Optional[int] = None, n_rows: int = 6, n_start: int = 1):
@@ -2616,7 +2618,8 @@ class Plots:
             Grouping prefix ('pool', 'mband', ...) (SarcAsM only). If None, the last
             analyzed grouping is used. Default is None.
         t_lim : tuple of float, optional
-            The time limits for the plot in seconds. Default is (0, 12).
+            The time limits for the plot in seconds; ``None`` on either side means the
+            recording boundary. Default is (0, None).
         y_lim : tuple of float, optional
             The y-axis limits for ΔSL in µm. Default is (-0.4, 0.4).
         show_contr : bool, optional
@@ -2926,3 +2929,166 @@ class Plots:
         if title is not None:
             ax.set_title(title, fontsize=PlotUtils.fontsize)
         PlotUtils.remove_spines(ax)
+
+    @staticmethod
+    def plot_track_raster(ax: Axes, sarc_obj: SarcAsM, value: str = 'delta_slen',
+                          cycle_average: bool = True, sort_by: str = 'time_to_peak',
+                          kind: Optional[str] = None, clim: Optional[Tuple[float, float]] = None,
+                          cmap: Optional[str] = None, min_coverage: float = 0.5,
+                          show_peak: bool = True, show_contr: bool = True, colorbar: bool = True,
+                          title: Optional[str] = None):
+        """
+        Raster of every tracked sarcomere's time series: one row per sarcomere, time along x.
+
+        With ``cycle_average=True`` (default) each sarcomere's trace is averaged over the
+        pooled contraction cycles (onset to next onset), so one beat is shown per row and
+        the rows can be ordered by their time-to-peak or amplitude — the timing and
+        amplitude heterogeneity across the cell then reads directly from the picture,
+        with the peak-time curve drawn on top. With ``cycle_average=False`` the full
+        recording is shown with rows ordered by group, which is the view for QC
+        (dropouts, drifting rows, which cycles were detected).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw on.
+        sarc_obj : SarcAsM
+            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results; the cycle
+            average needs ``analyze_track_motion(by='pool')``.
+        value : {'delta_slen', 'slen', 'vel'}, optional
+            Length change from equilibrium (µm), length (µm) or velocity (µm/s).
+            Default is 'delta_slen'.
+        cycle_average : bool, optional
+            Average each row over the pooled contraction cycles. Default is True.
+        sort_by : {'time_to_peak', 'amplitude', 'group'}, optional
+            Row order. ``'time_to_peak'`` / ``'amplitude'`` use the cycle average of
+            ``delta_slen`` (earliest / largest shortening first); ``'group'`` orders by
+            group id and, for the fibre groupings, head-to-tail. Default is 'time_to_peak'
+            (``'group'`` when ``cycle_average`` is False).
+        kind : str or None, optional
+            Grouping whose labels are used; None uses the grouping currently in
+            effect, or no grouping if none exists. Default is None.
+        clim : tuple of float or None, optional
+            Colour limits. None: symmetric at the 99th percentile of |value| for
+            ``delta_slen`` / ``vel``, the 1st-99th percentiles for ``slen``. Default is None.
+        cmap : str or None, optional
+            Colormap; None picks a diverging map for ``delta_slen`` / ``vel`` and
+            'viridis' for ``slen``. Default is None.
+        min_coverage : float, optional
+            Only tracks observed in at least this fraction of frames are shown.
+            Default is 0.5.
+        show_peak : bool, optional
+            Draw the time-to-peak curve when rows are sorted by it. Default is True.
+        show_contr : bool, optional
+            Mark the pooled contraction onsets (full recording only). Default is True.
+        colorbar : bool, optional
+            Whether to add a colorbar. Default is True.
+        title : str or None, optional
+            Axes title. Default is None.
+
+        Returns
+        -------
+        matplotlib.image.AxesImage or None
+            The raster, or None when there is nothing to draw.
+        """
+        if value not in ('delta_slen', 'slen', 'vel'):
+            raise ValueError(f"value must be 'delta_slen', 'slen' or 'vel', got {value!r}")
+        if sort_by not in ('time_to_peak', 'amplitude', 'group'):
+            raise ValueError(f"sort_by must be 'time_to_peak', 'amplitude' or 'group', got {sort_by!r}")
+        kin = sarc_obj.get_track_kinematics()
+        series = np.asarray(kin[value], dtype=float)
+        n_tracks, T = series.shape
+        frametime = sarc_obj.metadata.frametime
+        keep = kin['coverage'] >= min_coverage
+
+        gid_key = sarc_obj._grouping_key(kind, 'motion.tracks.group_id')
+        order_key = sarc_obj._grouping_key(kind, 'motion.tracks.group_order')
+        gid = None
+        if gid_key in sarc_obj.data:
+            gid = np.asarray(sarc_obj.data[gid_key]).reshape(-1)[:n_tracks]
+            keep &= gid >= 0
+
+        peak_frame = None
+        if cycle_average:
+            labels = sarc_obj.data.get('motion.pool.labels_contr')
+            if labels is None:
+                raise ValueError("cycle_average needs the pooled contraction cycles: "
+                                 "run analyze_track_motion(by='pool') first.")
+            onsets, _ = heterogeneity.cycle_windows(np.asarray(labels).reshape(-1))
+            if onsets.size < 2:
+                raise ValueError('cycle_average needs at least two complete contraction cycles.')
+            win = int(np.median(np.diff(onsets)))
+            starts = [o for o in onsets if o + win <= T]
+            if not starts:
+                raise ValueError('No complete contraction cycle inside the recording.')
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', category=RuntimeWarning)
+                data = np.nanmean(np.stack([series[:, o:o + win] for o in starts]), axis=0)
+                dsl = np.nanmean(np.stack([np.asarray(kin['delta_slen'])[:, o:o + win] for o in starts]), axis=0)
+            keep &= np.isfinite(dsl).all(axis=1)
+            time = np.arange(win) * frametime
+        else:
+            data, dsl, time = series, np.asarray(kin['delta_slen']), np.arange(T) * frametime
+            if sort_by != 'group':
+                sort_by = 'group'
+        rows = np.flatnonzero(keep)
+        if rows.size == 0:
+            ax.text(0.5, 0.5, 'No tracks', ha='center', va='center', transform=ax.transAxes)
+            return None
+
+        if sort_by == 'time_to_peak':
+            peak_frame = np.nanargmin(dsl[rows], axis=1)
+            rows = rows[np.argsort(peak_frame, kind='stable')]
+            peak_frame = np.sort(peak_frame)
+        elif sort_by == 'amplitude':
+            amp = -np.nanmin(dsl[rows], axis=1)
+            rows = rows[np.argsort(-amp, kind='stable')]
+        elif gid is not None:
+            order = (np.asarray(sarc_obj.data[order_key]).reshape(-1)[:n_tracks]
+                     if order_key in sarc_obj.data else np.zeros(n_tracks))
+            pos0 = np.asarray(sarc_obj.data['motion.tracks.positions_um'], dtype=float).reshape(n_tracks, T, 2)
+            start = np.asarray(sarc_obj.data.get('motion.tracks.start_frame', np.zeros(n_tracks, int))).astype(int)
+            yx = pos0[np.arange(n_tracks), start]
+            rows = rows[np.lexsort((yx[rows, 1], yx[rows, 0], order[rows], gid[rows]))]
+
+        img = np.ma.masked_invalid(data[rows])
+        if clim is None:
+            finite = img.compressed()
+            if value == 'slen':
+                clim = tuple(np.percentile(finite, [1, 99])) if finite.size else (1.4, 2.2)
+            else:
+                lim = float(np.percentile(np.abs(finite), 99)) if finite.size else 0.2
+                clim = (-lim, lim)
+        if cmap is None:
+            cmap = {'delta_slen': 'RdBu_r', 'vel': 'PuOr_r', 'slen': 'viridis'}[value]
+        cm = plt.get_cmap(cmap).copy()
+        cm.set_bad('white')
+        im = ax.imshow(img, aspect='auto', cmap=cm, vmin=clim[0], vmax=clim[1],
+                       extent=(0, time[-1] + frametime, rows.size, 0), interpolation='nearest')
+
+        if show_peak and sort_by == 'time_to_peak' and peak_frame is not None:
+            ax.plot(peak_frame * frametime, np.arange(rows.size) + 0.5, c='k', lw=0.6)
+        if sort_by == 'group' and gid is not None:
+            g_sorted = gid[rows]
+            for b in np.flatnonzero(np.diff(g_sorted)) + 1:
+                ax.axhline(b, color='k', lw=0.4)
+            groups = np.unique(g_sorted)
+            if groups.size <= 40:
+                ax.set_yticks([np.mean(np.flatnonzero(g_sorted == g)) + 0.5 for g in groups])
+                ax.set_yticklabels([str(int(g)) for g in groups], fontsize='x-small')
+                ax.set_ylabel(f'Group ({sarc_obj.data.get("motion.groups.kind", "")})')
+            else:
+                ax.set_ylabel(f'Sarcomere (by {sarc_obj.data.get("motion.groups.kind", "group")})')
+        else:
+            ax.set_ylabel({'time_to_peak': 'Sarcomere (sorted by time to peak)',
+                           'amplitude': 'Sarcomere (sorted by amplitude)'}.get(sort_by, 'Sarcomere'))
+        if show_contr and not cycle_average and kin['contr'].any():
+            for f in np.flatnonzero(np.diff(np.r_[0, kin['contr'].astype(int)]) == 1):
+                ax.axvline(f * frametime, color='k', lw=0.5, ls=':')
+        ax.set_xlabel('Time in cycle [s]' if cycle_average else _LABEL_TIME)
+        if colorbar:
+            label = {'delta_slen': _LABEL_DELTA_SL, 'slen': _LABEL_SL, 'vel': 'V [µm/s]'}[value]
+            plt.colorbar(im, ax=ax, label=label, fraction=0.04, pad=0.02)
+        if title is not None:
+            ax.set_title(title, fontsize=PlotUtils.fontsize)
+        return im

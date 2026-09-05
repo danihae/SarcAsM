@@ -35,6 +35,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from sarcasm.analysis import contraction_analysis
+from sarcasm.analysis.contraction_analysis import equilibrium_over_quiet  # noqa: F401  (public here too)
 
 
 def aggregate_group_slen(
@@ -115,48 +116,6 @@ def aggregate_group_slen(
         'slen_q75': q75_ts,
         'n_members': n_members,
     }
-
-
-def equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
-    """Equilibrium (resting) sarcomere length over the non-contracting frames.
-
-    The equilibrium is the median sarcomere length wherever the contraction
-    state is ``0`` (the trace is *not* contracting), matching the
-    :meth:`sarcasm.motion.Motion.get_trajectories` semantics. Traces with no
-    quiet frame fall back to the median over all frames.
-
-    Parameters
-    ----------
-    slen : np.ndarray
-        Sarcomere length trace(s). A 1D ``(T,)`` array returns a scalar; a 2D
-        ``(k, T)`` stack returns one value per row, shape ``(k,)``.
-    contr : np.ndarray
-        Boolean contraction state per frame, shape ``(T,)``; ``True`` marks a
-        contracting frame, which is excluded from the equilibrium.
-
-    Returns
-    -------
-    float or np.ndarray
-        Equilibrium length: a scalar for a 1D input, or shape ``(k,)`` for a 2D
-        input. NaN where no finite length is available.
-    """
-    slen = np.asarray(slen, dtype=float)
-    quiet = ~np.asarray(contr, dtype=bool)
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', category=RuntimeWarning)
-        if slen.ndim == 1:
-            vals = slen[quiet]
-            if not np.any(np.isfinite(vals)):
-                vals = slen
-            return float(np.nanmedian(vals)) if np.any(np.isfinite(vals)) else np.nan
-        equ = np.full(slen.shape[0], np.nan)
-        for i in range(slen.shape[0]):
-            vals = slen[i, quiet]
-            if not np.any(np.isfinite(vals)):
-                vals = slen[i]
-            if np.any(np.isfinite(vals)):
-                equ[i] = np.nanmedian(vals)
-        return equ
 
 
 def run_cycle_engine(
@@ -461,10 +420,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     z_pos = np.full((K + 1, T), np.nan, dtype=float)
     z_pos[:K] = centre_arc - 0.5 * slen          # leading edge of each member
     z_pos[K] = centre_arc[-1] + 0.5 * slen[-1]   # trailing edge of the last member
-    # Shift so the fibre starts at 0, matching the LOI convention: the arc
-    # origin sits at the first member's *centre*, which would put its leading edge
-    # (and anything that moves further head-ward) below zero, where plots that
-    # assume a non-negative Z-band position silently clip it away.
+    # shift so the fibre starts at 0 (LOI convention; plots assume z_pos >= 0)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', category=RuntimeWarning)
         origin = np.nanmin(z_pos)

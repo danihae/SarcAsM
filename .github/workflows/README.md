@@ -1,9 +1,13 @@
 # Publishing with Git Tags
 
+Every `v*` tag first runs `test.yml` (the data-free test suite); publishing and the
+standalone builds only start when it passes. `test.yml` also runs on every push to
+`main` / `release/**` and on pull requests.
+
 ## PyPI (Production)
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.0b1        # a PEP 440 pre-release: pip only installs it with --pre
+git push origin v1.0.0b1
 ```
 
 ## TestPyPI (Testing)

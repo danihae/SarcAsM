@@ -52,7 +52,7 @@ and is carried forward as follows:
 4. **Gaps and identity.** A query point that finds no consistent detection
    records an honest gap frame: position = its prediction, ``observed=False``, and
    slen/orientation NaN unless a short interior gap is interpolated
-   (``max_gap_interpolation``, which never sets ``observed``). It keeps its identity
+   (``max_gap_interpolation_s``, which never sets ``observed``). It keeps its identity
    and re-enters the assignment on later frames, so a dropout of *any* length does
    not end a trajectory. Tracks therefore do not retire by default
    (``retire_after_s=None``), and no post-hoc fragment stitching is needed.
@@ -61,7 +61,7 @@ A query point's **trailing coast** — the frames after its *last observed* fram
 blanked to NaN (position, slen, orientation) in the output: a lost track does not
 freeze in place at its last position. Interior gaps are anchored on both sides,
 keep their predicted position, and have their slen/orientation interpolated when
-the gap is short (``max_gap_interpolation``); ``tracks_observed`` still marks which
+the gap is short (``max_gap_interpolation_s``); ``tracks_observed`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
 """
 
@@ -79,27 +79,17 @@ from scipy.spatial import cKDTree
 
 logger = logging.getLogger(__name__)
 
-# Scale-invariance safety caps (fractions of the sarcomere length). The
-# along/perpendicular match gates are reduced to at most these fractions of the
-# median sarcomere length in pixels, so that — regardless of pixel size — a
-# single-frame match can never reach a neighbouring sarcomere (a swap). At the
-# calibration scale (slen ≈ 30 px, along gate 15 px) these are no-ops; they only
-# bind at coarse pixel sizes where the structure shrinks toward the raw gate.
+# Match gates are capped at these fractions of the median sarcomere length so a
+# single-frame match can never reach a neighbouring sarcomere at any pixel size.
 _ALONG_SLEN_FRAC = 0.6
 _PERP_SLEN_FRAC = 0.25
 
-# Components larger than this fall back to a greedy claim ordered by cost. The
-# per-component assignment is a dense O(k³) solve, so this bounds the worst case
-# on unusually dense fields. Typical components are far smaller, so the fallback
-# is a safety valve rather than a routine path.
+# Components above this size use a greedy claim instead of the O(k³) exact solve.
 _LAP_MAX_COMPONENT = 1500
 
-# Frame-count fallbacks for the seconds-valued horizons, used only when
-# ``frametime`` is unknown (the parameters themselves are in seconds so that the
-# same physical duration is used at any frame rate — the frametime
-# scale-invariance requirement; a fixed frame count would mean 10x the physical
-# time at 10x the fps).
+# Frame-count fallbacks for the seconds-valued horizons when frametime is unknown.
 _MIN_OBSERVATIONS_FALLBACK = 5
+_MAX_GAP_FRAMES_FALLBACK = 3
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +443,7 @@ def track_sarcomere_vectors(
     ori_tol_deg: float = 45.0,
     retire_after_s: Optional[float] = None,
     min_track_duration_s: float = 0.08,
-    max_gap_interpolation: int = 3,
+    max_gap_interpolation_s: float = 0.05,
     progress_notifier=None,
 ) -> Dict[str, object]:
     """Run the 2D full-field sarcomere-vector tracker on a detection sequence.
@@ -523,14 +513,15 @@ def track_sarcomere_vectors(
         (converted via ``frametime``; falls back to
         ``_MIN_OBSERVATIONS_FALLBACK`` real observations when ``frametime`` is
         None). Default is 0.08.
-    max_gap_interpolation : int, optional
-        Longest run of consecutive gap frames whose sarcomere length / orientation
-        is filled by interpolation between the real observations on either side, so short
-        detection flicker does not punch holes in the per-track traces. Interior
-        gaps only, and ``tracks_observed`` stays False there, so no
+    max_gap_interpolation_s : float, optional
+        Longest gap, in seconds, whose sarcomere length / orientation is filled by
+        interpolation between the real observations on either side, so short
+        detection flicker does not punch holes in the per-track traces (converted
+        via ``frametime``; ``_MAX_GAP_FRAMES_FALLBACK`` frames when ``frametime`` is
+        None). Interior gaps only, and ``tracks_observed`` stays False there, so no
         real-observation metric is affected. Set to 0 to keep every gap frame NaN.
-        Kept deliberately short (default 3): a longer fill would start to span a
-        contraction and invent length dynamics.
+        Kept deliberately short (default 0.05 s): a longer fill would start to span
+        a contraction and invent length dynamics.
 
     Returns
     -------
@@ -544,7 +535,7 @@ def track_sarcomere_vectors(
         1.0 — the headline continuity QC number) and ``'motion.tracks.n_retired'``.
         Track arrays are dense ``(n_tracks, T)`` (positions ``(n_tracks, T, 2)``).
         ``'motion.tracks.n_interpolated_gap_frames'`` counts the entries filled by
-        ``max_gap_interpolation``.
+        ``max_gap_interpolation_s``.
     """
     T = len(pos_vectors_px_all)
     if T < 2:
@@ -559,6 +550,8 @@ def track_sarcomere_vectors(
     min_observations = _to_frames(min_track_duration_s, _MIN_OBSERVATIONS_FALLBACK)
     retire_frames = (np.inf if retire_after_s is None
                      else _to_frames(retire_after_s, 10 ** 9))
+    max_gap_frames = (0 if not max_gap_interpolation_s or max_gap_interpolation_s <= 0
+                      else _to_frames(max_gap_interpolation_s, _MAX_GAP_FRAMES_FALLBACK))
     logger.info(
         f"Tracking: min_track_duration={min_track_duration_s} s ({min_observations} observations), "
         f"retire_after={retire_after_s} s (frametime={frametime}).")
@@ -577,10 +570,7 @@ def track_sarcomere_vectors(
     max_disp_along_px = float(max_disp_along_um) / px
     max_disp_perp_px = float(max_disp_perp_um) / px
 
-    # Secondary scale-invariance safety net: also cap the match gates relative to
-    # the measured sarcomere length so a match can never cross to a neighbour even
-    # if the µm gate is set unusually large for the local sarcomere spacing. No-op
-    # at the default gates / typical sarcomere lengths.
+    # cap the gates relative to the measured sarcomere length (no-op at the defaults)
     median_slen_px = _median_slen_px(sarcomere_lengths_all, pixelsize)
     if median_slen_px is not None and median_slen_px > 0:
         along_cap = _ALONG_SLEN_FRAC * median_slen_px
@@ -603,11 +593,8 @@ def track_sarcomere_vectors(
     neighbor_radius_px = 3.0 * median_slen_px if (
         median_slen_px is not None and median_slen_px > 0) else 3.0 * max_disp_along_px
 
-    # --- struct-of-arrays track state ---
-    # History arrays (grow in chunks when capacity exceeded). Live state
-    # (last_* / frames_since_observation / alive) mirrors only the tracks that are
-    # still alive, but is kept at the same size as the history arrays so that
-    # indexing by absolute slot is always valid.
+    # struct-of-arrays track state: history arrays grow in chunks; live state
+    # (last_* / frames_since_observation / alive) is indexed by the same slot
     pos0_raw = pos_vectors_px_all[0]
     n0 = 0 if pos0_raw is None else len(pos0_raw)
     capacity = max(256, n0 * 4)
@@ -696,16 +683,8 @@ def track_sarcomere_vectors(
     if progress_notifier is not None:
         _frames = progress_notifier.iterator(_frames)
     for t in _frames:
-        # 1. advect unmatched tracks along their sarcomere axis only. Motion
-        # perpendicular to the axis can only come from the match residual,
-        # hard-capped at max_disp_perp_px (anti-perpendicular-jump guarantee).
-        # A track that was observed last frame already has a fresh anchor and is left
-        # alone (nudging it only adds noise); a track that has gone unmatched is
-        # carried by the tissue around it, so its anchor stays valid however long
-        # the dropout lasts. Reference set = tracks observed in both of the
-        # last two frames, so their step is a real observation, not a prediction.
-        # Load-bearing: without this advection an unmatched track is left behind by
-        # a moving field and drifts away from its neighbourhood.
+        # 1. advect unmatched tracks along their sarcomere axis by the median step
+        #    of the neighbours observed in both of the last two frames
         live = np.flatnonzero(alive[:n_tracks])
         if live.size > 0:
             ys = last_y[live]
@@ -746,11 +725,8 @@ def track_sarcomere_vectors(
         claimed_qp_mask = np.zeros(n_tracks, dtype=bool)
         claimed_det_mask = np.zeros(n_det, dtype=bool)
 
-        # 3. build kd-tree and vectorized gate on all (qp, candidate) pairs.
-        # The gate is the SAME whether a track was observed last frame or has been
-        # unmatched for a hundred frames: a gap does not license a longer jump,
-        # it only means the track kept waiting. Widening the gate with gap length
-        # would trade identity for fragmentation.
+        # 3. kd-tree + vectorized gate on all (qp, candidate) pairs; the gate does
+        #    not widen with gap length (that would trade identity for fragmentation)
         if n_det > 0 and live.size > 0:
             tree = cKDTree(dets)
             live_pos = np.column_stack((last_y[live], last_x[live]))
@@ -810,11 +786,7 @@ def track_sarcomere_vectors(
 
                 keep_pairs = np.flatnonzero(mask)
                 if keep_pairs.size > 0:
-                    # Cost = fraction of each gate budget used. The gates are
-                    # strongly anisotropic (the perpendicular budget is ~25x
-                    # tighter), so ranking by raw Euclidean distance instead would
-                    # let a lateral neighbour one sampling step away outrank the
-                    # correct detection slightly further along the axis.
+                    # cost = fraction of each (anisotropic) gate budget used
                     cost = (along_p[keep_pairs] ** 2 / along_budget
                             + perp_p[keep_pairs] ** 2 / perp_budget)
                     qp_rel_kept = qp_flat_rel[keep_pairs].astype(np.int64)
@@ -891,13 +863,7 @@ def track_sarcomere_vectors(
                 alive[new_slots] = True
                 n_tracks += n_new
 
-    # --- blank the trailing coast of lost tracks (no constant hold-over) ---
-    # The frames after a track's last observation carried its last *predicted* position
-    # with NaN slen / orientation — a dead-end, not a real observation. Blank them
-    # so a lost track does not appear to freeze in place at its last position.
-    # Interior gap frames are anchored on both sides and kept; only frames strictly
-    # after a track's last observation are cleared. tracks_observed is left untouched,
-    # so the short-track filter below still counts real observations.
+    # blank the trailing coast after a track's last observation (interior gaps stay)
     if n_tracks > 0:
         observed_view = tracks_observed[:n_tracks]
         has_observation = observed_view.any(axis=1)
@@ -915,7 +881,7 @@ def track_sarcomere_vectors(
 
     # --- interpolate slen / orientation across SHORT interior gaps ---
     _interpolate_short_gaps(
-        n_tracks, tracks_slen, tracks_ori, tracks_observed, max_gap_interpolation)
+        n_tracks, tracks_slen, tracks_ori, tracks_observed, max_gap_frames)
 
     # --- filter short tracks (count of actual observations) ---
     logger.info("Filtering short tracks…")
@@ -941,7 +907,7 @@ def track_sarcomere_vectors(
     if n_interpolated:
         logger.info(
             f"Interpolated sarcomere length / orientation on {n_interpolated} gap "
-            f"frames (gaps of at most {max_gap_interpolation} frames); "
+            f"frames (gaps of at most {max_gap_frames} frames = {max_gap_interpolation_s} s); "
             f"'motion.tracks.observed' stays False there, so no coverage metric counts them.")
 
     # Headline continuity QC: tracks per median detections-per-frame. 1.0 means one

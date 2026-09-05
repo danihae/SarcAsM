@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sarc-asm"
-version = "1.0.0"
+version = "1.0.0b1"
 description = "AI-based Sarcomere Analysis Multitool for structural and functional analysis of sarcomeres in microscopy images and movies"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -21,15 +21,15 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "numpy>2.2",
+    "numpy>2.2,<3.0",
     "orjson>=3.10.0,<4.0.0",
-    "napari>=0.4.18,<0.9.0",
+    "napari>=0.5.0,<0.9.0",
     "torch>=2.0.0,<3.0.0",
     "bio-image-unet>=1.2.2,<2.0.0",
     "matplotlib>=3.10.0,<4.0.0",
     "matplotlib-scalebar>=0.8.0,<0.9.0",
     "PyQt5>=5.15.4,<5.16.0",
-    "pandas>=2.0.0,<3.0.0",
+    "pandas>=2.1.0,<3.0.0",
     "scikit-learn>=1.0.2,<2.0.0",
     "scikit-image>0.18,<1.0",
     "PyWavelets>=1.5.0,<2.0.0",
@@ -41,14 +41,15 @@ dependencies = [
     "tifffile>=2023.12.9",
     "imagecodecs>=2024.1.1",
     "zarr>=3.2.0,<4.0.0",
-    "numcodecs>=0.13.0",
+    "scipy>=1.11,<2.0",
+    "tqdm>=4.60",
 ]
 
 [project.urls]
 Repository = "https://github.com/danihae/SarcAsM"
 Documentation = "https://sarcasm.readthedocs.io"
 Issues = "https://github.com/danihae/SarcAsM/issues"
-Changelog = "https://github.com/danihae/SarcAsM/releases"
+Changelog = "https://github.com/danihae/SarcAsM/blob/main/CHANGELOG.md"
 
 [project.scripts]
 sarcasm = "sarcasm_app.__main__:main"
@@ -85,7 +86,7 @@ exclude = [
     "docs",
     "private"
 ]
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -113,6 +114,7 @@ include = [
   "contraction_net/",
   "LICENSE",
   "README.md",
+  "CHANGELOG.md",
   "pyproject.toml"
 ]
 

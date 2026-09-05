@@ -76,7 +76,7 @@ pip install git+https://github.com/danihae/sarcasm.git
 We strongly recommend creating a dedicated conda environment to avoid dependency conflicts:
 
 ```
-conda create -y -n sarcasm-env python=3.10
+conda create -y -n sarcasm-env python=3.12
 conda activate sarcasm-env
 pip install sarc-asm
 ```
@@ -130,6 +130,11 @@ sarc = SarcAsM("file.tif", log_level='WARNING')
 Check out `quickstart_demo.ipynb` in the repository root or our [documentation](https://sarcasm.readthedocs.io/)
  for a practical introduction to SarcAsM's functionalities.
 
+**Upgrading from 0.5?** SarcAsM 1.0 is a breaking release: `Structure` became `SarcAsM`, the
+manual line-of-interest motion workflow was replaced by 2D sarcomere tracking, results now live
+in a single `.ome.zarr` store, and result keys changed. Analyses from 0.5 have to be recomputed;
+see the [changelog](CHANGELOG.md) and the [key migration table](docs/key_migration.md).
+
 ### App
 
 ![SarcAsM GUI Workflow](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/SarcAsM_app.gif)
@@ -162,7 +167,7 @@ Detailed documentation, including tutorials, API reference, and usage examples, 
 
 Additional resources:
 - Example notebooks located in the `docs/notebooks` directory within the repository.
-- Sample data for testing purposes is available at [https://doi.org/10.5281/zenodo.8232838](https://doi.org/10.5281/zenodo.8232838).
+- Sample data for testing purposes is available at [https://doi.org/10.5281/zenodo.8232837](https://doi.org/10.5281/zenodo.8232837).
 
 ## Contributing
 

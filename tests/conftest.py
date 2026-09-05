@@ -98,6 +98,22 @@ def _get_test_data_dir():
     return Path(__file__).parent.parent / "test_data"
 
 
+def _require_test_file(path: Path) -> str:
+    """Return ``str(path)`` or skip the test when the data file is unusable.
+
+    A clone without ``git lfs pull`` leaves a ~130-byte pointer file in place of
+    each tif, so ``exists()`` alone is not enough: the pointer would be handed
+    to tifffile and the test would fail instead of skip.
+    """
+    if not path.exists():
+        pytest.skip(f"Test data not found: {path}")
+    with open(path, "rb") as fh:
+        head = fh.read(64)
+    if head.startswith(b"version https://git-lfs"):
+        pytest.skip(f"Test data is a Git LFS pointer (run `git lfs pull`): {path}")
+    return str(path)
+
+
 @pytest.fixture
 def test_data_dir():
     """Path to test data directory."""
@@ -113,35 +129,23 @@ def test_data_dir_class():
 @pytest.fixture
 def structure_metadata_file_path(test_data_dir):
     """Path to structure test file for testing metadata handling."""
-    file_path = test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif"
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif")
 
 @pytest.fixture
 def structure_timelapse_file_path(test_data_dir):
     """Path to timelapse structure test file."""
-    file_path = test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif"
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif")
 
 @pytest.fixture
 def structure_single_file_path(test_data_dir):
     """Path to single-image structure test file."""
-    file_path = test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif"
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif")
 
 
 @pytest.fixture(scope="class")
 def structure_single_file_path_class(test_data_dir_class):
     """Path to single-image structure test file (class-scoped for plot tests)."""
-    file_path = test_data_dir_class / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif"
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir_class / "long_term_2D_ACTN2-citrine_CM" / "20211115_ACTN2_CMs_96well_control_12days.tif")
 
 
 def _structure_crop_path():
@@ -157,19 +161,13 @@ def _structure_crop_path():
 @pytest.fixture
 def structure_crop_file_path():
     """Path to the small two-frame crop of the time-lapse."""
-    path = _structure_crop_path()
-    if not path.exists():
-        pytest.skip(f"Test data not found: {path}")
-    return str(path)
+    return _require_test_file(_structure_crop_path())
 
 
 @pytest.fixture(scope="class")
 def structure_crop_file_path_class():
     """Path to the small two-frame crop (class-scoped)."""
-    path = _structure_crop_path()
-    if not path.exists():
-        pytest.skip(f"Test data not found: {path}")
-    return str(path)
+    return _require_test_file(_structure_crop_path())
 
 
 @pytest.fixture(scope="session")
@@ -180,9 +178,7 @@ def structure_single_image_path(tmp_path_factory):
     "single image" tests neither exercised the single-image path nor ran quickly.
     This writes one frame of the crop with its pixel size preserved.
     """
-    source = _structure_crop_path()
-    if not source.exists():
-        pytest.skip(f"Test data not found: {source}")
+    source = Path(_require_test_file(_structure_crop_path()))
 
     import tifffile
 
@@ -199,37 +195,25 @@ def structure_single_image_path(tmp_path_factory):
 @pytest.fixture
 def motion_file_path(test_data_dir):
     """Path to motion test file."""
-    file_path = test_data_dir / "high_speed_single_ACTN2-citrine_CM" / "20kPa.tif"    
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir / "high_speed_single_ACTN2-citrine_CM" / "20kPa.tif")
 
 
 @pytest.fixture(scope="class")
 def motion_file_path_class(test_data_dir_class):
     """Path to motion test file (class-scoped for plot tests)."""
-    file_path = test_data_dir_class / "high_speed_single_ACTN2-citrine_CM" / "20kPa.tif"    
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir_class / "high_speed_single_ACTN2-citrine_CM" / "20kPa.tif")
 
 
 @pytest.fixture
 def motion_30kPa_file_path(test_data_dir):
     """Path to 30kPa motion test file for domain motion analysis."""
-    file_path = test_data_dir / "high_speed_single_ACTN2-citrine_CM" / "30kPa.tif"    
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir / "high_speed_single_ACTN2-citrine_CM" / "30kPa.tif")
 
 
 @pytest.fixture(scope="class")
 def motion_30kPa_file_path_class(test_data_dir_class):
     """Path to 30kPa motion test file for domain motion analysis (class-scoped)."""
-    file_path = test_data_dir_class / "high_speed_single_ACTN2-citrine_CM" / "30kPa.tif"    
-    if not file_path.exists():
-        pytest.skip(f"Test data not found: {file_path}")
-    return str(file_path)
+    return _require_test_file(test_data_dir_class / "high_speed_single_ACTN2-citrine_CM" / "30kPa.tif")
 
 
 @pytest.fixture(autouse=True)

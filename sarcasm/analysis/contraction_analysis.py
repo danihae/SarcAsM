@@ -24,8 +24,8 @@ m-band, myofibril, LOI, domain) via :func:`grouped_motion.run_cycle_engine`.
 """
 
 import logging
-import os
-from typing import Dict, List, Optional, Tuple, Union
+import warnings
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.ndimage import binary_closing, binary_opening, label
@@ -46,10 +46,9 @@ def cycle_truncation_flags(labels: np.ndarray, n_cycles: int, buffer_frames: int
     (resp. offset) happened outside the recorded window, so any quantity that needs
     it is unobservable. A cycle truncated on neither side is **complete**.
 
-    This reproduces the classification that ``skimage.segmentation.clear_border``
-    used to *delete*; here the cycles are kept and only flagged, so they still
-    appear in the mask (plots, quiet/equilibrium baseline, beating-rate onsets)
-    while their duration-dependent metrics can be set to NaN.
+    Truncated cycles are kept and only flagged, so they still appear in the mask
+    (plots, quiet/equilibrium baseline, beating-rate onsets) while their
+    duration-dependent metrics can be set to NaN.
 
     Parameters
     ----------
@@ -196,10 +195,7 @@ def detect_contractions(
         # Apply morphological operations to clean up predictions
         contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
         
-        # Store binary contraction state. Cycles at the recording edges are KEPT
-        # (they are real contractions: they belong in the plot, they must not be
-        # counted as quiescent when estimating the equilibrium length, and their
-        # onset is a valid beat) and merely flagged as incomplete below.
+        # cycles at the recording edges are kept and flagged incomplete below
         domain_contr[domain_idx] = contr
 
         # Label contraction cycles and flag the incomplete ones
@@ -248,6 +244,49 @@ def detect_contractions(
     }
 
 
+def equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
+    """Equilibrium (resting) sarcomere length over the non-contracting frames.
+
+    The equilibrium is the median sarcomere length wherever the contraction
+    state is ``0`` (the trace is *not* contracting), matching the
+    :meth:`sarcasm.motion.Motion.get_trajectories` semantics and the value stored
+    as ``equ`` by :func:`analyze_contraction_parameters`. Traces with no quiet
+    frame fall back to the median over all frames.
+
+    Parameters
+    ----------
+    slen : np.ndarray
+        Sarcomere length trace(s). A 1D ``(T,)`` array returns a scalar; a 2D
+        ``(k, T)`` stack returns one value per row, shape ``(k,)``.
+    contr : np.ndarray
+        Boolean contraction state per frame, shape ``(T,)``; ``True`` marks a
+        contracting frame, which is excluded from the equilibrium.
+
+    Returns
+    -------
+    float or np.ndarray
+        Equilibrium length: a scalar for a 1D input, or shape ``(k,)`` for a 2D
+        input. NaN where no finite length is available.
+    """
+    slen = np.asarray(slen, dtype=float)
+    quiet = ~np.asarray(contr, dtype=bool)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)
+        if slen.ndim == 1:
+            vals = slen[quiet]
+            if not np.any(np.isfinite(vals)):
+                vals = slen
+            return float(np.nanmedian(vals)) if np.any(np.isfinite(vals)) else np.nan
+        equ = np.full(slen.shape[0], np.nan)
+        for i in range(slen.shape[0]):
+            vals = slen[i, quiet]
+            if not np.any(np.isfinite(vals)):
+                vals = slen[i]
+            if np.any(np.isfinite(vals)):
+                equ[i] = np.nanmedian(vals)
+        return equ
+
+
 def analyze_contraction_parameters(
     group_slen: np.ndarray,
     group_labels_contr: np.ndarray,
@@ -290,7 +329,8 @@ def analyze_contraction_parameters(
         Per-group contraction parameters (``max_n_contr`` is the max cycle count
         across groups). Entries for cycles that cannot support a given metric are NaN:
 
-        - 'equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm)
+        - 'equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm),
+          the median over the non-contracting frames
         - 'contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
         - 'elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation per cycle (µm)
         - 'vel_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max shortening velocity (µm/s)
@@ -322,10 +362,11 @@ def analyze_contraction_parameters(
         if n_contr == 0 or np.all(np.isnan(slen)):
             continue
         
-        # Calculate equilibrium length (median of non-NaN values)
-        valid_slen = slen[~np.isnan(slen)]
-        if len(valid_slen) > 0:
-            domain_equ[domain_idx] = np.median(valid_slen)
+        # Equilibrium = median over the non-contracting frames, so it is not pulled
+        # down by the contracted frames (the plots use the same definition).
+        domain_equ[domain_idx] = equilibrium_over_quiet(slen, labels != 0)
+        if not np.isfinite(domain_equ[domain_idx]):
+            continue
         
         # Calculate velocity using Savitzky-Golay filter
         slen_interp = _interpolate_nans(slen)

@@ -91,6 +91,13 @@ class ApplicationControl:
         # file-selection control + the Qt event filter that calls it.
         self.__open_file_handler = None
         self.__drop_filter: Optional[_ViewerFileDropFilter] = None
+        # Called after a file (tif or existing .ome.zarr) has been opened and its
+        # layers built, so the tab controls can refresh state read from the store.
+        self.file_opened_callbacks: list = []
+        # Called with a track id when a sarcomere is clicked in the viewer, and with a
+        # group id when a fibre path of the Groups layer is clicked.
+        self.track_selected_callbacks: list = []
+        self.group_selected_callbacks: list = []
 
         self.progress_notifier = ProgressNotifier()
         self.progress_notifier.set_progress_report(lambda p: self.update_progress(p * 100))
@@ -264,105 +271,336 @@ class ApplicationControl:
         if progress_bar is not None:
             progress_bar.setValue(int(value))
 
-    def init_tracks_stack(self, visible=True):
-        """Draw sarcomere trajectories as lines plus a dot at each timepoint.
+    # ------------------------------------------------------------------ #
+    # track layers: trajectories (napari Tracks) + per-frame sarcomere state (Points)
+    # ------------------------------------------------------------------ #
+    #: Feature shown by the track layers -> (label, colormap, symmetric about 0?)
+    TRACK_COLOR_FEATURES = {
+        'delta_slen': ('ΔSL', 'RdBu_r', True),
+        'slen': ('SL', 'viridis', False),
+        'vel': ('Velocity', 'PuOr_r', True),
+        'group_id': ('Group', 'gist_rainbow', False),
+        'coverage': ('Coverage', 'viridis', False),
+        'track_id': ('Track id', 'turbo', False),
+    }
+    #: Combo-box label -> feature key (the parameter stores the label)
+    TRACK_COLOR_LABELS = {label: key for key, (label, _, _) in TRACK_COLOR_FEATURES.items()}
+    #: Vertices the Trajectories layer is thinned to (every k-th frame per track): napari's
+    #: Tracks layer builds its graph in O(rows) and takes seconds beyond a few million.
+    TRACK_MAX_VERTICES = 600_000
 
-        Each track becomes one polyline (its full trajectory) in a Shapes
-        layer, and a sibling Points layer marks the sampled position at every
-        timepoint. Coloured per track id, or by group once
-        :meth:`SarcAsM.group_tracks` has run (matching the ``TrackGroups``
-        point colours). Both are static 2D overlays, so each trajectory reads
-        as a continuous line across the whole movie rather than a fading tail."""
+    @classmethod
+    def _ensure_track_colormaps(cls):
+        """Register the matplotlib colormaps the track layers use with napari
+        (its registry has no diverging map)."""
+        from napari.utils.colormaps import ensure_colormap
+        for _, cmap, _ in cls.TRACK_COLOR_FEATURES.values():
+            try:
+                ensure_colormap(cmap)
+            except Exception as e:
+                logger.debug(f'colormap {cmap} unavailable in napari: {e}')
+
+    def track_kinematics(self):
+        """``SarcAsM.get_track_kinematics()`` of the current cell, cached until the
+        tracks, the grouping or the pooled contraction state change. None without tracks."""
+        cell = self.model.cell
+        if cell is None or 'motion.tracks.slen' not in cell.data:
+            return None
+        key = (id(cell.data.get('motion.tracks.slen')), cell.data.get('motion.groups.hash'),
+               id(cell.data.get('motion.pool.contr')))
+        cached = getattr(cell, '_track_kinematics_cache', None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        kin = cell.get_track_kinematics()
+        cell._track_kinematics_cache = (key, kin)
+        return kin
+
+    def track_layer_table(self):
+        """Per-observation table of the current tracks for the napari layers.
+
+        Returns None without tracks. Otherwise a dict of equal-length arrays over
+        every observed (track, frame) pair, sorted by track then frame:
+        ``track_id, t, y, x`` (px) and the features ``slen, delta_slen, vel,
+        group_id, coverage`` — plus ``contr`` (the pooled contraction mask) and
+        ``n_tracks``. Cached on the cell until the tracks or the grouping change.
+        """
         cell = self.model.cell
         if cell is None or 'motion.tracks.positions_px' not in cell.data:
-            return
-        if cell.metadata.n_stack is None or cell.metadata.n_stack <= 1:
-            return  # tracking requires a time series
-        for name in ('Tracks', 'TrackPoints'):
-            if name in self.viewer.layers:
-                self.viewer.layers.remove(self.viewer.layers[name])
-        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)  # (N, T, 2) yx, px
+            return None
+        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)
         if pos.ndim != 3 or pos.shape[0] == 0:
-            return
-        n_tracks = pos.shape[0]
+            return None
+        n_tracks, T = pos.shape[:2]
+        gid = cell.data.get('motion.tracks.group_id')
+        gid = np.asarray(gid).reshape(-1) if gid is not None else np.full(n_tracks, -1)
+        if gid.shape[0] != n_tracks:
+            gid = np.full(n_tracks, -1)                      # stale grouping
+        key = (id(cell.data.get('motion.tracks.slen')), cell.data.get('motion.groups.hash'),
+               id(cell.data.get('motion.pool.contr')))
+        cached = getattr(cell, '_track_layer_table', None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        kin = self.track_kinematics()
         mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])
         observed = cell.data.get('motion.tracks.observed')
-        if observed is not None:
-            observed = np.asarray(observed)
-            if observed.shape == mask.shape:
-                mask &= observed.astype(bool)
-        # colour by group when a grouping exists; drop unassigned (gid < 0) tracks
-        gid = cell.data.get('motion.tracks.group_id')
-        gid = None if gid is None else np.asarray(gid).reshape(-1)
-        if gid is not None and gid.shape[0] == n_tracks:
-            mask &= (gid >= 0)[:, None]
-        else:
-            gid = None
-
-        import matplotlib.pyplot as plt
-        if gid is not None:
-            # match TrackGroups colouring so lines and group dots agree
-            n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
-            track_colors = plt.get_cmap('gist_rainbow')((gid % n_groups) / n_groups)
-        else:
-            track_colors = plt.get_cmap('turbo')(np.arange(n_tracks) / max(1.0, n_tracks - 1))
-
-        paths, path_colors, dot_pts, dot_colors = [], [], [], []
-        for i in range(n_tracks):
-            ts = np.nonzero(mask[i])[0]  # timepoints present, ascending
-            if ts.size == 0:
-                continue
-            yx = pos[i, ts, :2]
-            if ts.size >= 2:  # a path needs at least two vertices
-                paths.append(yx)
-                path_colors.append(track_colors[i])
-            dot_pts.append(yx)
-            dot_colors.append(np.broadcast_to(track_colors[i], (ts.size, 4)))
-        if not dot_pts:
-            return
-
-        scale2d = cell.scale[-2:]  # static y/x overlay, broadcast across all frames
-        if paths:
-            self.viewer.add_shapes(paths, name='Tracks', shape_type='path',
-                                   edge_color=np.asarray(path_colors), edge_width=1.5,
-                                   opacity=0.8, visible=visible, scale=scale2d, ndim=2)
-        self.viewer.add_points(np.concatenate(dot_pts), name='TrackPoints',
-                               face_color=np.concatenate(dot_colors), border_width=0,
-                               size=max(1.5, 0.2 / cell.metadata.pixelsize),
-                               opacity=0.9, visible=visible, scale=scale2d)
-
-    def init_track_groups_stack(self, visible=True):
-        """napari Points layer of tracked sarcomeres colored by their group."""
-        cell = self.model.cell
-        if cell is None or 'motion.tracks.positions_px' not in cell.data or 'motion.tracks.group_id' not in cell.data:
-            return
-        if 'TrackGroups' in self.viewer.layers:
-            self.viewer.layers.remove(self.viewer.layers['TrackGroups'])
-        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)  # (N, T, 2) yx, px
-        gid = np.asarray(cell.data['motion.tracks.group_id'])                    # (N,)
-        if pos.ndim != 3 or pos.shape[0] == 0:
-            return
-        if gid.shape[0] != pos.shape[0]:
-            return  # stale grouping (track count changed); skip until re-grouped
-        multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
-        mask = np.isfinite(pos[..., 0]) & np.isfinite(pos[..., 1])       # (N, T)
-        observed = cell.data.get('motion.tracks.observed')
-        if observed is not None:
-            observed = np.asarray(observed)
-            if observed.shape == mask.shape:
-                mask &= observed.astype(bool)
-        mask &= (gid >= 0)[:, None]
+        if observed is not None and np.shape(observed) == mask.shape:
+            mask &= np.asarray(observed).astype(bool)
         ii, tt = np.nonzero(mask)
-        if ii.size == 0:
+        table = {
+            'n_tracks': n_tracks, 'n_frames': T, 'contr': kin['contr'],
+            'track_id': ii.astype(np.int64), 't': tt.astype(np.int64),
+            'y': pos[ii, tt, 0], 'x': pos[ii, tt, 1],
+            'slen': kin['slen'][ii, tt], 'delta_slen': kin['delta_slen'][ii, tt],
+            'vel': kin['vel'][ii, tt], 'group_id': gid[ii].astype(np.int64),
+            'coverage': kin['coverage'][ii],
+        }
+        cell._track_layer_table = (key, table)
+        return table
+
+    def _track_features(self, table, color_by, dsl_limit):
+        """Feature columns for the layers, with the coloured one clipped so a
+        diverging colormap is centred on zero. The base columns are built once per
+        table; only the coloured column is recomputed."""
+        base = table.get('_features_base')
+        if base is None:
+            base = {k: np.nan_to_num(np.asarray(table[k], dtype=float), nan=0.0)
+                    for k in self.TRACK_COLOR_FEATURES}
+            base['group_id'] = np.where(np.asarray(table['group_id']) < 0, 0.0, base['group_id'])
+            table['_features_base'] = base
+        feats = dict(base)
+        _, _, symmetric = self.TRACK_COLOR_FEATURES[color_by]
+        if symmetric:
+            raw = np.asarray(table[color_by], dtype=float)
+            lim = self._symmetric_limit(raw, dsl_limit if color_by == 'delta_slen' else None)
+            col = np.nan_to_num(np.clip(raw, -lim, lim), nan=0.0)
+            # anchor the range so the midpoint of the colormap is exactly 0
+            if col.size:
+                col[np.argmin(col)] = -lim
+                col[np.argmax(col)] = lim
+            feats[color_by] = col
+        return feats
+
+    @staticmethod
+    def _symmetric_limit(values, explicit):
+        if explicit is not None and explicit > 0:
+            return float(explicit)
+        finite = values[np.isfinite(values)]
+        return float(np.percentile(np.abs(finite), 99)) if finite.size else 1.0
+
+    def init_tracks_stack(self, visible=True):
+        """napari Tracks layer of the sarcomere trajectories with fading tails.
+
+        Coloured by the feature chosen in the Motion tab (``motion.display.color_by``);
+        every feature is attached, so the colouring can also be switched in the
+        layer controls."""
+        self._ensure_track_colormaps()
+        cell = self.model.cell
+        if 'Trajectories' in self.viewer.layers:
+            self.viewer.layers.remove(self.viewer.layers['Trajectories'])
+        table = self.track_layer_table()
+        if table is None or cell.metadata.n_stack is None or cell.metadata.n_stack <= 1:
             return
-        ys, xs = pos[ii, tt, 0], pos[ii, tt, 1]
-        points = np.column_stack([tt.astype(float), ys, xs]) if multi_frame else np.column_stack([ys, xs])
+        color_by, dsl_limit, tail = self._track_display_settings()
+        feats = self._track_features(table, color_by, dsl_limit)
+        n_rows = table['track_id'].size
+        stride = max(1, int(np.ceil(n_rows / self.TRACK_MAX_VERTICES)))
+        keep = table['t'] % stride == 0
+        data = np.column_stack([table['track_id'][keep], table['t'][keep],
+                                table['y'][keep], table['x'][keep]]).astype(float)
+        layer = self.viewer.add_tracks(data, name='Trajectories',
+                                       features={k: v[keep] for k, v in feats.items()},
+                                       color_by=color_by, colormap=self.TRACK_COLOR_FEATURES[color_by][1],
+                                       tail_length=tail, tail_width=2, head_length=0,
+                                       visible=visible, scale=cell.scale)
+        layer.blending = 'translucent'
+        layer.metadata['stride'] = stride
+
+    def init_track_state_stack(self, visible=True):
+        """Points layer showing every tracked sarcomere at its current position,
+        coloured per frame by ΔSL / SL / velocity / group / coverage. Clicking a
+        point fires ``track_selected_callbacks(track_id)``."""
+        self._ensure_track_colormaps()
+        cell = self.model.cell
+        for name in ('Sarcomeres', 'Selected group'):
+            if name in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers[name])
+        table = self.track_layer_table()
+        if table is None:
+            return
+        color_by, dsl_limit, _ = self._track_display_settings()
+        feats = self._track_features(table, color_by, dsl_limit)
+        multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
+        pts = (np.column_stack([table['t'], table['y'], table['x']]) if multi_frame
+               else np.column_stack([table['y'], table['x']])).astype(float)
+        layer = self.viewer.add_points(pts, name='Sarcomeres', features=feats,
+                                       face_color=color_by,
+                                       face_colormap=self.TRACK_COLOR_FEATURES[color_by][1],
+                                       border_width=0, size=max(2.0, 0.3 / cell.metadata.pixelsize),
+                                       opacity=0.9, visible=visible, scale=cell.scale)
+        layer.mouse_drag_callbacks.append(self._on_sarcomere_click)
+
+    def init_track_groups_layer(self, visible=True):
+        """Shapes layer 'Groups': one path per fibre for the chain groupings (myofibril /
+        LOI) through its members at the reference frame, coloured by group and labelled
+        with the group id. Other groupings show their groups through the 'Sarcomeres'
+        layer coloured by group."""
+        if 'Groups' in self.viewer.layers:
+            self.viewer.layers.remove(self.viewer.layers['Groups'])
+        cell = self.model.cell
+        if cell is None or 'motion.tracks.group_id' not in cell.data:
+            return
+        kind = cell.data.get('motion.groups.kind')
+        if kind not in ('myofibril', 'loi'):
+            return
+        pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)
+        n_tracks, T = pos.shape[:2]
+        gid = np.asarray(cell.data['motion.tracks.group_id']).reshape(-1)
+        order = np.asarray(cell.data.get('motion.tracks.group_order', np.zeros(n_tracks))).reshape(-1)
+        if gid.shape[0] != n_tracks:
+            return
+        ref = int(cell.data.get('params.group_tracks.reference_frame', 0))
+        try:
+            ref_idx = cell._tracked_frame_index(ref)
+        except Exception:
+            ref_idx = 0
         n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
         import matplotlib.pyplot as plt
-        face = plt.get_cmap('gist_rainbow')((gid[ii] % n_groups) / n_groups)
-        self.viewer.add_points(points, name='TrackGroups', face_color=face,
-                               size=max(2.0, 0.3 / cell.metadata.pixelsize), visible=visible)
-        self.viewer.layers['TrackGroups'].scale = cell.scale
+        cmap = plt.get_cmap('gist_rainbow')
+        paths, colors, ids = [], [], []
+        for g in range(n_groups):
+            members = np.flatnonzero(gid == g)
+            if members.size < 2:
+                continue
+            members = members[np.argsort(order[members])]
+            yx = pos[members, ref_idx]
+            ok = np.isfinite(yx).all(axis=1)
+            if ok.sum() < 2:
+                yx = np.array([np.nanmean(pos[m], axis=0) for m in members])   # fall back to track means
+                ok = np.isfinite(yx).all(axis=1)
+                if ok.sum() < 2:
+                    continue
+            paths.append(yx[ok])
+            colors.append(cmap((g % n_groups) / n_groups))
+            ids.append(g)
+        if not paths:
+            return
+        layer = self.viewer.add_shapes(paths, name='Groups', shape_type='path',
+                                       edge_color=np.asarray(colors), edge_width=1.5, opacity=0.8,
+                                       features={'group': np.asarray(ids)},
+                                       text={'string': '{group}', 'size': 8, 'color': 'white',
+                                             'anchor': 'upper_left', 'translation': (-2, 0)},
+                                       visible=visible, scale=cell.scale[-2:], ndim=2)
+        layer.mouse_drag_callbacks.append(self._on_group_click)
+
+    def highlight_group(self, group):
+        """Ring the members of ``group`` in the viewer (all frames); None clears.
+
+        The 'Selected group' layer is created once and only its data is swapped, so
+        a selection never adds or removes a layer (which would refresh every layer)."""
+        table = self.track_layer_table()
+        cell = self.model.cell
+        if table is None:
+            return
+        multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
+        ndim = 3 if multi_frame else 2
+        if group is None:
+            pts = np.zeros((0, ndim))
+        else:
+            sel = table['group_id'] == int(group)
+            pts = (np.column_stack([table['t'][sel], table['y'][sel], table['x'][sel]]) if multi_frame
+                   else np.column_stack([table['y'][sel], table['x'][sel]])).astype(float)
+        if 'Selected group' in self.viewer.layers:
+            layer = self.viewer.layers['Selected group']
+            layer.data = pts
+            layer.visible = pts.shape[0] > 0
+            return
+        if pts.shape[0] == 0:
+            return
+        size = max(2.0, 0.3 / cell.metadata.pixelsize) * 1.8
+        self.viewer.add_points(pts, name='Selected group', ndim=ndim, face_color='transparent',
+                               border_color='yellow', border_width=0.25, size=size,
+                               opacity=1.0, scale=cell.scale)
+
+    def _on_group_click(self, layer, event):
+        """Mouse callback on the Groups layer: a click on a fibre path selects its group."""
+        start = np.asarray(event.position)
+        yield
+        while event.type == 'mouse_move':
+            yield
+        if np.linalg.norm(np.asarray(event.position) - start) > 1e-6:
+            return
+        idx = layer.get_value(event.position, view_direction=event.view_direction,
+                              dims_displayed=event.dims_displayed, world=True)
+        # never leave a shape selected: napari's highlight code cannot cope with a
+        # selected shape on an invisible layer when the visibility is toggled
+        layer.selected_data = set()
+        shape_idx = idx[0] if isinstance(idx, tuple) else idx
+        if shape_idx is None:
+            return
+        group = int(layer.features['group'].iloc[int(shape_idx)])
+        for cb in self.group_selected_callbacks:
+            cb(group)
+
+    def _track_display_settings(self):
+        p = self.model.parameters
+        try:
+            color_by = str(p.get_parameter('motion.display.color_by').get_value())
+            dsl_limit = float(p.get_parameter('motion.display.dsl_limit').get_value())
+            tail = int(p.get_parameter('motion.display.tail_frames').get_value())
+        except Exception:
+            color_by, dsl_limit, tail = 'delta_slen', 0.0, 30
+        color_by = self.TRACK_COLOR_LABELS.get(color_by, color_by)
+        if color_by not in self.TRACK_COLOR_FEATURES:
+            color_by = 'delta_slen'
+        return color_by, dsl_limit, max(1, tail)
+
+    def apply_track_display(self, show_trajectories=None, show_sarcomeres=None):
+        """Re-colour the track layers from the Motion tab's Display settings without
+        rebuilding them; optionally toggle their visibility."""
+        self._ensure_track_colormaps()
+        table = self.track_layer_table()
+        if table is None:
+            return
+        color_by, dsl_limit, tail = self._track_display_settings()
+        feats = self._track_features(table, color_by, dsl_limit)
+        cmap = self.TRACK_COLOR_FEATURES[color_by][1]
+        if 'Trajectories' in self.viewer.layers:
+            layer = self.viewer.layers['Trajectories']
+            keep = table['t'] % int(layer.metadata.get('stride', 1)) == 0
+            if int(keep.sum()) != layer.data.shape[0]:       # tracks changed: rebuild
+                self.init_tracks_stack(visible=layer.visible)
+                layer = self.viewer.layers['Trajectories']
+            else:
+                layer.features = {k: v[keep] for k, v in feats.items()}
+                layer.colormap = cmap
+                layer.color_by = color_by
+            layer.tail_length = tail
+            if show_trajectories is not None:
+                layer.visible = bool(show_trajectories)
+        if 'Sarcomeres' in self.viewer.layers:
+            layer = self.viewer.layers['Sarcomeres']
+            layer.features = feats
+            layer.face_colormap = cmap
+            layer.face_color = color_by
+            if show_sarcomeres is not None:
+                layer.visible = bool(show_sarcomeres)
+
+    def _on_sarcomere_click(self, layer, event):
+        """Mouse callback on the Sarcomeres layer: a click (no drag) selects the
+        sarcomere under the cursor."""
+        start = np.asarray(event.position)
+        yield
+        while event.type == 'mouse_move':
+            yield
+        if np.linalg.norm(np.asarray(event.position) - start) > 1e-6:
+            return                                             # it was a drag
+        idx = layer.get_value(event.position, view_direction=event.view_direction,
+                              dims_displayed=event.dims_displayed, world=True)
+        if idx is None:
+            return
+        track_id = int(layer.features['track_id'].iloc[int(idx)])
+        for cb in self.track_selected_callbacks:
+            cb(track_id)
 
     def init_draw_loi_layer(self):
         """Add (or focus) a Shapes layer for drawing LOI lines on the movie.
@@ -760,7 +998,6 @@ class ApplicationControl:
         self.__worker_thread.start()
         # Final resets
 
-        # todo: this message gets "eaten" by the last progress_details (depends which is called first)
         self.__worker_thread.finished.connect(lambda: self.__finished_task(finished_message))
 
         return worker

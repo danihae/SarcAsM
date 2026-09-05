@@ -187,15 +187,8 @@ class SarcAsMBase:
         if restart and os.path.exists(self.base_dir):
             remove_tree(self.base_dir)
 
-        # NB: base_dir/data_dir/analysis_dir are not created here — merely
-        # constructing an object must not spawn an empty '<name>/' tree. The few
-        # consumers that need them (LOI data, export_json, open_base_dir) create
-        # their target directory on demand. All artefacts live in the sibling
-        # '<name>.ome.zarr' store, which IS created eagerly at construction
-        # (metadata only — the raw image pixels are ingested lazily on first
-        # read; see end of __init__).
-
-        # --- single-store backing: everything lives in <name>.ome.zarr ---
+        # base_dir/data_dir/analysis_dir are created on demand by their few consumers;
+        # everything else lives in the sibling <name>.ome.zarr store
         self.store_path = store_path_for(self.file_path)
         # Pre-1.0 (base_dir/structure.json) analyses are not read by >=1.0. Don't fail:
         # warn and start fresh in the new .ome.zarr store (the old analysis is left in place).
@@ -241,16 +234,9 @@ class SarcAsMBase:
             # Honour an explicit axes argument (e.g. 'TYX') so stacks aren't misread as channels.
             self._extract_metadata_only(axes=axes)
         elif _is_ome_zarr(self.file_path):
-            # A third-party NGFF store carries its calibration in the multiscales
-            # metadata. Without this the pixel size stays None and the user has to
-            # supply it by hand for every store — and pixel size is exactly what the
-            # generalist model is calibrated on.
-            self._extract_metadata_only_ngff(axes=axes)
+            self._extract_metadata_only_ngff(axes=axes)   # calibration from the multiscales metadata
 
-        # Create the sibling '<name>.ome.zarr' store eagerly so it exists (and is
-        # inspectable) right after construction. Only the small metadata is written
-        # now; the raw image pixels are still ingested lazily on the first
-        # read_imgs()/analysis, keeping construction fast for large files.
+        # create the store (metadata only) now; pixels are ingested on first read
         if not self.store.exists:
             try:
                 self.store.write_metadata(self._metadata_jsonable())
@@ -480,14 +466,6 @@ class SarcAsMBase:
             return " ".join(bits) + ">"
         except Exception:                       # partially constructed / patched objects
             return object.__repr__(self)
-
-    def open_base_dir(self):
-        """Open the folder holding this file's analysis in the file explorer.
-
-        The analysis lives in the sibling ``<name>.ome.zarr`` store, so this
-        reveals the directory that contains the input image and its store.
-        """
-        Utils.open_folder(os.path.dirname(self.store_path))
 
     def _metadata_jsonable(self) -> dict:
         """Metadata as a JSON/attr-safe dict (numpy time array -> list)."""
@@ -914,11 +892,8 @@ class SarcAsMBase:
         # tifffile's own guess
         if series.axes:
             axes = series.axes.upper().replace('S', 'C')  # S (samples) → C
-            # tifffile labels a stack axis it cannot classify as 'I' (sequence)
-            # or 'Q' (other) — e.g. a generic multi-page TIFF, or an OME/ImageJ
-            # file whose metadata it could not fully resolve. Treat that extra
-            # axis as time (a movie), consistent with the bare-stack heuristic
-            # below; a genuine z-stack can still be forced via axes='ZYX'.
+            # an unclassified stack axis ('I' sequence / 'Q' other) is a movie;
+            # a z-stack can still be forced via axes='ZYX'
             axes = axes.replace('I', 'T').replace('Q', 'T')
             return axes
 

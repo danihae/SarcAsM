@@ -84,10 +84,7 @@ class IOUtils:
         elif isinstance(field, dict) and 'type' in field:
             if field['type'] == 'ndarray':
                 arr = np.array(field['values'])
-                # orjson serialises float NaN as JSON null; those round-trip
-                # as Python None and force np.array into object dtype. If the
-                # remaining non-None elements are all numeric, coerce back to
-                # float with NaN in the None slots.
+                # JSON null (orjson's NaN) comes back as None: coerce to float NaN
                 if arr.dtype == object:
                     try:
                         arr = np.where(arr == None, np.nan, arr).astype(np.float64)  # noqa: E711

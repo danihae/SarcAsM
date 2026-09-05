@@ -17,11 +17,9 @@ More detailed instructions see :doc:`notebooks/tutorial_structure_analysis`.
     file_path = '/path/to/file.tif'
     sarc_obj = SarcAsM(file_path)
 
-    # detect sarcomere Z-bands, M-bands, orientation, sarcomere mask and cell mask by deep learning
+    # detect sarcomere Z-bands, M-bands, orientation, sarcomere mask and cell mask by deep
+    # learning (the cell area / intensity features are computed right away)
     sarc_obj.detect_sarcomeres()
-
-    # analyze cell mask
-    sarc_obj.analyze_cell_mask()
 
     # analyze Z-band morphology
     sarc_obj.analyze_z_bands()
@@ -76,7 +74,9 @@ contractions of *groups* of tracks. More detailed instructions see
 Tracks can also be grouped by M-band (``by='mband'``), by myofibril domain
 (``by='domain'``), along automatically detected lines of interest (``by='loi'``),
 or by your own labels (``by='custom'``). Each grouping writes its features under
-``<kind>_<feature>`` keys — see :ref:`motion_features`.
+``motion.<kind>.<feature>`` keys, e.g. ``sarc_obj.data['motion.pool.beating_rate']`` or
+equivalently ``sarc_obj.data.motion.pool.beating_rate`` — see :ref:`motion_features`
+and :doc:`key_migration` for the mapping from pre-1.0 keys.
 
 Controlling Log Output
 ======================

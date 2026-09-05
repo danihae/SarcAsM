@@ -74,9 +74,7 @@ class ContractionNet(nn.Module):
         One of :data:`NORMS`. Default is ``'batch'``. The others exist for ablation.
     attention : bool or str, optional
         Position of a global self-attention layer; one of :data:`ATTENTION_POSITIONS`.
-        ``True`` means ``'post'``. Default is False. Attention *instead of* a dilated
-        stack is a worse design and was measured to be so; attention layered on top of one
-        is not the same proposition.
+        ``True`` means ``'post'``. Default is False.
 
     Notes
     -----

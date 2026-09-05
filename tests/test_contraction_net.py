@@ -99,10 +99,12 @@ class TestShippedCheckpoint:
             assert np.allclose(a, b, atol=1e-6)
 
     def test_reproduces_golden_prediction(self):
+        # float32 inference differs by up to ~6e-4 between CPU, CUDA and MPS
+        # backends; a changed checkpoint or conditioning moves outputs by O(0.1)
         golden = np.load(GOLDEN)
         for i, x in enumerate(_traces()):
             got = predict_contractions(x, SHIPPED_MODEL)
-            assert np.allclose(got, golden[f'trace_{i}'], atol=1e-6)
+            assert np.allclose(got, golden[f'trace_{i}'], atol=2e-3)
     def test_checkpoint_without_arch_is_rejected(self, tmp_path):
         path = tmp_path / 'pre10.pt'
         torch.save({'n_filter': 64, 'in_channels': 1, 'out_channels': 2,

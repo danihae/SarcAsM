@@ -21,8 +21,11 @@ detail panel via :meth:`SarcAsM.get_track_motion`.
 
 import logging
 from pathlib import Path
+from typing import Optional
 
+import numpy as np
 import qtutils
+from PyQt5.QtCore import QTimer
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import Plots, SarcAsM
@@ -32,6 +35,7 @@ from .chain_execution import ChainExecution
 from .popup_export import ExportPopup
 from ..model import ApplicationModel
 from ..view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
+from ..view.track_trace_dock import TrackTraceDock
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +47,31 @@ def _pv(model: ApplicationModel, name: str):
     return model.parameters.get_parameter(name).get_value()
 
 
+def detect_lois_kwargs(get) -> dict:
+    """``SarcAsM.detect_lois`` keyword arguments from the ``loi.detect.*`` parameters.
+
+    ``get(name)`` returns a parameter value. Shared by the interactive Motion tab and
+    the batch run so both use the same tuned LOI detection.
+    """
+    return dict(
+        n_lois=int(get('loi.detect.n_lois')),
+        ratio_seeds=get('loi.detect.ratio_seeds'),
+        persistence=int(get('loi.detect.persistence')),
+        threshold_distance=get('loi.detect.threshold_distance'),
+        mode=get('loi.detect.mode'),
+        number_lims=(int(get('loi.detect.number_limits_lower')),
+                     int(get('loi.detect.number_limits_upper'))),
+        length_lims=(get('loi.detect.length_limits_lower'),
+                     get('loi.detect.length_limits_upper')),
+        distance_threshold_lois=get('loi.detect.cluster_threshold_lois'),
+        linkage=get('loi.detect.linkage'))
+
+
 class MotionAnalysisControl:
     """Handles the track-based Motion tab."""
 
     def __init__(self, motion_analysis_widget: MotionAnalysisWidget, main_control: ApplicationControl):
+        self.__trace_dock: Optional[TrackTraceDock] = None
         self.__motion_analysis_widget = motion_analysis_widget
         self.__main_control = main_control
         self.__worker = None
@@ -88,7 +113,7 @@ class MotionAnalysisControl:
             max_disp_perp_um=_pv(m, 'motion.track.max_disp_perp'),
             ori_tol_deg=_pv(m, 'motion.track.ori_tol'),
             min_track_duration_s=_pv(m, 'motion.track.min_duration_s'),
-            max_gap_interpolation=int(_pv(m, 'motion.track.max_gap_interp')),
+            max_gap_interpolation_s=float(_pv(m, 'motion.track.max_gap_interp_s')),
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
@@ -113,25 +138,14 @@ class MotionAnalysisControl:
         by = _pv(m, 'motion.group.by')
         ref = int(_pv(m, 'motion.group.reference_frame'))
         cov = _pv(m, 'motion.group.min_coverage')
+        min_size = int(_pv(m, 'motion.group.min_group_size'))
         if by == 'loi':
             if self.__drawn_lois:
                 # user-drawn lines (yx-px polylines) feed the same loi grouping
                 cell.data['motion.loi.data'] = {'loi_lines': self.__drawn_lois}
             else:
-                cell.detect_lois(
-                    frame=ref,
-                    n_lois=int(_pv(m, 'loi.detect.n_lois')),
-                    ratio_seeds=_pv(m, 'loi.detect.ratio_seeds'),
-                    persistence=int(_pv(m, 'loi.detect.persistence')),
-                    threshold_distance=_pv(m, 'loi.detect.threshold_distance'),
-                    mode=_pv(m, 'loi.detect.mode'),
-                    number_lims=(int(_pv(m, 'loi.detect.number_limits_lower')),
-                                 int(_pv(m, 'loi.detect.number_limits_upper'))),
-                    length_lims=(_pv(m, 'loi.detect.length_limits_lower'),
-                                 _pv(m, 'loi.detect.length_limits_upper')),
-                    distance_threshold_lois=_pv(m, 'loi.detect.cluster_threshold_lois'),
-                    linkage=_pv(m, 'loi.detect.linkage'))
-        cell.group_tracks(by=by, reference_frame=ref, min_coverage=cov)
+                cell.detect_lois(frame=ref, **detect_lois_kwargs(lambda name: _pv(m, name)))
+        cell.group_tracks(by=by, reference_frame=ref, min_coverage=cov, min_group_size=min_size)
 
     def on_btn_draw_lois(self):
         if not self.__chk_initialized():
@@ -211,13 +225,21 @@ class MotionAnalysisControl:
     # ------------------------------------------------------------------ #
     def __tracks_finished(self):
         self.__main_control.init_tracks_stack()
+        self.__main_control.init_track_state_stack()
+        self.__sync_display_visibility()
+        self.__refresh_trace_source()
 
     def __grouping_finished(self):
-        self.__main_control.init_tracks_stack()        # recolour trajectory lines by group
-        self.__main_control.init_track_groups_stack()
-        self.__refresh_fibre_combo()
+        # the tracks are unchanged: refresh the features (group ids) in place instead of
+        # rebuilding the layers, which takes seconds for millions of vertices
+        self.__main_control.highlight_group(None)
+        self.__main_control.init_track_groups_layer()
+        self.__sync_display_visibility()
+        self.__refresh_trace_source()
+        self.refresh_fibre_combo()
 
-    def __refresh_fibre_combo(self):
+    def refresh_fibre_combo(self):
+        """Fill the per-fibre combo from the grouping in the store (also on file open)."""
         w = self.__motion_analysis_widget
         cell = self.__main_control.model.cell
         w.cb_fibre_group.clear()
@@ -324,6 +346,149 @@ class MotionAnalysisControl:
         plt.show()
 
     # ------------------------------------------------------------------ #
+    # display of the tracks in the viewer + time-series panel + raster
+    # ------------------------------------------------------------------ #
+    def __display_visibility(self):
+        m = self.__main_control.model
+        return (bool(_pv(m, 'motion.display.show_trajectories')),
+                bool(_pv(m, 'motion.display.show_sarcomeres')),
+                bool(_pv(m, 'motion.display.show_groups')))
+
+    def __sync_display_visibility(self):
+        show_traj, show_sarc, show_groups = self.__display_visibility()
+        self.__main_control.apply_track_display(show_trajectories=show_traj, show_sarcomeres=show_sarc)
+        layers = self.__main_control.viewer.layers
+        if 'Groups' in layers:
+            groups = layers['Groups']
+            groups.selected_data = set()      # see ApplicationControl._on_group_click
+            groups.visible = show_groups
+
+    def __on_display_changed(self):
+        if self.__main_control.model.cell is None:
+            return
+        try:
+            self.__sync_display_visibility()
+        except Exception as e:
+            logger.warning(f'Updating the track display failed: {e}')
+
+    def __open_trace_dock(self):
+        if not self.__chk_initialized():
+            return None
+        if self.__trace_dock is None:
+            self.__trace_dock = TrackTraceDock()
+            viewer = self.__main_control.viewer
+            viewer.window.add_dock_widget(self.__trace_dock, name='Sarcomere time series', area='bottom')
+            viewer.dims.events.current_step.connect(
+                lambda event: self.__trace_dock.set_frame(int(viewer.dims.current_step[0])))
+        self.__refresh_trace_source()
+        return self.__trace_dock
+
+    def __refresh_trace_source(self):
+        if self.__trace_dock is None:
+            return
+        cell = self.__main_control.model.cell
+        kin = self.__main_control.track_kinematics()
+        if cell is None or kin is None:
+            self.__trace_dock.set_source(None, None, 1.0)
+            return
+        gid = cell.data.get('motion.tracks.group_id')
+        self.__trace_dock.set_source(kin, gid, cell.metadata.frametime, cell.data.get('motion.groups.kind', ''))
+
+    def __on_track_selected(self, track_id: int):
+        """A sarcomere was clicked: select its group, highlight it, show its overlay."""
+        cell = self.__main_control.model.cell
+        gid = cell.data.get('motion.tracks.group_id') if cell is not None else None
+        group = None
+        if gid is not None:
+            gid = np.asarray(gid).reshape(-1)
+            if track_id < gid.size and gid[track_id] >= 0:
+                group = int(gid[track_id])
+        self.__select_group(group)
+        # the ring is painted first; the panel follows on the next event-loop turn
+        QTimer.singleShot(0, lambda: self.__show_in_dock(track=track_id))
+
+    def __on_group_selected(self, group: int):
+        """A fibre path of the Groups layer was clicked."""
+        self.__select_group(group)
+        QTimer.singleShot(0, lambda: self.__show_in_dock(group=group))
+
+    def __show_in_dock(self, track=None, group=None):
+        dock = self.__open_trace_dock()
+        if dock is None:
+            return
+        if track is not None:
+            dock.show_track(track)
+        else:
+            dock.show_group(group)
+
+    def __select_group(self, group):
+        """Ring the group's members in the viewer and point the per-fibre combo at it."""
+        try:
+            self.__main_control.highlight_group(group)
+        except Exception as e:
+            logger.debug(f'highlight_group skipped: {e}')
+        w = self.__motion_analysis_widget
+        if group is not None and w.cb_fibre_group.isEnabled():
+            idx = w.cb_fibre_group.findText(str(group))
+            if idx >= 0:
+                w.cb_fibre_group.setCurrentIndex(idx)
+
+    def __on_btn_overlay(self):
+        """Figure with the SL and ΔSL overlays of the selected group (all members + mean)."""
+        if not self.__chk_initialized():
+            return
+        import matplotlib.pyplot as plt
+        cell = self.__main_control.model.cell
+        if 'motion.tracks.group_id' not in cell.data:
+            logger.warning('No grouping yet — run "Group tracks" first.')
+            return
+        kind = cell.data.get('motion.groups.kind', '')
+        w = self.__motion_analysis_widget
+        group = int(w.cb_fibre_group.currentText()) if w.cb_fibre_group.currentText() else 0
+        fig, axs = plt.subplots(2, 1, figsize=(10, 7), constrained_layout=True, sharex=True)
+        try:
+            Plots.plot_slen(axs[0], cell, group=group, kind=kind)
+            Plots.plot_delta_slen(axs[1], cell, group=group, kind=kind)
+        except Exception as e:
+            logger.warning(f'overlay plot failed: {e}')
+            plt.close(fig)
+            return
+        fig.suptitle(f'{Path(cell.file_path).name} — {kind} group {group}')
+        plt.show()
+
+    def __on_btn_raster(self):
+        if not self.__chk_initialized():
+            return
+        import matplotlib.pyplot as plt
+        cell = self.__main_control.model.cell
+        if 'motion.tracks.slen' not in cell.data:
+            logger.warning('No tracks yet — run "Track sarcomere vectors" first.')
+            return
+        color_by, _, _ = self.__main_control._track_display_settings()
+        value = color_by if color_by in ('delta_slen', 'slen', 'vel') else 'delta_slen'
+        cycle = 'motion.pool.labels_contr' in cell.data
+        if not cycle:
+            logger.warning("No pooled contraction cycles yet (analyze with 'Group by = pool' for the "
+                           "cycle-averaged raster) — showing the full recording.")
+        fig, axs = plt.subplots(1, 2 if cycle else 1, figsize=(14 if cycle else 8, 6),
+                                constrained_layout=True, squeeze=False)
+        try:
+            if cycle:
+                Plots.plot_track_raster(axs[0, 0], cell, value=value, sort_by='time_to_peak',
+                                        title='cycle average, sorted by time to peak')
+                Plots.plot_track_raster(axs[0, 1], cell, value=value, sort_by='amplitude',
+                                        title='cycle average, sorted by amplitude')
+            else:
+                Plots.plot_track_raster(axs[0, 0], cell, value=value, cycle_average=False,
+                                        title='full recording, by group')
+        except Exception as e:
+            logger.warning(f'raster plot failed: {e}')
+            plt.close(fig)
+            return
+        fig.suptitle(f'{Path(cell.file_path).name} — tracked sarcomeres')
+        plt.show()
+
+    # ------------------------------------------------------------------ #
     # export
     # ------------------------------------------------------------------ #
     def __on_btn_export_motion_data(self):
@@ -357,6 +522,16 @@ class MotionAnalysisControl:
         w.btn_plot_summary.clicked.connect(self.__on_btn_plot_summary)
         w.btn_export_motion_data.clicked.connect(self.__on_btn_export_motion_data)
         w.btn_show_fibre_detail.setEnabled(False)
+        self.__main_control.file_opened_callbacks.append(self.refresh_fibre_combo)
+        self.__main_control.file_opened_callbacks.append(self.__sync_display_visibility)
+        self.__main_control.track_selected_callbacks.append(self.__on_track_selected)
+        self.__main_control.group_selected_callbacks.append(self.__on_group_selected)
+
+        # display of the tracks in the viewer
+        w.cb_display_color_by.addItems(list(ApplicationControl.TRACK_COLOR_LABELS))
+        w.btn_display_trace.clicked.connect(self.__open_trace_dock)
+        w.btn_display_overlay.clicked.connect(self.__on_btn_overlay)
+        w.btn_display_raster.clicked.connect(self.__on_btn_raster)
 
         p = self.__main_control.model.parameters.get_parameter
         # track
@@ -364,11 +539,26 @@ class MotionAnalysisControl:
         p('motion.track.max_disp_perp').connect(w.dsb_track_max_disp_perp)
         p('motion.track.ori_tol').connect(w.dsb_track_ori_tol)
         p('motion.track.min_duration_s').connect(w.dsb_track_min_duration_s)
-        p('motion.track.max_gap_interp').connect(w.sb_track_max_gap_interp)
+        p('motion.track.max_gap_interp_s').connect(w.dsb_track_max_gap_interp_s)
         # group
         p('motion.group.by').connect(w.cb_group_by)
         p('motion.group.reference_frame').connect(w.sb_group_reference_frame)
         p('motion.group.min_coverage').connect(w.dsb_group_min_coverage)
+        p('motion.group.min_group_size').connect(w.sb_group_min_group_size)
+        # display
+        p('motion.display.color_by').connect(w.cb_display_color_by)
+        p('motion.display.dsl_limit').connect(w.dsb_display_dsl_limit)
+        p('motion.display.tail_frames').connect(w.sb_display_tail)
+        p('motion.display.show_trajectories').connect(w.chk_display_trajectories)
+        p('motion.display.show_sarcomeres').connect(w.chk_display_sarcomeres)
+        p('motion.display.show_groups').connect(w.chk_display_groups)
+        # the parameter bindings above record the values; these apply them to the layers
+        w.cb_display_color_by.currentTextChanged.connect(lambda _: self.__on_display_changed())
+        w.dsb_display_dsl_limit.valueChanged.connect(lambda _: self.__on_display_changed())
+        w.sb_display_tail.valueChanged.connect(lambda _: self.__on_display_changed())
+        w.chk_display_trajectories.toggled.connect(lambda _: self.__on_display_changed())
+        w.chk_display_sarcomeres.toggled.connect(lambda _: self.__on_display_changed())
+        w.chk_display_groups.toggled.connect(lambda _: self.__on_display_changed())
         # LOI auto-detection (advanced, collapsed by default)
         p('loi.detect.n_lois').connect(w.sb_loi_n_lois)
         p('loi.detect.ratio_seeds').connect(w.dsb_loi_ratio_seeds)

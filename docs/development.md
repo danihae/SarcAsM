@@ -23,7 +23,7 @@ This guide is intended for developers who want to contribute to SarcAsM or publi
 
 3. **Create a development environment and install**:
    ```bash
-   uv venv --python 3.10
+   uv venv --python 3.12
    source .venv/bin/activate  # On macOS/Linux
    # Or: .venv\Scripts\activate  # On Windows
    
@@ -46,7 +46,7 @@ This guide is intended for developers who want to contribute to SarcAsM or publi
 
 2. **Create a development environment**:
    ```bash
-   conda create -n sarcasm-dev python=3.10
+   conda create -n sarcasm-dev python=3.12
    conda activate sarcasm-dev
    ```
 
@@ -418,13 +418,13 @@ logger = logging.getLogger(__name__)
 
 ### Controlling Log Level
 
-Users can set the log level when initializing `Structure` or `Motion` objects:
+Users can set the log level when initializing `SarcAsM` or `Motion` objects:
 
 ```python
-from sarcasm import Structure
+from sarcasm import SarcAsM
 
-sarc = Structure('file.tif', log_level='DEBUG')  # Verbose
-sarc = Structure('file.tif', log_level='WARNING')  # Quiet
+sarc = SarcAsM('file.tif', log_level='DEBUG')  # Verbose
+sarc = SarcAsM('file.tif', log_level='WARNING')  # Quiet
 ```
 
 ### GUI Integration

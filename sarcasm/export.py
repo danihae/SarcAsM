@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # ImageMetadata dataclass fields — dropped from tabular (xlsx/csv) exports so
 # the output contains only feature values. JSON exports retain metadata.
 _METADATA_KEYS = frozenset(ImageMetadata.__dataclass_fields__.keys())
+# Metadata that is per-frame or nested: never fits one table cell (a per-frame
+# vector would be stringified and silently truncated past 1000 elements).
+_NON_TABULAR_METADATA_KEYS = frozenset({'time', 'timestamps', 'user_info'})
 
 
 class BatchExport:
@@ -79,10 +82,16 @@ class BatchExport:
         self.experiment = experiment
         self.files = list_files
         self.conditions = conditions
-        self.data = pd.DataFrame
+        self.data = None
 
         if load_data:
             self.load_data()
+
+    def _require_data(self) -> pd.DataFrame:
+        if self.data is None:
+            raise ValueError('No data collected yet: call get_data(), get_motion_data(), '
+                             'load_data() or load_motion_data() first.')
+        return self.data
 
     def get_data(self, structure_keys=None):
         """
@@ -146,15 +155,15 @@ class BatchExport:
                 logger.error(f'{tif_file} failed!')
                 logger.exception(f'Exception: {repr(e)}')
         self.data = pd.DataFrame.from_records(records)
-        self.data.to_pickle(self.folder + 'data_motion.pkl')
+        self.data.to_pickle(os.path.join(self.folder, 'data_motion.pkl'))
 
     def save_data(self):
-        """Save the DataFrame to ``<folder>data_structure.pkl``."""
-        self.data.to_pickle(self.folder + 'data_structure.pkl')
+        """Save the DataFrame to ``<folder>/data_structure.pkl``."""
+        self._require_data().to_pickle(os.path.join(self.folder, 'data_structure.pkl'))
 
     def load_data(self):
         """
-        Load the DataFrame from ``<folder>data_structure.pkl``.
+        Load the DataFrame from ``<folder>/data_structure.pkl``.
 
         Falls back to a ``data_structure.pd`` file when the ``.pkl`` file is
         absent.
@@ -164,14 +173,21 @@ class BatchExport:
         FileExistsError
             If the data file does not exist in the specified folder.
         """
-        path = self.folder + 'data_structure.pkl'
+        path = os.path.join(self.folder, 'data_structure.pkl')
         if not os.path.exists(path):
             # backward compatibility with the legacy '.pd' extension
-            legacy_path = self.folder + 'data_structure.pd'
+            legacy_path = os.path.join(self.folder, 'data_structure.pd')
             if not os.path.exists(legacy_path):
                 raise FileExistsError('Data from previous analysis does not exist and cannot be loaded. '
                                       'Set load_data=False.')
             path = legacy_path
+        self.data = pd.read_pickle(path)
+
+    def load_motion_data(self):
+        """Load the per-group motion table written by :meth:`get_motion_data`."""
+        path = os.path.join(self.folder, 'data_motion.pkl')
+        if not os.path.exists(path):
+            raise FileExistsError(f'{path} does not exist; run get_motion_data() first.')
         self.data = pd.read_pickle(path)
 
     def export_data(self, file_path, format='.xlsx'):
@@ -185,7 +201,7 @@ class BatchExport:
         format : {'.xlsx', '.csv'}, optional
             Format of the output file. Default is '.xlsx'.
         """
-        _data = self.data.applymap(Export.flatten_single)
+        _data = Export.tabular_frame(self._require_data())
         if format == '.xlsx':
             _data.to_excel(file_path, index=False)
         elif format == '.csv':
@@ -228,7 +244,10 @@ class Export:
     motion_keys_default = ['beating_rate', 'beating_rate_variability', 'equ', 'n_contr',
                            'n_contr_complete',
                            'contr_max', 'elong_max', 'vel_contr_max', 'vel_elong_max',
-                           'time_to_peak', 'time_to_relax', 'time_contr']
+                           'time_to_peak', 'time_to_relax', 'time_contr',
+                           'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
+                           'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
+                           'oscill_peak_avg', 'oscill_peak_1_single', 'oscill_peak_2_single']
 
     @staticmethod
     def get_structure_dict(sarc_obj, structure_keys=None, **conditions):
@@ -303,6 +322,18 @@ class Export:
         if isinstance(x, (list, np.ndarray)) and len(x) == 1:
             return x[0]
         return x
+
+    @staticmethod
+    def tabular_frame(records) -> pd.DataFrame:
+        """One-row-per-object table from records (or a DataFrame) for xlsx/csv output.
+
+        Drops the per-frame / nested metadata columns (``time``, ``timestamps``,
+        ``user_info``) that cannot live in a single cell and collapses 1-element
+        sequences to scalars.
+        """
+        df = records if isinstance(records, pd.DataFrame) else pd.DataFrame.from_records(records)
+        df = df.drop(columns=[c for c in df.columns if c in _NON_TABULAR_METADATA_KEYS])
+        return df.map(Export.flatten_single)
 
     @staticmethod
     def get_motion_dict_per_group(sarc_obj, motion_keys=None, kind=None, **conditions):
@@ -553,7 +584,7 @@ class Export:
             return
         if fmt not in ('xlsx', 'csv'):
             raise ValueError(f'Unsupported file format: {fileformat}')
-        df = pd.DataFrame.from_records(records).applymap(Export.flatten_single)
+        df = Export.tabular_frame(records)
         if fmt == 'xlsx':
             with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='data', index=False)

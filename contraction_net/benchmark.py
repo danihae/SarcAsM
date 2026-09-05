@@ -459,7 +459,7 @@ def score_traces(predict: PredictFn, traces: Sequence[Trace], threshold: float =
     dict
         ``'overall'`` mean IoU over traces that contain contractions, ``'by_duty'`` mapping
         decile -> (n, mean IoU), ``'by_regime'`` mapping regime -> (n, mean IoU, mean
-        |event-count error|), and ``'quiescent_fp'`` -- the mean fraction of frames wrongly
+        ``|event-count error|``), and ``'quiescent_fp'`` -- the mean fraction of frames wrongly
         flagged on traces that contain no contraction at all.
 
     Notes

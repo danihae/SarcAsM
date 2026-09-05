@@ -9,7 +9,15 @@ There is **no runtime translation layer** and no store migration: an analysis wr
 before 1.0 holds the old keys and must be regenerated. Exported CSV / DataFrame column
 names change with the keys, so downstream analyses need re-pointing against this table.
 
-`params.<step>.<name>` keys are **unchanged**.
+`params.<step>.<name>` keys are **unchanged**, with one rule made consistent: `<name>` is
+always the parameter's name in the method signature. Four keys had drifted from it:
+
+| old | new |
+|---|---|
+| `params.detect_sarcomeres.model` | `params.detect_sarcomeres.model_path` |
+| `params.detect_sarcomeres.clip_threshold` | `params.detect_sarcomeres.clip_thres` |
+| `params.detect_z_bands_fast_movie.model` | `params.detect_z_bands_fast_movie.model_path` |
+| `params.detect_z_bands_fast_movie.clip_threshold` | `params.detect_z_bands_fast_movie.clip_thres` |
 
 ## `SarcAsM.analyze_cell_mask`
 
@@ -214,6 +222,19 @@ Written once per grouping `kind` in pool / mband / myofibril / domain / loi / cu
 
 The domain-only `domain_n_vectors_timeseries` spelling is gone: every kind now
 writes `n_members`.
+
+**New in 1.0, no pre-1.0 counterpart** — the per-group heterogeneity of the member
+tracks, written by the same call for every kind (see
+`sarcasm.analysis.heterogeneity`): `motion.<kind>.corr_delta_slen_serial`,
+`corr_delta_slen_mutual`, `ratio_delta_slen_mutual_serial`, `corr_vel_serial`,
+`corr_vel_mutual`, `ratio_vel_mutual_serial`, `corr_n_cycles`, `oscill_frequencies`,
+`oscill_magnitudes_avg`, `oscill_magnitudes_single`, `oscill_peak_avg`, `oscill_amp_avg`,
+`oscill_peak_1_single`, `oscill_amp_1_single`, `oscill_peak_2_single`, `oscill_amp_2_single`.
+The 0.5 `Motion.analyze_correlations` / `analyze_oscillations` results lived only in
+a manual LOI's `loi_data`; the 4-D correlation matrices (`corr_delta_slen`, `corr_vel`)
+and the raw wavelet coefficients (`oscill_cfs*`) are not stored any more. Note that
+the 0.5 *mutual* correlation was reduced over the wrong matrix axes (it paired the
+sarcomere index with the cycle index); 1.0 values follow eq. (1) of Haertter et al.
 
 ---
 

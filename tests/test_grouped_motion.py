@@ -171,6 +171,22 @@ def test_equilibrium_excludes_edge_contraction_frames():
     assert equ > grouped_motion.equilibrium_over_quiet(slen, contr_edge_dropped)
 
 
+def test_stored_equilibrium_is_the_quiet_frame_median():
+    """``equ`` from the cycle engine must agree with the plots' definition: the median
+    over the non-contracting frames, not over all frames (which the contracted
+    frames pull down, biasing ``delta_slen`` / ``contr_max`` / ``elong_max``)."""
+    T = 60
+    spans = [(10, 30), (35, 55)]                       # contracting 2/3 of the time
+    slen = _v_trace(T, spans)[None, :]
+    labels = _labelled_cycles(T, spans)[None, :]
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen, labels, np.array([2]), frametime=_FT, buffer_frames=_BUF)
+    quiet = labels[0] == 0
+    assert out['equ'][0] == pytest.approx(np.nanmedian(slen[0, quiet]))
+    assert out['equ'][0] == pytest.approx(grouped_motion.equilibrium_over_quiet(slen[0], ~quiet))
+    assert out['equ'][0] > np.nanmedian(slen[0])       # the all-frame median is biased low
+
+
 def test_motion_period_durations_nan_at_edges():
     from sarcasm.motion import Motion
     m = Motion.__new__(Motion)
@@ -786,13 +802,10 @@ def test_plot_track_coverage_smoke():
         plt.close('all')
 
 
-def test_motion_from_loi_data_runs_loi_engine():
+def test_motion_from_loi_data_runs_loi_engine(motion_file_path):
     """Motion.from_loi_data + the LOI engine on a synthesized fibre (needs a cell tif)."""
-    from pathlib import Path
     from sarcasm.motion import Motion
-    fp = Path(__file__).parent.parent / 'test_data/high_speed_single_ACTN2-citrine_CM/20kPa.tif'
-    if not fp.exists():
-        pytest.skip('test data not found')
+    fp = motion_file_path
     T = 80
     t = np.arange(T)
     base = 1.95 - 0.2 * np.clip(np.sin(2 * np.pi * t / 16.0), 0, None)

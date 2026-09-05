@@ -18,7 +18,7 @@ There are two main ways to start the SarcAsM GUI:
 *   **Note:**
 
     *   These standalone applications are **early versions** and may take a **significant amount of time to start up** initially.
-    *   They are built using **Python 3.11**.
+    *   They are built using **Python 3.12**.
     *   The **Windows version currently only utilizes the CPU** and does not support CUDA GPU acceleration. For high-performance needs, consider using the Python API.
 
 **2. From your Python Environment (Recommended for developers or API users):**
@@ -50,9 +50,18 @@ The SarcAsM GUI integrates controls (left panel) with a Napari image viewer (rig
 Proceed through the collapsible sections in the control panel:
 
 *   **Parameter import/export:** Load/save analysis settings or reset to defaults.
-*   **Structure Analysis:** Analyze sarcomere structure.
-*   **LOI Finder:** Find and/or draw Lines of Interest (requires structure results).
-*   **Motion Analysis:** Analyze sarcomere motion in LOIs.
+*   **Structure:** Analyze sarcomere structure (Z-bands, sarcomere vectors, myofibrils, domains).
+*   **Motion:** Track every sarcomere through the movie, group the tracks (whole cell,
+    M-band, myofibril, domain or line of interest — drawn or auto-detected) and analyze
+    the contraction of each group. The **Display** group controls how the tracks appear
+    in the viewer: **Trajectories** (napari tracks with fading trails), **Sarcomeres**
+    (every tracked sarcomere at its current position, coloured per frame by ΔSL, SL,
+    velocity, group or coverage) and **Groups** (the fibre paths of a myofibril / LOI
+    grouping, labelled by id). Click a sarcomere or a fibre path to select its group:
+    its members are ringed in the viewer, the per-fibre detail points at it, and the
+    **time-series panel** below the viewer overlays the group's SL / ΔSL / velocity
+    traces with the group mean and the clicked sarcomere highlighted. **Overlay figure**
+    and **Cycle raster** open the corresponding matplotlib figures.
 *   **Batch Processing:** Process multiple files automatically.
 
 **Message Area:**

@@ -73,7 +73,7 @@ html_theme_options = {
     'vcs_pageview_mode': '',
 }
 html_logo = 'images/logo.png'
-html_static_path = ['_static']  # Standard, even if empty
+html_static_path = []
 
 # GitHub integration for "Edit on GitHub" links
 html_context = {

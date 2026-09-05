@@ -319,17 +319,8 @@ class TrainingDataGenerator:
                     np.any(cc >= self.image.shape[1])):
                 continue
 
-            # Store -o, not o. The wavelet analysis expresses an orientation `o` as the
-            # direction (sin o, -cos o) in (row, col) — that is what `orientation_vectors`
-            # above draws along, and it is geometrically correct. But the consumer of this
-            # label, `get_sarcomere_vectors`, reads a stored angle as (sin o, cos o), the
-            # mirror image. Writing `o` therefore produced labels that the analysis reads
-            # mirrored, so a U-Net trained on them yields orientations that look plausible
-            # and measure wrong: sarcomere length spreads out, the order parameter
-            # collapses, and no training metric notices, because the model reproduces its
-            # labels perfectly.
-            # `-o` is the same line in the reader's convention, keeping the M->Z polarity
-            # that `orientation_angle_line` encodes (first half o+pi, second half o).
+            # store -o: the wavelet draws along (sin o, -cos o) but get_sarcomere_vectors
+            # reads an angle as (sin o, cos o); -o is the same line in the reader's convention
             orientation_map[rr, cc] = orientation_angle_line(-o, len(cc))
 
         tifffile.imwrite(self.output_dirs['orientation'] + self.basename, orientation_map)

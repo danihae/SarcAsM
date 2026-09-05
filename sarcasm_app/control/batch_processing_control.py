@@ -24,6 +24,7 @@ from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import SarcAsM, BatchExport
 from .application_control import ApplicationControl
+from .motion_analysis_control import detect_lois_kwargs
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from ..model import patch_size_from_parameters
 
@@ -55,10 +56,9 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.axes').connect(widget.le_batch_axes)
         parameters.get_parameter(name='batch.force.override').connect(widget.chk_force_override)
         parameters.get_parameter(name='batch.thread_pool_size').connect(widget.sb_thread_pool_size)
-        parameters.get_parameter(name='batch.delete_intermediary_tiffs').connect(widget.chk_delete_intermediary_tiffs)
+        parameters.get_parameter(name='batch.delete_intermediate_masks').connect(widget.chk_delete_intermediate_masks)
         parameters.get_parameter(name='batch.root').connect(widget.le_root_directory)
-        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_calc_lois)
-        parameters.get_parameter(name='batch.do_cellmask').connect(widget.chk_do_cellmask)
+        parameters.get_parameter(name='batch.recalculate.for.motion').connect(widget.chk_recalculate_for_motion)
         parameters.get_parameter(name='batch.do_zbands').connect(widget.chk_do_zbands)
         parameters.get_parameter(name='batch.do_vectors').connect(widget.chk_do_vectors)
         parameters.get_parameter(name='batch.do_myofibrils').connect(widget.chk_do_myofibrils)
@@ -232,7 +232,7 @@ class BatchProcessingControl:
         progress_notifier = self.__get_progress_notifier(worker)
 
         tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
-        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()  # todo add parallel processing
+        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
         channel = model.parameters.get_parameter(name='batch.channel').get_value()
@@ -248,8 +248,6 @@ class BatchProcessingControl:
                                message='Exception happened during processing of file:' + file)
                 qtutils.inmain(self.__main_control.debug, message=f'Error: {repr(e)}')
                 qtutils.inmain(self.__main_control.debug, message='')
-                # todo: add log file to batch processing
-                pass
             pass
         pass
 
@@ -270,14 +268,6 @@ class BatchProcessingControl:
     @staticmethod
     def __calculate_requirements_of_motion(sarc_obj: SarcAsM, model):
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        if network_model == 'generalist':
-            network_model = None
-            pass
-
-        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        if network_model == 'generalist':
-            network_model = None
-
         size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
@@ -321,12 +311,13 @@ class BatchProcessingControl:
             max_disp_perp_um=_p('motion.track.max_disp_perp'),
             ori_tol_deg=_p('motion.track.ori_tol'),
             min_track_duration_s=_p('motion.track.min_duration_s'),
-            max_gap_interpolation=int(_p('motion.track.max_gap_interp')))
+            max_gap_interpolation_s=float(_p('motion.track.max_gap_interp_s')))
 
         ref = int(_p('motion.group.reference_frame'))
         if by == 'loi' and 'motion.loi.data' not in sarc_obj.data:
-            sarc_obj.detect_lois(frame=ref)
-        sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'))
+            sarc_obj.detect_lois(frame=ref, **detect_lois_kwargs(_p))
+        sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
+                              min_group_size=int(_p('motion.group.min_group_size')))
 
         agg = _p('motion.analyze.aggregate')
         agg = None if agg in (None, '', 'auto') else agg
@@ -340,7 +331,7 @@ class BatchProcessingControl:
             min_valid_frames=_p('motion.analyze.min_valid_frames'),
             filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
 
-        if _p('batch.delete_intermediary_tiffs'):
+        if _p('batch.delete_intermediate_masks'):
             sarc_obj.remove_intermediate_masks()
 
     def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
@@ -354,10 +345,6 @@ class BatchProcessingControl:
                                                             channel=channel, axes=axes, force_override=force_override)
         # predict sarcomere z-bands and cell mask
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        if network_model == 'generalist':
-            network_model = None
-            pass
-
         size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
         sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
@@ -369,10 +356,7 @@ class BatchProcessingControl:
                                        model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
                                    )
 
-        # analyze cell mask and sarcomere area
-        if model.parameters.get_parameter('batch.do_cellmask').get_value():
-            sarc_obj.analyze_cell_mask()
-        # analyze sarcomere structures
+        # analyze sarcomere structures (the cell-mask features come with the detection)
         if model.parameters.get_parameter('batch.do_zbands').get_value():
             sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
                                      threshold=model.parameters.get_parameter(
@@ -415,7 +399,7 @@ class BatchProcessingControl:
             )
 
         sarc_obj.store_structure_data()
-        if model.parameters.get_parameter('batch.delete_intermediary_tiffs').get_value():
+        if model.parameters.get_parameter('batch.delete_intermediate_masks').get_value():
             sarc_obj.remove_intermediate_masks()
 
         pass

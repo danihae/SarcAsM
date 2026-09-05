@@ -16,7 +16,7 @@ import napari
 
 from .parameters import Parameters, patch_size_from_parameters
 from .parameter import Parameter
-from sarcasm import SarcAsM, TypeUtils
+from sarcasm import SarcAsM
 from typing import Optional
 
 
@@ -45,28 +45,13 @@ class ApplicationModel:
         self._cell: Optional[SarcAsM] = None
         self.__cell_file_name: Optional[str] = None
         self.currentlyProcessing = Parameter("currentlyProcessing", False)
-        self.__file_extension = ".json"
-        self.__line_dictionary = {}  # todo: remove the line dictionary
-        self.__scheme = '%d_%d_%d_%d_%.2f'
         self.__parameters = Parameters()
         self.__create_parameters()
         self.set_to_default()
 
-    @property
-    def scheme(self):
-        return self.__scheme
-
     def reset_model(self):
         self._cell = None
         self.__cell_file_name = None
-        self.__line_dictionary = {}
-
-    @property
-    def line_dictionary(self):
-        return self.__line_dictionary
-
-    # todo: to prevent annoying warnings of optional on usage the return type could be left without optional and
-    #   there could be a null check and exception in case that its null?
 
     @property
     def parameters(self):
@@ -75,10 +60,6 @@ class ApplicationModel:
     @property
     def cell(self) -> Optional[SarcAsM]:
         return self._cell
-
-    @property
-    def file_extension(self):
-        return self.__file_extension
 
     def init_cell(self, cell_file):
         self.__cell_file_name = cell_file
@@ -105,7 +86,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='file.load.correct_phase').set_value(False)
 
     def _set_defaults_structure(self):
-        self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
+        self.__parameters.get_parameter(name='structure.predict.network_path').set_value('auto')
         self.__parameters.get_parameter(name='structure.predict.rescale_factor').set_value(1.0)
         # Auto: the patch size follows the device memory and the model, so an image
         # that fits into one patch is not split. The manual sizes below are the
@@ -126,7 +107,6 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').set_value(99.98)
 
-        self.__parameters.get_parameter(name='structure.cell_mask.threshold').set_value(0.1)
 
         self.__parameters.get_parameter(name='structure.frames').set_value('all')
         self.__parameters.get_parameter(name='structure.plot').set_value(False)
@@ -169,12 +149,21 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='motion.track.max_disp_perp').set_value(0.2)
         self.__parameters.get_parameter(name='motion.track.ori_tol').set_value(45.0)
         self.__parameters.get_parameter(name='motion.track.min_duration_s').set_value(0.08)
-        self.__parameters.get_parameter(name='motion.track.max_gap_interp').set_value(3)
+        self.__parameters.get_parameter(name='motion.track.max_gap_interp_s').set_value(0.05)
 
         # Group tracks
         self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
         self.__parameters.get_parameter(name='motion.group.reference_frame').set_value(0)
         self.__parameters.get_parameter(name='motion.group.min_coverage').set_value(0.5)
+        self.__parameters.get_parameter(name='motion.group.min_group_size').set_value(1)
+
+        # Display of the tracks in the viewer
+        self.__parameters.get_parameter(name='motion.display.color_by').set_value('ΔSL')
+        self.__parameters.get_parameter(name='motion.display.dsl_limit').set_value(0.0)
+        self.__parameters.get_parameter(name='motion.display.tail_frames').set_value(30)
+        self.__parameters.get_parameter(name='motion.display.show_trajectories').set_value(True)
+        self.__parameters.get_parameter(name='motion.display.show_sarcomeres').set_value(True)
+        self.__parameters.get_parameter(name='motion.display.show_groups').set_value(True)
 
         # Analyze track motion (ContractionNet)
         self.__parameters.get_parameter(name='motion.analyze.aggregate').set_value('auto')
@@ -210,8 +199,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
         self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
         self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(False)
-        self.__parameters.get_parameter(name='batch.delete_intermediary_tiffs').set_value(True)
-        self.__parameters.get_parameter(name='batch.do_cellmask').set_value(True)
+        self.__parameters.get_parameter(name='batch.delete_intermediate_masks').set_value(True)
         self.__parameters.get_parameter(name='batch.do_zbands').set_value(True)
         self.__parameters.get_parameter(name='batch.do_vectors').set_value(True)
         self.__parameters.get_parameter(name='batch.do_myofibrils').set_value(True)
@@ -240,7 +228,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_min')
         self.__parameters.set_parameter(name='structure.predict_fast_movie.clip_thresh_max')
 
-        self.__parameters.set_parameter(name='structure.cell_mask.threshold')
 
         self.__parameters.set_parameter(name='structure.frames')
         self.__parameters.set_parameter(name='structure.plot')
@@ -282,11 +269,19 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='motion.track.max_disp_perp')
         self.__parameters.set_parameter(name='motion.track.ori_tol')
         self.__parameters.set_parameter(name='motion.track.min_duration_s')
-        self.__parameters.set_parameter(name='motion.track.max_gap_interp')
+        self.__parameters.set_parameter(name='motion.track.max_gap_interp_s')
 
         self.__parameters.set_parameter(name='motion.group.by')
         self.__parameters.set_parameter(name='motion.group.reference_frame')
         self.__parameters.set_parameter(name='motion.group.min_coverage')
+        self.__parameters.set_parameter(name='motion.group.min_group_size')
+
+        self.__parameters.set_parameter(name='motion.display.color_by')
+        self.__parameters.set_parameter(name='motion.display.dsl_limit')
+        self.__parameters.set_parameter(name='motion.display.tail_frames')
+        self.__parameters.set_parameter(name='motion.display.show_trajectories')
+        self.__parameters.set_parameter(name='motion.display.show_sarcomeres')
+        self.__parameters.set_parameter(name='motion.display.show_groups')
 
         self.__parameters.set_parameter(name='motion.analyze.aggregate')
         self.__parameters.set_parameter(name='motion.analyze.threshold')
@@ -312,10 +307,9 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.axes')
         self.__parameters.set_parameter(name='batch.force.override')
         self.__parameters.set_parameter(name='batch.thread_pool_size')
-        self.__parameters.set_parameter(name='batch.delete_intermediary_tiffs')
+        self.__parameters.set_parameter(name='batch.delete_intermediate_masks')
         self.__parameters.set_parameter(name='batch.root')
         self.__parameters.set_parameter(name='batch.recalculate.for.motion')
-        self.__parameters.set_parameter(name='batch.do_cellmask')
         self.__parameters.set_parameter(name='batch.do_zbands')
         self.__parameters.set_parameter(name='batch.do_vectors')
         self.__parameters.set_parameter(name='batch.do_myofibrils')

@@ -11,8 +11,12 @@ on:
 # it would extract those gigabytes to a temp dir on every launch.
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   build-macos:
     name: macOS (CPU, unsigned)
+    needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +77,7 @@ jobs:
 
   build-windows-cpu:
     name: Windows (CPU)
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

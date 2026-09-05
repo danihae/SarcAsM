@@ -18,15 +18,12 @@ import logging
 import warnings
 from typing import List, Tuple, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-from pywt import cwt
 from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
 from scipy.stats import kstest, geom
-from scipy.optimize import linear_sum_assignment
 
 from contraction_net.prediction import predict_contractions, recommended_threshold
+from sarcasm.analysis import heterogeneity
 from sarcasm.analysis.contraction_analysis import cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
@@ -274,10 +271,7 @@ class Motion(SarcAsMBase):
         structure_opening = np.ones(max(1, int(contr_time_min / self.metadata.frametime)))
         contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
 
-        # analyze contractions. Cycles at the recording edges are KEPT (they are real
-        # contractions: they belong in the plot, must not be counted as quiescence, and
-        # their onset is a valid beat) and only flagged incomplete, so their duration is
-        # NaN instead of a silently truncated number.
+        # cycles at the recording edges are kept and flagged incomplete (duration NaN)
         start_contr_frame = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
         start_contr = start_contr_frame * self.metadata.frametime
         labels_contr, n_contr = label(contr)
@@ -638,192 +632,82 @@ class Motion(SarcAsMBase):
 
     def analyze_correlations(self):
         """
-        Compute Pearson correlation coefficients for sarcomere motion patterns
-        (∆SL and V) across contraction cycles and between sarcomeres within the
-        same cycle to analyze static and stochastic heterogeneity.
+        Serial and mutual correlation of the sarcomeres' ΔSL and velocity across
+        contraction cycles (static vs stochastic heterogeneity).
 
-        Calculates the average serial (r_s) and mutual (r_m) correlation
-        coefficients and the ratio R of serial to mutual correlations, then
-        updates ``self.loi_data`` and stores it if ``auto_save`` is enabled.
+        See :mod:`sarcasm.analysis.heterogeneity`: ``r_s`` (serial) correlates the
+        same sarcomere between cycles, ``r_m`` (mutual) different sarcomeres within
+        the same cycle, and ``R = r_m / r_s``. Requires
+        :meth:`detect_analyze_contractions` and :meth:`get_trajectories`.
 
         Notes
         -----
-        Updates ``self.loi_data`` with the following keys:
-
-        - ``'corr_delta_slen'`` (np.ndarray or None): Correlation matrix for length changes.
-        - ``'corr_vel'`` (np.ndarray or None): Correlation matrix for velocities.
-        - ``'corr_delta_slen_serial'`` (float): Average serial correlation for length changes.
-        - ``'corr_delta_slen_mutual'`` (float): Average mutual correlation for length changes.
-        - ``'corr_vel_serial'`` (float): Average serial correlation for velocities.
-        - ``'corr_vel_mutual'`` (float): Average mutual correlation for velocities.
-        - ``'ratio_delta_slen_mutual_serial'`` (float): Mutual/serial ratio for length changes.
-        - ``'ratio_vel_mutual_serial'`` (float): Mutual/serial ratio for velocities.
+        Updates ``self.loi_data`` with ``'corr_delta_slen_serial'``,
+        ``'corr_delta_slen_mutual'``, ``'ratio_delta_slen_mutual_serial'``,
+        ``'corr_vel_serial'``, ``'corr_vel_mutual'``, ``'ratio_vel_mutual_serial'``
+        and ``'corr_n_cycles'`` (NaN when fewer than two sarcomeres or cycles are
+        usable).
         """
-        if self.loi_data['n_contr'] > 0:
-            time_contr_median = int(np.median(self.loi_data['time_contr']) / self.metadata.frametime)
-
-            corr_delta_slen = np.zeros((self.loi_data['n_sarcomeres'], self.loi_data['n_sarcomeres'],
-                                        self.loi_data['n_contr'], self.loi_data['n_contr'])) * np.nan
-            corr_vel = np.zeros((self.loi_data['n_sarcomeres'], self.loi_data['n_sarcomeres'],
-                                 self.loi_data['n_contr'], self.loi_data['n_contr'])) * np.nan
-
-            for i in range(self.loi_data['n_sarcomeres']):
-                for j in range(self.loi_data['n_sarcomeres']):
-                    if i >= j:
-                        delta_slen_i = self.loi_data['delta_slen'][i]
-                        vel_i = self.loi_data['vel'][i]
-                        delta_slen_j = self.loi_data['delta_slen'][j]
-                        vel_j = self.loi_data['vel'][j]
-                        for k, contr_k in enumerate(self.loi_data['start_contr_frame'][:-1]):
-                            for l, contr_l in enumerate(self.loi_data['start_contr_frame'][:-1]):
-                                if k >= l:
-                                    if i != j or k != l:
-                                        corr_delta_slen[i, j, k, l] = \
-                                            np.corrcoef(delta_slen_i[contr_k:contr_k + time_contr_median],
-                                                        delta_slen_j[contr_l:contr_l + time_contr_median])[1, 0]
-                                        corr_vel[i, j, k, l] = np.corrcoef(vel_i[contr_k:contr_k + time_contr_median],
-                                                                           vel_j[
-                                                                           contr_l:contr_l + time_contr_median])[1, 0]
-
-            # serial correlation
-            corr_delta_slen_serial = np.nanmean(np.diagonal(corr_delta_slen))
-            corr_vel_serial = np.nanmean(np.diagonal(corr_vel))
-
-            # mutual correlation
-            corr_delta_slen_mutual = np.nanmean(np.diagonal(corr_delta_slen, axis1=1, axis2=2))
-            corr_vel_mutual = np.nanmean(np.diagonal(corr_vel, axis1=1, axis2=2))
-
-            # ratio R of mutual and serial correlation
-            ratio_delta_slen_mutual_serial = corr_delta_slen_mutual / corr_delta_slen_serial
-            ratio_vel_mutual_serial = corr_vel_mutual / corr_vel_serial
-
-        else:
-            corr_delta_slen = None
-            corr_vel = None
-            corr_delta_slen_serial = np.nan
-            corr_vel_serial = np.nan
-            corr_delta_slen_mutual = np.nan
-            corr_vel_mutual = np.nan
-            ratio_delta_slen_mutual_serial = np.nan
-            ratio_vel_mutual_serial = np.nan
-
-        corr_dict = {'corr_delta_slen': corr_delta_slen, 'corr_vel': corr_vel,
-                     'corr_delta_slen_serial': corr_delta_slen_serial, 'corr_delta_slen_mutual': corr_delta_slen_mutual,
-                     'corr_vel_serial': corr_vel_serial, 'corr_vel_mutual': corr_vel_mutual,
-                     'ratio_delta_slen_mutual_serial': ratio_delta_slen_mutual_serial,
-                     'ratio_vel_mutual_serial': ratio_vel_mutual_serial}
+        onsets, cycle_len = heterogeneity.cycle_windows(self.loi_data['labels_contr'])
+        corr_dict = {'corr_n_cycles': int(onsets.size)}
+        for name in ('delta_slen', 'vel'):
+            r = heterogeneity.serial_mutual_correlation(self.loi_data[name], onsets, cycle_len)
+            corr_dict[f'corr_{name}_serial'] = r['serial']
+            corr_dict[f'corr_{name}_mutual'] = r['mutual']
+            corr_dict[f'ratio_{name}_mutual_serial'] = r['ratio_mutual_serial']
         self.loi_data.update(corr_dict)
 
         if self.auto_save:
             self.store_loi_data()
 
     def analyze_oscillations(self, min_scale: float = 6, max_scale: float = 180, num_scales: int = 60,
-                             wavelet: str = 'morl', freq_thres: float = 2, plot: bool = False):
+                             wavelet: str = 'morl', freq_thres: float = 2):
         """
-        Analyze the oscillation frequencies of average and individual sarcomere length changes.
+        Wavelet oscillation spectrum of the average and the individual sarcomere
+        length changes over the contracting frames.
+
+        See :func:`sarcasm.analysis.heterogeneity.oscillation_spectrum`. Requires
+        :meth:`detect_analyze_contractions` and :meth:`get_trajectories`.
 
         Parameters
         ----------
         min_scale : float, optional
-            Minimum scale for the wavelet transform. Default is 6.
+            Minimum wavelet scale. Default is 6.
         max_scale : float, optional
-            Maximum scale for the wavelet transform. Default is 180.
+            Maximum wavelet scale. Default is 180.
         num_scales : int, optional
-            Number of scales for the wavelet transform. Default is 60.
+            Number of logarithmically spaced scales. Default is 60.
         wavelet : str, optional
-            Wavelet type for the transform ('morl' = Morlet). Default is 'morl'.
+            Mother wavelet ('morl' = Morlet). Default is 'morl'.
         freq_thres : float, optional
-            Frequency threshold (Hz) separating low-frequency oscillations at
-            the beating rate from high-frequency oscillations. Default is 2.
-        plot : bool, optional
-            If True, show a plot illustrating the analysis. Default is False.
+            Lower bound (Hz) of the frequency separating the beating peak from
+            high-frequency single-sarcomere oscillations; at least ``2.1 x`` the
+            beating rate is used. Default is 2.
+
+        Notes
+        -----
+        Updates ``self.loi_data`` with ``'oscill_frequencies'``,
+        ``'oscill_magnitudes_avg'``, ``'oscill_magnitudes_single'``,
+        ``'oscill_peak_avg'``, ``'oscill_amp_avg'``, ``'oscill_peak_1_single'``,
+        ``'oscill_amp_1_single'``, ``'oscill_peak_2_single'``, ``'oscill_amp_2_single'``
+        and the ``params.analyze_oscillations.*`` entries.
         """
-
-        # Analyze oscillation frequencies of average sarcomere length change
-        cfs_avg, frequencies = self.wavelet_analysis_oscillations(self.loi_data['delta_slen_avg'],
-                                                                  self.metadata.frametime,
-                                                                  min_scale=min_scale,
-                                                                  max_scale=max_scale,
-                                                                  num_scales=num_scales,
-                                                                  wavelet=wavelet)
-
-        mask = self.loi_data['contr'] != 0
-        mag_avg = np.nanmean(np.abs(cfs_avg[:, mask]), axis=1)
-
-        # Analyze individual sarcomere oscillation frequencies
-        cfs = []
-        mags = []
-        for d_i in self.loi_data['delta_slen']:
-            cfs_i, _ = self.wavelet_analysis_oscillations(d_i,
-                                                          self.metadata.frametime,
-                                                          min_scale=min_scale,
-                                                          max_scale=max_scale,
-                                                          num_scales=num_scales,
-                                                          wavelet=wavelet)
-            mag_i = np.nanmean(np.abs(cfs_i[:, mask]), axis=1)
-            cfs.append(cfs_i)
-            mags.append(mag_i)
-
-        mag_all_mean, mag_all_std = np.nanmean(mags, axis=0), np.nanstd(mags, axis=0)
-
-        freq_thres = max(freq_thres, self.loi_data['beating_rate'] * 2.1)
-
-        # find first peak corresponding to beating rate
-        peak_avg = frequencies[np.argmax(mag_avg)]
-        amp_avg = np.max(mag_avg)
-        mag_all_mean_1 = mag_all_mean.copy()
-        mag_all_mean_1[frequencies > freq_thres] = np.nan
-        peak_1_single = frequencies[np.nanargmax(mag_all_mean_1)]
-        amp_1_single = np.max(mag_all_mean_1)
-
-        # find second peak corresponding to high-frequency oscillations of individual sarcomeres
-        mag_all_mean_2 = mag_all_mean.copy()
-        mag_all_mean_2[frequencies < freq_thres] = np.nan
-        min_freq = np.min(frequencies[frequencies >= freq_thres])
-        peak_2_single = frequencies[np.nanargmax(mag_all_mean_2)]
-        amp_2_single = np.max(mag_all_mean_2)
-        if peak_2_single == min_freq:
-            peak_2_single = np.nan
-            amp_2_single = np.nan
-
+        osc = heterogeneity.oscillation_spectrum(
+            self.loi_data['delta_slen'], self.loi_data['contr'], self.metadata.frametime,
+            float(self.loi_data['beating_rate']), min_scale=min_scale, max_scale=max_scale,
+            num_scales=num_scales, wavelet=wavelet, freq_thres=freq_thres)
         dict_oscill = {'params.analyze_oscillations.min_scale': min_scale,
                        'params.analyze_oscillations.max_scale': max_scale,
                        'params.analyze_oscillations.num_scales': num_scales,
                        'params.analyze_oscillations.wavelet': wavelet,
-                       'params.analyze_oscillations.freq_thres': freq_thres,
-                       'oscill_frequencies': frequencies,
-                       'oscill_cfs_avg': cfs_avg,
-                       'oscill_cfs': np.asarray(cfs),
-                       'oscill_magnitudes_avg': mag_avg,
-                       'oscill_magnitudes': np.asarray(mags),
-                       'oscill_peak_avg': peak_avg,
-                       'oscill_peak_1_single': peak_1_single,
-                       'oscill_peak_2_single': peak_2_single,
-                       'oscill_amp_avg': amp_avg,
-                       'oscill_amp_1_single': amp_1_single,
-                       'oscill_amp_2_single': amp_2_single}
-
+                       'params.analyze_oscillations.freq_thres': osc['freq_thres']}
+        for key in ('frequencies', 'magnitudes_avg', 'magnitudes_single', 'peak_avg', 'amp_avg',
+                    'peak_1_single', 'amp_1_single', 'peak_2_single', 'amp_2_single'):
+            dict_oscill[f'oscill_{key}'] = osc[key]
         self.loi_data.update(dict_oscill)
 
         if self.auto_save:
             self.store_loi_data()
-
-        if plot:
-            fig, ax = plt.subplots(figsize=(6, 2.5))
-            ax.plot(frequencies, mag_avg, c='r', label='Average')
-            ax.plot(frequencies, np.asarray(mags).T, c='k', alpha=0.1)
-            ax.fill_between(frequencies, mag_all_mean - mag_all_std,
-                            mag_all_mean + mag_all_std, color='k', alpha=0.25)
-            ax.plot(frequencies, mag_all_mean, c='k', label='Single')
-            ax.axvline(self.loi_data['beating_rate'], c='k', linestyle='--', label='Beating rate')
-            ax.axvspan(0, freq_thres, zorder=-5, color='silver', alpha=0.5)
-            ax.axvline(peak_avg, c='b', linestyle=':', label='Peak avg 1')
-            ax.axvline(peak_2_single, c='g', linestyle=':', color='gold', label='Peak 2')
-            ax.set_xlabel('Frequency [Hz]')
-            ax.set_ylabel('Average magnitude')
-            ax.legend()
-            plt.tight_layout()
-            plt.show()
 
     @staticmethod
     def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str,
@@ -854,10 +738,7 @@ class Motion(SarcAsMBase):
         if threshold is None:
             threshold = recommended_threshold(weights)
         data = np.concatenate([z_pos, slen])
-        # ContractionNet needs a finite trace. z_pos/slen legitimately carry
-        # NaN (e.g. synthesized track chains keep gap/edge frames as NaN rather
-        # than holding a constant length), so gap-fill each trace transiently for
-        # the prediction only — the stored z_pos/slen keep their NaNs.
+        # gap-fill transiently for the prediction only; stored traces keep their NaNs
         contr_all = np.asarray([predict_contractions(Motion._fill_trace_nans(d), weights)[0] for d in data])
         contr_mean = np.nanmean(contr_all, axis=0)
         return contr_mean > threshold
@@ -879,39 +760,3 @@ class Motion(SarcAsMBase):
         out = trace.copy()
         out[mask] = np.interp(idx[mask], idx[~mask], trace[~mask])
         return out
-
-    @staticmethod
-    def wavelet_analysis_oscillations(data: np.ndarray, frametime: float, min_scale: float = 6, max_scale: float = 150,
-                                      num_scales: int = 100, wavelet: str = 'morl'):
-        """
-        Perform a wavelet transform of the data.
-
-        Parameters
-        ----------
-        data : array_like
-            1-D input signal.
-        frametime : float
-            Sampling period of the signal in seconds.
-        min_scale : float, optional
-            Minimum scale for the wavelet transform. Default is 6.
-        max_scale : float, optional
-            Maximum scale for the wavelet transform. Default is 150.
-        num_scales : int, optional
-            Number of scales for the wavelet transform. Default is 100.
-        wavelet : str, optional
-            Wavelet type for the transform. Default is 'morl'.
-
-        Returns
-        -------
-        cfs : np.ndarray
-            Continuous wavelet transform coefficients.
-        frequencies : np.ndarray
-            Corresponding frequencies for each scale.
-        """
-        # Generate a range of scales that are logarithmically spaced
-        scales = np.geomspace(min_scale, max_scale, num=num_scales)
-
-        # Perform the wavelet transform
-        cfs, frequencies = cwt(data, scales, wavelet, sampling_period=frametime)
-
-        return cfs, frequencies

@@ -738,7 +738,7 @@ structure_feature_dict = {
     'motion.tracks.n_interpolated_gap_frames': {
         'description': 'Number of (track, frame) entries whose sarcomere length / orientation was '
                        'filled by interpolation across a short interior gap '
-                       '(max_gap_interpolation). These frames stay False in tracks_observed, so no '
+                       '(max_gap_interpolation_s). These frames stay False in tracks_observed, so no '
                        'coverage or real-observation metric counts them.',
         'data type': int,
         'function': 'SarcAsM.track_sarcomere_vectors',
@@ -754,205 +754,228 @@ structure_feature_dict = {
 }
 
 motion_feature_dict = {
-    # Track-based grouped motion (one value per group). Suffix keys are resolved
-    # to <kind>_<suffix> per grouping kind by SarcAsM.analyze_track_motion.
+    # Track-based grouped motion, one value (or row) per group under motion.<kind>.<suffix>;
+    # SarcAsM.analyze_track_motion writes the same members for every grouping kind.
     'beating_rate': {
-        'description': 'Beating rate of the group (Hz); 1 / mean inter-beat interval.',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Beating rate [Hz]'},
+        'description': 'Beating rate of the group (Hz); 1 / mean inter-beat interval. np.ndarray with shape '
+                       '(n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group beating rate [Hz]'},
     'beating_rate_variability': {
-        'description': 'Standard deviation of inter-beat intervals of the group (s).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Beating rate variability [s]'},
+        'description': 'Standard deviation of inter-beat intervals of the group (s). np.ndarray with shape '
+                       '(n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group beating rate variability [s]'},
     'n_contr': {
-        'description': 'Number of detected contraction cycles in the group, including cycles that are '
-                       'incomplete at the start/end of the recording.',
-        'data type': int, 'function': 'SarcAsM.analyze_track_motion', 'name': 'N contractions'},
+        'description': 'Number of detected contraction cycles in the group, including cycles that are incomplete '
+                       'at the start/end of the recording. np.ndarray with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group number of contractions'},
     'n_contr_complete': {
-        'description': 'Number of complete contraction cycles in the group (onset and offset both inside '
-                       'the recording). Only these back the timing features below.',
-        'data type': int, 'function': 'SarcAsM.analyze_track_motion', 'name': 'N complete contractions'},
+        'description': 'Number of complete contraction cycles in the group (onset and offset both inside the '
+                       'recording). Only these back the timing features below. np.ndarray with shape '
+                       '(n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group number of complete contractions'},
     'contr_complete': {
-        'description': 'Fraction of the group\'s contraction cycles that are complete (per-cycle flag, '
-                       'averaged over cycles on export).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Complete cycle fraction'},
+        'description': "Fraction of the group's contraction cycles that are complete (per-cycle flag, averaged "
+                       'over cycles on export). np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group contraction completeness'},
     'equ': {
-        'description': 'Equilibrium (resting) sarcomere length of the group (µm).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Equ. SL [µm]'},
+        'description': 'Equilibrium (resting) sarcomere length of the group (µm). np.ndarray with shape '
+                       '(n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group equilibrium sarcomere length [µm]'},
     'contr_max': {
-        'description': 'Maximal contraction (shortening) per cycle, mean over cycles (µm).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contr. dSL- [µm]'},
+        'description': 'Maximal contraction (shortening) per cycle, mean over cycles (µm). np.ndarray with shape '
+                       '(n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group max contraction [µm]'},
     'elong_max': {
-        'description': 'Maximal elongation per cycle, mean over cycles (µm).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Elong. dSL+ [µm]'},
+        'description': 'Maximal elongation per cycle, mean over cycles (µm). np.ndarray with shape (n_groups, '
+                       'max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group max elongation [µm]'},
     'vel_contr_max': {
-        'description': 'Maximal shortening velocity per cycle, mean over cycles (µm/s).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contr. velocity [µm/s]'},
+        'description': 'Maximal shortening velocity per cycle, mean over cycles (µm/s). np.ndarray with shape '
+                       '(n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group max shortening velocity [µm/s]'},
     'vel_elong_max': {
-        'description': 'Maximal elongation velocity per cycle, mean over cycles (µm/s).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Elong. velocity [µm/s]'},
+        'description': 'Maximal elongation velocity per cycle, mean over cycles (µm/s). np.ndarray with shape '
+                       '(n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group max elongation velocity [µm/s]'},
     'time_to_peak': {
-        'description': 'Time from contraction onset to maximum shortening, mean over cycles (s). NaN for a '
-                       'cycle whose onset falls outside the recording, so only complete-at-the-start cycles '
-                       'contribute.',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to peak [s]'},
+        'description': 'Time from contraction onset to maximum shortening, mean over cycles (s). NaN for a cycle '
+                       'whose onset falls outside the recording, so only complete-at-the-start cycles '
+                       'contribute. np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group time to peak [s]'},
     'time_to_relax': {
-        'description': 'Time from peak shortening to end of contraction, mean over cycles (s). NaN for a '
-                       'cycle whose offset falls outside the recording, so only complete-at-the-end cycles '
-                       'contribute.',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Time to relax [s]'},
+        'description': 'Time from peak shortening to end of contraction, mean over cycles (s). NaN for a cycle '
+                       'whose offset falls outside the recording, so only complete-at-the-end cycles contribute. '
+                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group time to relaxation [s]'},
     'time_contr': {
         'description': 'Total contraction duration per cycle, mean over cycles (s). Only complete cycles '
-                       'contribute — a cycle truncated by the start or end of the recording has no '
-                       'measurable duration and is NaN (see n_contr_complete).',
-        'data type': float, 'function': 'SarcAsM.analyze_track_motion', 'name': 'Contraction time [s]'},
+                       'contribute — a cycle truncated by the start or end of the recording has no measurable '
+                       'duration and is NaN (see n_contr_complete). np.ndarray with shape (n_groups, '
+                       'max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group contraction duration [s]'},
     'slen': {
         'description': 'Aggregated per-group sarcomere length over time, shape (n_groups, T).',
-        'data type': np.ndarray, 'function': 'SarcAsM.analyze_track_motion', 'name': 'SL(t) [µm]'},
-    'beating_rate': {
-        'description': 'Beating rate in Hz for each group. np.ndarray with shape (n_groups,).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group beating rate [Hz]'
-    },
-    'beating_rate_variability': {
-        'description': 'Standard deviation of inter-beat interval for each group. np.ndarray with shape (n_groups,).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group beating rate variability [s]'
-    },
+        'name': 'Group sarcomere length time-series [µm]'},
     'contr': {
-        'description': 'Binary contraction state for each group over time. '
-                       'np.ndarray with shape (n_groups, n_frames). True = contracting, False = quiescent.',
+        'description': 'Binary contraction state for each group over time. np.ndarray with shape (n_groups, '
+                       'n_frames). True = contracting, False = quiescent.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group contraction state'
-    },
-    'contr_complete': {
-        'description': 'Per-cycle completeness flag: 1.0 = complete, 0.0 = incomplete (truncated by the start '
-                       'or end of the recording), NaN = padding. np.ndarray with shape (n_groups, max_n_contr). '
-                       'Incomplete cycles are kept in the contraction mask but their duration-dependent '
-                       'metrics are NaN.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group contraction completeness'
-    },
-    'contr_max': {
-        'description': 'Maximum contraction (most negative sarcomere length change from equilibrium) '
-                       'for each group and contraction cycle. np.ndarray with shape (n_groups, max_n_contr).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group max contraction [µm]'
-    },
-    'elong_max': {
-        'description': 'Maximum elongation (most positive sarcomere length change from equilibrium) '
-                       'for each group and contraction cycle. np.ndarray with shape (n_groups, max_n_contr).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group max elongation [µm]'
-    },
-    'equ': {
-        'description': 'Equilibrium (resting) sarcomere length for each group. np.ndarray with shape (n_groups,).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group equilibrium sarcomere length [µm]'
-    },
+        'name': 'Group contraction state'},
     'labels_contr': {
-        'description': 'Contraction cycle labels for each group over time. '
-                       'np.ndarray with shape (n_groups, n_frames). Values 1, 2, 3, ... label each contraction cycle.',
+        'description': 'Contraction cycle labels for each group over time. np.ndarray with shape (n_groups, '
+                       'n_frames). Values 1, 2, 3, ... label each contraction cycle.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group contraction labels'
-    },
-    'n_contr': {
-        'description': 'Number of contraction cycles detected for each group, including cycles that are '
-                       'incomplete at the start/end of the recording. np.ndarray with shape (n_groups,).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group number of contractions'
-    },
-    'n_contr_complete': {
-        'description': 'Number of complete contraction cycles for each group, i.e. cycles whose onset and '
-                       'offset both fall inside the recording. np.ndarray with shape (n_groups,).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group number of complete contractions'
-    },
+        'name': 'Group contraction labels'},
     'n_members': {
-        'description': 'Time-series of number of sarcomere vectors within each group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
+        'description': 'Time-series of number of sarcomere vectors within each group. np.ndarray with shape '
+                       '(n_groups, n_frames).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group vector count time-series'
-    },
-    'slen': {
-        'description': 'Time-series of mean sarcomere length within each sarcomere group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length time-series [µm]'
-    },
+        'name': 'Group vector count time-series'},
     'slen_median': {
-        'description': 'Time-series of median sarcomere length within each sarcomere group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
+        'description': 'Time-series of median sarcomere length within each sarcomere group. np.ndarray with '
+                       'shape (n_groups, n_frames).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length median time-series [µm]'
-    },
+        'name': 'Group sarcomere length median time-series [µm]'},
     'slen_q25': {
-        'description': 'Time-series of 25th percentile of sarcomere length within each group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
+        'description': 'Time-series of 25th percentile of sarcomere length within each group. np.ndarray with '
+                       'shape (n_groups, n_frames).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length Q25 time-series [µm]'
-    },
+        'name': 'Group sarcomere length Q25 time-series [µm]'},
     'slen_q75': {
-        'description': 'Time-series of 75th percentile of sarcomere length within each group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
+        'description': 'Time-series of 75th percentile of sarcomere length within each group. np.ndarray with '
+                       'shape (n_groups, n_frames).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length Q75 time-series [µm]'
-    },
+        'name': 'Group sarcomere length Q75 time-series [µm]'},
     'slen_std': {
-        'description': 'Time-series of standard deviation of sarcomere length within each group. '
-                       'np.ndarray with shape (n_groups, n_frames).',
+        'description': 'Time-series of standard deviation of sarcomere length within each group. np.ndarray with '
+                       'shape (n_groups, n_frames).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length STD time-series [µm]'
-    },
-    'time_contr': {
-        'description': 'Duration of each contraction cycle for each group. '
-                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'name': 'Group sarcomere length STD time-series [µm]'},
+    'corr_delta_slen_serial': {
+        'description': 'Serial correlation r_s of dSL: mean Pearson correlation of the same sarcomere between '
+                       'different contraction cycles (cycle-to-cycle consistency), per group.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group contraction duration [s]'
-    },
-    'time_to_peak': {
-        'description': 'Time from contraction start to maximum contraction for each group and cycle. '
-                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'name': 'Serial corr. dSL'},
+    'corr_delta_slen_mutual': {
+        'description': 'Mutual correlation r_m of dSL: mean Pearson correlation of different sarcomeres within '
+                       'the same contraction cycle (synchrony), per group.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group time to peak [s]'
-    },
-    'time_to_relax': {
-        'description': 'Time from maximum contraction to relaxation for each group and cycle. '
-                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'name': 'Mutual corr. dSL'},
+    'ratio_delta_slen_mutual_serial': {
+        'description': 'R = r_m / r_s of dSL, per group. R < 1: sarcomeres differ consistently (static '
+                       'heterogeneity); R ~ 1: they differ randomly from beat to beat (stochastic). NaN when r_s '
+                       '<= 0. Meaningful for groups of distinct sarcomeres (fibre chains, domains, pool).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group time to relaxation [s]'
-    },
-    'vel_contr_max': {
-        'description': 'Maximum shortening velocity for each group and contraction cycle. '
-                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'name': 'R dSL (mutual/serial)'},
+    'corr_vel_serial': {
+        'description': 'Serial correlation r_s of the sarcomere velocity, per group (see '
+                       'corr_delta_slen_serial).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group max shortening velocity [µm/s]'
-    },
-    'vel_elong_max': {
-        'description': 'Maximum elongation velocity for each group and contraction cycle. '
-                       'np.ndarray with shape (n_groups, max_n_contr).',
+        'name': 'Serial corr. velocity'},
+    'corr_vel_mutual': {
+        'description': 'Mutual correlation r_m of the sarcomere velocity, per group (see '
+                       'corr_delta_slen_mutual).',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group max elongation velocity [µm/s]'
-    },
+        'name': 'Mutual corr. velocity'},
+    'ratio_vel_mutual_serial': {
+        'description': 'R = r_m / r_s of the sarcomere velocity, per group (see ratio_delta_slen_mutual_serial).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'R velocity (mutual/serial)'},
+    'corr_n_cycles': {
+        'description': 'Number of contraction cycles entering the serial/mutual correlation, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Correlation cycles'},
+    'oscill_frequencies': {
+        'description': 'Frequencies (Hz) of the wavelet oscillation spectrum, shared by all groups. np.ndarray '
+                       'with shape (num_scales,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Oscillation frequencies [Hz]'},
+    'oscill_magnitudes_avg': {
+        'description': 'Wavelet magnitude spectrum of the group-mean dSL over the contracting frames. np.ndarray '
+                       'with shape (n_groups, num_scales).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Oscillation spectrum (mean dSL)'},
+    'oscill_magnitudes_single': {
+        'description': 'Wavelet magnitude spectrum of the individual sarcomeres, mean over members, over the '
+                       'contracting frames. np.ndarray with shape (n_groups, num_scales).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Oscillation spectrum (single sarcomeres)'},
+    'oscill_peak_avg': {
+        'description': 'Frequency (Hz) of the strongest component of the group-mean dSL spectrum, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Peak frequency (mean dSL) [Hz]'},
+    'oscill_amp_avg': {
+        'description': 'Magnitude of the strongest component of the group-mean dSL spectrum, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Peak magnitude (mean dSL)'},
+    'oscill_peak_1_single': {
+        'description': 'Beating-frequency peak (Hz) of the single-sarcomere spectrum, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Single-sarcomere beat peak [Hz]'},
+    'oscill_amp_1_single': {
+        'description': 'Magnitude of the beating peak of the single-sarcomere spectrum, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Single-sarcomere beat magnitude'},
+    'oscill_peak_2_single': {
+        'description': 'High-frequency peak (Hz) of the single-sarcomere spectrum above the beating band '
+                       '(strongest local maximum), per group; NaN when the spectrum only decays there.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Single-sarcomere high-freq. peak [Hz]'},
+    'oscill_amp_2_single': {
+        'description': 'Magnitude of the high-frequency peak of the single-sarcomere spectrum, per group.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Single-sarcomere high-freq. magnitude'},
 }
 
 

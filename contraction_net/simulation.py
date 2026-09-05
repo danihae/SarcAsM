@@ -64,12 +64,9 @@ REST_TOL = 0.05
 #: difficulty is :data:`FRAMES_PER_EVENT`.
 BEAT_RATE_HZ = (0.2, 5.0)
 
-#: Frames spanned by a single contraction, sampled log-uniformly. This -- not duration in
-#: seconds -- is the axis the model actually sees, and it is the axis the network has to be
-#: invariant along: the same detector must work on a coarsely sampled recording that
-#: resolves a contraction in 3 frames and on a high-speed one that spreads it over 500.
-#: Three frames is the floor at which an excursion is still distinguishable from an
-#: outlier; anything less is not resolvable in principle.
+#: Frames spanned by a single contraction, sampled log-uniformly -- the axis the
+#: network must be invariant along; 3 frames is the floor at which an excursion is
+#: still distinguishable from an outlier.
 FRAMES_PER_EVENT = (3, 600)
 
 #: Frame intervals (s) the generator samples, spanning slow widefield time-lapse through
@@ -87,10 +84,8 @@ HARSH_MULTIPLIER = 1.3
 #: duty is only physical as a sustained (``tonic``) or fused contraction.
 SEPARATED_BEAT_DUTY_MAX = 0.75
 
-#: Range of contraction-amplitude-to-noise ratios sampled when ``snr`` is drawn rather
-#: than derived from ``noise_rel``. Decoupling the two is what produces low-amplitude
-#: traces: real tracking noise is set by the measurement, not by how hard the cell beats,
-#: so a suppressed cell has a poor SNR while ``noise_rel`` alone always gives 1/noise_rel.
+#: Contraction-amplitude-to-noise ratios sampled when ``snr`` is drawn rather than
+#: derived from ``noise_rel`` (measurement noise does not scale with the beat).
 SNR_RANGE = (1.5, 40.0)
 
 
@@ -338,11 +333,7 @@ def _apply_nuisances(clean, rng, *, noise_rel, noise_rho, drift_rel,
     if noise_rel > 0:
         sig = sig + noise_rel * amplitude * _ar1(n, noise_rho, rng)
 
-    # Slow baseline wander. This has to be genuinely *slow*: an unconstrained random walk
-    # of comparable amplitude produces contraction-shaped excursions, which would make the
-    # ground truth ambiguous -- a drifting quiescent trace and a slow tonic contraction are
-    # the same signal. Two low-frequency sinusoids with periods of at least half the trace
-    # give wander that no detector can mistake for a twitch.
+    # slow baseline wander: periods >= half the trace, so it cannot look like a twitch
     if drift_rel > 0:
         t = np.linspace(0, 1, n)
         sig = sig + drift_rel * artefact_amp * (
@@ -573,10 +564,7 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 
     elif regime in ('regular', 'fused'):
         fracs = (rise, plateau, relax_k)
-        # The beat period follows from how many frames should resolve one contraction, so
-        # sampling quality is covered uniformly. Deriving it from a beating rate in Hz
-        # instead leaves the coarse end almost unpopulated at high frame rates, and the
-        # detector has to work on series that resolve a contraction in a handful of samples.
+        # period from frames-per-contraction, so sampling quality is covered uniformly
         period = _sample_period(duty, n_frames, rng)
         # a beat needs a resolvable number of frames: at very low duty the answer is fewer
         # beats, not shorter ones, or duty is silently inflated
@@ -726,10 +714,7 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
     allowed = list(REGIME_WEIGHTS) if regimes is None else list(regimes)
 
     def pick(duty_target):
-        # Periodic beats that relax fully cannot exceed duty ~0.8 -- there has to be some
-        # diastole between them. Above that the only physical options are a sustained
-        # contraction or fused beats, so route there instead of asking `regular` for a
-        # duty it cannot produce and silently landing back at 0.75.
+        # separated beats cannot exceed the duty cap: route to sustained / fused instead
         pool = allowed
         if duty_target is not None and duty_target > SEPARATED_BEAT_DUTY_MAX:
             high = [r for r in allowed if r in ('tonic', 'fused')]

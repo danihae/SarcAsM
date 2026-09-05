@@ -85,8 +85,6 @@ class StructureAnalysisControl:
         progress_notifier = self.__get_progress_notifier(worker)
 
         network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        if network_model == 'generalist':
-            network_model = None
         cell: SarcAsM = TypeUtils.unbox(model.cell)
         size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
@@ -126,7 +124,7 @@ class StructureAnalysisControl:
             return False
         return True
 
-    def __chk_prediction_network(self):  # todo rename to zband_prediction or similar
+    def __chk_prediction_network(self):
         if self.__main_control.model.parameters.get_parameter('structure.predict.network_path').get_value() == '':
             logger.warning('No network file was chosen for prediction')
             return False
@@ -175,24 +173,6 @@ class StructureAnalysisControl:
                                                    start_message='Start prediction of sarcomere z-bands fast movies',
                                                    finished_message=message_finished,
                                                    finished_action=self.__detect_z_bands_fast_movie_finished,
-                                                   finished_successful_action=cell.commit)
-        self.__worker = worker
-        return worker
-
-    def __on_btn_analyze_cell_mask(self):
-        if not self.__chk_initialized():
-            return
-        cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
-        message_finished = 'Cell mask analysis completed.'
-
-        def __internal_call(w, m: ApplicationModel):
-            cell.analyze_cell_mask(frames=m.parameters.get_parameter('structure.frames').get_value(),
-                                   threshold=m.parameters.get_parameter('structure.cell_mask.threshold').get_value())
-            pass
-
-        worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
-                                                   start_message='Starting analysis of cell mask.',
-                                                   finished_message=message_finished,
                                                    finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
@@ -393,13 +373,9 @@ class StructureAnalysisControl:
             return
         if not self.__chk_frames():
             return
-        # if not self.__chk_cell_mask_prediction_network():
-        #    return
         self.__main_control.raise_viewer()
-        # predict, z band analysis, wavelet analysis, myofibril length
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
         chain.add_step(self.on_btn_z_bands_predict)
-        chain.add_step(self.__on_btn_analyze_cell_mask)
         chain.add_step(self.on_btn_z_band)
         chain.add_step(self.on_btn_vectors)
         chain.add_step(self.on_btn_myofibril)
@@ -441,9 +417,7 @@ class StructureAnalysisControl:
         self.__structure_parameters_widget.btn_structure_domain_analysis.clicked.connect(self.on_btn_domain_analysis)
         self.__structure_parameters_widget.btn_fast_movie_search.clicked.connect(self.on_btn_fast_movie_search_network)
         self.__structure_parameters_widget.btn_fast_movie.clicked.connect(self.on_btn_z_bands_predict_fast_movies)
-        self.__structure_parameters_widget.btn_structure_analyze_cell_mask.clicked.connect(self.__on_btn_analyze_cell_mask)
 
-        # todo: bind parameters to ui elements
         parameters = self.__main_control.model.parameters
         widget = self.__structure_parameters_widget
 
@@ -475,7 +449,6 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.predict_fast_movie.clip_thresh_max').connect(
             widget.dsb_fast_movie_clip_thresh_max)
 
-        parameters.get_parameter(name='structure.cell_mask.threshold').connect(widget.dsb_cell_mask_threshold)
 
         parameters.get_parameter(name='structure.frames').set_value_parser(self.__parse_frames)
         parameters.get_parameter(name='structure.frames').connect(widget.le_general_frames)

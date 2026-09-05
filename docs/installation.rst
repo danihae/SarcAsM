@@ -18,9 +18,9 @@ Using uv (Recommended)
         # On Windows
         powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-#. Create and activate a new environment (tested with Python >=3.10)::
+#. Create and activate a new environment (Python 3.12 or 3.13)::
 
-        uv venv --python 3.10 sarcasm
+        uv venv --python 3.12 sarcasm
         source sarcasm/bin/activate  # On macOS/Linux
         # Or: sarcasm\Scripts\activate  # On Windows
 
@@ -36,9 +36,9 @@ Using conda
 
 Alternatively, you can use conda for environment management:
 
-#. Create and activate a new environment (tested with Python >=3.10)::
+#. Create and activate a new environment (Python 3.12 or 3.13)::
 
-        conda create -n sarcasm python==3.10
+        conda create -n sarcasm python=3.12
         conda activate sarcasm
 
 #. Install SarcAsM and its dependencies via pip from PyPI::
@@ -59,9 +59,9 @@ Using uv (Recommended)
         git clone https://github.com/danihae/SarcAsM
         cd SarcAsM
 
-#. Create a new environment (tested with Python >=3.10)::
+#. Create a new environment (Python 3.12 or 3.13)::
 
-        uv venv --python 3.10
+        uv venv --python 3.12
         source .venv/bin/activate  # On macOS/Linux
         # Or: .venv\Scripts\activate  # On Windows
 
@@ -80,9 +80,9 @@ Using conda
         git clone https://github.com/danihae/SarcAsM
         cd SarcAsM
 
-#. Create a new environment (tested with Python >=3.10)::
+#. Create a new environment (Python 3.12 or 3.13)::
 
-        conda create -n sarcasm python==3.10
+        conda create -n sarcasm python=3.12
         conda activate sarcasm
 
 #. Install all the required packages from pip via::

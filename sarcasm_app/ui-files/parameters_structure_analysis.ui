@@ -17,7 +17,7 @@
    <item row="0" column="0" colspan="2">
     <widget class="QPushButton" name="btn_analyze_structure">
      <property name="toolTip">
-      <string>execute all of the below functions except cell mask prediction (check the parameters before)</string>
+      <string>Run every step below in order (check the parameters first)</string>
      </property>
      <property name="text">
       <string>Run full structure analysis</string>
@@ -67,10 +67,10 @@
         <item>
          <widget class="QLineEdit" name="le_network">
           <property name="toolTip">
-           <string>Path of trained network weights for U-Net or Siam-U-Net</string>
+           <string>'auto' picks the bundled model by pixel size ('legacy' below 0.08 µm/px, 'generalist' otherwise); 'generalist' or 'legacy' forces one; or a path to custom U-Net weights</string>
           </property>
           <property name="text">
-           <string>generalist</string>
+           <string>auto</string>
           </property>
          </widget>
         </item>
@@ -460,39 +460,6 @@
      </layout>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_7">
-     <property name="title">
-      <string>Cell mask analysis</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout_8">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_42">
-        <property name="text">
-         <string>Threshold</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_cell_mask_threshold">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>999999999.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_structure_analyze_cell_mask">
-        <property name="text">
-         <string>2. Analyze cell mask</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
    <item row="7" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_2">
      <property name="title">
@@ -634,7 +601,7 @@
          <string>execute z band analysis, check parameters before</string>
         </property>
         <property name="text">
-         <string>3. Analyze Z-bands</string>
+         <string>2. Analyze Z-bands</string>
         </property>
        </widget>
       </item>
@@ -878,7 +845,7 @@
          <string>executes wavelet analysis, check frames, with &quot;all&quot; it will take a while</string>
         </property>
         <property name="text">
-         <string>4. Analyze sarcomere vectors</string>
+         <string>3. Analyze sarcomere vectors</string>
         </property>
        </widget>
       </item>
@@ -970,13 +937,13 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="2">
+      <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_myofibril">
         <property name="toolTip">
          <string>execute myofibril length calculation</string>
         </property>
         <property name="text">
-         <string>5. Analyze myofibrils</string>
+         <string>4. Analyze myofibrils</string>
         </property>
        </widget>
       </item>
@@ -1162,13 +1129,13 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="2">
+      <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_domain_analysis">
         <property name="toolTip">
          <string>Find sarcomere domains with similar orientation using agglomerative clustering</string>
         </property>
         <property name="text">
-         <string>6. Analyze domains</string>
+         <string>5. Analyze domains</string>
         </property>
        </widget>
       </item>

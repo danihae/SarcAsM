@@ -22,7 +22,6 @@ from pathlib import Path
 # ("DLL initialization routine failed") when c10.dll is loaded.
 import torch  # noqa: F401
 
-import requests
 from PyQt5.QtCore import Qt, QLocale, QUrl
 from PyQt5.QtGui import QPalette, QColor, QIcon, QDesktopServices
 from PyQt5.QtWidgets import (QApplication, QDesktopWidget, QStyleFactory, QAbstractSpinBox,
@@ -394,11 +393,7 @@ class Application:
         for w in (widget_structure_parameters,
                   widget_motion_analysis, widget_batch_processing):
             _apply_spinbox_unit_suffixes(w)
-            # Let long rows put their label above the field when the dock is
-            # narrow. Without this the tabs demand the width of their longest
-            # label plus their widest field on one line -- 941 px for Structure --
-            # which no sensible dock width satisfies. The wrap only engages when
-            # squeezed, so a wide dock looks exactly as before.
+            # long rows wrap their label above the field when the dock is narrow
             for form in w.findChildren(QFormLayout):
                 form.setRowWrapPolicy(QFormLayout.WrapLongRows)
 
@@ -553,43 +548,6 @@ class Application:
             ui_element=lambda new_value: self.__update_busy_label(new_value))
         pass
 
-    @staticmethod
-    def check_github_release(owner, repo, current_version):
-        """Check GitHub for the latest release and print if a new version is available.
-           Only runs when packaged with PyInstaller.
-        """
-        # Only check if running in a PyInstaller bundle
-        if not (getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')):
-            return None  # Or "" if you prefer
-
-        url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                latest = response.json()
-                latest_version = latest.get("tag_name") or latest.get("name")
-                release_url = latest.get("html_url", f"https://github.com/{owner}/{repo}/releases/latest")
-                # Try to get the first asset download link, if it exists
-                assets = latest.get("assets", [])
-                if assets:
-                    asset = assets[0]
-                    download_url = asset.get("browser_download_url")
-                else:
-                    download_url = release_url  # Fallback to release page
-
-                if latest_version and latest_version != current_version:
-                    msg = (
-                        f"New release available: {latest_version} (You have: {current_version})\n"
-                        f"Download: {download_url}\n"
-                    )
-                    return msg
-                else:
-                    return "You have the latest version."
-            else:
-                return f"Failed to fetch release info: {response.status_code}"
-        except Exception as e:
-            return f"Error checking for updates: {e}"
-
     def init_gui(self):
         self.__window.setWindowTitle(f'SarcAsM - v{version}')
         # Clamp initial size to available screen so the window never opens off-screen
@@ -643,10 +601,7 @@ class Application:
         self.__window.setLayout(main_layout)
         self.__disable_scroll_on_spinbox()
 
-        # Closing the main window must also tear down the napari viewer; otherwise
-        # napari stays open as an orphan and the Qt event loop keeps running.
-        # Monkey-patch is the lightest hook here — subclassing QWidget just to
-        # override closeEvent would require restructuring the constructor.
+        # closing the main window must also tear down the napari viewer
         _original_close = self.__window.closeEvent
         _control = self.__control
         def _close_event(event):
@@ -655,13 +610,4 @@ class Application:
         self.__window.closeEvent = _close_event
 
         self.__window.show()
-
-        # # Check release and notify when there's an update
-        # owner = "danihae"
-        # repo = "SarcAsM"
-        # msg = self.check_github_release(owner, repo, version)
-        # self.debug(msg)
-        # if msg and "New release available" in msg:
-        #     QMessageBox.information(self.__window, "Update Available", msg)
-
         sys.exit(self.__app.exec_())

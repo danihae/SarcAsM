@@ -122,7 +122,7 @@ def test_gap_frame_is_not_observed_and_carries_no_measured_slen():
     common = dict(pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
-        max_gap_interpolation=0, **common)
+        max_gap_interpolation_s=0, **common)
     assert out['motion.tracks.n'] >= 1
     slens = out['motion.tracks.slen']
     observed = out['motion.tracks.observed']
@@ -323,7 +323,7 @@ def test_scale_aware_along_gate_cap_prevents_neighbour_match():
 
 
 def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
-    """``max_gap_interpolation`` fills slen/orientation across brief flicker so the
+    """``max_gap_interpolation_s`` fills slen/orientation across brief flicker so the
     per-track traces have no holes — but the filled frames must stay False in
     ``tracks_observed``, so coverage and every real-observation metric still count
     only genuine detections. Gaps longer than the limit stay NaN, and nothing is
@@ -343,7 +343,7 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
-        max_gap_interpolation=3)
+        max_gap_interpolation_s=0.03)                    # 3 frames at 100 fps
     assert out['motion.tracks.n'] == 1
     observed = out['motion.tracks.observed'][0]
     slen = out['motion.tracks.slen'][0]
@@ -360,7 +360,7 @@ def test_short_interior_gaps_are_interpolated_but_not_marked_observed():
     off = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
-        max_gap_interpolation=0)
+        max_gap_interpolation_s=0)
     assert np.all(np.isnan(off['motion.tracks.slen'][0][~off['motion.tracks.observed'][0]]))
     assert off['motion.tracks.n_interpolated_gap_frames'] == 0
 
@@ -380,6 +380,6 @@ def test_interpolated_orientation_is_axial():
     out = st.track_sarcomere_vectors(
         pos_px_all, [None] * T, slen_all, ori_all,
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
-        max_gap_interpolation=3)
+        max_gap_interpolation_s=0.03)
     mid = float(out['motion.tracks.orientations'][0][1])
     assert abs(st._angular_diff(mid, 0.0)) < 0.05, mid

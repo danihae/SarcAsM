@@ -68,12 +68,14 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
    installation
    quickstart
    gui
+   key_migration
 
 .. toctree::
    :maxdepth: 2
    :caption: Developer Guide:
 
    development
+   contraction_net_comparison
 
 .. toctree::
    :maxdepth: 2

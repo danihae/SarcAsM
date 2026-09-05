@@ -29,20 +29,35 @@ logger = logging.getLogger(__name__)
 
 
 # Named generalist checkpoints: alias -> (filename, validated pixel-size range in µm).
-#
-# 'generalist' (default) was trained with scale augmentation and on corrected orientation
-# labels, so it measures the same tissue consistently from 0.11 to 0.40 µm/px: median
-# sarcomere length drifts 0.12 µm across that range against 0.35 µm for 'legacy', and it
-# still returns ~5900 vectors at 0.40 µm/px where 'legacy' returns none.
-#
-# 'legacy' is the pre-v1.0.0 checkpoint, kept unchanged so published results can be
-# reproduced. It is NOT interchangeable with the default: it predicts a smaller cell mask
-# (-2.2 % against the label, where the new model runs +4 %), which shifts the denominator
-# of sarcomere_area_ratio. Do not mix the two within one study. See sarcasm/models/README.md.
+# The two are not interchangeable within one study (different cell-mask bias);
+# see sarcasm/models/README.md.
 GENERALIST_MODELS = {
     'generalist': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
-    'legacy':     ('model_sarcomeres_generalist.pt',    (0.10, 0.35)),
+    'legacy':     ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
 }
+#: Below this pixel size (µm) 'auto' picks 'legacy': v1's scale augmentation only ever
+#: downscales into 0.08-0.45 µm/px, so it has never seen high-magnification frames at
+#: native resolution and fragments their Z-/M-band lines, while 'legacy' was trained on them.
+AUTO_LEGACY_BELOW_UM = 0.08
+
+
+def resolve_generalist_model(model_path, pixelsize, model_dir):
+    """Resolve ``model_path`` (None / 'auto' / an alias / a file path) to a checkpoint.
+
+    Returns ``(key, path)`` with ``key`` the alias when a bundled model from
+    ``model_dir`` is used (``None`` for a custom file). ``'auto'`` (and None)
+    choose by pixel size.
+    """
+    if model_path is None or model_path == 'auto':
+        if pixelsize is not None and pixelsize < AUTO_LEGACY_BELOW_UM:
+            key = 'legacy'
+        else:
+            key = 'generalist'
+    elif model_path in GENERALIST_MODELS:
+        key = model_path
+    else:
+        return None, model_path
+    return key, os.path.join(model_dir, GENERALIST_MODELS[key][0])
 
 
 def _resize_xy_back(arr: np.ndarray, target_xy: Tuple[int, int]) -> np.ndarray:
@@ -273,10 +288,11 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
     n_frames = images.shape[0] if is_stack else 1
 
     logger.info('Predicting sarcomeres ...')
-    if model_path is None or model_path in GENERALIST_MODELS:
-        key = model_path or 'generalist'
-        filename, (px_lo, px_hi) = GENERALIST_MODELS[key]
-        model_path = os.path.join(model_dir, filename)
+    key, model_path = resolve_generalist_model(model_path, pixelsize, model_dir)
+    if info is not None:
+        info['model'] = key or model_path
+    if key is not None:
+        px_lo, px_hi = GENERALIST_MODELS[key][1]
         if pixelsize is not None and pixelsize < px_lo:
             logger.warning(
                 f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the validated range "
@@ -287,12 +303,9 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
                 f"Pixel size ({round(pixelsize, 3)} µm) is larger than the validated range "
                 f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too large. "
                 f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
-        logger.info(f"Using model '{key}': {model_path}")
+        logger.info(f"Using model '{key}' (pixel size {pixelsize} µm): {model_path}")
 
-    # Size the blocks from the whole working set of one block, not just the
-    # result: the float32 input, the extracted patches, the float16 patch
-    # predictions and the float32 stitch canvas are all live at once, which comes
-    # to roughly twelve float32 planes per frame.
+    # block size from the whole working set (~12 float32 planes per frame)
     out_channels = 6
     per_frame_bytes = int(np.prod(original_xy_shape)) * 4 * (2 * out_channels)
     budget_bytes = int(memory_budget_gb * (1 << 30))

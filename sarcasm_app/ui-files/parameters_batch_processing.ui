@@ -23,7 +23,7 @@
       <item row="0" column="0" colspan="2">
        <widget class="QLabel" name="label_6">
         <property name="text">
-         <string>First, adjust the settings in &quot;Structure Analysis&quot; or &quot;Motion Analysis&quot; using a single, representative image/movie. The finalized parameters will be used to process the entire batch.</string>
+         <string>First, adjust the settings in the &quot;Structure&quot; and &quot;Motion&quot; tabs using a single, representative image/movie. The finalized parameters will be used to process the entire batch.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -166,19 +166,22 @@
          </widget>
         </item>
         <item>
-         <widget class="QCheckBox" name="chk_delete_intermediary_tiffs">
+         <widget class="QCheckBox" name="chk_delete_intermediate_masks">
+          <property name="toolTip">
+           <string>After each file, delete the derived masks (Z-bands, M-bands, sarcomere/cell masks, ...) from its .ome.zarr store to save disk space; the analysis results are kept</string>
+          </property>
           <property name="text">
-           <string>Delete intermediary TIFF files</string>
+           <string>Delete intermediate masks from the store</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QCheckBox" name="chk_calc_lois">
+         <widget class="QCheckBox" name="chk_recalculate_for_motion">
           <property name="toolTip">
-           <string>If this is activated Z-Band Prediction, Sarcomere Length Orient will be calculated (if structure analysis was done before this could be deactivated)</string>
+           <string>Run the structure steps the motion analysis needs first (Z-band prediction, sarcomere vectors, and myofibrils or domains for those groupings). Leave off if the batch was already structure-analyzed.</string>
           </property>
           <property name="text">
-           <string>Detect LOIs prior to motion analysis</string>
+           <string>Run structure prerequisites before motion analysis</string>
           </property>
           <property name="checked">
            <bool>false</bool>
@@ -193,13 +196,6 @@
          <string>Structure</string>
         </property>
         <layout class="QFormLayout" name="formLayout_2">
-         <item row="0" column="0">
-          <widget class="QCheckBox" name="chk_do_cellmask">
-           <property name="text">
-            <string>Analyze Cellmask</string>
-           </property>
-          </widget>
-         </item>
          <item row="1" column="0">
           <widget class="QCheckBox" name="chk_do_zbands">
            <property name="text">

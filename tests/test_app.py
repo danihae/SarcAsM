@@ -25,6 +25,8 @@ For full GUI tests requiring a display, use pytest-qt with xvfb.
 import json
 import logging
 import os
+
+import numpy as np
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -56,20 +58,11 @@ class TestApplicationModel:
         model.reset_model()
 
         assert model.cell is None
-        assert len(model.line_dictionary) == 0
 
     def test_is_initialized_false_when_no_cell(self, model):
         """Test is_initialized returns False when no cell loaded."""
         with patch('napari.current_viewer', return_value=None):
             assert model.is_initialized() is False
-
-    def test_scheme_property(self, model):
-        """Test scheme property returns expected format."""
-        assert model.scheme == '%d_%d_%d_%d_%.2f'
-
-    def test_file_extension_property(self, model):
-        """Test file extension property."""
-        assert model.file_extension == '.json'
 
 
 class TestParameters:
@@ -101,7 +94,7 @@ class TestParameters:
         params = model.parameters
         
         # Check some default values from set_to_default
-        assert params.get_parameter('structure.predict.network_path').get_value() == 'generalist'
+        assert params.get_parameter('structure.predict.network_path').get_value() == 'auto'
         assert params.get_parameter('structure.predict.rescale_factor').get_value() == 1.0
         assert params.get_parameter('structure.predict.size_width').get_value() == 1024
         assert params.get_parameter('structure.predict.size_height').get_value() == 1024
@@ -458,7 +451,9 @@ class TestMotionParameters:
         assert params.get_parameter('motion.track.max_disp_perp').get_value() == 0.2
         assert params.get_parameter('motion.track.ori_tol').get_value() == 45.0
         assert params.get_parameter('motion.group.by').get_value() == 'myofibril'
-        assert params.get_parameter('motion.analyze.threshold').get_value() == 0.3
+        # the operating point is read from the shipped checkpoint, not hard-coded
+        from sarcasm_app.model import _default_contraction_threshold
+        assert params.get_parameter('motion.analyze.threshold').get_value() == _default_contraction_threshold()
         assert params.get_parameter('motion.analyze.contr_time_min').get_value() == 0.2
 
     def test_every_parameter_has_a_default(self, model):
@@ -474,3 +469,122 @@ class TestMotionParameters:
         undefaulted = {name for name, param in registered.items()
                        if param.get_raw_value() is None} - {'batch.root'}
         assert not undefaulted, f"parameters registered without a default: {sorted(undefaulted)}"
+
+
+_QAPP = None
+
+
+class TestTrackLayers:
+    """The napari track layers of the Motion tab, built against a viewer stand-in.
+
+    napari layer objects work without a window, so a fake viewer that forwards
+    ``add_*`` to the layer constructors exercises the real data preparation,
+    colouring and selection plumbing headless. Needs the 20 kPa store (skipped in CI).
+    """
+
+    class _Layers(dict):
+        def remove(self, layer):
+            for k, v in list(self.items()):
+                if v is layer:
+                    del self[k]
+
+    class _FakeViewer:
+        def __init__(self):
+            import napari
+            self.layers = TestTrackLayers._Layers()
+            self._napari = napari
+
+        def _add(self, cls, data, **kw):
+            layer = cls(data, **kw)
+            self.layers[kw.get('name', cls.__name__)] = layer
+            return layer
+
+        def add_tracks(self, data, **kw):
+            return self._add(self._napari.layers.Tracks, data, **kw)
+
+        def add_points(self, data, **kw):
+            return self._add(self._napari.layers.Points, data, **kw)
+
+        def add_shapes(self, data, **kw):
+            return self._add(self._napari.layers.Shapes, data, **kw)
+
+    @pytest.fixture(scope='class')
+    def control(self, motion_file_path_class):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PyQt5.QtWidgets import QApplication
+        global _QAPP                                   # keep the application alive for the widgets
+        _QAPP = QApplication.instance() or QApplication([])
+        from sarcasm import SarcAsM
+        from sarcasm_app.control.application_control import ApplicationControl
+        from sarcasm_app.model import ApplicationModel
+        cell = SarcAsM(motion_file_path_class)
+        if 'motion.tracks.slen' not in cell.data or cell.data.get('structure.myofibril.lines') is None:
+            pytest.skip('20 kPa store has no tracks / myofibril lines')
+        cell.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
+        cell.scale = (1, cell.metadata.pixelsize, cell.metadata.pixelsize)
+        model = ApplicationModel()
+        model.set_to_default()
+        model._cell = cell
+        ctl = ApplicationControl.__new__(ApplicationControl)
+        ctl._model = model
+        ctl._viewer = self._FakeViewer()
+        ctl.track_selected_callbacks, ctl.group_selected_callbacks = [], []
+        return ctl
+
+    def test_layer_table_is_per_observation(self, control):
+        table = control.track_layer_table()
+        n_obs = int(np.asarray(control.model.cell.data['motion.tracks.observed']).sum())
+        assert table['track_id'].size == n_obs
+        assert set(table) >= {'track_id', 't', 'y', 'x', 'slen', 'delta_slen', 'vel', 'group_id', 'coverage'}
+        assert np.all(np.diff(table['track_id']) >= 0)                    # sorted by track, then frame
+        assert control.track_layer_table() is table                       # cached
+
+    def test_layers_build_and_recolour(self, control):
+        control.init_tracks_stack()
+        control.init_track_state_stack()
+        control.init_track_groups_layer()
+        layers = control.viewer.layers
+        assert layers['Trajectories'].data.shape[1] == 4 and layers['Trajectories'].color_by == 'delta_slen'
+        assert layers['Sarcomeres'].data.shape[1] == 3 and layers['Sarcomeres'].face_color_mode == 'colormap'
+        assert len(layers['Groups'].data) > 5 and layers['Groups'].features['group'].size == len(layers['Groups'].data)
+        for label in ('Group', 'Coverage', 'Velocity', 'SL', 'Track id', 'ΔSL'):
+            control.model.parameters.get_parameter('motion.display.color_by').set_value(label)
+            control.apply_track_display(show_trajectories=True, show_sarcomeres=False)
+            key = control.TRACK_COLOR_LABELS[label]
+            assert layers['Trajectories'].color_by == key
+            assert layers['Sarcomeres'].face_color_mode == 'colormap' and not layers['Sarcomeres'].visible
+            assert np.isfinite(layers['Sarcomeres'].face_color).all()
+
+    def test_group_highlight_and_selection_callbacks(self, control):
+        control.init_track_state_stack()
+        seen = []
+        control.track_selected_callbacks.append(seen.append)
+        control.highlight_group(0)
+        members = control.track_layer_table()['group_id'] == 0
+        ring = control.viewer.layers['Selected group']
+        assert len(ring.data) == int(members.sum())
+        control.highlight_group(1)                                       # same layer, new data
+        assert control.viewer.layers['Selected group'] is ring
+        assert len(ring.data) == int((control.track_layer_table()['group_id'] == 1).sum())
+        control.highlight_group(None)
+        assert len(ring.data) == 0 and not ring.visible
+
+    def test_trace_dock_overlays_group_and_track(self, control):
+        from sarcasm_app.view.track_trace_dock import TrackTraceDock
+        cell = control.model.cell
+        dock = TrackTraceDock()
+        dock.set_source(control.track_kinematics(), cell.data['motion.tracks.group_id'],
+                        cell.metadata.frametime, 'myofibril')
+        assert 'all tracks' in dock.lbl_info.text()
+        gid = np.asarray(cell.data['motion.tracks.group_id'])
+        track = int(np.flatnonzero(gid == 0)[0])
+        dock.show_track(track)
+        assert f'Track {track}' in dock.lbl_info.text() and 'myofibril 0' in dock.lbl_info.text()
+        for series in ('SL', 'Velocity', 'ΔSL'):
+            dock.cb_series.setCurrentText(series)
+            assert dock.ax.get_ylabel().startswith(series.replace('Velocity', 'V'))
+        dock.show_group(1)
+        assert 'myofibril 1' in dock.lbl_info.text()
+        dock.set_frame(10)
+        lo, hi = dock.ax.get_ylim()
+        assert hi - lo < 1.0                                               # robust limits, no outlier blow-up

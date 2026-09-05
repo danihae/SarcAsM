@@ -451,16 +451,9 @@ class TestStructurePlots:
         # Skip if no myofibril lines were found or if method not available
         if analyzed_structure.data['structure.myofibril.lines'][0] is None:
             pytest.skip("No myofibril lines detected in test data")
-        # Note: This test may fail due to a bug in plots.py where create_myofibril_length_map
-        # is called as a method on sarc_obj instead of from myofibril_analysis module
         fig, ax = plt.subplots()
-        try:
-            Plots.plot_myofibril_length_map(ax, analyzed_structure, frame=0)
-            assert ax.images, "No myofibril length map was plotted"
-        except AttributeError as e:
-            if "create_myofibril_length_map" in str(e):
-                pytest.skip("plot_myofibril_length_map has a bug - calls method that doesn't exist")
-            raise
+        Plots.plot_myofibril_length_map(ax, analyzed_structure, frame=0)
+        assert ax.images, "No myofibril length map was plotted"
         plt.close(fig)
 
     def test_plot_histogram_structure(self, analyzed_structure):
@@ -543,3 +536,29 @@ class TestDomainMotionPlots:
         # Check for plotted lines
         assert ax.lines, "No domain time-series lines were plotted"
         plt.close(fig)
+
+
+def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path):
+    """The cell mask is a detection output, so its features come with detect_sarcomeres."""
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames=0)
+    assert sarc.data['params.analyze_cell_mask.frames'] == [0]
+    area = np.asarray(sarc.data['structure.cell.mask_area'])
+    ratio = np.asarray(sarc.data['structure.cell.mask_area_ratio'])
+    assert area.shape == (1,) and np.isfinite(area).all()
+    assert 0 < ratio[0] <= 1
+    # still callable on its own, e.g. with another threshold
+    sarc.analyze_cell_mask(frames=0, threshold=0.5)
+    assert sarc.data['params.analyze_cell_mask.threshold'] == 0.5
+
+
+@pytest.mark.parametrize('model_path, pixelsize, expected', [
+    (None, 0.061, 'legacy'), ('auto', 0.061, 'legacy'), (None, 0.079, 'legacy'),
+    (None, 0.08, 'generalist'), ('auto', 0.11, 'generalist'), (None, None, 'generalist'),
+    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'),
+])
+def test_bundled_model_is_chosen_by_pixel_size(model_path, pixelsize, expected):
+    from sarcasm.analysis.detection import resolve_generalist_model, GENERALIST_MODELS
+    key, path = resolve_generalist_model(model_path, pixelsize, '/models')
+    assert key == expected and path == f'/models/{GENERALIST_MODELS[expected][0]}'
+    assert resolve_generalist_model('/somewhere/custom.pt', 0.061, '/models') == (None, '/somewhere/custom.pt')

@@ -94,8 +94,8 @@ def prepare_robust_input(data, diff_window=5, convention='q90'):
         Smoothing window (frames) for the difference channel. Default is 5.
     convention : str, optional
         ``'q90'`` centres on the 90th percentile: rest is assumed to be the high side of
-        the trace, so a signal resting low must be inverted first. This is the pre-1.0.1
-        convention and the default, so bundled checkpoints are unaffected.
+        the trace, so a signal resting low must be inverted first. This is the
+        default.
         ``'symmetric'`` centres on ``(P10 + P90) / 2``, which makes the conditioning exactly
         odd -- ``x -> -x`` maps level to ``-level`` and diff to ``-diff``, since
         ``P10(-x) = -P90(x)`` -- so a polarity-invariant model can be trained with sign-flip

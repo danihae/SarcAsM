@@ -15,8 +15,6 @@
 import json
 import logging
 import os
-import platform
-import subprocess
 
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
@@ -55,7 +53,6 @@ class FileSelectionControl:
         self.__file_selection_widget.btn_search.clicked.connect(self.on_search)
         self.__file_selection_widget.btn_open_zarr.clicked.connect(self.on_open_zarr)
         self.__file_selection_widget.btn_set_to_default.clicked.connect(self.on_set_to_default)
-        self.__file_selection_widget.btn_open_folder.clicked.connect(self.on_open_cell_folder)
         self.__file_selection_widget.btn_store_metadata.clicked.connect(self.on_store_meta_data)
         self.__file_selection_widget.le_cell_file.returnPressed.connect(self.on_return_pressed_cell_file)
 
@@ -211,7 +208,6 @@ class FileSelectionControl:
 
     def _init_file(self, file):
         # on file changed, clean up old files, napari viewer, models, etc.
-        # todo: maybe switch to threaded execution (run_async_new)
 
         if self.__main_control.model.currentlyProcessing.get_value():
             logger.warning('Still processing something')
@@ -235,7 +231,10 @@ class FileSelectionControl:
         self.__main_control.viewer.dims.set_current_step(0, 0)
 
         self.__main_control.init_tracks_stack(visible=False)
-        self.__main_control.init_track_groups_stack(visible=False)
+        self.__main_control.init_track_state_stack(visible=False)
+        self.__main_control.init_track_groups_layer(visible=False)
+        for callback in self.__main_control.file_opened_callbacks:
+            callback()
 
         self._init_meta_data()
         self.__main_control.set_viewer_title(file)
@@ -244,24 +243,6 @@ class FileSelectionControl:
         self.__main_control.update_progress(100)
         self.__main_control.model.currentlyProcessing.set_value(False)
 
-
-    def on_open_cell_folder(self):
-        if len(self.__file_selection_widget.le_cell_file.text()) == 0:
-            logger.warning('Empty File-Path')
-            return
-        if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
-            logger.warning("The path doesn't exist")
-            return
-
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
-        str_path = cell.base_dir
-
-        if platform.system() == 'Windows':
-            os.startfile(str_path)
-        elif platform.system() == 'Linux':
-            subprocess.Popen(["xdg-open", str_path])
-        elif platform.system() == 'Darwin':  # mac device
-            subprocess.Popen(["open", str_path])
 
     def on_store_meta_data(self):
         # get values from entries and check if float

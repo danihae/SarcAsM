@@ -136,23 +136,29 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_track_gap">
         <property name="toolTip">
-         <string>Longest gap (frames) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
+         <string>Longest gap (seconds) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
         </property>
         <property name="text">
-         <string>Max gap interp. [frames]</string>
+         <string>Max gap interp. [s]</string>
         </property>
        </widget>
       </item>
       <item row="4" column="1">
-       <widget class="QSpinBox" name="sb_track_max_gap_interp">
+       <widget class="QDoubleSpinBox" name="dsb_track_max_gap_interp_s">
         <property name="toolTip">
-         <string>Longest gap (frames) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
+         <string>Longest gap (seconds) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
         </property>
         <property name="maximum">
-         <number>100</number>
+         <double>10.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.010000000000000</double>
         </property>
         <property name="value">
-         <number>3</number>
+         <double>0.050000000000000</double>
         </property>
        </widget>
       </item>
@@ -170,6 +176,160 @@
     </widget>
    </item>
    <item row="1" column="0" colspan="2">
+    <widget class="QGroupBox" name="groupBox_display">
+     <property name="title">
+      <string>Display</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_display">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_display_color">
+        <property name="toolTip">
+         <string>Feature that colours the trajectories and the per-frame sarcomere markers in the viewer</string>
+        </property>
+        <property name="text">
+         <string>Colour by</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cb_display_color_by">
+        <property name="toolTip">
+         <string>ΔSL = length change from the resting length; velocity = dSL/dt; group = current grouping; coverage = fraction of frames the track was observed</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_display_limit">
+        <property name="toolTip">
+         <string>Symmetric colour range for ΔSL; 0 = automatic (99th percentile of |ΔSL|)</string>
+        </property>
+        <property name="text">
+         <string>ΔSL colour limit [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_display_dsl_limit">
+        <property name="toolTip">
+         <string>Symmetric colour range for ΔSL; 0 = automatic (99th percentile of |ΔSL|)</string>
+        </property>
+        <property name="decimals">
+         <number>2</number>
+        </property>
+        <property name="maximum">
+         <double>2.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.050000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_display_tail">
+        <property name="toolTip">
+         <string>How many past frames of each trajectory are drawn behind the current position</string>
+        </property>
+        <property name="text">
+         <string>Trail length [frames]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="sb_display_tail">
+        <property name="toolTip">
+         <string>How many past frames of each trajectory are drawn behind the current position</string>
+        </property>
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>100000</number>
+        </property>
+        <property name="value">
+         <number>30</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QCheckBox" name="chk_display_trajectories">
+        <property name="text">
+         <string>Trajectories</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QCheckBox" name="chk_display_sarcomeres">
+        <property name="text">
+         <string>Sarcomeres (click one for its time series)</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QCheckBox" name="chk_display_groups">
+        <property name="toolTip">
+         <string>Fibre paths of a myofibril / LOI grouping, labelled with the group id; click a path to select the group</string>
+        </property>
+        <property name="text">
+         <string>Groups (fibre paths)</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLabel" name="label_display_hint">
+        <property name="text">
+         <string>Click a sarcomere or a fibre path to select its group</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_display_trace">
+        <property name="toolTip">
+         <string>Panel below the viewer: SL / ΔSL / velocity of every sarcomere of the selected group overlaid with the group mean, the clicked sarcomere highlighted, contraction cycles shaded</string>
+        </property>
+        <property name="text">
+         <string>Time-series panel (SL / ΔSL)…</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_display_overlay">
+        <property name="toolTip">
+         <string>Figure with the SL and ΔSL overlays (all sarcomeres + mean) of the selected group</string>
+        </property>
+        <property name="text">
+         <string>Overlay figure (SL + ΔSL)…</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0" colspan="2">
+       <widget class="QPushButton" name="btn_display_raster">
+        <property name="toolTip">
+         <string>Cycle-averaged raster of all tracked sarcomeres, rows sorted by time-to-peak and by amplitude (needs a pooled analysis)</string>
+        </property>
+        <property name="text">
+         <string>Cycle raster…</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="2" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_group">
      <property name="title">
       <string>2. Group tracks</string>
@@ -215,7 +375,7 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label_group_cov">
         <property name="toolTip">
          <string>Minimum fraction of frames a track must be present to count as long</string>
@@ -225,7 +385,7 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
+      <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_group_min_coverage">
         <property name="toolTip">
          <string>Minimum fraction of frames a track must be present to count as long</string>
@@ -244,7 +404,33 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_group_min_size">
+        <property name="toolTip">
+         <string>Groups with fewer member tracks are dropped (their tracks become unassigned)</string>
+        </property>
+        <property name="text">
+         <string>Min. group size</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QSpinBox" name="sb_group_min_group_size">
+        <property name="toolTip">
+         <string>Groups with fewer member tracks are dropped (their tracks become unassigned)</string>
+        </property>
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>100000</number>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="btn_group_tracks">
         <property name="toolTip">
          <string>Partition tracks into groups (cheap, re-runnable)</string>
@@ -254,7 +440,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0" colspan="2">
+      <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_draw_lois">
         <property name="toolTip">
          <string>Draw line(s) on the movie. With 'Group by = loi', Group tracks will use the drawn lines; clear them to auto-detect instead.</string>
@@ -264,7 +450,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
+      <item row="6" column="0" colspan="2">
        <widget class="QGroupBox" name="groupBox_loi_detect">
         <property name="toolTip">
          <string>Auto-detection settings used when Group by = loi and no LOIs were drawn.</string>
@@ -308,51 +494,51 @@
            <property name="value"><double>0.100000000000000</double></property>
           </widget>
          </item>
-         <item row="0" column="0">
+         <item row="2" column="0">
           <widget class="QLabel" name="label_loi_persistence">
            <property name="text">
             <string>Persistence</string>
            </property>
           </widget>
          </item>
-         <item row="0" column="1">
+         <item row="2" column="1">
           <widget class="QSpinBox" name="sb_loi_persistence">
            <property name="maximum"><number>1000</number></property>
            <property name="value"><number>4</number></property>
           </widget>
          </item>
-         <item row="1" column="0">
+         <item row="3" column="0">
           <widget class="QLabel" name="label_loi_thrdist">
            <property name="text">
             <string>Growth dist. [µm]</string>
            </property>
           </widget>
          </item>
-         <item row="1" column="1">
+         <item row="3" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_threshold_distance">
            <property name="decimals"><number>3</number></property>
            <property name="maximum"><double>1000.000000000000000</double></property>
            <property name="value"><double>0.500000000000000</double></property>
           </widget>
          </item>
-         <item row="2" column="0">
+         <item row="4" column="0">
           <widget class="QLabel" name="label_loi_mode">
            <property name="text">
             <string>Mode</string>
            </property>
           </widget>
          </item>
-         <item row="2" column="1">
+         <item row="4" column="1">
           <widget class="QComboBox" name="cb_loi_mode"/>
          </item>
-         <item row="3" column="0">
+         <item row="5" column="0">
           <widget class="QLabel" name="label_loi_number">
            <property name="text">
             <string>Sarcomere # limits</string>
            </property>
           </widget>
          </item>
-         <item row="3" column="1">
+         <item row="5" column="1">
           <layout class="QHBoxLayout" name="hbox_loi_number">
            <item><widget class="QSpinBox" name="sb_loi_number_lower">
             <property name="maximum"><number>100000</number></property>
@@ -362,14 +548,14 @@
             <property name="value"><number>50</number></property></widget></item>
           </layout>
          </item>
-         <item row="4" column="0">
+         <item row="6" column="0">
           <widget class="QLabel" name="label_loi_length">
            <property name="text">
             <string>Length limits [µm]</string>
            </property>
           </widget>
          </item>
-         <item row="4" column="1">
+         <item row="6" column="1">
           <layout class="QHBoxLayout" name="hbox_loi_length">
            <item><widget class="QDoubleSpinBox" name="dsb_loi_length_lower">
             <property name="maximum"><double>100000.000000000000000</double></property>
@@ -409,7 +595,7 @@
      </layout>
     </widget>
    </item>
-   <item row="0" column="0" colspan="2">
+   <item row="3" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_analyze">
      <property name="title">
       <string>3. Analyze track motion</string>
@@ -458,7 +644,7 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label_motion_ctmin">
         <property name="toolTip">
          <string>Minimum contraction duration (s); shorter cycles are removed</string>
@@ -468,7 +654,7 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
+      <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_contr_time_min">
         <property name="toolTip">
          <string>Minimum contraction duration (s); shorter cycles are removed</string>
@@ -484,7 +670,7 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="label_motion_merge">
         <property name="toolTip">
          <string>Maximum gap (s) between two contractions before they are merged</string>
@@ -494,7 +680,7 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_merge_time_max">
         <property name="toolTip">
          <string>Maximum gap (s) between two contractions before they are merged</string>
@@ -510,7 +696,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="label_motion_buffer">
         <property name="toolTip">
          <string>Drop contraction cycles within this many frames of the start/end</string>
@@ -520,7 +706,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="4" column="1">
        <widget class="QSpinBox" name="sb_motion_buffer_frames">
         <property name="toolTip">
          <string>Drop contraction cycles within this many frames of the start/end</string>
@@ -533,7 +719,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="5" column="0">
        <widget class="QLabel" name="label_motion_minvalid">
         <property name="toolTip">
          <string>Minimum fraction of finite frames required to analyze a group</string>
@@ -543,7 +729,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_min_valid_frames">
         <property name="toolTip">
          <string>Minimum fraction of finite frames required to analyze a group</string>
@@ -562,7 +748,7 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="6" column="0">
        <widget class="QLabel" name="label_motion_filter">
         <property name="toolTip">
          <string>Savitzky-Golay window length and polyorder for velocity smoothing</string>
@@ -572,7 +758,7 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="6" column="1">
        <layout class="QHBoxLayout" name="hbox_motion_filter">
         <item>
          <widget class="QLabel" name="label_motion_filter_wl">
@@ -689,7 +875,7 @@
      </layout>
     </widget>
    </item>
-   <item row="1" column="0" colspan="2">
+   <item row="4" column="0" colspan="2">
     <widget class="QPushButton" name="btn_analyze_motion">
      <property name="toolTip">
       <string>Run track → group → analyze in one go (check the parameters first)</string>
@@ -699,7 +885,7 @@
      </property>
     </widget>
    </item>
-   <item row="2" column="0" colspan="2">
+   <item row="5" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_output">
      <property name="title">
       <string>Detail &amp; output</string>
@@ -732,14 +918,14 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0" colspan="2">
+      <item row="2" column="0" colspan="2">
        <widget class="QPushButton" name="btn_plot_summary">
         <property name="text">
          <string>Plot summary</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="3" column="0" colspan="2">
        <widget class="QPushButton" name="btn_export_motion_data">
         <property name="text">
          <string>Export motion data (.csv/.xlsx)</string>

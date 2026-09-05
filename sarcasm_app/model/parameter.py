@@ -54,12 +54,6 @@ class Parameter:
         old_value = self.__value
         self.__value = value
         if self.__lambda_set_value is not None:
-            # using signature method causes issues in combination with checkbox
-            # sig = signature(self.__lambda_set_value)
-            # if len(sig.parameters) == 1:
-            #    self.__lambda_set_value(value)
-            # elif len(sig.parameters) >= 2:
-            #    self.__lambda_set_value(value, old_value)
             if self.__ui_element_type == 'OneParameter':
                 self.__lambda_set_value(value)
             elif self.__ui_element_type == 'NotSpecified':
@@ -135,11 +129,6 @@ class Parameter:
             self.__ui_element_type = 'NotSpecified'
             self.__lambda_set_value = ui_element
             pass
-        # elif isinstance(ui_element, QRadioButton):
-        #    self.__lambda_set_value = ui_element.setChecked
-        #    self.__lambda_get_value = ui_element.isChecked
-        #    ui_element.----.connect(self.__value_changed)
-        #    pass
         if self.__lambda_set_value is not None and callable(self.__lambda_set_value):
             self.__lambda_set_value(self.__value)
         pass

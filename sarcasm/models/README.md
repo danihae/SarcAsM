@@ -2,13 +2,24 @@
 
 | alias | file | validated pixel size | notes |
 |---|---|---|---|
-| `generalist` (default) | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | v1.0.0 default |
-| `legacy` | `model_sarcomeres_generalist.pt` | 0.10–0.35 µm | pre-v1.0.0, kept for reproducibility |
+| `generalist` | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0) |
+| `legacy` | `model_sarcomeres_generalist.pt` | 0.06–0.35 µm | pre-v1.0.0; trained on high-magnification data at native resolution |
+
+The default, `model_path='auto'`, picks by pixel size: **`legacy` below 0.08 µm/px**
+(high-magnification, e.g. the high-speed single-cell movies), `generalist` otherwise.
+v1's scale augmentation only ever downscales into 0.08–0.45 µm/px, so it never saw
+high-magnification frames at native resolution; on the 0.061 µm/px 20 kPa movie it
+fragments the Z- and M-band lines and returns 28 % fewer sarcomere vectors than `legacy`
+(3119 vs 4340 on frame 0), and rescaling it into its range (`rescale_factor=0.33`)
+recovers only part of that (4036) at the cost of Z-band localisation precision.
 
 ```python
-sarc.detect_sarcomeres(frames=0)                      # v1.0.0 default
-sarc.detect_sarcomeres(frames=0, model_path='legacy')  # reproduce pre-v1.0.0 results
+sarc.detect_sarcomeres(frames=0)                          # 'auto': by pixel size
+sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v1
+sarc.detect_sarcomeres(frames=0, model_path='legacy')      # force the pre-v1.0.0 model
 ```
+
+The resolved alias is stored as `params.detect_sarcomeres.model_path`.
 
 ## What changed in v1.0.0
 
