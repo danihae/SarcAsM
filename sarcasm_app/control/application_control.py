@@ -98,6 +98,7 @@ class ApplicationControl:
         # group id when a fibre path of the Groups layer is clicked.
         self.track_selected_callbacks: list = []
         self.group_selected_callbacks: list = []
+        self._track_click_installed = False
 
         self.progress_notifier = ProgressNotifier()
         self.progress_notifier.set_progress_report(lambda p: self.update_progress(p * 100))
@@ -410,39 +411,20 @@ class ApplicationControl:
         layer = self.viewer.add_tracks(data, name='Trajectories',
                                        features={k: v[keep] for k, v in feats.items()},
                                        color_by=color_by, colormap=self.TRACK_COLOR_FEATURES[color_by][1],
-                                       tail_length=tail, tail_width=2, head_length=0,
+                                       tail_length=tail, tail_width=3, head_length=0,
                                        visible=visible, scale=cell.scale)
         layer.blending = 'translucent'
         layer.metadata['stride'] = stride
-
-    def init_track_state_stack(self, visible=True):
-        """Points layer showing every tracked sarcomere at its current position,
-        coloured per frame by ΔSL / SL / velocity / group / coverage. Clicking a
-        point fires ``track_selected_callbacks(track_id)``."""
-        self._ensure_track_colormaps()
-        cell = self.model.cell
-        for name in ('Sarcomeres', 'Selected group'):
-            if name in self.viewer.layers:
-                self.viewer.layers.remove(self.viewer.layers[name])
-        table = self.track_layer_table()
-        if table is None:
-            return
-        color_by, dsl_limit, _ = self._track_display_settings()
-        feats = self._track_features(table, color_by, dsl_limit)
-        multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
-        pts = (np.column_stack([table['t'], table['y'], table['x']]) if multi_frame
-               else np.column_stack([table['y'], table['x']])).astype(float)
-        layer = self.viewer.add_points(pts, name='Sarcomeres', features=feats,
-                                       face_color=color_by,
-                                       face_colormap=self.TRACK_COLOR_FEATURES[color_by][1],
-                                       border_width=0, size=max(2.0, 0.3 / cell.metadata.pixelsize),
-                                       opacity=0.9, visible=visible, scale=cell.scale)
-        layer.mouse_drag_callbacks.append(self._on_sarcomere_click)
+        if 'Selected group' in self.viewer.layers:
+            self.viewer.layers.remove(self.viewer.layers['Selected group'])
+        if not self._track_click_installed:
+            self.viewer.mouse_drag_callbacks.append(self._on_canvas_click)
+            self._track_click_installed = True
 
     def init_track_groups_layer(self, visible=True):
         """Shapes layer 'Groups': one path per fibre for the chain groupings (myofibril /
         LOI) through its members at the reference frame, coloured by group and labelled
-        with the group id. Other groupings show their groups through the 'Sarcomeres'
+        with the group id. Other groupings show their groups through the Trajectories
         layer coloured by group."""
         if 'Groups' in self.viewer.layers:
             self.viewer.layers.remove(self.viewer.layers['Groups'])
@@ -503,7 +485,7 @@ class ApplicationControl:
             return
         multi_frame = cell.metadata.n_stack is not None and cell.metadata.n_stack > 1
         ndim = 3 if multi_frame else 2
-        if group is None:
+        if group is None or int(group) < 0:                  # -1 = unassigned, not a group
             pts = np.zeros((0, ndim))
         else:
             sel = table['group_id'] == int(group)
@@ -554,9 +536,9 @@ class ApplicationControl:
             color_by = 'delta_slen'
         return color_by, dsl_limit, max(1, tail)
 
-    def apply_track_display(self, show_trajectories=None, show_sarcomeres=None):
-        """Re-colour the track layers from the Motion tab's Display settings without
-        rebuilding them; optionally toggle their visibility."""
+    def apply_track_display(self, show_trajectories=None):
+        """Re-colour the Trajectories layer from the Motion tab's Display settings
+        without rebuilding it; optionally toggle its visibility."""
         self._ensure_track_colormaps()
         table = self.track_layer_table()
         if table is None:
@@ -577,28 +559,53 @@ class ApplicationControl:
             layer.tail_length = tail
             if show_trajectories is not None:
                 layer.visible = bool(show_trajectories)
-        if 'Sarcomeres' in self.viewer.layers:
-            layer = self.viewer.layers['Sarcomeres']
-            layer.features = feats
-            layer.face_colormap = cmap
-            layer.face_color = color_by
-            if show_sarcomeres is not None:
-                layer.visible = bool(show_sarcomeres)
 
-    def _on_sarcomere_click(self, layer, event):
-        """Mouse callback on the Sarcomeres layer: a click (no drag) selects the
-        sarcomere under the cursor."""
+    #: Click-to-select radius around a sarcomere, in µm
+    TRACK_CLICK_RADIUS_UM = 0.6
+
+    def nearest_track(self, world_position):
+        """Track id of the sarcomere nearest to a world position ``(t, y, x)`` in the
+        current frame, or None when nothing is within ``TRACK_CLICK_RADIUS_UM``.
+
+        A numpy search over the current frame's observed positions, so selecting a
+        sarcomere needs no napari layer holding every observation."""
+        table = self.track_layer_table()
+        cell = self.model.cell
+        if table is None or cell is None:
+            return None
+        pos = np.asarray(world_position, dtype=float)
+        if pos.size < 2:
+            return None
+        scale = np.asarray(cell.scale, dtype=float)
+        if pos.size == 3:
+            frame = int(round(pos[0] / scale[0]))
+            yx = pos[1:] / scale[1:]
+        else:
+            frame = 0
+            yx = pos[-2:] / scale[-2:]
+        rows = np.flatnonzero(table['t'] == frame)
+        if rows.size == 0:
+            return None
+        d2 = (table['y'][rows] - yx[0]) ** 2 + (table['x'][rows] - yx[1]) ** 2
+        i = int(np.argmin(d2))
+        radius_px = self.TRACK_CLICK_RADIUS_UM / (cell.metadata.pixelsize or 1.0)
+        if d2[i] > radius_px ** 2:
+            return None
+        return int(table['track_id'][rows[i]])
+
+    def _on_canvas_click(self, viewer, event):
+        """Viewer mouse callback: a click (no drag) on a sarcomere selects it."""
+        if self.model.cell is None or 'Trajectories' not in self.viewer.layers:
+            return
         start = np.asarray(event.position)
         yield
         while event.type == 'mouse_move':
             yield
         if np.linalg.norm(np.asarray(event.position) - start) > 1e-6:
             return                                             # it was a drag
-        idx = layer.get_value(event.position, view_direction=event.view_direction,
-                              dims_displayed=event.dims_displayed, world=True)
-        if idx is None:
+        track_id = self.nearest_track(event.position)
+        if track_id is None:
             return
-        track_id = int(layer.features['track_id'].iloc[int(idx)])
         for cb in self.track_selected_callbacks:
             cb(track_id)
 

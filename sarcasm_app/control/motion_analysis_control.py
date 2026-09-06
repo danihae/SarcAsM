@@ -225,7 +225,6 @@ class MotionAnalysisControl:
     # ------------------------------------------------------------------ #
     def __tracks_finished(self):
         self.__main_control.init_tracks_stack()
-        self.__main_control.init_track_state_stack()
         self.__sync_display_visibility()
         self.__refresh_trace_source()
 
@@ -351,12 +350,11 @@ class MotionAnalysisControl:
     def __display_visibility(self):
         m = self.__main_control.model
         return (bool(_pv(m, 'motion.display.show_trajectories')),
-                bool(_pv(m, 'motion.display.show_sarcomeres')),
                 bool(_pv(m, 'motion.display.show_groups')))
 
     def __sync_display_visibility(self):
-        show_traj, show_sarc, show_groups = self.__display_visibility()
-        self.__main_control.apply_track_display(show_trajectories=show_traj, show_sarcomeres=show_sarc)
+        show_traj, show_groups = self.__display_visibility()
+        self.__main_control.apply_track_display(show_trajectories=show_traj)
         layers = self.__main_control.viewer.layers
         if 'Groups' in layers:
             groups = layers['Groups']
@@ -550,14 +548,12 @@ class MotionAnalysisControl:
         p('motion.display.dsl_limit').connect(w.dsb_display_dsl_limit)
         p('motion.display.tail_frames').connect(w.sb_display_tail)
         p('motion.display.show_trajectories').connect(w.chk_display_trajectories)
-        p('motion.display.show_sarcomeres').connect(w.chk_display_sarcomeres)
         p('motion.display.show_groups').connect(w.chk_display_groups)
         # the parameter bindings above record the values; these apply them to the layers
         w.cb_display_color_by.currentTextChanged.connect(lambda _: self.__on_display_changed())
         w.dsb_display_dsl_limit.valueChanged.connect(lambda _: self.__on_display_changed())
         w.sb_display_tail.valueChanged.connect(lambda _: self.__on_display_changed())
         w.chk_display_trajectories.toggled.connect(lambda _: self.__on_display_changed())
-        w.chk_display_sarcomeres.toggled.connect(lambda _: self.__on_display_changed())
         w.chk_display_groups.toggled.connect(lambda _: self.__on_display_changed())
         # LOI auto-detection (advanced, collapsed by default)
         p('loi.detect.n_lois').connect(w.sb_loi_n_lois)

@@ -487,6 +487,7 @@ class TestTrackLayers:
         def __init__(self):
             import napari
             self.layers = TestTrackLayers._Layers()
+            self.mouse_drag_callbacks = []
             self._napari = napari
 
         def _add(self, cls, data, **kw):
@@ -536,22 +537,34 @@ class TestTrackLayers:
 
     def test_layers_build_and_recolour(self, control):
         control.init_tracks_stack()
-        control.init_track_state_stack()
         control.init_track_groups_layer()
         layers = control.viewer.layers
-        assert layers['Trajectories'].data.shape[1] == 4 and layers['Trajectories'].color_by == 'delta_slen'
-        assert layers['Sarcomeres'].data.shape[1] == 3 and layers['Sarcomeres'].face_color_mode == 'colormap'
+        traj = layers['Trajectories']
+        assert traj.data.shape[1] == 4 and traj.color_by == 'delta_slen'
+        assert traj.data.shape[0] <= control.TRACK_MAX_VERTICES + 5000       # thinned
         assert len(layers['Groups'].data) > 5 and layers['Groups'].features['group'].size == len(layers['Groups'].data)
+        assert control.viewer.mouse_drag_callbacks == [control._on_canvas_click]
+        control.init_tracks_stack()                                           # rebuild registers the click once
+        assert len(control.viewer.mouse_drag_callbacks) == 1
         for label in ('Group', 'Coverage', 'Velocity', 'SL', 'Track id', 'ΔSL'):
             control.model.parameters.get_parameter('motion.display.color_by').set_value(label)
-            control.apply_track_display(show_trajectories=True, show_sarcomeres=False)
-            key = control.TRACK_COLOR_LABELS[label]
-            assert layers['Trajectories'].color_by == key
-            assert layers['Sarcomeres'].face_color_mode == 'colormap' and not layers['Sarcomeres'].visible
-            assert np.isfinite(layers['Sarcomeres'].face_color).all()
+            control.apply_track_display(show_trajectories=True)
+            traj = layers['Trajectories']
+            assert traj.color_by == control.TRACK_COLOR_LABELS[label]
+            assert np.isfinite(traj.track_colors).all()
+
+    def test_nearest_track_hit_test(self, control):
+        table = control.track_layer_table()
+        cell = control.model.cell
+        sy, sx = cell.scale[1], cell.scale[2]
+        i = 12345                                                             # some observation
+        t, y, x = int(table['t'][i]), table['y'][i], table['x'][i]
+        assert control.nearest_track((t, y * sy, x * sx)) == int(table['track_id'][i])
+        assert control.nearest_track((t, -50.0, -50.0)) is None               # off the cell: nothing
+        assert control.nearest_track((t + 0.4, (y + 0.5) * sy, x * sx)) == int(table['track_id'][i])
 
     def test_group_highlight_and_selection_callbacks(self, control):
-        control.init_track_state_stack()
+        control.init_tracks_stack()
         seen = []
         control.track_selected_callbacks.append(seen.append)
         control.highlight_group(0)
