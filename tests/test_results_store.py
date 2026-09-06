@@ -510,3 +510,40 @@ def test_export_json_skip_arrays(store, tmp_path):
     back = IOUtils.json_deserialize(out)
     assert "motion.tracks.slen" not in back           # large array skipped
     assert "motion.tracks.n" in back                  # scalar kept
+
+
+# --------------------------------------------------------------------------- #
+# sharding: one file per array, row access unchanged
+# --------------------------------------------------------------------------- #
+def _chunk_files(array_dir):
+    """Chunk/shard files under a zarr array directory (everything but zarr.json)."""
+    return [p for p in array_dir.rglob("*") if p.is_file() and p.name != "zarr.json"]
+
+
+def test_big_arrays_are_one_shard_file(tmp_path):
+    p = tmp_path / "data.zarr"
+    n, T = 1300, 30                                          # spans three 512-row chunks
+    slen = np.random.default_rng(0).random((n, T)).astype(np.float32)
+    pos = np.random.default_rng(1).random((n, T, 2)).astype(np.float32)
+    write_results({"motion.tracks.slen": slen, "motion.tracks.positions_um": pos}, p)
+    rd = Results(p)
+    h = rd.handle("motion.tracks.slen")
+    assert h.chunks == (512, T)                              # one track still reads one chunk
+    assert h.shards == (1536, T)                             # the three chunks share one shard file
+    assert len(_chunk_files(p / "motion" / "tracks" / "slen")) == 1
+    assert len(_chunk_files(p / "motion" / "tracks" / "positions_um")) == 1
+    assert np.array_equal(h[1234], slen[1234])
+    assert np.array_equal(rd["motion.tracks.positions_um"], pos)
+
+
+def test_small_arrays_are_a_single_chunk(store):
+    """Arrays within one row chunk carry no shard index; ragged/sparse internals are one chunk."""
+    root = zarr.open_group(str(store), mode="r")
+    a = root["motion/tracks/slen"]                           # (40, 30)
+    assert a.chunks == (40, 30) and a.shards is None
+    assert len(_chunk_files(store / "motion" / "tracks" / "slen")) == 1
+    for sub in ("structure/sarcomere/slen", "structure/domain/mask"):
+        for name, arr in root[sub].arrays():
+            assert arr.shards is None, (sub, name)
+            assert arr.chunks == arr.shape or arr.size == 0, (sub, name, arr.chunks, arr.shape)
+    assert len(_chunk_files(store / "structure" / "sarcomere" / "slen")) == 3   # values/offsets/none_mask

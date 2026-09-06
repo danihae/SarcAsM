@@ -26,7 +26,7 @@ never claim the same home. There are three namespaces::
       structure/                per-frame / single-frame morphology
         cell/ zbands/ sarcomere/ myofibril/ domain/
       motion/                   everything derived from the sarcomere tracks
-        tracks/                 dense per-track block, row-chunked + zstd
+        tracks/                 dense per-track block, row-chunked, one shard file each
         groups/                 which grouping was built, and from what
         pool/ mband/ myofibril/ domain/ loi/ custom/   per-group contraction metrics
                                 (loi/ also holds the LOI geometry, loi.data)
@@ -35,7 +35,9 @@ never claim the same home. There are three namespaces::
 Small things (scalars, params, strings) live as JSON-shaped Zarr **attributes**
 (human-readable inside each group's ``zarr.json``); large numeric arrays live as
 binary Zarr arrays next to them. JSON becomes an explicit *export*, not the
-storage format.
+storage format. Large arrays keep small inner chunks for lazy row access but are
+packed into shard files of about 256 MiB (zarr v3 sharding), so a store is a
+handful of files per array rather than one file per chunk.
 
 Access (see :class:`Results`) — one name, two spellings::
 
@@ -83,6 +85,7 @@ logger = logging.getLogger(__name__)
 FORMAT_VERSION = 1
 _INLINE_MAX = 256          # ndarrays with <= this many elements go inline (attrs)
 _ROW_CHUNK = 512           # chunk size along axis 0 for big arrays (lazy per-row reads)
+_SHARD_BYTES = 256 * 2**20 # raw bytes per shard file along axis 0 (zarr v3 sharding)
 _KIND = "_kind"            # subgroup attr marking ragged/sparse leaves
 _MANIFEST = "_manifest"    # root attr: flat_key -> [group, member, kind]
 _VERSION = "_format_version"
@@ -233,6 +236,42 @@ def _chunks(shape: tuple) -> Optional[tuple]:
     return tuple(c)
 
 
+def _shards(shape: tuple, chunks: tuple, itemsize: int) -> Optional[tuple]:
+    """Shard shape packing many axis-0 chunks into one file, or None for one chunk.
+
+    Zarr v3 sharding keeps the inner chunk (one frame, or ``_ROW_CHUNK`` rows) as
+    the unit of decoding but stores many of them in a single file with an index,
+    so a movie no longer costs one file per frame. Shards run along axis 0 and
+    hold about ``_SHARD_BYTES`` of raw data each, which bounds both the buffer
+    zarr assembles before writing a shard and the read-modify-write cost when a
+    sink is filled block by block across a shard boundary.
+
+    Parameters
+    ----------
+    shape : tuple
+        Array shape.
+    chunks : tuple
+        Inner chunk shape. On every trailing axis the chunk must either span the
+        full extent or be 1, which both chunkers in this package guarantee, so
+        the shard (full extent on trailing axes) is a multiple of the chunk as
+        zarr requires.
+    itemsize : int
+        Bytes per element.
+
+    Returns
+    -------
+    tuple or None
+        Shard shape, or None when the array is a single chunk along axis 0 and
+        sharding would only add an index.
+    """
+    n0 = -(-shape[0] // chunks[0])
+    if n0 <= 1:
+        return None
+    slab_bytes = chunks[0] * int(np.prod(shape[1:], dtype=np.int64)) * itemsize
+    per_shard = max(1, _SHARD_BYTES // max(slab_bytes, 1))
+    return (min(per_shard, n0) * chunks[0],) + tuple(shape[1:])
+
+
 def _write_array(grp: "zarr.Group", member: str, arr: np.ndarray,
                  row_chunk: bool = False) -> None:
     """Write a numpy array into a Zarr group.
@@ -246,17 +285,20 @@ def _write_array(grp: "zarr.Group", member: str, arr: np.ndarray,
     arr : np.ndarray
         Array to write.
     row_chunk : bool, optional
-        If True, row-chunk along axis 0 (for ``(n_tracks, T)`` arrays so a
-        single track reads one chunk); otherwise internal ragged/sparse arrays
-        auto-chunk to avoid tiny-file blow-up. Default is False.
+        If True, chunk ``_ROW_CHUNK`` rows along axis 0 and pack the chunks into
+        shard files (for ``(n_tracks, T)`` arrays: one track still reads one
+        chunk, and the whole array is one file). Otherwise the array is a single
+        chunk, for internal ragged/sparse members that are always read whole.
+        Default is False.
     """
+    layout: Dict[str, Any] = {"chunks": None}
     if arr.size and row_chunk:
         chunks = _chunks(arr.shape)
+        shards = _shards(arr.shape, chunks, arr.dtype.itemsize)
+        layout = {"chunks": chunks, **({"shards": shards} if shards else {})}
     elif arr.size:
-        chunks = "auto"
-    else:
-        chunks = None
-    a = grp.create_array(member, shape=arr.shape, dtype=arr.dtype, chunks=chunks)
+        layout = {"chunks": arr.shape if arr.ndim else "auto"}
+    a = grp.create_array(member, shape=arr.shape, dtype=arr.dtype, **layout)
     if arr.size:
         a[...] = arr
 

@@ -31,6 +31,11 @@ Layout::
         structure/ motion/ params/           ← results_store groups
         zarr.json          attrs: metadata, _manifest
 
+Large arrays (image, masks, results blocks) are chunked one frame (or one row
+block) per chunk and packed into shard files of about 256 MiB — zarr v3
+sharding, part of the zarr v3 core that OME-Zarr 0.5 builds on — so a movie
+costs a few files per array rather than one file per frame.
+
 This module is storage-only: it takes/returns numpy arrays and plain dicts and
 has no dependency on the analysis classes, so ``SarcAsMBase`` can build on it
 without a circular import. It does **not** read or write the legacy
@@ -49,7 +54,7 @@ from typing import Any, List, Optional, Sequence, Union
 import numpy as np
 import zarr
 
-from sarcasm.io.results_store import Results
+from sarcasm.io.results_store import Results, _shards
 
 logger = logging.getLogger(__name__)
 
@@ -245,24 +250,39 @@ def _ensure_group(root: "zarr.Group", path: str) -> "zarr.Group":
     return g
 
 
-def _image_chunks(shape: Sequence[int]) -> tuple:
-    """Chunk a frame at a time along the leading (T/Z) axis, full Y/X plane.
+def _image_layout(shape: Sequence[int], dtype) -> dict:
+    """Chunk and shard layout for an image-shaped array.
+
+    Chunks are one frame each — 1 along every leading (T/Z/C) axis, the full
+    Y/X plane — so reading one frame decodes one chunk. The frames are packed
+    into shard files of about 256 MiB of raw data (zarr v3 sharding; see
+    :func:`sarcasm.io.results_store._shards`), so a movie costs a few files per
+    array instead of one per frame.
 
     Parameters
     ----------
     shape : sequence of int
         Image shape.
+    dtype : dtype-like
+        Element type (sets the bytes per frame, hence frames per shard).
 
     Returns
     -------
-    tuple
-        Chunk shape: 1 along all leading axes, full extent on the last two.
+    dict
+        ``{'chunks': ...}`` plus ``'shards'`` when the array spans more than one
+        chunk; spread into :meth:`zarr.Group.create_array`.
     """
+    shape = tuple(int(s) for s in shape)
     c = list(shape)
-    if len(c) >= 3:
-        for i in range(len(c) - 2):
-            c[i] = 1
-    return tuple(c)
+    for i in range(max(len(c) - 2, 0)):
+        c[i] = 1
+    chunks = tuple(c)
+    layout = {"chunks": chunks}
+    if shape:
+        shards = _shards(shape, chunks, np.dtype(dtype).itemsize)
+        if shards is not None:
+            layout["shards"] = shards
+    return layout
 
 
 def _ome_axes(axes: str) -> List[dict]:
@@ -458,7 +478,7 @@ class OmeZarrStore:
         if IMAGE in set(root.array_keys()):
             del root[IMAGE]
         arr = root.create_array(IMAGE, shape=image.shape, dtype=image.dtype,
-                                chunks=_image_chunks(image.shape))
+                                **_image_layout(image.shape, image.dtype))
         arr[...] = image
         root.attrs["ome"] = {
             "version": OME_VERSION,
@@ -534,8 +554,8 @@ class OmeZarrStore:
         root = self._root("a")
         if as_label:
             grp = _ensure_group(root, f"{LABELS}/{name}")
-            a = grp.create_array(IMAGE, shape=arr.shape, dtype=arr.dtype,
-                                 chunks=_image_chunks(arr.shape), overwrite=True)
+            a = grp.create_array(IMAGE, shape=arr.shape, dtype=arr.dtype, overwrite=True,
+                                 **_image_layout(arr.shape, arr.dtype))
             a[...] = arr
             grp.attrs["image-label"] = {"version": OME_VERSION}
             labels_grp = _ensure_group(root, LABELS)
@@ -545,8 +565,8 @@ class OmeZarrStore:
             labels_grp.attrs["labels"] = listed
         else:
             grp = _ensure_group(root, MASKS)
-            a = grp.create_array(name, shape=arr.shape, dtype=arr.dtype,
-                                 chunks=_image_chunks(arr.shape), overwrite=True)
+            a = grp.create_array(name, shape=arr.shape, dtype=arr.dtype, overwrite=True,
+                                 **_image_layout(arr.shape, arr.dtype))
             a[...] = arr
 
     def create_mask(self, name: str, shape, dtype) -> Any:
@@ -571,8 +591,8 @@ class OmeZarrStore:
             Writable handle; assign into it with ordinary slicing.
         """
         grp = _ensure_group(self._root("a"), MASKS)
-        return grp.create_array(name, shape=tuple(shape), dtype=dtype,
-                                chunks=_image_chunks(tuple(shape)), overwrite=True)
+        return grp.create_array(name, shape=tuple(shape), dtype=dtype, overwrite=True,
+                                **_image_layout(shape, dtype))
 
     def read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a derived mask by name (from ``labels/`` or ``sarcasm/masks/``).

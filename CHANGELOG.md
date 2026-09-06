@@ -107,6 +107,14 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 - Documentation: `docs/key_migration.md`, the tracking tutorial, a rewritten quickstart;
   a CI test workflow gates PyPI publishing and standalone builds.
 
+### Changed
+
+- The `.ome.zarr` store packs large arrays (image, masks, track blocks) into shard files of
+  about 256 MiB (zarr v3 sharding) instead of one file per frame or row chunk: a 500-frame
+  store drops from ~4500 files to ~200. Per-frame and per-track reads are unchanged. Stores
+  written by earlier 1.0 betas stay readable; an array is re-laid out when an analysis step
+  rewrites it.
+
 ### Fixed
 
 - `restart=True` no longer fails on macOS when the folder is open in Finder.

@@ -229,3 +229,65 @@ def test_everything_coexists(tmp_path):
     assert "ome" in dict(root.attrs)
     assert "0" in set(root.array_keys())
     assert "cell_mask" in root["labels"].attrs["labels"]
+
+
+# --------------------------------------------------------------------------- #
+# sharding: a few files per array, per-frame access unchanged
+# --------------------------------------------------------------------------- #
+def _chunk_files(array_dir):
+    """Chunk/shard files under a zarr array directory (everything but zarr.json)."""
+    return [p for p in array_dir.rglob("*") if p.is_file() and p.name != "zarr.json"]
+
+
+def test_image_and_masks_are_sharded(tmp_path, monkeypatch):
+    from sarcasm.io import results_store
+    T, H, W = 12, 16, 20
+    frame_bytes = H * W * 4
+    monkeypatch.setattr(results_store, "_SHARD_BYTES", 5 * frame_bytes)   # 5 float32 frames per shard
+    rng = np.random.default_rng(1)
+    img = (rng.random((T, H, W)) * 1000).astype(np.uint16)
+    zb = rng.random((T, H, W)).astype(np.float32)
+    ori = rng.random((T, 2, H, W)).astype(np.float32)
+    cell = (zb > 0.5).astype(np.uint8)
+    s = OmeZarrStore.create(tmp_path / "m.ome.zarr", img, axes="TYX")
+    s.write_mask("zbands", zb)
+    s.write_mask("orientation", ori)
+    s.write_mask("cell_mask", cell, as_label=True)
+    s.write_mask("single", zb[0])                                           # 2-D: one chunk, no shard
+
+    root = zarr.open_group(str(s.path), mode="r")
+    a = root["sarcasm/masks/zbands"]
+    assert a.chunks == (1, H, W) and a.shards == (5, H, W)                  # inner chunk = one frame
+    assert len(_chunk_files(s.path / "sarcasm" / "masks" / "zbands")) == 3  # ceil(12 / 5), not 12
+    o = root["sarcasm/masks/orientation"]
+    assert o.chunks == (1, 1, H, W) and o.shards == (2, 2, H, W)            # 2 frames × 2 planes per shard
+    assert len(_chunk_files(s.path / "sarcasm" / "masks" / "orientation")) == 6
+    assert root["0"].shards == (10, H, W)                                   # uint16: 10 frames fit
+    assert len(_chunk_files(s.path / "0")) == 2
+    assert root["labels/cell_mask/0"].shards == (T, H, W)                   # uint8: all 12 fit in one
+    assert len(_chunk_files(s.path / "labels" / "cell_mask" / "0")) == 1
+    assert root["sarcasm/masks/single"].shards is None
+
+    # per-frame reads: int, slice, list
+    assert np.array_equal(s.read_mask("zbands", frames=3), zb[3])
+    assert np.array_equal(s.read_mask("zbands", frames=slice(4, 9)), zb[4:9])
+    assert np.array_equal(s.read_mask("zbands", frames=[0, 7, 11]), zb[[0, 7, 11]])
+    assert np.array_equal(s.read_mask("orientation", frames=[6]), ori[[6]])
+    assert np.array_equal(s.read_image(frames=[1, 10]), img[[1, 10]])
+    assert np.array_equal(s.read_mask("cell_mask"), cell)
+    assert np.array_equal(s.read_mask("single"), zb[0])
+
+
+def test_create_mask_blockwise_fill_across_shards(tmp_path, monkeypatch):
+    """detect_sarcomeres fills a sink in frame blocks that need not align with shards."""
+    from sarcasm.io import results_store
+    T, H, W = 23, 8, 8
+    monkeypatch.setattr(results_store, "_SHARD_BYTES", 4 * H * W * 4)      # 4 frames per shard
+    s = OmeZarrStore.create(tmp_path / "m.ome.zarr", _img(), axes="TYX")
+    want = np.random.default_rng(2).random((T, H, W)).astype(np.float32)
+    sink = s.create_mask("zbands", (T, H, W), np.float32)
+    assert sink.shards == (4, H, W)
+    for start in range(0, T, 7):                                            # blocks of 7 into shards of 4
+        sink[start:start + 7] = want[start:start + 7]
+    assert np.array_equal(s.read_mask("zbands"), want)
+    assert len(_chunk_files(s.path / "sarcasm" / "masks" / "zbands")) == 6  # ceil(23 / 4)
