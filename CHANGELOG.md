@@ -57,8 +57,8 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
   scale-augmented `generalist` (v1) at ≥ 0.08 µm/px, the previous checkpoint (`legacy`)
   below, where v1 fragments Z-/M-band lines. Either can be forced. The two are not
   interchangeable within one study (cell-mask area shifts).
-- The app no longer exposes the 3D U-Net ("Z-band detection (high-speed)"); it remains in
-  the Python API as `detect_z_bands_fast_movie` / `analyze_sarcomere_vectors(use_fast_movie_zbands=)`.
+- The app's 3D U-Net step is a collapsed "advanced" sub-menu of *Detect sarcomeres*, with
+  a note that the bundled 3D model usually has to be re-trained per recording type.
 - `detect_sarcomeres` computes the cell-mask features (`structure.cell.*`) itself;
   `analyze_cell_mask` remains for re-evaluating with another threshold. The app's
   "Analyze cell mask" step and batch checkbox are gone.

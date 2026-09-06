@@ -267,6 +267,212 @@
         </property>
        </widget>
       </item>
+      <item row="5" column="0" colspan="2">
+       <widget class="QGroupBox" name="groupBox_fast_movie">
+        <property name="toolTip">
+         <string>Optional: a 3D U-Net predicting Z-bands from a temporal window, for high-speed movies. Advanced — see the note inside.</string>
+        </property>
+        <property name="title">
+         <string>3D U-Net Z-bands for high-speed movies (advanced)</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <layout class="QFormLayout" name="formLayout_fast_movie">
+         <item row="0" column="0" colspan="2">
+          <widget class="QLabel" name="label_fast_movie_note">
+           <property name="text">
+            <string>&lt;b&gt;Note:&lt;/b&gt; the bundled 3D model was trained on one type of recording. It usually has to be re-trained on your own data (see the 3D U-Net training tutorial) before its Z-bands are trustworthy — do not use it as-is on a new data type. When run, its Z-bands replace the 2D ones for the vector analysis and tracking.</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_29">
+            <property name="text">
+             <string>Network model</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
+            <item>
+             <widget class="QLineEdit" name="le_fast_movie_network_model">
+              <property name="toolTip">
+               <string>'default' = the bundled 3D checkpoint (trained on one recording type); or the path to a 3D U-Net you trained on your own data</string>
+              </property>
+              <property name="text">
+               <string>default</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_fast_movie_search">
+              <property name="text">
+               <string>Browse…</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_30">
+            <property name="toolTip">
+             <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+                Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+            </property>
+            <property name="text">
+             <string>Max patch size [pixel]</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QCheckBox" name="chk_fast_movie_auto_patch_size">
+              <property name="toolTip">
+               <string>Derive the patch size from the available device memory and the model. Fewer, larger patches mean less redundant computation. Uncheck to set the size by hand.</string>
+              </property>
+              <property name="text">
+               <string>Auto</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_34">
+              <property name="toolTip">
+               <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+                Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+              </property>
+              <property name="text">
+               <string>Width [px]:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="sb_fast_movie_width">
+              <property name="toolTip">
+               <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+                Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+              </property>
+              <property name="maximum">
+               <number>9999999</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_33">
+              <property name="toolTip">
+               <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+                Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+              </property>
+              <property name="text">
+               <string>Height [px]:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="sb_fast_movie_height">
+              <property name="toolTip">
+               <string>Maximal patch dimensions for convolutional neural network (n_frames, n_x, n_y).
+                Dimensions need to be divisible by 16. Default is (32, 256, 256).</string>
+              </property>
+              <property name="maximum">
+               <number>9999999</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_31">
+              <property name="text">
+               <string>N Frames:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="sb_fast_movie_n_frames">
+              <property name="maximum">
+               <number>9999999</number>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_36">
+            <property name="toolTip">
+             <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+            </property>
+            <property name="text">
+             <string>Clip threshold intensity [%]</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_7">
+            <item>
+             <widget class="QLabel" name="label_40">
+              <property name="toolTip">
+               <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+              </property>
+              <property name="text">
+               <string>Min:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDoubleSpinBox" name="dsb_fast_movie_clip_thresh_min">
+              <property name="toolTip">
+               <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+              </property>
+              <property name="maximum">
+               <double>999999999.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_39">
+              <property name="toolTip">
+               <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+              </property>
+              <property name="text">
+               <string>Max:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDoubleSpinBox" name="dsb_fast_movie_clip_thresh_max">
+              <property name="toolTip">
+               <string>Clip threshold (lower / upper) for intensity normalization. Default is (0., 99.8).</string>
+              </property>
+              <property name="maximum">
+               <double>99999999.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="4" column="0" colspan="2">
+           <widget class="QPushButton" name="btn_fast_movie">
+            <property name="toolTip">
+             <string>Run the 3D U-Net on the whole movie. Its Z-bands are stored as zbands_fast_movie and used instead of the 2D ones by the vector analysis and tracking.</string>
+            </property>
+            <property name="text">
+             <string>Detect Z-bands with the 3D U-Net</string>
+            </property>
+           </widget>
+          </item>
+        </layout>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">

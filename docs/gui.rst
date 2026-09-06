@@ -51,6 +51,9 @@ Proceed through the collapsible sections in the control panel:
 
 *   **Parameter import/export:** Load/save analysis settings or reset to defaults.
 *   **Structure:** Analyze sarcomere structure (Z-bands, sarcomere vectors, myofibrils, domains).
+    The collapsed *3D U-Net Z-bands for high-speed movies (advanced)* sub-menu of the
+    detection step runs a temporal Z-band model; the bundled checkpoint was trained on one
+    recording type and usually needs re-training on your own data first.
 *   **Motion:** Track every sarcomere through the movie, group the tracks (whole cell,
     M-band, myofibril, domain or line of interest — drawn or auto-detected) and analyze
     the contraction of each group. The **Display** group controls how the tracks appear

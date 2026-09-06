@@ -30,17 +30,21 @@ def patch_size_from_parameters(parameters: 'Parameters', prefix: str) -> Union[s
     parameters : Parameters
         The application's parameter store.
     prefix : str
-        Parameter group, e.g. ``'structure.predict'``.
+        Parameter group, e.g. ``'structure.predict'`` or
+        ``'structure.predict_fast_movie'``.
 
     Returns
     -------
     str or tuple of int
-        ``'auto'``, or ``(width, height)``.
+        ``'auto'``, or ``(width, height)`` / ``(n_frames, width, height)``.
     """
     if parameters.get_parameter(f'{prefix}.auto_patch_size').get_value():
         return 'auto'
-    return (parameters.get_parameter(f'{prefix}.size_width').get_value(),
+    size = (parameters.get_parameter(f'{prefix}.size_width').get_value(),
             parameters.get_parameter(f'{prefix}.size_height').get_value())
+    if prefix.endswith('fast_movie'):
+        return (parameters.get_parameter(f'{prefix}.n_frames').get_value(),) + size
+    return size
 
 
 class Parameters:

@@ -115,9 +115,10 @@ class TestParameters:
         assert params.get_parameter('batch.pixel.size').get_value() == 0.1
 
     def test_auto_patch_size_is_the_default(self, model):
-        """Prediction defaults to letting the device decide the patch size."""
+        """Both prediction groups default to letting the device decide the patch size."""
         params = model.parameters
         assert params.get_parameter('structure.predict.auto_patch_size').get_value() is True
+        assert params.get_parameter('structure.predict_fast_movie.auto_patch_size').get_value() is True
 
     def test_patch_size_resolves_to_auto_or_manual(self, model):
         """The helper the controls use must yield 'auto' or the entered dimensions."""
@@ -125,9 +126,13 @@ class TestParameters:
         params = model.parameters
 
         assert patch_size_from_parameters(params, 'structure.predict') == 'auto'
+        assert patch_size_from_parameters(params, 'structure.predict_fast_movie') == 'auto'
 
         params.get_parameter('structure.predict.auto_patch_size').set_value(False)
+        params.get_parameter('structure.predict_fast_movie.auto_patch_size').set_value(False)
         assert patch_size_from_parameters(params, 'structure.predict') == (1024, 1024)
+        # the 3D model's patch carries the frame count first
+        assert patch_size_from_parameters(params, 'structure.predict_fast_movie') == (32, 256, 256)
 
         params.get_parameter('structure.predict.size_width').set_value(768)
         params.get_parameter('structure.predict.size_height').set_value(640)

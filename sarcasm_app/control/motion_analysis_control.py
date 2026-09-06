@@ -34,6 +34,7 @@ from .application_control import ApplicationControl
 from .chain_execution import ChainExecution
 from .popup_export import ExportPopup
 from ..model import ApplicationModel
+from ..view.collapsible import make_collapsible
 from ..view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
 from ..view.track_trace_dock import TrackTraceDock
 
@@ -508,6 +509,7 @@ class MotionAnalysisControl:
         w.chk_display_sarcomeres.toggled.connect(lambda _: self.__on_display_changed())
         w.chk_display_groups.toggled.connect(lambda _: self.__on_display_changed())
         # LOI auto-detection (advanced, collapsed by default)
+        make_collapsible(w.groupBox_loi_detect)
         p('loi.detect.n_lois').connect(w.sb_loi_n_lois)
         p('loi.detect.ratio_seeds').connect(w.dsb_loi_ratio_seeds)
         p('loi.detect.persistence').connect(w.sb_loi_persistence)
