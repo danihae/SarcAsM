@@ -286,20 +286,6 @@ class ApplicationControl:
     }
     #: Combo-box label -> feature key (the parameter stores the label)
     TRACK_COLOR_LABELS = {label: key for key, (label, _, _) in TRACK_COLOR_FEATURES.items()}
-    #: Vertices the Trajectories layer is thinned to (every k-th frame per track): napari's
-    #: Tracks layer builds its graph in O(rows) and takes seconds beyond a few million.
-    TRACK_MAX_VERTICES = 600_000
-
-    @classmethod
-    def _ensure_track_colormaps(cls):
-        """Register the matplotlib colormaps the track layers use with napari
-        (its registry has no diverging map)."""
-        from napari.utils.colormaps import ensure_colormap
-        for _, cmap, _ in cls.TRACK_COLOR_FEATURES.values():
-            try:
-                ensure_colormap(cmap)
-            except Exception as e:
-                logger.debug(f'colormap {cmap} unavailable in napari: {e}')
 
     def track_kinematics(self):
         """``SarcAsM.get_track_kinematics()`` of the current cell, cached until the
@@ -358,28 +344,32 @@ class ApplicationControl:
         cell._track_layer_table = (key, table)
         return table
 
-    def _track_features(self, table, color_by, dsl_limit):
-        """Feature columns for the layers, with the coloured one clipped so a
-        diverging colormap is centred on zero. The base columns are built once per
-        table; only the coloured column is recomputed."""
-        base = table.get('_features_base')
-        if base is None:
-            base = {k: np.nan_to_num(np.asarray(table[k], dtype=float), nan=0.0)
-                    for k in self.TRACK_COLOR_FEATURES}
-            base['group_id'] = np.where(np.asarray(table['group_id']) < 0, 0.0, base['group_id'])
-            table['_features_base'] = base
-        feats = dict(base)
-        _, _, symmetric = self.TRACK_COLOR_FEATURES[color_by]
-        if symmetric:
-            raw = np.asarray(table[color_by], dtype=float)
-            lim = self._symmetric_limit(raw, dsl_limit if color_by == 'delta_slen' else None)
-            col = np.nan_to_num(np.clip(raw, -lim, lim), nan=0.0)
-            # anchor the range so the midpoint of the colormap is exactly 0
-            if col.size:
-                col[np.argmin(col)] = -lim
-                col[np.argmax(col)] = lim
-            feats[color_by] = col
-        return feats
+    def _track_colors(self, table, color_by, dsl_limit):
+        """RGBA colour per observation for ``color_by`` (matplotlib colormap; diverging
+        features centred on zero, unassigned groups grey). Cached per (feature, limit)."""
+        import matplotlib.pyplot as plt
+        cache = table.setdefault('_colors', {})
+        key = (color_by, float(dsl_limit) if color_by == 'delta_slen' else None)
+        if key in cache:
+            return cache[key]
+        _, cmap_name, symmetric = self.TRACK_COLOR_FEATURES[color_by]
+        cmap = plt.get_cmap(cmap_name)
+        values = np.asarray(table[color_by], dtype=float)
+        finite = np.isfinite(values)
+        if color_by == 'group_id':
+            n = max(1, int(np.nanmax(values)) + 1) if finite.any() else 1
+            unit = (values % n) / n
+            finite &= values >= 0
+        elif symmetric:
+            lim = self._symmetric_limit(values, dsl_limit)
+            unit = (np.clip(values, -lim, lim) + lim) / (2 * lim)
+        else:
+            lo, hi = (np.percentile(values[finite], [1, 99]) if finite.any() else (0.0, 1.0))
+            unit = (values - lo) / (hi - lo) if hi > lo else np.zeros_like(values)
+        colors = cmap(np.clip(np.nan_to_num(unit, nan=0.0), 0, 1)).astype(np.float32)
+        colors[~finite] = (0.6, 0.6, 0.6, 0.6)
+        cache[key] = colors
+        return colors
 
     @staticmethod
     def _symmetric_limit(values, explicit):
@@ -388,44 +378,70 @@ class ApplicationControl:
         finite = values[np.isfinite(values)]
         return float(np.percentile(np.abs(finite), 99)) if finite.size else 1.0
 
-    def init_tracks_stack(self, visible=True):
-        """napari Tracks layer of the sarcomere trajectories with fading tails.
+    def _frame_rows(self, table, frame):
+        """Row indices of the observations at ``frame`` (table is sorted by track, not time)."""
+        index = table.get('_frame_index')
+        if index is None:
+            order = np.argsort(table['t'], kind='stable')
+            starts = np.searchsorted(table['t'][order], np.arange(int(table['n_frames']) + 1))
+            index = table['_frame_index'] = (order, starts)
+        order, starts = index
+        frame = min(max(int(frame), 0), int(table['n_frames']) - 1)
+        return order[starts[frame]:starts[frame + 1]]
 
-        Coloured by the feature chosen in the Motion tab (``motion.display.color_by``);
-        every feature is attached, so the colouring can also be switched in the
-        layer controls."""
-        self._ensure_track_colormaps()
+    def init_sarcomere_dots(self, visible=True):
+        """Points layer 'Sarcomeres': every tracked sarcomere at its position in the
+        current frame, coloured by the Display feature. Only the current frame's points
+        are held by the layer; they are swapped when the frame changes, so the viewer
+        never slices the full set of observations. Clicking a dot selects it."""
         cell = self.model.cell
-        if 'Trajectories' in self.viewer.layers:
-            self.viewer.layers.remove(self.viewer.layers['Trajectories'])
+        for name in ('Sarcomeres', 'Selected group'):
+            if name in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers[name])
         table = self.track_layer_table()
-        if table is None or cell.metadata.n_stack is None or cell.metadata.n_stack <= 1:
+        if table is None:
             return
-        color_by, dsl_limit, tail = self._track_display_settings()
-        feats = self._track_features(table, color_by, dsl_limit)
-        n_rows = table['track_id'].size
-        stride = max(1, int(np.ceil(n_rows / self.TRACK_MAX_VERTICES)))
-        keep = table['t'] % stride == 0
-        data = np.column_stack([table['track_id'][keep], table['t'][keep],
-                                table['y'][keep], table['x'][keep]]).astype(float)
-        layer = self.viewer.add_tracks(data, name='Trajectories',
-                                       features={k: v[keep] for k, v in feats.items()},
-                                       color_by=color_by, colormap=self.TRACK_COLOR_FEATURES[color_by][1],
-                                       tail_length=tail, tail_width=3, head_length=0,
-                                       visible=visible, scale=cell.scale)
-        layer.blending = 'translucent'
-        layer.metadata['stride'] = stride
-        if 'Selected group' in self.viewer.layers:
-            self.viewer.layers.remove(self.viewer.layers['Selected group'])
+        color_by, dsl_limit = self._track_display_settings()
+        colors = self._track_colors(table, color_by, dsl_limit)
+        rows = self._frame_rows(table, self._current_frame())
+        pts = np.column_stack([table['y'][rows], table['x'][rows]]).astype(float)
+        self.viewer.add_points(pts, name='Sarcomeres', ndim=2, face_color=colors[rows],
+                               border_width=0, size=max(2.0, 0.3 / cell.metadata.pixelsize),
+                               opacity=0.9, visible=visible, scale=cell.scale[-2:])
         if not self._track_click_installed:
             self.viewer.mouse_drag_callbacks.append(self._on_canvas_click)
+            self.viewer.dims.events.current_step.connect(self._on_frame_changed)
             self._track_click_installed = True
+
+    def _current_frame(self):
+        try:
+            step = self.viewer.dims.current_step
+            return int(step[0]) if len(step) >= 3 else 0
+        except Exception:
+            return 0
+
+    def _on_frame_changed(self, event=None):
+        self.update_sarcomere_dots()
+
+    def update_sarcomere_dots(self):
+        """Move the 'Sarcomeres' dots to the current frame."""
+        if 'Sarcomeres' not in self.viewer.layers:
+            return
+        table = self.track_layer_table()
+        if table is None:
+            return
+        color_by, dsl_limit = self._track_display_settings()
+        colors = self._track_colors(table, color_by, dsl_limit)
+        rows = self._frame_rows(table, self._current_frame())
+        layer = self.viewer.layers['Sarcomeres']
+        layer.data = np.column_stack([table['y'][rows], table['x'][rows]]).astype(float)
+        layer.face_color = colors[rows]
 
     def init_track_groups_layer(self, visible=True):
         """Shapes layer 'Groups': one path per fibre for the chain groupings (myofibril /
         LOI) through its members at the reference frame, coloured by group and labelled
-        with the group id. Other groupings show their groups through the Trajectories
-        layer coloured by group."""
+        with the group id. Other groupings show their groups through the Sarcomeres
+        dots coloured by group."""
         if 'Groups' in self.viewer.layers:
             self.viewer.layers.remove(self.viewer.layers['Groups'])
         cell = self.model.cell
@@ -528,37 +544,21 @@ class ApplicationControl:
         try:
             color_by = str(p.get_parameter('motion.display.color_by').get_value())
             dsl_limit = float(p.get_parameter('motion.display.dsl_limit').get_value())
-            tail = int(p.get_parameter('motion.display.tail_frames').get_value())
         except Exception:
-            color_by, dsl_limit, tail = 'delta_slen', 0.0, 30
+            color_by, dsl_limit = 'delta_slen', 0.0
         color_by = self.TRACK_COLOR_LABELS.get(color_by, color_by)
         if color_by not in self.TRACK_COLOR_FEATURES:
             color_by = 'delta_slen'
-        return color_by, dsl_limit, max(1, tail)
+        return color_by, dsl_limit
 
-    def apply_track_display(self, show_trajectories=None):
-        """Re-colour the Trajectories layer from the Motion tab's Display settings
-        without rebuilding it; optionally toggle its visibility."""
-        self._ensure_track_colormaps()
-        table = self.track_layer_table()
-        if table is None:
+    def apply_track_display(self, show_sarcomeres=None):
+        """Re-colour the sarcomere dots from the Motion tab's Display settings;
+        optionally toggle their visibility."""
+        if 'Sarcomeres' not in self.viewer.layers:
             return
-        color_by, dsl_limit, tail = self._track_display_settings()
-        feats = self._track_features(table, color_by, dsl_limit)
-        cmap = self.TRACK_COLOR_FEATURES[color_by][1]
-        if 'Trajectories' in self.viewer.layers:
-            layer = self.viewer.layers['Trajectories']
-            keep = table['t'] % int(layer.metadata.get('stride', 1)) == 0
-            if int(keep.sum()) != layer.data.shape[0]:       # tracks changed: rebuild
-                self.init_tracks_stack(visible=layer.visible)
-                layer = self.viewer.layers['Trajectories']
-            else:
-                layer.features = {k: v[keep] for k, v in feats.items()}
-                layer.colormap = cmap
-                layer.color_by = color_by
-            layer.tail_length = tail
-            if show_trajectories is not None:
-                layer.visible = bool(show_trajectories)
+        self.update_sarcomere_dots()
+        if show_sarcomeres is not None:
+            self.viewer.layers['Sarcomeres'].visible = bool(show_sarcomeres)
 
     #: Click-to-select radius around a sarcomere, in µm
     TRACK_CLICK_RADIUS_UM = 0.6
@@ -595,7 +595,7 @@ class ApplicationControl:
 
     def _on_canvas_click(self, viewer, event):
         """Viewer mouse callback: a click (no drag) on a sarcomere selects it."""
-        if self.model.cell is None or 'Trajectories' not in self.viewer.layers:
+        if self.model.cell is None or 'Sarcomeres' not in self.viewer.layers:
             return
         start = np.asarray(event.position)
         yield

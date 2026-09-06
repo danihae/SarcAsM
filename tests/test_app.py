@@ -483,11 +483,18 @@ class TestTrackLayers:
                 if v is layer:
                     del self[k]
 
+    class _FakeDims:
+        def __init__(self):
+            from napari.utils.events import EmitterGroup
+            self.current_step = (0, 0, 0)
+            self.events = EmitterGroup(source=self, current_step=None)
+
     class _FakeViewer:
         def __init__(self):
             import napari
             self.layers = TestTrackLayers._Layers()
             self.mouse_drag_callbacks = []
+            self.dims = TestTrackLayers._FakeDims()
             self._napari = napari
 
         def _add(self, cls, data, **kw):
@@ -535,23 +542,30 @@ class TestTrackLayers:
         assert np.all(np.diff(table['track_id']) >= 0)                    # sorted by track, then frame
         assert control.track_layer_table() is table                       # cached
 
-    def test_layers_build_and_recolour(self, control):
-        control.init_tracks_stack()
+    def test_dots_follow_the_frame_and_recolour(self, control):
+        control.init_sarcomere_dots()
         control.init_track_groups_layer()
         layers = control.viewer.layers
-        traj = layers['Trajectories']
-        assert traj.data.shape[1] == 4 and traj.color_by == 'delta_slen'
-        assert traj.data.shape[0] <= control.TRACK_MAX_VERTICES + 5000       # thinned
+        table = control.track_layer_table()
+        dots = layers['Sarcomeres']
+        n0 = int((table['t'] == 0).sum())
+        assert dots.data.shape == (n0, 2) and dots.face_color.shape == (n0, 4)   # current frame only
         assert len(layers['Groups'].data) > 5 and layers['Groups'].features['group'].size == len(layers['Groups'].data)
         assert control.viewer.mouse_drag_callbacks == [control._on_canvas_click]
-        control.init_tracks_stack()                                           # rebuild registers the click once
+        control.init_sarcomere_dots()                                         # rebuild registers the click once
         assert len(control.viewer.mouse_drag_callbacks) == 1
+        # frame change swaps the points
+        control.viewer.dims.current_step = (200, 0, 0)
+        control.viewer.dims.events.current_step()
+        dots = layers['Sarcomeres']
+        assert dots.data.shape[0] == int((table['t'] == 200).sum()) != n0
+        rows = control._frame_rows(table, 200)
+        assert np.allclose(dots.data[:, 0], table['y'][rows])
         for label in ('Group', 'Coverage', 'Velocity', 'SL', 'Track id', 'ΔSL'):
             control.model.parameters.get_parameter('motion.display.color_by').set_value(label)
-            control.apply_track_display(show_trajectories=True)
-            traj = layers['Trajectories']
-            assert traj.color_by == control.TRACK_COLOR_LABELS[label]
-            assert np.isfinite(traj.track_colors).all()
+            control.apply_track_display(show_sarcomeres=True)
+            assert np.isfinite(layers['Sarcomeres'].face_color).all()
+            assert layers['Sarcomeres'].face_color.shape[0] == dots.data.shape[0]
 
     def test_nearest_track_hit_test(self, control):
         table = control.track_layer_table()
@@ -564,7 +578,7 @@ class TestTrackLayers:
         assert control.nearest_track((t + 0.4, (y + 0.5) * sy, x * sx)) == int(table['track_id'][i])
 
     def test_group_highlight_and_selection_callbacks(self, control):
-        control.init_tracks_stack()
+        control.init_sarcomere_dots()
         seen = []
         control.track_selected_callbacks.append(seen.append)
         control.highlight_group(0)

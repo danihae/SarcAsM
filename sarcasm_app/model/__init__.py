@@ -153,8 +153,7 @@ class ApplicationModel:
         # Display of the tracks in the viewer
         self.__parameters.get_parameter(name='motion.display.color_by').set_value('ΔSL')
         self.__parameters.get_parameter(name='motion.display.dsl_limit').set_value(0.0)
-        self.__parameters.get_parameter(name='motion.display.tail_frames').set_value(30)
-        self.__parameters.get_parameter(name='motion.display.show_trajectories').set_value(True)
+        self.__parameters.get_parameter(name='motion.display.show_sarcomeres').set_value(True)
         self.__parameters.get_parameter(name='motion.display.show_groups').set_value(True)
 
         # Analyze track motion (ContractionNet)
@@ -263,8 +262,7 @@ class ApplicationModel:
 
         self.__parameters.set_parameter(name='motion.display.color_by')
         self.__parameters.set_parameter(name='motion.display.dsl_limit')
-        self.__parameters.set_parameter(name='motion.display.tail_frames')
-        self.__parameters.set_parameter(name='motion.display.show_trajectories')
+        self.__parameters.set_parameter(name='motion.display.show_sarcomeres')
         self.__parameters.set_parameter(name='motion.display.show_groups')
 
         self.__parameters.set_parameter(name='motion.analyze.aggregate')

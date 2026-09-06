@@ -230,7 +230,7 @@ class FileSelectionControl:
         self.__main_control.init_sarcomere_domain_stack(visible=False)
         self.__main_control.viewer.dims.set_current_step(0, 0)
 
-        self.__main_control.init_tracks_stack(visible=False)
+        self.__main_control.init_sarcomere_dots(visible=False)
         self.__main_control.init_track_groups_layer(visible=False)
         for callback in self.__main_control.file_opened_callbacks:
             callback()

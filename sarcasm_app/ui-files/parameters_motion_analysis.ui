@@ -227,39 +227,13 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_display_tail">
-        <property name="toolTip">
-         <string>How many past frames of each trajectory are drawn behind the current position</string>
-        </property>
-        <property name="text">
-         <string>Trail length [frames]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QSpinBox" name="sb_display_tail">
-        <property name="toolTip">
-         <string>How many past frames of each trajectory are drawn behind the current position</string>
-        </property>
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>100000</number>
-        </property>
-        <property name="value">
-         <number>30</number>
-        </property>
-       </widget>
-      </item>
       <item row="3" column="0">
-       <widget class="QCheckBox" name="chk_display_trajectories">
+       <widget class="QCheckBox" name="chk_display_sarcomeres">
         <property name="toolTip">
-         <string>Every tracked sarcomere as a coloured trail (head = current position); a trail length of 1 shows plain dots</string>
+         <string>Every tracked sarcomere as a coloured dot at its position in the current frame</string>
         </property>
         <property name="text">
-         <string>Trajectories</string>
+         <string>Sarcomeres</string>
         </property>
         <property name="checked">
          <bool>true</bool>

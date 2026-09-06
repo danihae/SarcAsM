@@ -54,10 +54,10 @@ Proceed through the collapsible sections in the control panel:
 *   **Motion:** Track every sarcomere through the movie, group the tracks (whole cell,
     M-band, myofibril, domain or line of interest — drawn or auto-detected) and analyze
     the contraction of each group. The **Display** group controls how the tracks appear
-    in the viewer: **Trajectories** (every tracked sarcomere as a napari track — a trail
-    of adjustable length ending at its current position, coloured by ΔSL, SL, velocity,
-    group or coverage) and **Groups** (the fibre paths of a myofibril / LOI grouping,
-    labelled by id). Click a sarcomere or a fibre path to select its group:
+    in the viewer: **Sarcomeres** (every tracked sarcomere as a dot at its position in
+    the current frame, coloured by ΔSL, SL, velocity, group or coverage) and **Groups**
+    (the fibre paths of a myofibril / LOI grouping, labelled by id). Click a sarcomere or
+    a fibre path to select its group:
     its members are ringed in the viewer, the per-fibre detail points at it, and the
     **time-series panel** below the viewer overlays the group's SL / ΔSL / velocity
     traces with the group mean and the clicked sarcomere highlighted. **Overlay figure**
