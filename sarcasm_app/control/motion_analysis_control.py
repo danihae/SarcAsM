@@ -462,7 +462,7 @@ class MotionAnalysisControl:
         if 'motion.tracks.slen' not in cell.data:
             logger.warning('No tracks yet — run "Track sarcomere vectors" first.')
             return
-        color_by, _, _ = self.__main_control._track_display_settings()
+        color_by, _ = self.__main_control._track_display_settings()
         value = color_by if color_by in ('delta_slen', 'slen', 'vel') else 'delta_slen'
         cycle = 'motion.pool.labels_contr' in cell.data
         if not cycle:
