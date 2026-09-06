@@ -1326,6 +1326,7 @@ class SarcAsM(SarcAsMBase):
         retire_after_s: Optional[float] = None,
         min_track_duration_s: float = 0.08,
         max_gap_interpolation_s: float = 0.05,
+        motion_predictor: str = 'none',
         progress_notifier: Optional[ProgressNotifier] = None,
     ) -> None:
         """2D full-field sarcomere-vector tracking.
@@ -1385,7 +1386,22 @@ class SarcAsM(SarcAsMBase):
             traces. Interior gaps only, and ``tracks_observed`` stays False on
             filled frames, so coverage and every real-observation metric are
             unaffected. Set to 0 to leave all gap frames NaN. Default is 0.05.
+        motion_predictor : {'none', 'flow'}, optional
+            How a query point's position is predicted before gating. ``'none'``
+            (default): hold the last observed position and advect coasting points
+            with their neighbours — right whenever the per-frame motion is small
+            against the gates (≥ ~30 fps). ``'flow'``: dense optical flow of the raw
+            image between consecutive frames (:class:`sarcasm.analysis.optical_flow.ImageFlowPredictor`),
+            applied to every live point along its sarcomere axis (the perpendicular
+            component only where it is large). Use it when the frame rate is coarse
+            relative to the motion, i.e. when one contraction moves a sarcomere a
+            sizeable fraction of its length between consecutive frames: fewer
+            fragments, higher coverage, no drift. At high frame rates it reproduces
+            ``'none'``. The flow adds computation proportional to the image size.
+            Requires OpenCV (``opencv-python-headless``).
         """
+        if motion_predictor not in ('none', 'flow'):
+            raise ValueError(f"motion_predictor must be 'none' or 'flow', got {motion_predictor!r}.")
         frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
@@ -1457,6 +1473,12 @@ class SarcAsM(SarcAsMBase):
             for t in list_frames
         ]
 
+        predictor = None
+        if motion_predictor == 'flow':
+            from .analysis.optical_flow import ImageFlowPredictor
+            # tracker step k is list_frames[k] -> list_frames[k + 1]; one frame is read per call
+            predictor = ImageFlowPredictor(lambda k: self.read_imgs(frames=int(list_frames[k])))
+            logger.info('Tracking with the image-flow motion predictor (raw-image DIS optical flow).')
         logger.info(f'Tracking {len(list_frames)} frames...')
         out = sarcomere_tracking.track_sarcomere_vectors(
             pos_px_all, mid_all, slen_all, ori_all,
@@ -1469,6 +1491,7 @@ class SarcAsM(SarcAsMBase):
             min_track_duration_s=min_track_duration_s,
             max_gap_interpolation_s=max_gap_interpolation_s,
             progress_notifier=progress_notifier,
+            predictor=predictor,
         )
 
         tracking_data = {
@@ -1494,6 +1517,7 @@ class SarcAsM(SarcAsMBase):
             'params.track_sarcomere_vectors.retire_after_s': retire_after_s,
             'params.track_sarcomere_vectors.min_track_duration_s': min_track_duration_s,
             'params.track_sarcomere_vectors.max_gap_interpolation_s': max_gap_interpolation_s,
+            'params.track_sarcomere_vectors.motion_predictor': motion_predictor,
         }
         self.data.update(tracking_data)
         # re-tracking changes track identities: drop any prior grouping

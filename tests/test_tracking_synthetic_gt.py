@@ -435,3 +435,41 @@ def test_dense_rows_are_tracked_without_fragmenting():
             crossed += len(set(mids)) > 1
     frac = crossed / max(scored, 1)
     assert frac <= 0.005, f'{crossed}/{scored} tracks crossed to another M-band'
+
+
+def test_coarse_frame_rate_needs_and_gets_the_image_flow_predictor():
+    """Subsampling the fine-rate scene 12x (a coarse frame rate) makes the step of the outer
+    sarcomeres exceed the along gate, and an added lateral drift of the whole field
+    (0.5 px per fine frame = 6 px per coarse step, twice the perpendicular gate) exceeds
+    the perpendicular gate: hold-position prediction fragments or swaps them, while an
+    exact displacement predictor — what the image flow supplies — restores the fine-rate
+    purity and continuity. The lateral part is kept only because it is coherent across
+    the field and larger than the gate."""
+    from scipy.spatial import cKDTree
+    k = 12
+    gt_pos, gt_ori, gt_slen_px, _, H, W = _build_scene(T=240, seed=0)
+    gt_pos = gt_pos.copy()
+    gt_pos[:, :, 0] += 0.5 * np.arange(gt_pos.shape[0])[:, None]      # lateral (row) drift of the whole field
+    gt_pos, gt_slen_px = gt_pos[::k], gt_slen_px[::k]
+    T, G, _ = gt_pos.shape
+    dets = _make_detections(gt_pos, gt_ori, gt_slen_px, p_drop=0.15, seed=1)
+    pos_all, ori_all, slen_all, mid_all, detgt_all = dets
+    steps = gt_pos[1:] - gt_pos[:-1]
+    assert np.abs(steps[..., 1]).max() > 0.6 * 30.0     # along-axis steps beyond the along gate
+    assert np.abs(steps[..., 0]).min() > 0.2 / PX       # lateral steps beyond the perpendicular gate
+
+    def exact(t, yx):
+        j = cKDTree(gt_pos[t]).query(np.asarray(yx, float))[1]
+        return (gt_pos[t + 1][j] - gt_pos[t][j]).astype(np.float32)
+
+    def run(predictor):
+        res = stk.track_sarcomere_vectors(pos_all, mid_all, slen_all, ori_all,
+                                          pixelsize=PX, frametime=FT * k, predictor=predictor)
+        return _evaluate(res, detgt_all, G, T)
+
+    base, flow = run(None), run(exact)
+    assert flow["purity_mean"] >= 0.97
+    assert flow["n_swap"] <= max(3, int(0.04 * G))
+    assert flow["frags_per_gt_mean"] < 2.0
+    assert flow["det_coverage_pct"] > 95.0
+    assert (flow["frags_per_gt_mean"] < base["frags_per_gt_mean"]) or (flow["n_swap"] < base["n_swap"])

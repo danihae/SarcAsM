@@ -42,6 +42,7 @@ dependencies = [
     "imagecodecs>=2024.1.1",
     "zarr>=3.2.0,<4.0.0",
     "scipy>=1.11,<2.0",
+    "opencv-python-headless>=4.8,<5.0",
     "tqdm>=4.60",
 ]
 

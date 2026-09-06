@@ -61,7 +61,9 @@ contractions of *groups* of tracks. More detailed instructions see
     # analyze sarcomere vectors in all frames
     sarc_obj.analyze_sarcomere_vectors(frames='all')
 
-    # track every sarcomere vector through the movie
+    # track every sarcomere vector through the movie; when the frame rate is coarse
+    # relative to the motion (one contraction moves a sarcomere a good part of its
+    # length between frames) add motion_predictor='flow' (raw-image optical flow)
     sarc_obj.track_sarcomere_vectors()
 
     # analyze contractions of all tracks pooled into one averaged signal

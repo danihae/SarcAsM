@@ -383,3 +383,66 @@ def test_interpolated_orientation_is_axial():
         max_gap_interpolation_s=0.03)
     mid = float(out['motion.tracks.orientations'][0][1])
     assert abs(st._angular_diff(mid, 0.0)) < 0.05, mid
+
+
+# ---------------------------------------------------------------------------
+# Motion predictor hook (image optical flow at coarse frame rates)
+# ---------------------------------------------------------------------------
+
+def _beyond_gate_sequence(T=6, n_points=20, step=14.0):
+    """Along-axis translation of ``step`` px per frame — beyond the 10 px along gate
+    at pixelsize 0.1 (min(1.0 µm, 0.6·slen)), so hold-position prediction cannot follow."""
+    return _make_detection_sequence(T=T, n_points=n_points, shift_per_frame=step, orientation=np.pi / 2)
+
+
+def test_without_predictor_a_step_beyond_the_gate_breaks_every_track():
+    T = 6
+    pos, slen, ori = _beyond_gate_sequence(T=T)
+    out = st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.2,
+                                     min_track_duration_s=0.2)
+    observed = out['motion.tracks.observed']
+    assert not observed.all(axis=1).any()          # no track survives the whole movie
+    assert out['motion.tracks.n'] > 20             # identities fragment into new tracks
+
+
+def test_exact_predictor_carries_every_track_through_the_step():
+    T = 6
+    pos, slen, ori = _beyond_gate_sequence(T=T)
+    exact = lambda t, yx: np.tile(np.array([14.0, 0.0], np.float32), (len(yx), 1))
+    out = st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.2,
+                                     min_track_duration_s=0.2, predictor=exact)
+    assert out['motion.tracks.n'] == 20
+    assert out['motion.tracks.observed'].all()
+    # positions are the matched detections, not the predictions
+    assert np.allclose(out['motion.tracks.positions_px'][:, -1], pos[-1])
+
+
+def test_predictor_perpendicular_component_is_ignored_when_small():
+    """The flow's lateral component is noisy on striations: below half the perpendicular
+    gate it is dropped, so a small spurious lateral prediction does not push a query
+    point off its own detection."""
+    T = 6
+    pos, slen, ori = _beyond_gate_sequence(T=T)
+    noisy = lambda t, yx: np.tile(np.array([14.0, 0.8], np.float32), (len(yx), 1))   # 0.8 px < 0.5 * 2 px perp gate
+    out = st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.2,
+                                     min_track_duration_s=0.2, predictor=noisy)
+    assert out['motion.tracks.n'] == 20 and out['motion.tracks.observed'].all()
+
+
+def test_predictor_with_wrong_length_raises():
+    T = 3
+    pos, slen, ori = _make_detection_sequence(T=T, n_points=10, shift_per_frame=0.0)
+    bad = lambda t, yx: np.zeros((len(yx) - 1, 2), np.float32)
+    with pytest.raises(ValueError, match='predictor returned'):
+        st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.01,
+                                   min_track_duration_s=0.02, predictor=bad)
+
+
+def test_predictor_none_is_the_default_path():
+    T = 6
+    pos, slen, ori = _make_detection_sequence(T=T, n_points=15, shift_per_frame=1.0, orientation=np.pi / 2)
+    a = st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02)
+    b = st.track_sarcomere_vectors(pos, [None] * T, slen, ori, pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
+                                   predictor=None)
+    for key in ('motion.tracks.positions_px', 'motion.tracks.slen', 'motion.tracks.observed', 'motion.tracks.detection_id'):
+        assert np.array_equal(a[key], b[key], equal_nan=True)
