@@ -24,5 +24,19 @@ def make_collapsible(group: QGroupBox) -> None:
         for child in group.findChildren(QWidget):
             if child.parent() is group:
                 child.setVisible(checked)
+        # hidden rows still leave the frame and the layout's row spacing standing:
+        # cap the box at its title line while collapsed
+        if checked:
+            group.setMaximumHeight(16777215)
+            if group.layout() is not None:
+                group.layout().setContentsMargins(*_MARGINS.get(id(group), (11, 11, 11, 11)))
+        else:
+            if group.layout() is not None:
+                _MARGINS.setdefault(id(group), group.layout().getContentsMargins())
+                group.layout().setContentsMargins(0, 0, 0, 0)
+            group.setMaximumHeight(group.fontMetrics().height() + 8)
     group.toggled.connect(apply)
     apply(group.isChecked())
+
+
+_MARGINS: dict = {}
