@@ -163,6 +163,16 @@
        </widget>
       </item>
       <item row="5" column="0" colspan="2">
+       <widget class="QCheckBox" name="chk_track_flow_predictor">
+        <property name="toolTip">
+         <string>Predict each sarcomere's step from the optical flow of the raw image before matching. Use when the frame rate is coarse relative to the motion, i.e. a contraction moves sarcomeres a good part of their length between consecutive frames; at high frame rates it changes nothing. Adds computation proportional to the image size.</string>
+        </property>
+        <property name="text">
+         <string>Predict motion from image flow (coarse frame rates)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="btn_track_vectors">
         <property name="toolTip">
          <string>Track sarcomere vectors across all frames (requires sarcomere vectors)</string>

@@ -311,7 +311,8 @@ class BatchProcessingControl:
             max_disp_perp_um=_p('motion.track.max_disp_perp'),
             ori_tol_deg=_p('motion.track.ori_tol'),
             min_track_duration_s=_p('motion.track.min_duration_s'),
-            max_gap_interpolation_s=float(_p('motion.track.max_gap_interp_s')))
+            max_gap_interpolation_s=float(_p('motion.track.max_gap_interp_s')),
+            motion_predictor='flow' if bool(_p('motion.track.flow_predictor')) else 'none')
 
         ref = int(_p('motion.group.reference_frame'))
         if by == 'loi' and 'motion.loi.data' not in sarc_obj.data:
