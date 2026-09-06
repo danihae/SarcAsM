@@ -320,17 +320,31 @@ class MotionAnalysisControl:
             logger.warning('No track motion analyzed yet — run "Analyze track motion" first.')
             return
         is_fibre = kind in _FIBRE_KINDS
-        layout = [['tracks', 'groups'], ['slen', 'dslen']]
+        # raster of every sarcomere over one averaged cycle (needs the pooled cycles),
+        # else over the full recording
+        cycle = 'motion.pool.labels_contr' in cell.data
+        layout = [['coverage', 'groups'], ['slen', 'dslen'], ['raster', 'raster']]
         if is_fibre:
             layout.append(['fibrils', 'fibrils'])
-        fig, axd = plt.subplot_mosaic(layout, figsize=(12, 10 if is_fibre else 8),
+        fig, axd = plt.subplot_mosaic(layout, figsize=(12, 13 if is_fibre else 11),
                                       constrained_layout=True)
-        # 'tracks' = trajectory lines coloured by coverage (track quality);
-        # 'groups' = partition scatter coloured by group — complementary views.
-        panels = (('tracks', lambda ax: Plots.plot_tracks(ax, cell, color_by='coverage', colorbar=True)),
+        def raster(ax):
+            if cycle:
+                try:
+                    Plots.plot_track_raster(ax, cell, cycle_average=True, sort_by='time_to_peak',
+                                            title='ΔSL of every sarcomere over the averaged cycle, sorted by time to peak')
+                    return
+                except ValueError as e:                      # e.g. fewer than two complete cycles
+                    logger.debug(f'cycle raster skipped: {e}')
+                    ax.clear()
+            Plots.plot_track_raster(ax, cell, cycle_average=False,
+                                    title='ΔSL of every sarcomere over the recording, by group')
+
+        panels = (('coverage', lambda ax: Plots.plot_track_coverage_map(ax, cell)),
                   ('groups', lambda ax: Plots.plot_track_groups(ax, cell)),
-                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell)),
-                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell)))
+                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell, n_rows=12)),
+                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell, n_rows=12)),
+                  ('raster', raster))
         for key, fn in panels:
             try:
                 fn(axd[key])
@@ -431,61 +445,6 @@ class MotionAnalysisControl:
             if idx >= 0:
                 w.cb_fibre_group.setCurrentIndex(idx)
 
-    def __on_btn_overlay(self):
-        """Figure with the SL and ΔSL overlays of the selected group (all members + mean)."""
-        if not self.__chk_initialized():
-            return
-        import matplotlib.pyplot as plt
-        cell = self.__main_control.model.cell
-        if 'motion.tracks.group_id' not in cell.data:
-            logger.warning('No grouping yet — run "Group tracks" first.')
-            return
-        kind = cell.data.get('motion.groups.kind', '')
-        w = self.__motion_analysis_widget
-        group = int(w.cb_fibre_group.currentText()) if w.cb_fibre_group.currentText() else 0
-        fig, axs = plt.subplots(2, 1, figsize=(10, 7), constrained_layout=True, sharex=True)
-        try:
-            Plots.plot_slen(axs[0], cell, group=group, kind=kind)
-            Plots.plot_delta_slen(axs[1], cell, group=group, kind=kind)
-        except Exception as e:
-            logger.warning(f'overlay plot failed: {e}')
-            plt.close(fig)
-            return
-        fig.suptitle(f'{Path(cell.file_path).name} — {kind} group {group}')
-        plt.show()
-
-    def __on_btn_raster(self):
-        if not self.__chk_initialized():
-            return
-        import matplotlib.pyplot as plt
-        cell = self.__main_control.model.cell
-        if 'motion.tracks.slen' not in cell.data:
-            logger.warning('No tracks yet — run "Track sarcomere vectors" first.')
-            return
-        color_by, _ = self.__main_control._track_display_settings()
-        value = color_by if color_by in ('delta_slen', 'slen', 'vel') else 'delta_slen'
-        cycle = 'motion.pool.labels_contr' in cell.data
-        if not cycle:
-            logger.warning("No pooled contraction cycles yet (analyze with 'Group by = pool' for the "
-                           "cycle-averaged raster) — showing the full recording.")
-        fig, axs = plt.subplots(1, 2 if cycle else 1, figsize=(14 if cycle else 8, 6),
-                                constrained_layout=True, squeeze=False)
-        try:
-            if cycle:
-                Plots.plot_track_raster(axs[0, 0], cell, value=value, sort_by='time_to_peak',
-                                        title='cycle average, sorted by time to peak')
-                Plots.plot_track_raster(axs[0, 1], cell, value=value, sort_by='amplitude',
-                                        title='cycle average, sorted by amplitude')
-            else:
-                Plots.plot_track_raster(axs[0, 0], cell, value=value, cycle_average=False,
-                                        title='full recording, by group')
-        except Exception as e:
-            logger.warning(f'raster plot failed: {e}')
-            plt.close(fig)
-            return
-        fig.suptitle(f'{Path(cell.file_path).name} — tracked sarcomeres')
-        plt.show()
-
     # ------------------------------------------------------------------ #
     # export
     # ------------------------------------------------------------------ #
@@ -527,9 +486,6 @@ class MotionAnalysisControl:
 
         # display of the tracks in the viewer
         w.cb_display_color_by.addItems(list(ApplicationControl.TRACK_COLOR_LABELS))
-        w.btn_display_trace.clicked.connect(self.__open_trace_dock)
-        w.btn_display_overlay.clicked.connect(self.__on_btn_overlay)
-        w.btn_display_raster.clicked.connect(self.__on_btn_raster)
 
         p = self.__main_control.model.parameters.get_parameter
         # track

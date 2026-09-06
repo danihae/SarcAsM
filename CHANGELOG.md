@@ -94,7 +94,8 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
   their current position (ΔSL / SL / velocity / group / coverage; only the current frame is
   held by the layer) plus a **Groups** layer of labelled fibre paths; clicking a sarcomere or
   a fibre path selects its group and opens a time-series panel (SL / ΔSL / velocity overlay
-  of the group with the clicked sarcomere highlighted, zoom/pan toolbar).
+  of the group with the clicked sarcomere highlighted, zoom/pan toolbar); the summary figure
+  gains a raster of every sarcomere's ΔSL over the averaged cycle, sorted by time to peak.
 - `SarcAsM.get_track_kinematics()` (per-track ΔSL / velocity / resting length) and
   `Plots.plot_track_raster` (cycle-averaged sarcomere × time raster sorted by
   time-to-peak or amplitude, or the full recording by group).

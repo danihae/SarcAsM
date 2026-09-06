@@ -178,7 +178,7 @@
    <item row="1" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_display">
      <property name="title">
-      <string>Display</string>
+      <string>Display in viewer</string>
      </property>
      <layout class="QFormLayout" name="formLayout_display">
       <item row="0" column="0">
@@ -256,40 +256,10 @@
       <item row="4" column="1">
        <widget class="QLabel" name="label_display_hint">
         <property name="text">
-         <string>Click a sarcomere or a fibre path to select its group</string>
+         <string>Click a sarcomere or a fibre path: its group is highlighted and its SL / ΔSL traces open in a panel below the viewer.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_display_trace">
-        <property name="toolTip">
-         <string>Panel below the viewer: SL / ΔSL / velocity of every sarcomere of the selected group overlaid with the group mean, the clicked sarcomere highlighted, contraction cycles shaded</string>
-        </property>
-        <property name="text">
-         <string>Time-series panel (SL / ΔSL)…</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_display_overlay">
-        <property name="toolTip">
-         <string>Figure with the SL and ΔSL overlays (all sarcomeres + mean) of the selected group</string>
-        </property>
-        <property name="text">
-         <string>Overlay figure (SL + ΔSL)…</string>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_display_raster">
-        <property name="toolTip">
-         <string>Cycle-averaged raster of all tracked sarcomeres, rows sorted by time-to-peak and by amplitude (needs a pooled analysis)</string>
-        </property>
-        <property name="text">
-         <string>Cycle raster…</string>
         </property>
        </widget>
       </item>
