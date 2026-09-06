@@ -610,3 +610,41 @@ class TestTrackLayers:
         dock.set_frame(10)
         lo, hi = dock.ax.get_ylim()
         assert hi - lo < 1.0                                               # robust limits, no outlier blow-up
+
+
+def test_sarcomere_vector_layer_geometry(motion_file_path):
+    """Arrows start at the midline point, point both ways along the sarcomere axis with
+    half its length, and carry no time component (which used to double the frame range)."""
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    import napari
+    from sarcasm import SarcAsM
+    from sarcasm_app.control.application_control import ApplicationControl
+    from sarcasm_app.model import ApplicationModel
+    cell = SarcAsM(motion_file_path)
+    if 'structure.sarcomere.pos' not in cell.data:
+        pytest.skip('20 kPa store has no sarcomere vectors')
+    cell.scale = (1, cell.metadata.pixelsize, cell.metadata.pixelsize)
+    model = ApplicationModel()
+    model.set_to_default()
+    model._cell = cell
+    ctl = ApplicationControl.__new__(ApplicationControl)
+    ctl._model = model
+    ctl._viewer = TestTrackLayers._FakeViewer()
+    ctl._viewer.add_vectors = lambda d, **kw: ctl._viewer._add(napari.layers.Vectors, d, **kw)
+    ctl.init_sarcomere_vector_stack()
+    vec = np.asarray(ctl.viewer.layers['SarcomereVectors'].data)
+    mid = np.asarray(ctl.viewer.layers['MidlinePoints'].data)
+    assert vec.shape[0] == 2 * mid.shape[0] and vec.shape[1:] == (2, 3)
+    assert np.all(vec[:, 1, 0] == 0)                                          # no time component
+    assert vec[:, 0, 0].max() <= cell.metadata.n_stack - 1
+    frame = int(vec[0, 0, 0])
+    pos = np.asarray(cell.data['structure.sarcomere.pos'][frame]) / cell.metadata.pixelsize
+    slen = np.asarray(cell.data['structure.sarcomere.slen'][frame]) / cell.metadata.pixelsize
+    ori = np.asarray(cell.data['structure.sarcomere.orientation'][frame])
+    n = len(pos)
+    block = vec[:2 * n]                                                       # this frame's arrows
+    assert np.allclose(np.nan_to_num(block[:n, 0, 1:]), np.nan_to_num(pos))   # start = midline point
+    assert np.allclose(np.nan_to_num(block[n:, 0, 1:]), np.nan_to_num(pos))
+    axis = np.column_stack([np.sin(ori), np.cos(ori)]) * (0.5 * slen)[:, None]
+    assert np.allclose(np.nan_to_num(block[:n, 1, 1:]), np.nan_to_num(axis))  # +axis, half a sarcomere
+    assert np.allclose(np.nan_to_num(block[n:, 1, 1:]), np.nan_to_num(-axis))  # -axis

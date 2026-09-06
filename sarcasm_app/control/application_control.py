@@ -820,7 +820,7 @@ class ApplicationControl:
                 self.viewer.layers.remove(self.viewer.layers[name])
         analyzed = cell.data.get('params.analyze_sarcomere_vectors.frames')
         px = cell.metadata.pixelsize
-        starts, dirs = [], []
+        starts, dirs, mids = [], [], []
         for frame in range(cell.metadata.n_stack):
             if analyzed is None or frame not in analyzed or cell.data['structure.sarcomere.pos'][frame] is None:
                 continue
@@ -831,18 +831,21 @@ class ApplicationControl:
             half = np.asarray(cell.data['structure.sarcomere.slen'][frame], dtype=float) / px * 0.5
             axis = np.column_stack([np.sin(ori) * half, np.cos(ori) * half])                 # (n, 2) yx px
             start = np.column_stack([np.full(len(pos), frame, dtype=float), pos])              # (n, 3) t y x
+            zero = np.zeros((len(pos), 1))
+            # two arrows per sarcomere, one each way along its axis; a direction has no
+            # time component — start and direction are paired row by row
+            mids.append(start)
             starts.append(start)
-            # the direction of an arrow has no time component
-            dirs.append(np.column_stack([np.zeros(len(pos)), axis]))
-            dirs.append(np.column_stack([np.zeros(len(pos)), -axis]))
+            starts.append(start)
+            dirs.append(np.hstack([zero, axis]))
+            dirs.append(np.hstack([zero, -axis]))
         if not starts:
             return
-        start = np.concatenate(starts)
-        vectors = np.stack([np.concatenate([start, start]), np.concatenate(dirs)], axis=1)     # (2n, 2, 3)
+        vectors = np.stack([np.concatenate(starts), np.concatenate(dirs)], axis=1)             # (2n, 2, 3)
         self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors',
                                 opacity=0.8, vector_style='arrow', visible=visible, scale=cell.scale)
-        self.viewer.add_points(start, name='MidlinePoints', face_color='darkgreen', size=0.2 / px,
-                               visible=visible, scale=cell.scale)
+        self.viewer.add_points(np.concatenate(mids), name='MidlinePoints', face_color='darkgreen',
+                               size=0.2 / px, visible=visible, scale=cell.scale)
 
     def init_sarcomere_mask_stack(self, visible=True):
         if self.model.cell is not None:
