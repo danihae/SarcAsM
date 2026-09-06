@@ -42,7 +42,7 @@ def aggregate_group_slen(
     tracks_slen: np.ndarray,
     group_id: np.ndarray,
     n_groups: int,
-    aggregate: str = 'nanmedian',
+    aggregate: str = 'mean',
     slen_lims: Optional[Tuple[float, float]] = None,
 ) -> Dict[str, np.ndarray]:
     """Aggregate per-track ``slen(t)`` into per-group ``slen(t)``.
@@ -57,11 +57,11 @@ def aggregate_group_slen(
         tracks (excluded from every group).
     n_groups : int
         Number of groups (labels ``0 .. n_groups-1``).
-    aggregate : {'nanmedian', 'nanmean'}, optional
-        Reduction used for the primary ``slen`` (the signal fed to
-        the contraction engine). The full distribution (median/std/q25/q75) is
-        always returned for plotting regardless of this choice.
-        Default is 'nanmedian'.
+    aggregate : {'mean', 'median'}, optional
+        How the members' lengths are combined into the group's ``slen`` (the
+        signal fed to the contraction engine), over the members with a finite
+        length in each frame. The per-frame spread (median/std/q25/q75) is
+        returned regardless of this choice. Default is 'mean'.
     slen_lims : (float, float) or None, optional
         If given, member lengths outside ``[lo, hi]`` (µm) are set to NaN before
         aggregation. Default is None.
@@ -80,7 +80,9 @@ def aggregate_group_slen(
     T = tracks_slen.shape[1]
     group_id = np.asarray(group_id).reshape(-1)
 
-    agg_fn = np.nanmean if aggregate == 'nanmean' else np.nanmedian
+    if aggregate not in ('mean', 'median'):
+        raise ValueError(f"aggregate must be 'mean' or 'median', got {aggregate!r}")
+    agg_fn = np.nanmean if aggregate == 'mean' else np.nanmedian
 
     slen_ts = np.full((n_groups, T), np.nan)
     median_ts = np.full((n_groups, T), np.nan)

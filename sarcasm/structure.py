@@ -2210,7 +2210,7 @@ class SarcAsM(SarcAsMBase):
         self,
         *,
         by: Optional[str] = None,
-        aggregate: Optional[str] = None,
+        aggregate: str = 'mean',
         slen_lims: Tuple[float, float] = (1.0, 3.0),
         model: Optional[str] = None,
         threshold: Optional[float] = None,
@@ -2248,10 +2248,12 @@ class SarcAsM(SarcAsMBase):
             for every grouping level except ``'custom'``, which needs its own
             :meth:`group_tracks` call to pass ``labels``. If None, use the existing
             grouping (whatever :meth:`group_tracks` produced last). Default is None.
-        aggregate : {'nanmedian', 'nanmean'} or None, optional
-            Reduction of member ``slen(t)`` into the per-group signal. None
-            resolves to ``'nanmean'`` for ``domain`` and ``'nanmedian'``
-            otherwise. Default is None.
+        aggregate : {'mean', 'median'}, optional
+            How the member sarcomeres' lengths are combined into the group's
+            ``slen(t)`` for the contraction analysis, over the members present in
+            each frame. ``'median'`` is robust to a few mis-measured tracks;
+            ``'mean'`` matches the 0.5 domain analysis. The per-frame spread
+            (``slen_std``, quartiles) is stored either way. Default is 'mean'.
         slen_lims : tuple of float, optional
             Member lengths outside this µm range are ignored in the aggregate.
             Default is (1.0, 3.0).
@@ -2298,12 +2300,8 @@ class SarcAsM(SarcAsMBase):
         gid = np.asarray(self.data['motion.tracks.group_id'])
         tracks_slen = np.asarray(self.data['motion.tracks.slen'], dtype=float)
 
-        # Domain mirrors the legacy mean-based aggregate; others default
-        # to a robust median over member tracks.
-        agg_method = aggregate if aggregate is not None else ('nanmean' if kind == 'domain' else 'nanmedian')
-
         agg = grouped_motion.aggregate_group_slen(
-            tracks_slen, gid, n_groups, aggregate=agg_method, slen_lims=slen_lims)
+            tracks_slen, gid, n_groups, aggregate=aggregate, slen_lims=slen_lims)
 
         if model is None or model == 'default':
             model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
@@ -2336,7 +2334,7 @@ class SarcAsM(SarcAsMBase):
             'motion.groups.analyzed_kind': kind,
             'params.analyze_track_motion.group_kind': kind,
             'params.analyze_track_motion.grouping_hash': self.data['motion.groups.hash'],
-            'params.analyze_track_motion.aggregate': agg_method,
+            'params.analyze_track_motion.aggregate': aggregate,
             'params.analyze_track_motion.slen_lims': list(slen_lims),
             'params.analyze_track_motion.model': model,
             'params.analyze_track_motion.threshold': threshold,

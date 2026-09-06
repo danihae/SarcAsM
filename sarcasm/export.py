@@ -245,6 +245,7 @@ class Export:
                            'n_contr_complete',
                            'contr_max', 'elong_max', 'vel_contr_max', 'vel_elong_max',
                            'time_to_peak', 'time_to_relax', 'time_contr',
+                           'slen_std', 'equ_std',
                            'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
                            'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
                            'oscill_peak_avg', 'oscill_peak_1_single', 'oscill_peak_2_single']

@@ -181,10 +181,8 @@ class MotionAnalysisControl:
     # ------------------------------------------------------------------ #
     def __analyze_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
-        agg = _pv(m, 'motion.analyze.aggregate')
-        agg = None if agg in (None, '', 'auto') else agg
         cell.analyze_track_motion(
-            aggregate=agg,
+            aggregate=str(_pv(m, 'motion.analyze.aggregate')),
             slen_lims=(_pv(m, 'motion.analyze.slen_lower'), _pv(m, 'motion.analyze.slen_upper')),
             threshold=_pv(m, 'motion.analyze.threshold'),
             contr_time_min=_pv(m, 'motion.analyze.contr_time_min'),
@@ -465,7 +463,7 @@ class MotionAnalysisControl:
         w = self.__motion_analysis_widget
         # combobox items must exist before the parameter default is pushed via setCurrentText
         w.cb_group_by.addItems(['pool', 'mband', 'myofibril', 'domain', 'loi'])
-        w.cb_motion_aggregate.addItems(['auto', 'nanmedian', 'nanmean'])
+        w.cb_motion_aggregate.addItems(['mean', 'median'])
         w.cb_loi_mode.addItems(['longest_in_cluster', 'fit_straight_line',
                                 'random_from_cluster', 'random_line'])
         w.cb_loi_linkage.addItems(['single', 'complete', 'average', 'ward'])

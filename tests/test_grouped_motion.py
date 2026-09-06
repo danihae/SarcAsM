@@ -26,7 +26,7 @@ def test_aggregate_group_slen_basic():
         [1.0, 1.0, 1.0],
     ], dtype=float)
     gid = np.array([0, 0, 1, 1])
-    out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=2, aggregate='nanmean')
+    out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=2, aggregate='mean')
     assert out['slen'].shape == (2, 3)
     assert np.allclose(out['slen'][0], 1.5)   # mean(2,1)
     assert np.allclose(out['slen'][1], 2.0)   # mean(3,1)
@@ -41,7 +41,7 @@ def test_aggregate_group_slen_median_nan_and_slen_lims():
     ], dtype=float)
     gid = np.array([0, 0, 0])
     out = grouped_motion.aggregate_group_slen(
-        tracks_slen, gid, n_groups=1, aggregate='nanmedian', slen_lims=(1.0, 3.0))
+        tracks_slen, gid, n_groups=1, aggregate='median', slen_lims=(1.0, 3.0))
     # frame 0: median(2.0, 2.2, 1.8) = 2.0 ; members = 3
     assert out['slen'][0, 0] == pytest.approx(2.0)
     assert out['n_members'][0, 0] == 3
@@ -50,10 +50,16 @@ def test_aggregate_group_slen_median_nan_and_slen_lims():
     assert out['slen'][0, 2] == pytest.approx(2.0)
 
 
+def test_aggregate_group_slen_rejects_unknown_reduction():
+    tracks_slen = np.full((2, 4), 1.8)
+    with pytest.raises(ValueError, match="'mean' or 'median'"):
+        grouped_motion.aggregate_group_slen(tracks_slen, np.array([0, 0]), n_groups=1, aggregate='nanmean')
+
+
 def test_aggregate_group_slen_unassigned_excluded():
     tracks_slen = np.array([[2.0, 2.0], [9.0, 9.0]], dtype=float)
     gid = np.array([0, -1])   # second track unassigned
-    out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=1, aggregate='nanmean')
+    out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=1, aggregate='mean')
     assert np.allclose(out['slen'][0], 2.0)
     assert np.all(out['n_members'][0] == 1)
 

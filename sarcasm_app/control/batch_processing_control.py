@@ -319,10 +319,8 @@ class BatchProcessingControl:
         sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
                               min_group_size=int(_p('motion.group.min_group_size')))
 
-        agg = _p('motion.analyze.aggregate')
-        agg = None if agg in (None, '', 'auto') else agg
         sarc_obj.analyze_track_motion(
-            aggregate=agg,
+            aggregate=str(_p('motion.analyze.aggregate')),
             slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
             threshold=_p('motion.analyze.threshold'),
             contr_time_min=_p('motion.analyze.contr_time_min'),

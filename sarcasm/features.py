@@ -881,11 +881,19 @@ motion_feature_dict = {
         'function': 'SarcAsM.analyze_track_motion',
         'name': 'Group sarcomere length Q75 time-series [µm]'},
     'slen_std': {
-        'description': 'Time-series of standard deviation of sarcomere length within each group. np.ndarray with '
-                       'shape (n_groups, n_frames).',
+        'description': 'Standard deviation of sarcomere length over the members of each group, per frame '
+                       '(the within-group spread of SL). np.ndarray with shape (n_groups, n_frames); '
+                       'exported as its time mean.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
-        'name': 'Group sarcomere length STD time-series [µm]'},
+        'name': 'Within-group SL std [µm]'},
+    'equ_std': {
+        'description': "Standard deviation of the members' resting sarcomere lengths (µm): how much the "
+                       'sarcomeres of a group differ in resting length (static heterogeneity). np.ndarray '
+                       'with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Resting SL std across members [µm]'},
     'corr_delta_slen_serial': {
         'description': 'Serial correlation r_s of dSL: mean Pearson correlation of the same sarcomere between '
                        'different contraction cycles (cycle-to-cycle consistency), per group.',

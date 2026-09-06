@@ -541,17 +541,17 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_motion_agg">
         <property name="toolTip">
-         <string>How to aggregate member sarcomere lengths into the per-group signal</string>
+         <string>How the member sarcomeres' lengths are combined into the group's SL(t) for the contraction analysis: mean (default) or median over the members present in each frame. The per-frame spread (std, quartiles) is stored either way.</string>
         </property>
         <property name="text">
-         <string>Aggregate</string>
+         <string>Group signal</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_motion_aggregate">
         <property name="toolTip">
-         <string>auto = nanmedian (nanmean for domain); or force nanmedian / nanmean</string>
+         <string>mean: average of the member lengths in each frame (default); median: robust to a few mis-measured tracks</string>
         </property>
        </widget>
       </item>

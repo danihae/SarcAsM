@@ -60,7 +60,11 @@ Proceed through the collapsible sections in the control panel:
     a fibre path to select its group: its members are ringed in the viewer, the per-fibre
     detail points at it, and a **time-series panel** opens below the viewer with the
     group's SL / ΔSL / velocity traces, the group mean and the clicked sarcomere
-    highlighted (zoom/pan/save toolbar). **Plot summary** (Output) draws the coverage map,
+    highlighted (zoom/pan/save toolbar). The **Group signal** setting of the analysis
+    step chooses how the members' lengths are combined into the group's SL(t) —
+    ``mean`` (default) or ``median`` over the members present in each frame; the
+    within-group spread (``slen_std``, quartiles) and the spread of the members'
+    resting lengths (``equ_std``) are stored either way. **Plot summary** (Output) draws the coverage map,
     the groups, the per-group SL and ΔSL, a raster of every sarcomere's ΔSL over the
     averaged contraction cycle sorted by time to peak, and the fibres.
 *   **Batch Processing:** Process multiple files automatically.

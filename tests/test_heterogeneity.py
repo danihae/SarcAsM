@@ -195,6 +195,10 @@ def test_analyze_groups_shapes_and_empty_group():
     assert np.all(np.isfinite(out['ratio_delta_slen_mutual_serial'][:2]))
     assert np.isnan(out['corr_delta_slen_serial'][2])            # group without members
     assert out['corr_n_cycles'][0] == 4
+    # resting-length spread: std of the members' equilibrium lengths
+    equ = het.member_kinematics(slen[gid == 0], contr[0], 0.01)['equ']
+    assert out['equ_std'][0] == pytest.approx(np.std(equ))
+    assert np.isnan(out['equ_std'][2])
 
 
 # ---------------------------------------------------------------------------

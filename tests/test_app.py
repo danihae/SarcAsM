@@ -446,6 +446,7 @@ class TestMotionParameters:
         assert params.get_parameter('motion.track.max_disp_perp').get_value() == 0.2
         assert params.get_parameter('motion.track.ori_tol').get_value() == 45.0
         assert params.get_parameter('motion.group.by').get_value() == 'myofibril'
+        assert params.get_parameter('motion.analyze.aggregate').get_value() == 'mean'
         # the operating point is read from the shipped checkpoint, not hard-coded
         from sarcasm_app.model import _default_contraction_threshold
         assert params.get_parameter('motion.analyze.threshold').get_value() == _default_contraction_threshold()

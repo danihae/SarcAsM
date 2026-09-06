@@ -48,6 +48,9 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
   durations): `n_contr` counts them, `n_contr_complete` does not.
 - **Equilibrium length** (`equ`, and therefore `delta_slen`, `contr_max`, `elong_max`) is
   the median over the non-contracting frames, as the plots always showed it.
+- `analyze_track_motion(aggregate=)` takes `'mean'` (default, every grouping) or
+  `'median'`; the per-kind `None`/'auto' resolution and the `nanmean`/`nanmedian` names are
+  gone.
 - **ContractionNet retrained** (polarity-invariant, duty-cycle and sampling robust); the
   operating threshold is read from the checkpoint. Pre-1.0 checkpoints are rejected.
 - **Sarcomere U-Net checkpoint chosen by pixel size** (`model_path='auto'`): the
@@ -96,6 +99,8 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
   a fibre path selects its group and opens a time-series panel (SL / ΔSL / velocity overlay
   of the group with the clicked sarcomere highlighted, zoom/pan toolbar); the summary figure
   gains a raster of every sarcomere's ΔSL over the averaged cycle, sorted by time to peak.
+- Per-group `equ_std` (spread of the members' resting lengths); `slen_std` (within-group
+  SL spread per frame) is exported as its time mean.
 - `SarcAsM.get_track_kinematics()` (per-track ΔSL / velocity / resting length) and
   `Plots.plot_track_raster` (cycle-averaged sarcomere × time raster sorted by
   time-to-peak or amplitude, or the full recording by group).

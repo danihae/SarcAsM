@@ -131,6 +131,7 @@ def test_motion_records_collapse_per_cycle_arrays():
     for r in recs:
         assert r['kind'] == 'mband' and r['condition'] == 'ctrl'
         assert np.isscalar(r['contr_max']) or r['contr_max'] is None or np.ndim(r['contr_max']) == 0
+        assert 'slen_std' in r and 'equ_std' in r and np.ndim(r['slen_std']) == 0    # time mean, a scalar
     with pytest.raises(ValueError, match="No 'loi'"):
         Export.get_motion_dict_per_group(sarc, kind='loi')
 

@@ -358,7 +358,8 @@ def oscillation_spectrum(member_delta: np.ndarray, contr: np.ndarray, frametime:
 # ---------------------------------------------------------------------------
 
 #: Result keys written per group by :func:`analyze_groups`, in output order.
-GROUP_KEYS = ('corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
+GROUP_KEYS = ('equ_std',
+              'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
               'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial', 'corr_n_cycles',
               'oscill_frequencies', 'oscill_magnitudes_avg', 'oscill_magnitudes_single',
               'oscill_peak_avg', 'oscill_amp_avg', 'oscill_peak_1_single', 'oscill_amp_1_single',
@@ -398,7 +399,9 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
     dict
         One entry per name in :data:`GROUP_KEYS`: scalars as ``(n_groups,)``
         arrays, spectra as ``(n_groups, num_scales)``; ``oscill_frequencies`` is
-        shared, ``(num_scales,)``.
+        shared, ``(num_scales,)``. ``equ_std`` is the standard deviation of the
+        members' resting lengths (µm): how much the sarcomeres of a group differ
+        in resting length, the static counterpart of the correlations.
     """
     tracks_slen = np.asarray(tracks_slen, dtype=float)
     group_id = np.asarray(group_id).reshape(-1)
@@ -413,6 +416,9 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
             continue
         contr_g = np.asarray(contr[g], dtype=bool)
         kin = member_kinematics(tracks_slen[members], contr_g, frametime, filter_params, slen_lims)
+        # static heterogeneity of length: spread of the members' resting lengths
+        equ = kin['equ'][np.isfinite(kin['equ'])]
+        scalars['equ_std'][g] = float(np.std(equ)) if equ.size > 1 else np.nan
         onsets, L = cycle_windows(labels_contr[g])
         for name in ('delta_slen', 'vel'):
             r = serial_mutual_correlation(kin[name], onsets, L)

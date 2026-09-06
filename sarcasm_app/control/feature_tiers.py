@@ -108,6 +108,7 @@ MOTION_TIERS: TierSections = {
             'time_to_relax', 'time_contr',
         ],
         'Heterogeneity (serial / mutual correlation across cycles)': [
+            'slen_std', 'equ_std',
             'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
             'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
         ],

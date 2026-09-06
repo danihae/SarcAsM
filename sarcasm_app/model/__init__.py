@@ -157,7 +157,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='motion.display.show_groups').set_value(True)
 
         # Analyze track motion (ContractionNet)
-        self.__parameters.get_parameter(name='motion.analyze.aggregate').set_value('auto')
+        self.__parameters.get_parameter(name='motion.analyze.aggregate').set_value('mean')
         self.__parameters.get_parameter(name='motion.analyze.threshold').set_value(
             _default_contraction_threshold())
         self.__parameters.get_parameter(name='motion.analyze.contr_time_min').set_value(0.2)
