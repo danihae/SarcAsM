@@ -810,44 +810,39 @@ class ApplicationControl:
                                visible=visible, scale=scale, ndim=ndim)
 
     def init_sarcomere_vector_stack(self, visible=True):
-        if self.model.cell is not None and 'structure.sarcomere.pos' in self.model.cell.data.keys():
-            if self.viewer.layers.__contains__('SarcomereVectors'):
-                layer = self.viewer.layers.__getitem__('SarcomereVectors')
-                self.viewer.layers.remove(layer)
-                pass
-            if self.viewer.layers.__contains__('MidlinePoints'):
-                layer = self.viewer.layers.__getitem__('MidlinePoints')
-                self.viewer.layers.remove(layer)
-                pass
-            # create sarcomere vectors for all frames and add as vector layer
-            vectors = []
-            pos_vectors = []
-            for frame in range(self.model.cell.metadata.n_stack):
-                if 'params.analyze_sarcomere_vectors.frames' in self.model.cell.data and frame in \
-                        self.model.cell.data['params.analyze_sarcomere_vectors.frames'] and self.model.cell.data['structure.sarcomere.pos'][frame] is not None:
-                    pos_vectors_frame = self.model.cell.data['structure.sarcomere.pos'][frame] / self.model.cell.metadata.pixelsize
-                    if len(pos_vectors_frame) > 0:
-                        sarc_orientation_vectors = self.model.cell.data['structure.sarcomere.orientation'][
-                            frame]
-                        sarc_length_vectors = self.model.cell.data['structure.sarcomere.slen'][frame] / \
-                                              self.model.cell.metadata.pixelsize
-                        orientation_vectors = np.asarray(
-                            [np.sin(sarc_orientation_vectors), np.cos(sarc_orientation_vectors)])
-                        for i in range(len(pos_vectors_frame)):
-                            start_point = [frame, pos_vectors_frame[i][0], pos_vectors_frame[i][1]]
-                            vector_1 = [frame, orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
-                                        orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
-                            vector_2 = [frame, -orientation_vectors[0][i] * sarc_length_vectors[i] * 0.5,
-                                        -orientation_vectors[1][i] * sarc_length_vectors[i] * 0.5]
-                            pos_vectors.append(start_point)
-                            vectors.append([start_point, vector_1])
-                            vectors.append([start_point, vector_2])
-            self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors', opacity=0.8,
-                                    vector_style='arrow', visible=visible)
-            self.viewer.add_points(name='MidlinePoints', data=pos_vectors, face_color='darkgreen', size=0.2 / self.model.cell.metadata.pixelsize,
-                                   visible=visible)
-            self.viewer.layers['SarcomereVectors'].scale = self.model.cell.scale
-            self.viewer.layers['MidlinePoints'].scale = self.model.cell.scale
+        """Vectors layer of the sarcomere vectors (one arrow each way from the midline
+        point along the sarcomere axis) plus the midline points, for every analyzed frame."""
+        cell = self.model.cell
+        if cell is None or 'structure.sarcomere.pos' not in cell.data.keys():
+            return
+        for name in ('SarcomereVectors', 'MidlinePoints'):
+            if name in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers[name])
+        analyzed = cell.data.get('params.analyze_sarcomere_vectors.frames')
+        px = cell.metadata.pixelsize
+        starts, dirs = [], []
+        for frame in range(cell.metadata.n_stack):
+            if analyzed is None or frame not in analyzed or cell.data['structure.sarcomere.pos'][frame] is None:
+                continue
+            pos = np.asarray(cell.data['structure.sarcomere.pos'][frame], dtype=float) / px   # (n, 2) yx px
+            if pos.size == 0:
+                continue
+            ori = np.asarray(cell.data['structure.sarcomere.orientation'][frame], dtype=float)
+            half = np.asarray(cell.data['structure.sarcomere.slen'][frame], dtype=float) / px * 0.5
+            axis = np.column_stack([np.sin(ori) * half, np.cos(ori) * half])                 # (n, 2) yx px
+            start = np.column_stack([np.full(len(pos), frame, dtype=float), pos])              # (n, 3) t y x
+            starts.append(start)
+            # the direction of an arrow has no time component
+            dirs.append(np.column_stack([np.zeros(len(pos)), axis]))
+            dirs.append(np.column_stack([np.zeros(len(pos)), -axis]))
+        if not starts:
+            return
+        start = np.concatenate(starts)
+        vectors = np.stack([np.concatenate([start, start]), np.concatenate(dirs)], axis=1)     # (2n, 2, 3)
+        self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors',
+                                opacity=0.8, vector_style='arrow', visible=visible, scale=cell.scale)
+        self.viewer.add_points(start, name='MidlinePoints', face_color='darkgreen', size=0.2 / px,
+                               visible=visible, scale=cell.scale)
 
     def init_sarcomere_mask_stack(self, visible=True):
         if self.model.cell is not None:

@@ -117,6 +117,8 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 - `analyze_myofibrils` / `analyze_sarcomere_domains` with `frames='all'` after a partial
   detection (e.g. `detect_sarcomeres(frames=0)` then `full_analysis_structure()`) no longer
   raise; `'all'` means every frame that carries sarcomere vectors.
+- App: the sarcomere-vector arrows carried the frame index as their time component, so
+  the viewer's frame range doubled (empty second half) after the vector analysis.
 - Deprecated `ScaleBar(height_fraction=)` and `DataFrame.applymap` calls.
 
 ## [0.5.0]
