@@ -7,8 +7,10 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# Keyed on the calling workflow too: publish, publish-test and build-standalone all
+# call this on the same tag, and a shared group would cancel all but one of them.
 concurrency:
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 # Runs the data-free part of the suite. The tif fixtures live in Git LFS and are
