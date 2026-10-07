@@ -4,7 +4,7 @@ All notable changes to SarcAsM are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.0b1] — unreleased
+## [1.0.0b1] — 2026-10-07
 
 A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — install
 `sarc-asm==0.5.*` to open them, or recompute. Result keys changed throughout; see
@@ -13,8 +13,11 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 ### Requirements
 
 - Python **3.12 or 3.13** (was ≥ 3.10).
-- `scipy` and `tqdm` are now declared dependencies; `pandas ≥ 2.1`, `napari ≥ 0.5`,
-  `numpy < 3`, `bio-image-unet ≥ 1.2.2`.
+- New dependencies: `zarr ≥ 3.2` (the analysis store) and `opencv-python-headless ≥ 4.8`
+  (the optional flow predictor); `scipy` and `tqdm` are now declared.
+- `pandas ≥ 2.1`, `napari ≥ 0.5, < 0.9` (0.7 and 0.8 supported), `numpy < 3`,
+  `bio-image-unet ≥ 1.2.2`.
+- `numba < 1.0` (was `< 0.62`, which capped numpy at 2.2).
 
 ### Breaking changes
 
@@ -62,8 +65,9 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 - `detect_sarcomeres` computes the cell-mask features (`structure.cell.*`) itself;
   `analyze_cell_mask` remains for re-evaluating with another threshold. The app's
   "Analyze cell mask" step and batch checkbox are gone.
-- `analyze_sarcomere_vectors`: `peak_algorithm` and `smooth_zbands_sigma` removed,
-  `peak_prominence` default 0.4.
+- `analyze_sarcomere_vectors`: `peak_algorithm` and `smooth_zbands_sigma` removed;
+  new defaults `peak_prominence=0.4`, `interp_factor=4` (was 0), `linewidth=0.3` µm
+  (was 0.2). Sarcomere lengths differ slightly from 0.5 with default settings.
 - Plot defaults: overlays draw no image background unless asked (`show_image` /
   `show_z_bands`, with `invert_*`); every `t_lim` defaults to the full recording
   (`(0, None)`); `plot_z_pos(show_kymograph=)` removed.
@@ -87,6 +91,18 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
   wavelet oscillation spectra (`oscill_*`), for every grouping kind and in the
   `get_track_motion(analyze=True)` chain.
 - `group_tracks(min_group_size=, max_drift_slen=)`; `by='loi'` builds 1-D chains.
+- **Optional image-flow motion predictor** for coarse frame rates:
+  `track_sarcomere_vectors(motion_predictor='flow')` (default `'none'`) predicts each
+  sarcomere's step from dense optical flow of the raw image before matching: along the
+  sarcomere axis always, sideways only where the flow is coherent and large. At low frame
+  rates relative to the contraction it gives fewer fragments and higher coverage; at high
+  frame rates it changes nothing. In the app: the *flow predictor* checkbox on the Motion tab.
+- `analyze_sarcomere_vectors(smooth_orientation_sigma=)`: optional temporal smoothing of
+  the orientation field (off by default).
+- Automatic patch and batch sizing for U-Net prediction: `detect_sarcomeres(max_patch_size='auto',
+  batch_size='auto', memory_budget_gb=2.0)` (and `'auto'` for the 3D fast-movie model)
+  size patches from free device memory; the app's prediction panels have an *Auto*
+  checkbox, on by default.
 - 3D fast-movie Z-band prediction is used automatically for motion when available.
 - OME-Zarr input from third-party tools, with pixel size and frame time read from it;
   TIFF `I`/`Q` stack-axis detection.
@@ -109,14 +125,33 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 
 ### Changed
 
+- `BatchExport` writes `.pkl` pickles (was `.pd`); old `.pd` files still load.
+- Image and overlay plots use equal aspect; `plot_slen_mean` defaults to a 1.3–2.0 µm
+  y-range.
 - The `.ome.zarr` store packs large arrays (image, masks, track blocks) into shard files of
   about 256 MiB (zarr v3 sharding) instead of one file per frame or row chunk: a 500-frame
   store drops from ~4500 files to ~200. Per-frame and per-track reads are unchanged. Stores
   written by earlier 1.0 betas stay readable; an array is re-laid out when an analysis step
   rewrites it.
 
+### Performance
+
+- `analyze_sarcomere_vectors` is about 7× faster (≈ 7 → 1 min on a 500-frame movie):
+  orientation is sampled only at M-band skeleton points and peak finding runs in a numba
+  kernel. Values within the filter radius of the image border shift slightly (edges are
+  replicated instead of zero-padded).
+- Long stacks are predicted in memory-budgeted blocks and written straight into the store:
+  a 50-frame 2000 × 2000 movie peaks at 3.6 GB instead of ≈ 13 GB.
+
 ### Fixed
 
+- `rescale_factor` was applied twice, so masks came back at the wrong size.
+- `frames=` accepts any sequence of frame indices (`range`, tuple, numpy integers), not
+  only a list.
+- A partial detection no longer silently truncates the vector or Z-band analysis; frames
+  are clamped to the detected ones with a warning.
+- App: the parameter dock stays usable at narrow widths (long rows wrap, horizontal
+  scrollbar).
 - `restart=True` no longer fails on macOS when the folder is open in Finder.
 - Synthesized fibre chains: a missing member blanks only its own row; chain geometry is
   anchored on the grouping's reference frame; `min_coverage` no longer punches holes in
