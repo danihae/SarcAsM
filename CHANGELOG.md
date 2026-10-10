@@ -4,6 +4,15 @@ All notable changes to SarcAsM are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Analyses of a field with nothing detected no longer fail when results are saved. An
+  empty sparse result (e.g. a per-frame domain mask with no domains) was written with
+  `chunks=None`, which zarr ≥ 3.3 rejects, so the whole flush raised and nothing was
+  stored. Empty arrays now let zarr choose the chunking.
+
 ## [1.0.0b1] — 2026-10-07
 
 A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — install

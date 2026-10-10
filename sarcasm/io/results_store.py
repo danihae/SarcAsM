@@ -291,7 +291,9 @@ def _write_array(grp: "zarr.Group", member: str, arr: np.ndarray,
         chunk, for internal ragged/sparse members that are always read whole.
         Default is False.
     """
-    layout: Dict[str, Any] = {"chunks": None}
+    # zarr's create_array rejects chunks=None; an empty array (no detections in
+    # any frame) has no positive chunk shape either, so let zarr pick one.
+    layout: Dict[str, Any] = {"chunks": "auto"}
     if arr.size and row_chunk:
         chunks = _chunks(arr.shape)
         shards = _shards(arr.shape, chunks, arr.dtype.itemsize)

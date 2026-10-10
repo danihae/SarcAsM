@@ -83,6 +83,40 @@ def test_roundtrip_all_kinds(store):
         assert _equal(data[k], r[k]), f"mismatch for {k}"
 
 
+def test_empty_sparse_members_roundtrip(tmp_path):
+    """A field with no detections yields empty members; storing them must not raise.
+
+    An empty sparse matrix (e.g. a per-frame domain mask with no domains) writes
+    zero-size COO arrays, which zarr >= 3.3 refused with ``chunks=None``.
+    """
+    data = {
+        "structure.domain.mask": [None, sparse.coo_matrix((15, 15))],
+        "structure.sarcomere.slen": [np.array([], dtype=np.float32)],
+    }
+    p = tmp_path / "empty.zarr"
+    write_results(data, p)
+    r = Results(p)
+    for k in data:
+        assert _equal(data[k], r[k]), f"mismatch for {k}"
+
+
+@pytest.mark.parametrize("row_chunk", [False, True])
+def test_empty_array_gets_a_valid_chunk_spec(row_chunk):
+    """zarr >= 3.3 rejects ``chunks=None`` ("None is not a valid chunk input"),
+    and a zero extent is no valid chunk shape either, so empty arrays must ask
+    zarr to choose. zarr 3.2 still accepts None, hence the direct check."""
+    from sarcasm.io.results_store import _write_array
+
+    seen = {}
+
+    class _Grp:
+        def create_array(self, member, shape, dtype, **layout):
+            seen.update(layout)
+
+    _write_array(_Grp(), "values", np.array([], dtype=np.float32), row_chunk=row_chunk)
+    assert seen.get("chunks") == "auto"
+
+
 def test_dtype_and_nan_preserved(store):
     r = Results(store)
     assert r["motion.tracks.slen"].dtype == np.float32
