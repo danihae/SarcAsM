@@ -2193,6 +2193,209 @@ class Plots:
         ax.set_title(title, fontsize=PlotUtils.fontsize)
 
     @staticmethod
+    def track_vector_segments(sarc_obj: SarcAsM, frame: int, mask: Optional[np.ndarray] = None) -> np.ndarray:
+        """
+        Z-band-to-Z-band line of every tracked sarcomere in one frame, in image pixels.
+
+        Uses the tracker's centre position, length and orientation of each track; the
+        geometry is the one of :meth:`plot_sarcomere_vectors`: endpoints
+        ``(x -/+ cos(theta) L/2, y -/+ sin(theta) L/2)`` on the image axes (y pointing down).
+
+        Parameters
+        ----------
+        sarc_obj : SarcAsM
+            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+        frame : int
+            Frame index (position in the tracked frame list).
+        mask : np.ndarray, optional
+            Boolean ``(n_tracks,)`` selection; default = tracks observed in ``frame`` with a
+            finite length and orientation.
+
+        Returns
+        -------
+        np.ndarray
+            Segments ``(n_selected, 2, 2)`` as ``[[x0, y0], [x1, y1]]`` for a
+            :class:`matplotlib.collections.LineCollection` (the default selection is
+            :meth:`track_vector_mask`).
+        """
+        n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
+        t = sarc_obj._tracked_frame_index(frame)
+        pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
+        slen = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
+        ori = np.asarray(sarc_obj.data['motion.tracks.orientations'], dtype=float).reshape(n_tracks, -1)[:, t]
+        if mask is None:
+            mask = Plots.track_vector_mask(sarc_obj, frame)
+        half = 0.5 * slen[mask] / float(sarc_obj.metadata.pixelsize)
+        dx, dy = np.cos(ori[mask]) * half, np.sin(ori[mask]) * half
+        x, y = pos[mask, 1], pos[mask, 0]
+        return np.stack([np.column_stack([x - dx, y - dy]), np.column_stack([x + dx, y + dy])], axis=1)
+
+    @staticmethod
+    def track_vector_mask(sarc_obj: SarcAsM, frame: int, only_observed: bool = True) -> np.ndarray:
+        """
+        Tracks that can be drawn as a vector in ``frame``: finite position, length and
+        orientation and, with ``only_observed``, matched to a real detection (no gap or
+        interpolated frame).
+
+        Returns
+        -------
+        np.ndarray
+            Boolean mask, shape ``(n_tracks,)``.
+        """
+        n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
+        t = sarc_obj._tracked_frame_index(frame)
+        pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
+        slen = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
+        ori = np.asarray(sarc_obj.data['motion.tracks.orientations'], dtype=float).reshape(n_tracks, -1)[:, t]
+        ok = np.isfinite(pos[:, 0]) & np.isfinite(pos[:, 1]) & np.isfinite(slen) & np.isfinite(ori)
+        if only_observed:
+            ok &= np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1)[:, t].astype(bool)
+        return ok
+
+    #: Default colormap, colour limits and label per track quantity (shared with the animations).
+    TRACK_COLOR_DEFAULTS = {
+        'slen': ('viridis', (1.5, 2.1), 'SL [µm]'),
+        'delta_slen': ('RdBu_r', (-0.3, 0.3), 'ΔSL [µm]'),
+        'vel': ('RdBu_r', (-8.0, 8.0), 'V [µm/s]'),
+        'coverage': ('viridis', (0.0, 100.0), 'Track coverage [%]'),
+        'group': ('gist_rainbow', None, 'Group id'),
+    }
+
+    @staticmethod
+    def track_color_values(sarc_obj: SarcAsM, color_by: str = 'slen',
+                           kinematics: Optional[dict] = None) -> np.ndarray:
+        """
+        Per-track colour values for the vector overlays.
+
+        Parameters
+        ----------
+        sarc_obj : SarcAsM
+            SarcAsM with tracks.
+        color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}
+            Quantity. ``'delta_slen'`` and ``'vel'`` come from
+            :meth:`SarcAsM.get_track_kinematics` (equilibrium over the quiet frames of the pooled
+            signal when available).
+        kinematics : dict, optional
+            A cached result of :meth:`SarcAsM.get_track_kinematics` to avoid recomputing it per frame.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n_tracks, n_frames)`` for the time-dependent quantities, ``(n_tracks,)`` for
+            ``'coverage'`` and ``'group'``.
+        """
+        n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
+        if color_by == 'slen':
+            return np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)
+        if color_by in ('delta_slen', 'vel'):
+            kin = kinematics if kinematics is not None else sarc_obj.get_track_kinematics()
+            return np.asarray(kin[color_by], dtype=float).reshape(n_tracks, -1)
+        if color_by == 'coverage':
+            return Plots._track_coverage(sarc_obj)
+        if color_by == 'group':
+            if 'motion.tracks.group_id' not in sarc_obj.data:
+                raise ValueError("color_by='group' requires group_tracks() first.")
+            return np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(float)
+        raise ValueError(f"unknown color_by {color_by!r}")
+
+    @staticmethod
+    def plot_track_vectors(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'slen',
+                           cmap: Optional[str] = None, clim: Optional[Tuple[float, float]] = None,
+                           linewidth: Optional[float] = None, only_observed: bool = True,
+                           scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
+                           show_image: bool = False, show_z_bands: bool = False,
+                           invert_image: bool = False, invert_z_bands: bool = False,
+                           cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
+                           alpha_image: float = 1, alpha_z_bands: float = 1,
+                           kinematics: Optional[dict] = None):
+        """
+        Draw the tracked sarcomeres of one frame as Z-band-to-Z-band lines coloured by a track quantity.
+
+        The tracked counterpart of :meth:`plot_sarcomere_vectors`: every line spans the sarcomere
+        it measures, so with the default line width (the lateral spacing of the vectors) the
+        space between neighbouring Z-bands is filled with the colour of its length, length change,
+        velocity, coverage or group. The returned collection can be updated frame by frame
+        (see :class:`sarcasm.plotting.animation.Animations`).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes to draw on.
+        sarc_obj : SarcAsM
+            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+        frame : int, optional
+            Frame to draw. Default is 0.
+        color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}, optional
+            Colour quantity. Default is 'slen'.
+        cmap : str, optional
+            Colormap; default per quantity from :attr:`TRACK_COLOR_DEFAULTS`.
+        clim : tuple of float, optional
+            Colour limits; default per quantity from :attr:`TRACK_COLOR_DEFAULTS`.
+        linewidth : float, optional
+            Line width in points. Default fills the space between the Z-bands (one vector spacing).
+        only_observed : bool, optional
+            Hide tracks without a real detection in ``frame``. Default is True.
+        scalebar, colorbar, title : optional
+            As in :meth:`plot_tracks`.
+        show_image, show_z_bands, invert_image, invert_z_bands, cmap_image, cmap_z_bands, alpha_image, alpha_z_bands
+            Background options as in :meth:`plot_tracks`.
+        kinematics : dict, optional
+            Cached :meth:`SarcAsM.get_track_kinematics` result.
+
+        Returns
+        -------
+        matplotlib.collections.LineCollection
+            The drawn vectors (``set_segments`` / ``set_array`` to update).
+        """
+        if 'motion.tracks.positions_px' not in sarc_obj.data:
+            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+        cmap_d, clim_d, clabel = Plots.TRACK_COLOR_DEFAULTS[color_by]
+        cmap = cmap or cmap_d
+        clim = clim if clim is not None else clim_d
+        mask = Plots.track_vector_mask(sarc_obj, frame, only_observed=only_observed)
+        values = Plots.track_color_values(sarc_obj, color_by, kinematics)
+        vals = values[:, sarc_obj._tracked_frame_index(frame)] if values.ndim == 2 else values
+        if color_by == 'group':
+            mask &= vals >= 0
+        mask &= np.isfinite(vals)
+        segments = Plots.track_vector_segments(sarc_obj, frame, mask)
+
+        Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
+                               invert_image=invert_image, invert_z_bands=invert_z_bands,
+                               cmap_image=cmap_image, cmap_z_bands=cmap_z_bands,
+                               alpha_image=alpha_image, alpha_z_bands=alpha_z_bands, scalebar=False)
+        if linewidth is None:
+            # one vector spacing (1 px) expressed in points for the current axes size
+            bb = ax.get_window_extent()
+            width_px = float(sarc_obj.metadata.size[-1])
+            linewidth = max(72.0 * bb.width / ax.figure.dpi / width_px * 1.4, 0.3)
+        if color_by == 'group':
+            n_groups = max(int(sarc_obj.data.get('motion.groups.n', 0)), 1)
+            colors = plt.get_cmap(cmap)((vals[mask].astype(int) % n_groups) / n_groups)
+            lc = LineCollection(segments, colors=colors, linewidths=linewidth, capstyle='butt')
+        else:
+            lc = LineCollection(segments, cmap=plt.get_cmap(cmap), norm=plt.Normalize(*clim),
+                                linewidths=linewidth, capstyle='butt')
+            lc.set_array(vals[mask])
+        ax.add_collection(lc)
+        if not (show_image or show_z_bands):
+            h, w = sarc_obj.metadata.size[-2:]
+            ax.set_xlim(0, w)
+            ax.set_ylim(h, 0)
+            ax.set_aspect('equal')
+        if colorbar and color_by != 'group':
+            cb = ax.figure.colorbar(lc, ax=ax, fraction=0.035, pad=0.02)
+            cb.set_label(clabel, fontsize=PlotUtils.fontsize - 1)
+        if scalebar:
+            ax.add_artist(ScaleBar(sarc_obj.metadata.pixelsize, units='µm', frameon=False, color='w', sep=1,
+                                   width_fraction=0.02, location='lower right', scale_loc='top',
+                                   font_properties={'size': PlotUtils.fontsize - 1}))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(title, fontsize=PlotUtils.fontsize)
+        return lc
+
+    @staticmethod
     def plot_track_groups(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, cmap: str = 'gist_rainbow',
                           s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
                           scalebar: bool = True, title: Optional[str] = None,

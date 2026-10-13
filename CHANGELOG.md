@@ -6,6 +6,15 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Plots.plot_track_vectors` draws every tracked sarcomere of a frame as its Z-band-to-Z-band
+  segment, coloured by length, length change, velocity, track coverage or group. `Animations`
+  turns the same drawing into movies: `animate_image` (raw movie and Z-band masks side by
+  side), `animate_track_vectors` (one live colormap panel) and `animate_results` (image panels
+  above grouped time series with a time cursor); `.mp4` needs ffmpeg (system or
+  `imageio-ffmpeg`), `.gif` works without.
+
 ### Fixed
 
 - Analyses of a field with nothing detected no longer fail when results are saved. An

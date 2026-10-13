@@ -24,6 +24,7 @@ from .features import (structure_feature_dict, motion_feature_dict,
 from .io.ioutils import IOUtils
 from .plotting.plots import Plots
 from .plotting.plot_utils import PlotUtils
+from .plotting.animation import Animations
 from .export import Export, BatchExport
 from .type_utils import TypeUtils
 from .training_data_generation import TrainingDataGenerator

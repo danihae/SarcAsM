@@ -1,1 +1,1 @@
-"""Plotting: Plots + PlotUtils (re-exported at sarcasm top level)."""
+"""Plotting: Plots, PlotUtils and Animations (re-exported at sarcasm top level)."""
