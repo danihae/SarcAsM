@@ -576,14 +576,31 @@ def test_neighbor_filter_counts_add_up(structure_crop_file_path):
     assert removed.shape == (sarc.metadata.n_stack,) and np.isnan(removed[1:]).all()
 
 
+def test_vectors_on_a_frame_without_m_bands(structure_crop_file_path):
+    """A frame whose M-band mask is empty yields no vectors and NaN summaries, without an error.
+
+    Regression: the per-frame orientation summary indexed the plain empty list that the extraction
+    returns for such a frame with a boolean mask, which failed a plate analysis on a movie whose
+    late frames held no M-bands."""
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames=0)
+    sarc.store.write_mask('mbands', np.zeros_like(sarc.store.read_mask('mbands')))
+    sarc.analyze_sarcomere_vectors(frames=0)
+    d = sarc.data
+    assert d['structure.sarcomere.n_mbands'][0] == 0
+    assert d['structure.sarcomere.n_vectors'][0] == 0 and d['structure.sarcomere.n_vectors_removed'][0] == 0
+    assert len(d['structure.sarcomere.pos'][0]) == 0 and len(d['structure.sarcomere.slen'][0]) == 0
+    for key in ('slen_mean', 'orientation_mean', 'orientation_std', 'oop'):
+        assert np.isnan(d[f'structure.sarcomere.{key}'][0]), key
+
+
 def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
     """Sarcomere orientations live on [0, π): the per-frame mean must be the double-angle
     (axial) mean, not a circular mean on the full circle, which averages θ and θ + π
     to a different axis."""
-    sarc = SarcAsM(structure_crop_file_path, restart=False)
-    if 'structure.sarcomere.orientation' not in sarc.data:
-        sarc.detect_sarcomeres(frames=0)
-        sarc.analyze_sarcomere_vectors(frames=0)
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames=0)
+    sarc.analyze_sarcomere_vectors(frames=0)
     theta = np.asarray(sarc.data['structure.sarcomere.orientation'][0], float)
     theta = theta[np.isfinite(theta)]
     mean = sarc.data['structure.sarcomere.orientation_mean'][0]

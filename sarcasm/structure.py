@@ -989,7 +989,8 @@ class SarcAsM(SarcAsMBase):
                 sarcomere_length_vectors_i), np.nanstd(sarcomere_length_vectors_i)
             # orientations are axial (θ and θ + π are the same axis): average the doubled
             # angles on the full circle and halve the result, so the mean lies in [0, π)
-            orientations_i = sarcomere_orientation_vectors_i[~np.isnan(sarcomere_orientation_vectors_i)]
+            orientations_i = np.asarray(sarcomere_orientation_vectors_i, dtype=float)   # a plain [] when no M-band
+            orientations_i = orientations_i[~np.isnan(orientations_i)]
             if len(orientations_i) > 1:
                 sarcomere_orientation_mean[frame_i] = stats.circmean(2 * orientations_i) / 2
                 sarcomere_orientation_std[frame_i] = stats.circstd(2 * orientations_i) / 2
