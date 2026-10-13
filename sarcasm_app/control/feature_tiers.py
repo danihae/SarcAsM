@@ -56,6 +56,7 @@ STRUCTURE_TIERS: TierSections = {
         ],
         'Sarcomeres': [
             'structure.sarcomere.orientation_mean', 'structure.sarcomere.orientation_std',
+            'structure.sarcomere.n_vectors_removed',
         ],
         'Z-bands': [
             'structure.zbands.intensity_std',

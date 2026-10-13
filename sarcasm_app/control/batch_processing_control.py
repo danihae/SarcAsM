@@ -285,7 +285,11 @@ class BatchProcessingControl:
             ),
             median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
             linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
-            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
+            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
+            neighbor_radius=model.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
+            max_neighbor_deviation=(
+                model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
+                if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None)
         )
         pass
 
@@ -373,7 +377,11 @@ class BatchProcessingControl:
                 ),
                 median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
-                interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value()
+                interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
+                neighbor_radius=model.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
+                max_neighbor_deviation=(
+                    model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
+                    if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None)
             )
 
         if model.parameters.get_parameter('batch.do_myofibrils').get_value():

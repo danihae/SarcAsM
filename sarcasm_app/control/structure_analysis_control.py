@@ -250,6 +250,10 @@ class StructureAnalysisControl:
                 interp_factor=m.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
                 smooth_orientation_sigma=m.parameters.get_parameter(
                     'structure.vectors.smooth_orientation_sigma').get_value(),
+                neighbor_radius=m.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
+                max_neighbor_deviation=(
+                    m.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
+                    if m.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
                 progress_notifier=progress_notifier
             )
             pass
@@ -473,6 +477,12 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.vectors.length_limit_upper').connect(widget.dsb_vectors_len_lims_max)
         parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').connect(
             widget.dsb_vectors_smooth_orientation_sigma)
+        parameters.get_parameter(name='structure.vectors.filter_neighbors').connect(
+            widget.chk_vectors_filter_neighbors)
+        parameters.get_parameter(name='structure.vectors.neighbor_radius').connect(
+            widget.dsb_vectors_neighbor_radius)
+        parameters.get_parameter(name='structure.vectors.max_neighbor_deviation').connect(
+            widget.dsb_vectors_max_neighbor_deviation)
 
         parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)

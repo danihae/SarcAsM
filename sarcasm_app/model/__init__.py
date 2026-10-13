@@ -126,6 +126,9 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
         self.__parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').set_value(0.0)
+        self.__parameters.get_parameter(name='structure.vectors.filter_neighbors').set_value(True)
+        self.__parameters.get_parameter(name='structure.vectors.neighbor_radius').set_value(1.0)
+        self.__parameters.get_parameter(name='structure.vectors.max_neighbor_deviation').set_value(30.0)
 
 
         self.__parameters.get_parameter(name='structure.myofibril.ratio_seeds').set_value(0.1)
@@ -246,6 +249,9 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.vectors.length_limit_lower')
         self.__parameters.set_parameter(name='structure.vectors.length_limit_upper')
         self.__parameters.set_parameter(name='structure.vectors.smooth_orientation_sigma')
+        self.__parameters.set_parameter(name='structure.vectors.filter_neighbors')
+        self.__parameters.set_parameter(name='structure.vectors.neighbor_radius')
+        self.__parameters.set_parameter(name='structure.vectors.max_neighbor_deviation')
 
 
         self.__parameters.set_parameter(name='structure.myofibril.ratio_seeds')
