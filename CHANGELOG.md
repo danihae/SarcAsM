@@ -17,6 +17,11 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Fixed
 
+- `structure.sarcomere.orientation_mean` and `orientation_std` are now axial statistics: the
+  orientations (in `[0, π)`) are doubled, averaged on the circle and halved, so the mean lies
+  in `[0, π)` and no longer depends on which of the two equivalent directions a vector was
+  assigned. Before, `scipy.stats.circmean` with its 2π period averaged θ and θ + π to a
+  different axis.
 - Masks of a subset detection (`detect_sarcomeres(frames=[32, 33])`) are stored only for those
   frames; `analyze_sarcomere_vectors`, the plot backgrounds and the animations passed movie
   frame numbers straight to the store and failed with a bounds error, and the cell-mask
@@ -169,6 +174,11 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 
 ### Fixed
 
+- `structure.sarcomere.orientation_mean` and `orientation_std` are now axial statistics: the
+  orientations (in `[0, π)`) are doubled, averaged on the circle and halved, so the mean lies
+  in `[0, π)` and no longer depends on which of the two equivalent directions a vector was
+  assigned. Before, `scipy.stats.circmean` with its 2π period averaged θ and θ + π to a
+  different axis.
 - Masks of a subset detection (`detect_sarcomeres(frames=[32, 33])`) are stored only for those
   frames; `analyze_sarcomere_vectors`, the plot backgrounds and the animations passed movie
   frame numbers straight to the store and failed with a bounds error, and the cell-mask

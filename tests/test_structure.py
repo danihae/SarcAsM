@@ -554,6 +554,29 @@ def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path)
     assert sarc.data['params.analyze_cell_mask.threshold'] == 0.5
 
 
+def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
+    """Sarcomere orientations live on [0, π): the per-frame mean must be the double-angle
+    (axial) mean, not a circular mean on the full circle, which averages θ and θ + π
+    to a different axis."""
+    sarc = SarcAsM(structure_crop_file_path, restart=False)
+    if 'structure.sarcomere.orientation' not in sarc.data:
+        sarc.detect_sarcomeres(frames=0)
+        sarc.analyze_sarcomere_vectors(frames=0)
+    theta = np.asarray(sarc.data['structure.sarcomere.orientation'][0], float)
+    theta = theta[np.isfinite(theta)]
+    mean = sarc.data['structure.sarcomere.orientation_mean'][0]
+    std = sarc.data['structure.sarcomere.orientation_std'][0]
+    assert 0 <= mean < np.pi
+    doubled = np.exp(2j * theta)
+    expected_mean = (np.angle(doubled.mean()) / 2) % np.pi
+    np.testing.assert_allclose(mean, expected_mean, atol=1e-9)
+    expected_std = np.sqrt(-2 * np.log(np.abs(doubled.mean()))) / 2
+    np.testing.assert_allclose(std, expected_std, atol=1e-9)
+    # flipping every orientation by π must not change the mean axis
+    flipped_mean = (np.angle(np.exp(2j * (theta + np.pi)).mean()) / 2) % np.pi
+    np.testing.assert_allclose(flipped_mean, expected_mean, atol=1e-9)
+
+
 @pytest.mark.parametrize('model_path, pixelsize, expected', [
     (None, 0.061, 'legacy'), ('auto', 0.061, 'legacy'), (None, 0.079, 'legacy'),
     (None, 0.08, 'generalist'), ('auto', 0.11, 'generalist'), (None, None, 'generalist'),
