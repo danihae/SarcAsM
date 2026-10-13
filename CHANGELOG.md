@@ -25,6 +25,10 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Fixed
 
+- Myofibril line growth could run forever: the growth loop had no memory of the points it had
+  already passed, so a ring of vectors whose predicted steps lead back onto the line (crossings,
+  branch points) was walked round and round until the process was killed. 4 of 864 movies of a
+  plate analysis hung this way. A line now stops when its next point is already part of it.
 - `structure.sarcomere.orientation_mean` and `orientation_std` are now axial statistics: the
   orientations (in `[0, π)`) are doubled, averaged on the circle and halved, so the mean lies
   in `[0, π)` and no longer depends on which of the two equivalent directions a vector was

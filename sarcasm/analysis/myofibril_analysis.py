@@ -55,6 +55,7 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
         Indices of the points forming the line.
     """
     line_i = deque([seed])
+    in_line = {seed}          # a line never passes a point twice; revisiting one would cycle forever
     stop_right = stop_left = False
 
     sarcomere_orientation_vectors_t = sarcomere_orientation_vectors_t + np.pi / 2
@@ -111,8 +112,9 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
             prior_left = (end_left[0] + np.cos(orientation_left) * length_left,
                           end_left[1] - np.sin(orientation_left) * length_left)
             distance_left, index_left = tree.query(prior_left, k=1)
-            if distance_left < threshold_distance_pixels:
+            if distance_left < threshold_distance_pixels and int(index_left) not in in_line:
                 line_i.appendleft(int(index_left))
+                in_line.add(int(index_left))
             else:
                 stop_left = True
 
@@ -121,8 +123,9 @@ def grow_line(seed, points_t, sarcomere_length_vectors_t, sarcomere_orientation_
             prior_right = (end_right[0] - np.cos(orientation_right) * length_right,
                            end_right[1] + np.sin(orientation_right) * length_right)
             distance_right, index_right = tree.query(prior_right, k=1)
-            if distance_right < threshold_distance_pixels:
+            if distance_right < threshold_distance_pixels and int(index_right) not in in_line:
                 line_i.append(int(index_right))
+                in_line.add(int(index_right))
             else:
                 stop_right = True
 
