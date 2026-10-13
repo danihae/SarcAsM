@@ -377,12 +377,43 @@ class SarcAsMBase:
         single_frame_store = (
             self.metadata.n_stack in (None, 1)
             or (isinstance(detected, (list, tuple, np.ndarray)) and len(detected) == 1))
-        if single_frame_store and isinstance(frames, (int, np.integer)):
-            return self.store.read_mask(name)
-        frames = self._normalize_frames(frames)
+        if single_frame_store:
+            if isinstance(frames, (int, np.integer)):
+                return self.store.read_mask(name)
+            if not isinstance(frames, slice) and len(frames) == 1:
+                return self.store.read_mask(name)[None]
+        frames = self._mask_pages(name, self._normalize_frames(frames))
         # Slice inside the store so only the requested chunks (one frame each)
         # load, instead of materialising the whole stack and slicing in numpy.
         return self.store.read_mask(name, frames=frames)
+
+    # masks written by detect_sarcomeres: stored only for the detected frames, in detection order
+    _DETECTION_MASKS = ('cell_mask', 'zbands', 'mbands', 'orientation', 'sarcomere_mask')
+
+    def _mask_pages(self, name: str, frames):
+        """Translate movie-frame indices into page indices of a sparsely stored detection mask.
+
+        ``detect_sarcomeres(frames=[32, 33])`` stores two pages; ``_read_mask('zbands', frames=33)``
+        must then read page 1. Masks covering every frame (all frames detected, the 3D fast-movie
+        Z-bands, optical flow) and slices are returned unchanged.
+        """
+        data = getattr(self, 'data', None)
+        detected = data.get('params.detect_sarcomeres.frames', 'all') if data is not None else 'all'
+        if name not in self._DETECTION_MASKS or detected is None or isinstance(detected, str):
+            return frames
+        if isinstance(frames, slice):
+            return frames
+        detected = [int(detected)] if isinstance(detected, (int, np.integer)) else [int(f) for f in detected]
+        if detected == list(range(self.metadata.n_stack)):
+            return frames
+        scalar = isinstance(frames, (int, np.integer))
+        requested = [int(frames)] if scalar else [int(f) for f in frames]
+        try:
+            pages = [detected.index(f) for f in requested]
+        except ValueError:
+            raise ValueError(f"Frame(s) {requested} of mask '{name}' were not detected (detected frames: "
+                             f"{detected}). Run detect_sarcomeres on these frames first.")
+        return pages[0] if scalar else pages
 
     def __dir__(self) -> list[str]:
         """Augment autocomplete with dynamic attributes"""

@@ -17,6 +17,12 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Fixed
 
+- Masks of a subset detection (`detect_sarcomeres(frames=[32, 33])`) are stored only for those
+  frames; `analyze_sarcomere_vectors`, the plot backgrounds and the animations passed movie
+  frame numbers straight to the store and failed with a bounds error, and the cell-mask
+  features of such a run were indexed by position instead of frame. `_read_mask` now maps
+  frame numbers to store pages itself, and the cell-mask features are per-frame arrays like
+  every other structure result.
 - Analyses of a field with nothing detected no longer fail when results are saved. An
   empty sparse result (e.g. a per-frame domain mask with no domains) was written with
   `chunks=None`, which zarr ≥ 3.3 rejects, so the whole flush raised and nothing was
@@ -163,6 +169,12 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 
 ### Fixed
 
+- Masks of a subset detection (`detect_sarcomeres(frames=[32, 33])`) are stored only for those
+  frames; `analyze_sarcomere_vectors`, the plot backgrounds and the animations passed movie
+  frame numbers straight to the store and failed with a bounds error, and the cell-mask
+  features of such a run were indexed by position instead of frame. `_read_mask` now maps
+  frame numbers to store pages itself, and the cell-mask features are per-frame arrays like
+  every other structure result.
 - `rescale_factor` was applied twice, so masks came back at the wrong size.
 - `frames=` accepts any sequence of frame indices (`range`, tuple, numpy integers), not
   only a list.

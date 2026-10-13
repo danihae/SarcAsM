@@ -347,29 +347,6 @@ class SarcAsM(SarcAsMBase):
         # features belong to the detection step, not to a separate call
         self.analyze_cell_mask(frames=list_frames)
 
-    def _remap_mask_key(self, list_frames: List[int], detected_frames: Any) -> Union[int, List[int]]:
-        """Translate movie-frame indices to page indices inside the sparsely-saved mask store.
-
-        Masks are stored only for frames passed to detect_sarcomeres, in detection order.
-        When ``detected_frames`` covers every frame this is an identity mapping, so the
-        original indices are returned; otherwise each requested frame's position is looked up.
-        """
-        if detected_frames == 'all' or detected_frames is None:
-            return list_frames[0] if len(list_frames) == 1 else list_frames
-        if isinstance(detected_frames, (int, np.integer)):
-            detected_list = [int(detected_frames)]
-        else:
-            detected_list = [int(f) for f in detected_frames]
-        if detected_list == list(range(self.metadata.n_stack)):
-            return list_frames[0] if len(list_frames) == 1 else list_frames
-        try:
-            keys = [detected_list.index(f) for f in list_frames]
-        except ValueError:
-            raise ValueError(
-                f"Requested frame(s) {list_frames} not present in detected frames "
-                f"{detected_list}. Run detect_sarcomeres on these frames first.")
-        return keys[0] if len(keys) == 1 else keys
-
     def load_mask_full_stack(self, name: str) -> Optional[np.ndarray]:
         """
         Load a mask from the store by name and expand it to full stack length for display.
@@ -496,8 +473,7 @@ class SarcAsM(SarcAsMBase):
                 list_frames = [int(frames)]
             else:
                 list_frames = [int(f) for f in frames]
-            mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            cell_mask = self._read_mask('cell_mask', frames=mask_key)
+            cell_mask = self._read_mask('cell_mask', frames=list_frames)
             images = self.read_imgs(frames=frames)
         else:
             raise ValueError('frames argument not valid')
@@ -507,13 +483,14 @@ class SarcAsM(SarcAsMBase):
         if len(images.shape) == 2:
             images = np.expand_dims(images, 0)
 
-        n_imgs = len(images)
+        # per-frame arrays indexed by frame number (NaN for frames not analyzed), like every other
+        # per-frame structure result, so that analyze_z_bands / analyze_sarcomere_vectors can index
+        # them by frame when only a subset of frames is analyzed
+        n_stack = self.metadata.n_stack
+        cell_area, cell_area_ratio = np.full(n_stack, fill_value=np.nan), np.full(n_stack, fill_value=np.nan)
+        cell_mask_intensity = np.full(n_stack, fill_value=np.nan)
 
-        # create empty arrays
-        cell_area, cell_area_ratio = np.full(n_imgs, fill_value=np.nan), np.full(n_imgs, fill_value=np.nan)
-        cell_mask_intensity = np.full(n_imgs, fill_value=np.nan)
-
-        for i, (img_i, cell_mask_i) in enumerate(zip(images, cell_mask)):
+        for i, img_i, cell_mask_i in zip(list_frames, images, cell_mask):
             # binarize mask
             mask_i = cell_mask_i > threshold
 
@@ -587,10 +564,9 @@ class SarcAsM(SarcAsMBase):
                 list_frames = [int(frames)]
             else:
                 list_frames = [int(f) for f in frames]
-            mask_key = self._remap_mask_key(list_frames, _detected_frames)
-            zbands = self._read_mask('zbands', frames=mask_key)
+            zbands = self._read_mask('zbands', frames=list_frames)
             # orientation is stored (frames, 2, H, W) — index by frame like zbands.
-            orientation_field = self._read_mask('orientation', frames=mask_key)
+            orientation_field = self._read_mask('orientation', frames=list_frames)
             orientation_field = orientation_field.reshape(-1, 2, *orientation_field.shape[-2:])
             images = self.read_imgs(frames=frames)
         else:
@@ -873,14 +849,15 @@ class SarcAsM(SarcAsMBase):
             orientation_field = self._read_mask('orientation')
             sarcomere_mask = self._read_mask('sarcomere_mask')
         elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
-            z_bands = self._read_mask(zbands_name, frames=frames)
-            mbands = self._read_mask('mbands', frames=frames)
-            orientation_field = self._read_mask('orientation', frames=frames)
-            sarcomere_mask = self._read_mask('sarcomere_mask', frames=frames)
             if np.issubdtype(type(frames), np.integer):
-                list_frames = [frames]
+                list_frames = [int(frames)]
             else:
                 list_frames = [int(f) for f in frames]
+            # _read_mask maps movie frames to the pages of the sparsely stored 2D masks
+            z_bands = self._read_mask(zbands_name, frames=list_frames)
+            mbands = self._read_mask('mbands', frames=list_frames)
+            orientation_field = self._read_mask('orientation', frames=list_frames)
+            sarcomere_mask = self._read_mask('sarcomere_mask', frames=list_frames)
         else:
             raise ValueError('frames argument not valid')
         if len(z_bands.shape) == 2:
@@ -990,7 +967,7 @@ class SarcAsM(SarcAsMBase):
             sarcomere_area[frame_i] = (np.sum(sarcomere_mask_i > threshold_sarcomere_mask)
                                        * self.metadata.pixelsize ** 2)
             if 'structure.cell.mask_area' in self.data:
-                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['structure.cell.mask_area'][i]
+                sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['structure.cell.mask_area'][frame_i]
 
         vectors_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
                         'params.analyze_sarcomere_vectors.threshold_sarcomere_mask': threshold_sarcomere_mask,

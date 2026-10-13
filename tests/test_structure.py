@@ -545,7 +545,9 @@ def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path)
     assert sarc.data['params.analyze_cell_mask.frames'] == [0]
     area = np.asarray(sarc.data['structure.cell.mask_area'])
     ratio = np.asarray(sarc.data['structure.cell.mask_area_ratio'])
-    assert area.shape == (1,) and np.isfinite(area).all()
+    # per-frame arrays indexed by frame (NaN for frames not analyzed), like all structure results
+    assert area.shape == (sarc.metadata.n_stack,) and np.isfinite(area[0])
+    assert np.isnan(area[1:]).all()
     assert 0 < ratio[0] <= 1
     # still callable on its own, e.g. with another threshold
     sarc.analyze_cell_mask(frames=0, threshold=0.5)
