@@ -230,6 +230,14 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': '# Sarcomere vectors'
     },
+    'structure.sarcomere.n_vectors_removed': {
+        'description': 'Number of sarcomere vectors removed in each frame because their orientation '
+                       'deviates by more than max_neighbor_deviation from the vectors within '
+                       'neighbor_radius (false positives at crossings). np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': '# Sarcomere vectors removed'
+    },
     'structure.zbands.n': {
         'description': 'Number of Z-bands in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
@@ -238,7 +246,7 @@ structure_feature_dict = {
     },
     'structure.sarcomere.pos': {
         'description': 'Position (y, x) of each sarcomere vector in µm. '
-                       'List with np.ndarray of shape (2, n_vectors) for each frame.',
+                       'List with np.ndarray of shape (n_vectors, 2) for each frame.',
         'data type': list[np.ndarray],
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': 'Sarcomere vector position [µm]'
@@ -563,7 +571,7 @@ structure_feature_dict = {
     # --- 2D sarcomere-vector tracking (SarcAsM.track_sarcomere_vectors) ---
     'structure.sarcomere.pos_px': {
         'description': 'Midline pixel coordinates (y, x) of each sarcomere vector, in pixels. '
-                       'List with np.ndarray of shape (2, n_vectors) for each frame.',
+                       'List with np.ndarray of shape (n_vectors, 2) for each frame.',
         'data type': list[np.ndarray],
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': 'Sarcomere vector position [px]'

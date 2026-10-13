@@ -16,6 +16,7 @@
 from typing import Tuple, Union, List
 import numpy as np
 from scipy import ndimage
+from scipy.spatial import cKDTree
 from skimage import measure
 from skimage.morphology import disk, skeletonize
 
@@ -349,3 +350,89 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
 
     return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
             sarcomere_orientation_vectors, n_mbands)
+
+
+def neighbor_orientation_deviation(
+        pos: np.ndarray,
+        orientation: np.ndarray,
+        radius: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Deviation of each sarcomere vector from the mean orientation of its neighbours.
+
+    Parameters
+    ----------
+    pos : np.ndarray
+        Vector positions ``(n, 2)`` in µm.
+    orientation : np.ndarray
+        Vector orientations ``(n,)`` in radians. Orientations are axial: θ and
+        θ + π denote the same sarcomere axis.
+    radius : float
+        Neighbourhood radius in µm.
+
+    Returns
+    -------
+    deviation : np.ndarray
+        Axial deviation in degrees, in ``[0, 90]``, of each vector from the
+        circular mean orientation of the other vectors within ``radius``. NaN
+        for vectors without a neighbour.
+    n_neighbors : np.ndarray
+        Number of vectors within ``radius`` of each vector.
+    """
+    pos = np.asarray(pos, dtype=float).reshape(-1, 2)
+    theta = np.asarray(orientation, dtype=float).reshape(-1)
+    n = len(theta)
+    deviation = np.full(n, np.nan)
+    n_neighbors = np.zeros(n, dtype=np.int64)
+    valid = np.flatnonzero(np.isfinite(theta) & np.isfinite(pos).all(axis=1))
+    if len(valid) < 2:
+        return deviation, n_neighbors
+    pairs = cKDTree(pos[valid]).query_pairs(radius, output_type='ndarray')
+    if len(pairs) == 0:
+        return deviation, n_neighbors
+    i = valid[np.concatenate([pairs[:, 0], pairs[:, 1]])]
+    j = valid[np.concatenate([pairs[:, 1], pairs[:, 0]])]
+    # mean axis through the double-angle vector, which is the same point for θ and θ + π
+    mean_vector = np.zeros(n, dtype=complex)
+    np.add.at(mean_vector, i, np.exp(2j * theta[j]))
+    np.add.at(n_neighbors, i, 1)
+    has_neighbors = n_neighbors > 0
+    mean_theta = np.angle(mean_vector[has_neighbors]) / 2
+    deviation[has_neighbors] = np.degrees(
+        np.abs((theta[has_neighbors] - mean_theta + np.pi / 2) % np.pi - np.pi / 2))
+    return deviation, n_neighbors
+
+
+def filter_vectors_by_neighbors(
+        pos: np.ndarray,
+        orientation: np.ndarray,
+        neighbor_radius: float = 1.0,
+        max_neighbor_deviation: float = 30.0,
+) -> np.ndarray:
+    """Mark sarcomere vectors that point across their neighbours.
+
+    A vector whose orientation deviates by more than ``max_neighbor_deviation``
+    from the mean orientation of the vectors within ``neighbor_radius`` is a
+    false positive in nearly every case: an M-band fragment at the crossing of
+    differently oriented myofibrils, or a stray detection. Vectors without any
+    neighbour inside the radius are kept, so that short or thin but correct
+    M-bands are not penalised for the number of points detected on them.
+
+    Parameters
+    ----------
+    pos : np.ndarray
+        Vector positions ``(n, 2)`` in µm.
+    orientation : np.ndarray
+        Vector orientations ``(n,)`` in radians.
+    neighbor_radius : float, optional
+        Neighbourhood radius in µm. Default is 1.0.
+    max_neighbor_deviation : float, optional
+        Largest tolerated deviation from the neighbours' mean orientation, in
+        degrees. Default is 30.0.
+
+    Returns
+    -------
+    keep : np.ndarray
+        Boolean mask, True for the vectors to keep.
+    """
+    deviation, _ = neighbor_orientation_deviation(pos, orientation, neighbor_radius)
+    return ~(deviation > max_neighbor_deviation)

@@ -232,6 +232,7 @@ class Export:
                               'structure.myofibril.straightness_mean', 'structure.myofibril.straightness_std',
                               'structure.sarcomere.area', 'structure.sarcomere.area_ratio', 'structure.sarcomere.slen_mean',
                               'structure.sarcomere.slen_std', 'structure.sarcomere.oop', 'structure.zbands.n', 'structure.sarcomere.n_mbands', 'structure.sarcomere.n_vectors',
+                              'structure.sarcomere.n_vectors_removed',
                               'structure.zbands.intensity_mean', 'structure.zbands.intensity_std', 'structure.zbands.lat_alignment_mean',
                               'structure.zbands.lat_alignment_std', 'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std', 'structure.zbands.lat_length_groups_mean',
                               'structure.zbands.lat_neighbors_mean', 'structure.zbands.lat_neighbors_std', 'structure.zbands.length_max',

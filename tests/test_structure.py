@@ -554,6 +554,28 @@ def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path)
     assert sarc.data['params.analyze_cell_mask.threshold'] == 0.5
 
 
+def test_neighbor_filter_counts_add_up(structure_crop_file_path):
+    """Kept + removed vectors equal the unfiltered count; the filter is on by default and recorded."""
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames=0)
+    sarc.analyze_sarcomere_vectors(frames=0, max_neighbor_deviation=None)
+    n_all = sarc.data['structure.sarcomere.n_vectors'][0]
+    assert sarc.data['structure.sarcomere.n_vectors_removed'][0] == 0
+    assert sarc.data['params.analyze_sarcomere_vectors.max_neighbor_deviation'] is None
+
+    sarc.analyze_sarcomere_vectors(frames=0)
+    n_kept = sarc.data['structure.sarcomere.n_vectors'][0]
+    n_removed = sarc.data['structure.sarcomere.n_vectors_removed'][0]
+    assert n_kept + n_removed == n_all and n_removed >= 0
+    for key in ('pos', 'pos_px', 'slen', 'orientation', 'midline_id', 'midline_length'):
+        assert len(sarc.data[f'structure.sarcomere.{key}'][0]) == n_kept, key
+    assert sarc.data['params.analyze_sarcomere_vectors.neighbor_radius'] == 1.0
+    assert sarc.data['params.analyze_sarcomere_vectors.max_neighbor_deviation'] == 30.0
+    # per-frame result indexed by frame, NaN where not analysed
+    removed = np.asarray(sarc.data['structure.sarcomere.n_vectors_removed'])
+    assert removed.shape == (sarc.metadata.n_stack,) and np.isnan(removed[1:]).all()
+
+
 def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
     """Sarcomere orientations live on [0, π): the per-frame mean must be the double-angle
     (axial) mean, not a circular mean on the full circle, which averages θ and θ + π

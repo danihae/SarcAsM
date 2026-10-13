@@ -343,3 +343,80 @@ def test_smooth_orientation_single_frame_noop():
     one = _field_from_angle(0.5)[np.newaxis]  # (1, 2, H, W)
     out = sv.smooth_orientation_field_temporal(one, sigma=2.0)
     np.testing.assert_array_equal(out, one)
+
+
+# --- neighbourhood outlier filter -------------------------------------------
+
+def _comb(n_bands: int = 3, n_points: int = 20, theta: float = np.pi / 2,
+          spacing: float = 0.1, band_gap: float = 1.8):
+    """Vectors on ``n_bands`` parallel M-bands, one per pixel along each band.
+
+    Positions are in µm: points ``spacing`` apart along a band (one midline
+    pixel each, like the real output), bands ``band_gap`` apart. Every vector
+    carries the same axial orientation ``theta``.
+    """
+    rows = np.repeat(np.arange(n_bands) * band_gap, n_points)
+    cols = np.tile(np.arange(n_points) * spacing, n_bands)
+    pos = np.stack([rows, cols], axis=1)
+    return pos, np.full(len(pos), theta)
+
+
+def test_neighbor_filter_keeps_a_parallel_comb():
+    pos, theta = _comb()
+    dev, n_nb = sv.neighbor_orientation_deviation(pos, theta, radius=1.0)
+    assert n_nb.min() >= 1 and np.nanmax(dev) < 1e-9
+    assert sv.filter_vectors_by_neighbors(pos, theta).all()
+
+
+def test_neighbor_filter_removes_the_one_vector_pointing_across_its_neighbours():
+    pos, theta = _comb()
+    theta = theta.copy()
+    theta[10] += np.radians(60)  # one point of the first band points 60° off
+    keep = sv.filter_vectors_by_neighbors(pos, theta, neighbor_radius=1.0, max_neighbor_deviation=30.0)
+    assert not keep[10]
+    assert keep.sum() == len(pos) - 1, 'its neighbours must survive the outlier in their mean'
+
+
+def test_neighbor_filter_keeps_vectors_without_neighbours():
+    """A vector with nobody inside the radius cannot be judged and is kept, whatever it points at."""
+    pos, theta = _comb()
+    pos = np.vstack([pos, [[10.0, 10.0]]])
+    theta = np.append(theta, 0.0)  # 90° off the comb, but 10 µm away from it
+    dev, n_nb = sv.neighbor_orientation_deviation(pos, theta, radius=1.0)
+    assert n_nb[-1] == 0 and np.isnan(dev[-1])
+    assert sv.filter_vectors_by_neighbors(pos, theta)[-1]
+
+
+def test_neighbor_deviation_is_axial():
+    """θ and θ + π are the same sarcomere axis; the deviation runs 0–90°."""
+    pos, theta = _comb(n_bands=1, theta=0.3)
+    flipped = theta.copy(); flipped[5] += np.pi
+    dev, _ = sv.neighbor_orientation_deviation(pos, flipped, radius=1.0)
+    assert dev[5] < 1e-9
+    crossed = theta.copy(); crossed[5] += np.pi / 2
+    dev, _ = sv.neighbor_orientation_deviation(pos, crossed, radius=1.0)
+    np.testing.assert_allclose(dev[5], 90.0, atol=1e-9)
+
+
+def test_neighbor_radius_is_in_micrometres():
+    pos = np.array([[0.0, 0.0], [0.0, 0.9]])
+    theta = np.array([0.0, np.pi / 2])
+    _, n_nb = sv.neighbor_orientation_deviation(pos, theta, radius=1.0)
+    assert n_nb.tolist() == [1, 1]
+    _, n_nb = sv.neighbor_orientation_deviation(pos, theta, radius=0.5)
+    assert n_nb.tolist() == [0, 0]
+    # both vectors point 90° across each other: at 1 µm both go, at 0.5 µm both stay
+    assert not sv.filter_vectors_by_neighbors(pos, theta, neighbor_radius=1.0).any()
+    assert sv.filter_vectors_by_neighbors(pos, theta, neighbor_radius=0.5).all()
+
+
+def test_neighbor_filter_degenerate_inputs():
+    assert sv.filter_vectors_by_neighbors(np.empty((0, 2)), np.empty(0)).shape == (0,)
+    assert sv.filter_vectors_by_neighbors(np.zeros((1, 2)), np.zeros(1)).tolist() == [True]
+    # a vector with an undefined orientation neither counts for its neighbours nor is dropped
+    pos, theta = _comb(n_bands=1)
+    theta = theta.copy(); theta[3] = np.nan
+    dev, n_nb = sv.neighbor_orientation_deviation(pos, theta, radius=1.0)
+    assert np.isnan(dev[3]) and n_nb[3] == 0
+    assert np.isfinite(dev[[2, 4]]).all() and np.nanmax(dev) < 1e-9
+    assert sv.filter_vectors_by_neighbors(pos, theta).all()

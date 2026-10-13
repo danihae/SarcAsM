@@ -8,6 +8,14 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Added
 
+- `analyze_sarcomere_vectors` removes false-positive sarcomere vectors. A vector whose
+  orientation deviates by more than `max_neighbor_deviation` (default 30°) from the mean
+  orientation of the vectors within `neighbor_radius` (default 1 µm) is dropped; these are
+  M-band fragments pointing across their neighbours, mostly at crossings of differently
+  oriented myofibrils. Vectors without a neighbour inside the radius are always kept, so
+  thin or short M-bands are not affected. The number removed per frame is stored as
+  `structure.sarcomere.n_vectors_removed`; `max_neighbor_deviation=None` keeps every
+  vector. The same settings are in the app's vector parameters and in batch processing.
 - `Plots.plot_track_vectors` draws every tracked sarcomere of a frame as its Z-band-to-Z-band
   segment, coloured by length, length change, velocity, track coverage or group. `Animations`
   turns the same drawing into movies: `animate_image` (raw movie and Z-band masks side by
@@ -109,6 +117,14 @@ A breaking major release. Analyses produced by 0.5.x cannot be read by 1.0 — i
 
 ### Added
 
+- `analyze_sarcomere_vectors` removes false-positive sarcomere vectors. A vector whose
+  orientation deviates by more than `max_neighbor_deviation` (default 30°) from the mean
+  orientation of the vectors within `neighbor_radius` (default 1 µm) is dropped; these are
+  M-band fragments pointing across their neighbours, mostly at crossings of differently
+  oriented myofibrils. Vectors without a neighbour inside the radius are always kept, so
+  thin or short M-bands are not affected. The number removed per frame is stored as
+  `structure.sarcomere.n_vectors_removed`; `max_neighbor_deviation=None` keeps every
+  vector. The same settings are in the app's vector parameters and in batch processing.
 - **2D full-field sarcomere tracking** (`SarcAsM.track_sarcomere_vectors`): every
   sarcomere vector followed through the movie with exact per-frame assignment, honest
   gap frames (`motion.tracks.observed`) and a fragmentation-ratio QC number.
