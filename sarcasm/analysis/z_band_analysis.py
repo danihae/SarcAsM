@@ -22,8 +22,12 @@ from scipy.spatial.distance import squareform, pdist
 from skimage import segmentation, morphology
 from skimage.measure import label, regionprops_table
 from skimage.morphology import skeletonize
+from skimage.draw import line as draw_line
 
 from sarcasm.utils import Utils
+
+# length (µm) of skeleton behind a Z-band end that sets the direction of that end
+END_DIRECTION_LENGTH = 0.5
 
 
 def segment_z_bands(image: np.ndarray, threshold: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
@@ -56,7 +60,7 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
                     pixelsize: float, min_length: float = 1.0, threshold: float = 0.5,
                     median_filter_radius: float = 0.25,
                     a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
-                    d_min: float = 0.25) -> Tuple:
+                    d_min: float = 0.25, max_axial_offset: float = 0.9) -> Tuple:
     """
     Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
     straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
@@ -91,6 +95,10 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         Maximum distance between z-band ends in µm; larger distances are set to NaN. Default is 4.0.
     d_min : float, optional
         Minimum distance between z-band ends in µm; smaller distances are set to NaN. Default is 0.25.
+    max_axial_offset : float or None, optional
+        Maximum offset in µm of a lateral connection along the sarcomere axis (perpendicular to the Z-bands).
+        A connection continues a Z-band across a gap; one offset by about half a sarcomere or more reaches the
+        next Z-band of the neighbouring myofibril instead. None disables the limit. Default is 0.9.
 
     Returns
     -------
@@ -199,6 +207,19 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
                 orientation_ends_i[0] = (orientation_ends_i[0] + np.pi) % (2 * np.pi) - np.pi
                 orientation_ends_i[1] = (orientation_ends_i[1] + np.pi) % (2 * np.pi) - np.pi
 
+                # direction of each end from the z-band's own skeleton (outwards over its last END_DIRECTION_LENGTH),
+                # since the orientation field is least defined at z-band ends; the field direction is kept where
+                # less than one pixel of skeleton lies behind the end
+                skel_px = np.asarray(np.where(skel_bool), dtype=float)
+                skel_px[0] += props['bbox-0'][i] - pad_width
+                skel_px[1] += props['bbox-1'][i] - pad_width
+                for k in (0, 1):
+                    end_k = z_ends_i[:, k].astype(float)
+                    near = skel_px[:, np.hypot(*(skel_px - end_k[:, None])) <= END_DIRECTION_LENGTH / pixelsize]
+                    v = end_k - near.mean(axis=1)
+                    if np.hypot(*v) >= 1.0:
+                        orientation_ends_i[k] = np.arctan2(v[1], v[0])
+
                 z_orientation[i] = orientation_ends_i
                 z_ends[i] = z_ends_i.T * pixelsize
 
@@ -219,13 +240,10 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         _z_ends = np.reshape(z_ends, (n_z * 2, 2), order='F')
         D = squareform(pdist(_z_ends, 'euclidean'))
 
-        # Set NaNs for specified indices (ends of same objects) and the lower triangle
-        indices = np.arange(0, n_z * 2, 2)
-        mask = np.ones((n_z * 2, n_z * 2))
-        mask[indices, indices] = 0
-        mask[indices, indices + 1] = 0
-        mask[indices + 1, indices] = 0
-        mask[indices + 1, indices + 1] = 0
+        # Set NaNs for the two ends of the same z-band (row z + n_z * end in the Fortran-order reshape above) and
+        # the lower triangle
+        z_of_end = np.tile(np.arange(n_z), 2)
+        mask = np.where(z_of_end[:, None] == z_of_end[None, :], 0.0, 1.0)
         mask[np.tril(mask) > 0] = np.nan
 
         # filter distance matrix
@@ -240,6 +258,25 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         for (i, j) in _idxs.T:
             A_ij = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
             A[i, j] = A_ij if A_ij >= a_min else np.nan
+        D[np.isnan(A)] = np.nan
+
+        # a lateral connection continues a z-band across a gap: reject candidates offset along the sarcomere axis by
+        # more than max_axial_offset (they reach the next z-band of the neighbouring myofibril) and candidates whose
+        # straight segment runs over a third z-band
+        for (i, j) in np.asarray(np.where(~np.isnan(A))).T:
+            d = _z_ends[j] - _z_ends[i]
+            ref = np.array([np.cos(_z_orientation[i]) - np.cos(_z_orientation[j]),
+                            np.sin(_z_orientation[i]) - np.sin(_z_orientation[j])])   # z-band line, end i outwards
+            norm = np.hypot(*ref)
+            if max_axial_offset is not None and (not norm > 0 or
+                                                 abs(d[0] * ref[1] - d[1] * ref[0]) / norm > max_axial_offset):
+                A[i, j] = np.nan
+                continue
+            rr, cc = draw_line(*np.round(_z_ends[i] / pixelsize).astype(int), *np.round(_z_ends[j] / pixelsize).astype(int))
+            inside = (rr >= 0) & (rr < labels.shape[0]) & (cc >= 0) & (cc < labels.shape[1])
+            crossed = np.unique(labels[rr[inside], cc[inside]])
+            if np.any((crossed != 0) & (crossed != i % n_z + 1) & (crossed != j % n_z + 1)):
+                A[i, j] = np.nan
         D[np.isnan(A)] = np.nan
 
         # make matrices symmetric for undirected graph

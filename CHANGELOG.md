@@ -23,8 +23,24 @@ All notable changes to SarcAsM are documented here. The format follows
   above grouped time series with a time cursor); `.mp4` needs ffmpeg (system or
   `imageio-ffmpeg`), `.gif` works without.
 
+### Changed
+
+- Lateral Z-band connections (`analyze_z_bands`) no longer join staggered Z-bands. A connection
+  continues a Z-band across a gap, so a pair of Z-band ends is not linked when the link is offset
+  along the sarcomere axis by more than `max_axial_offset` (new parameter, default 0.9 µm, about
+  half a sarcomere: such a link reaches the next Z-band of the neighbouring myofibril) or when its
+  straight segment runs over a third Z-band. The direction of each Z-band end is now taken from
+  the Z-band's own skeleton over its last 0.5 µm instead of from the orientation field at the end
+  pixel, where the field is least defined. On ten 8-day control movies, links offset by more than
+  0.9 µm drop from 25 % to 5 % and links over a third Z-band from 2 % to 0; lateral groups are
+  about 20 % shorter. `max_axial_offset=None` turns the offset limit off. The setting is in the
+  app's Z-band parameters and in batch processing.
+
 ### Fixed
 
+- The two ends of one Z-band are excluded from lateral linking again. The exclusion mask paired
+  rows (2k, 2k + 1) of the list of Z-band ends, which is stored in Fortran order, so it excluded
+  end pairs of two different Z-bands and let a curved Z-band link to itself.
 - Myofibril line growth could run forever: the growth loop had no memory of the points it had
   already passed, so a ring of vectors whose predicted steps lead back onto the line (crossings,
   branch points) was walked round and round until the process was killed. 4 of 864 movies of a

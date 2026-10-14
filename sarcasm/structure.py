@@ -512,7 +512,7 @@ class SarcAsM(SarcAsMBase):
 
     def analyze_z_bands(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
-                        a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0,
+                        a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0, max_axial_offset: float = 0.9,
                         progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
@@ -545,6 +545,11 @@ class SarcAsM(SarcAsMBase):
         d_min : float, optional
             Minimal distance between z-band ends in µm; pairs closer than this are
             not connected. Default is 0.0.
+        max_axial_offset : float or None, optional
+            Maximal offset in µm of a lateral connection along the sarcomere axis
+            (perpendicular to the z-bands); a connection offset by about half a
+            sarcomere or more reaches the next z-band of the neighbouring myofibril.
+            None disables the limit. Default is 0.9.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
@@ -624,7 +629,7 @@ class SarcAsM(SarcAsMBase):
                 pixelsize=self.metadata.pixelsize, threshold=threshold,
                 min_length=min_length, median_filter_radius=median_filter_radius,
                 a_min=a_min, theta_phi_min=theta_phi_min,
-                d_max=d_max, d_min=d_min
+                d_max=d_max, d_min=d_min, max_axial_offset=max_axial_offset
             )
 
             (
@@ -701,7 +706,7 @@ class SarcAsM(SarcAsMBase):
                        'params.analyze_z_bands.frames': list_frames, 'params.analyze_z_bands.threshold': threshold,
                        'params.analyze_z_bands.min_length': min_length, 'params.analyze_z_bands.median_filter_radius': median_filter_radius,
                        'params.analyze_z_bands.theta_phi_min': theta_phi_min, 'params.analyze_z_bands.d_max': d_max,
-                       'params.analyze_z_bands.d_min': d_min}
+                       'params.analyze_z_bands.d_min': d_min, 'params.analyze_z_bands.max_axial_offset': max_axial_offset}
         self.data.update(z_band_data)
         if self.auto_save:
             self.store_structure_data()
