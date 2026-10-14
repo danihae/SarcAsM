@@ -33,6 +33,7 @@ Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tibur
 - [Contributing](#contributing)
 - [Support](#support)
 - [Citation](#citation)
+- [AI-assisted development](#ai-assisted-development)
 - [License](#license)
 
 ## Features
@@ -202,6 +203,10 @@ If you encounter any issues, have questions, or want to suggest improvements:
 If you use SarcAsM in your research, please cite our preprint for now (peer-reviewed publication will follow):
 
 Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tiburcy, Branimir Berecic, et al. 2025. “SarcAsM: AI-Based Multiscale Analysis of Sarcomere Organization and Contractility in Cardiomyocytes.” bioRxiv. https://doi.org/10.1101/2025.04.29.650605.
+
+## AI-assisted development
+
+SarcAsM was designed and written by Daniel Härtter. In the development of SarcAsM 1.0, an AI coding assistant (Claude Code, Anthropic) was used under the direction of the author for refactoring, performance optimization, test development and code review. All algorithms and results were verified by the authors, who take full responsibility for the software and its output.
 
 ## License
 
