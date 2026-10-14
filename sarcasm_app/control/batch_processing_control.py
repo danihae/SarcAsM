@@ -365,7 +365,9 @@ class BatchProcessingControl:
                                      threshold=model.parameters.get_parameter(
                                          'structure.z_band_analysis.threshold').get_value(),
                                      min_length=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.min_length').get_value())
+                                         'structure.z_band_analysis.min_length').get_value(),
+                                     max_axial_offset=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.max_axial_offset').get_value())
 
         # careful this method highly depends on pixel size setting
         if model.parameters.get_parameter('batch.do_vectors').get_value():

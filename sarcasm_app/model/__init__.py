@@ -118,6 +118,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.z_band_analysis.a_min').set_value(0.3)
         self.__parameters.get_parameter(name='structure.z_band_analysis.d_max').set_value(3.0)
         self.__parameters.get_parameter(name='structure.z_band_analysis.d_min').set_value(0.00)
+        self.__parameters.get_parameter(name='structure.z_band_analysis.max_axial_offset').set_value(0.9)
 
 
         self.__parameters.get_parameter(name='structure.vectors.radius').set_value(0.25)
@@ -241,6 +242,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.z_band_analysis.a_min')
         self.__parameters.set_parameter(name='structure.z_band_analysis.d_max')
         self.__parameters.set_parameter(name='structure.z_band_analysis.d_min')
+        self.__parameters.set_parameter(name='structure.z_band_analysis.max_axial_offset')
 
 
         self.__parameters.set_parameter(name='structure.vectors.radius')

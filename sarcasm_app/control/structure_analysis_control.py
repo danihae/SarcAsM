@@ -218,6 +218,8 @@ class StructureAnalysisControl:
                                      name='structure.z_band_analysis.d_max').get_value(),
                                  d_min=m.parameters.get_parameter(
                                      name='structure.z_band_analysis.d_min').get_value(),
+                                 max_axial_offset=m.parameters.get_parameter(
+                                     name='structure.z_band_analysis.max_axial_offset').get_value(),
                                  progress_notifier=progress_notifier)
             pass
 
@@ -468,6 +470,8 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.z_band_analysis.a_min').connect(widget.dsb_z_band_a_min)
         parameters.get_parameter(name='structure.z_band_analysis.d_max').connect(widget.dsb_z_band_d_max)
         parameters.get_parameter(name='structure.z_band_analysis.d_min').connect(widget.dsb_z_band_d_min)
+        parameters.get_parameter(name='structure.z_band_analysis.max_axial_offset').connect(
+            widget.dsb_z_band_max_axial_offset)
 
         parameters.get_parameter(name='structure.vectors.radius').connect(widget.dsb_vectors_radius)
         parameters.get_parameter(name='structure.vectors.line_width').connect(widget.dsb_vectors_line_width)

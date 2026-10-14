@@ -618,7 +618,33 @@
         </property>
        </widget>
       </item>
-      <item row="8" column="0" colspan="2">
+      <item row="8" column="0">
+       <widget class="QLabel" name="label_z_band_max_axial_offset">
+        <property name="toolTip">
+         <string>Maximal offset of a lateral connection along the sarcomere axis (in µm). A connection offset by about half a sarcomere or more reaches the next z-band of the neighbouring myofibril and is not made. Default is 0.9.</string>
+        </property>
+        <property name="text">
+         <string>Max. axial offset [µm]</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QDoubleSpinBox" name="dsb_z_band_max_axial_offset">
+        <property name="toolTip">
+         <string>Maximal offset of a lateral connection along the sarcomere axis (in µm). A connection offset by about half a sarcomere or more reaches the next z-band of the neighbouring myofibril and is not made. Default is 0.9.</string>
+        </property>
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>9999999.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.100000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0" colspan="2">
        <widget class="QPushButton" name="btn_structure_z_band">
         <property name="enabled">
          <bool>true</bool>
