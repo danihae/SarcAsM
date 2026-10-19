@@ -149,7 +149,8 @@ structure_feature_dict = {
     },
     'structure.domain.members': {
         'description': 'Set of sarcomere vectors of each sarcomere domain. List with list of np.arrays for each frame, '
-                       'storing the indices of sarcomere vectors for each domain.',
+                       'storing the indices of sarcomere vectors for each domain, in the order of the per-domain '
+                       'arrays and of the domain mask labels.',
         'data type': list[list[np.ndarray]],
         'function': 'SarcAsM.analyze_sarcomere_domains',
         'name': 'Sarcomere domains'

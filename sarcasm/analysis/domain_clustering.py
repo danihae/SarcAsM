@@ -76,7 +76,9 @@ def cluster_sarcomeres(pos_vectors: np.ndarray,
     n_domains : int
         Number of domains.
     domains : list
-        List of domain sets, each holding point indices.
+        Point indices of each domain that passed the size filters, in the order of the per-domain arrays and of
+        the mask labels (label k + 1 = ``domains[k]``); clusters below ``area_min`` or with at most 10 vectors are
+        left out.
     area_domains : np.ndarray
         Domain areas in µm².
     sarcomere_length_mean_domains : np.ndarray
@@ -178,11 +180,15 @@ def cluster_sarcomeres(pos_vectors: np.ndarray,
 
     (mask_domains, area_domains, sarcomere_length_mean_domains,
      sarcomere_length_std_domains, sarcomere_oop_domains,
-     sarcomere_orientation_domains) = analyze_domains(domains, pos_vectors,
-                                                      sarcomere_orientation_vectors,
-                                                      sarcomere_length_vectors, size=size,
-                                                      pixelsize=pixelsize,
-                                                      dilation_radius=dilation_radius, area_min=area_min)
+     sarcomere_orientation_domains, kept) = analyze_domains(domains, pos_vectors,
+                                                            sarcomere_orientation_vectors,
+                                                            sarcomere_length_vectors, size=size,
+                                                            pixelsize=pixelsize,
+                                                            dilation_radius=dilation_radius, area_min=area_min,
+                                                            return_kept=True)
+    # keep only the domains that passed the size filters, in label order, so that the member lists line up with
+    # the per-domain arrays and with the labels of the mask (label k + 1 = domains[k])
+    domains = [domains[i] for i in kept]
 
     area_domains = np.asarray(area_domains)
     sarcomere_length_mean_domains = np.asarray(sarcomere_length_mean_domains)
@@ -257,7 +263,8 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
                     size: Tuple[int, int],
                     pixelsize: float,
                     dilation_radius: float,
-                    area_min: float):
+                    area_min: float,
+                    return_kept: bool = False):
     """
     Create an integer-labeled domain mask and analyze the individual domains.
 
@@ -279,6 +286,9 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
         Dilation radius in µm for refining domain masks.
     area_min : float
         Minimal domain area in µm²; smaller domains are discarded.
+    return_kept : bool, optional
+        Also return the indices (into ``domains``) of the domains that were kept, in label order
+        (label k + 1 = ``domains[kept[k]]``). Default is False.
 
     Returns
     -------
@@ -300,6 +310,7 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
      sarcomere_length_std_domains) = [], [], [], [], []
 
     mask_domains = np.zeros(size, dtype='uint16')
+    kept = []
 
     j = 1
     for i, domain_i in enumerate(domains):
@@ -324,6 +335,7 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
                                    dilation_radius=dilation_radius)
             area_i = np.sum(mask_i) * pixelsize ** 2
             if area_i >= area_min:
+                kept.append(i)
                 ind_i = np.where(mask_i)
                 ind_i = (ind_i[0] + min_i[0], ind_i[1] + min_i[1])
                 mask_domains[ind_i] = j
@@ -336,8 +348,9 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
                 sarcomere_orientation_domains.append(angle)
                 j += 1
 
-    return (mask_domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
-            sarcomere_oop_domains, sarcomere_orientation_domains)
+    out = (mask_domains, area_domains, sarcomere_length_mean_domains, sarcomere_length_std_domains,
+           sarcomere_oop_domains, sarcomere_orientation_domains)
+    return out + (kept,) if return_kept else out
 
 
 def assign_vectors_to_domains(pos_vectors: np.ndarray,

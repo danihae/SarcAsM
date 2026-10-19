@@ -6,6 +6,14 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `structure.domain.members` held every Leiden cluster of a frame, including those that the size filters
+  (`area_min`, more than 10 vectors) removed, so it did not line up with `structure.domain.area`, `slen`,
+  `oop`, `orientation` and the domain mask (e.g. 135 member lists for 20 domains), and the per-domain
+  Z-band registry was averaged over all clusters. It now holds only the domains that passed, in label order.
+  The domain masks drawn by the plots and the app and the domain grouping of tracks are unchanged.
+
 ## [1.0.0b2] — 2026-10-19
 
 ### Added

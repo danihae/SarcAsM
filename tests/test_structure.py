@@ -296,6 +296,12 @@ class TestStructureIntegration:
         assert 'structure.myofibril.length' in sarc.data
         assert 'structure.domain.members' in sarc.data
         assert sarc.metadata.user_info['experiment_type'] == 'single_image'
+        # the member lists line up with every per-domain array (only domains that passed the size filters)
+        f = sarc.data['params.analyze_sarcomere_domains.frames'][0]
+        n = int(sarc.data['structure.domain.n'][f])
+        assert len(sarc.data['structure.domain.members'][f]) == n
+        for key in ('area', 'slen', 'oop', 'orientation', 'registry_lateral', 'registry_axial'):
+            assert len(sarc.data[f'structure.domain.{key}'][f]) == n, key
 
     @pytest.mark.slow
     @pytest.mark.integration
