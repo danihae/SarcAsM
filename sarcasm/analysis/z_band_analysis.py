@@ -13,7 +13,7 @@
 
 """Z-band segmentation and analysis module."""
 
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 import numpy as np
 import networkx as nx
 from scipy import ndimage
@@ -28,6 +28,97 @@ from sarcasm.utils import Utils
 
 # length (µm) of skeleton behind a Z-band end that sets the direction of that end
 END_DIRECTION_LENGTH = 0.5
+# width (µm) of the ring of non-Z-band pixels around a Z-band that its contrast is measured against
+CONTRAST_RING_WIDTH = 1.0
+# smallest ring area (µm²) a Z-band contrast is computed from
+CONTRAST_MIN_RING_AREA = 0.1
+# smallest fraction of a frame outside the cell mask whose median is taken as the background
+MIN_BACKGROUND_FRACTION = 0.005
+
+
+def estimate_background(image: np.ndarray, cell_mask: Optional[np.ndarray] = None) -> float:
+    """
+    Background intensity of a frame (camera offset plus medium): the median of the pixels outside the cell mask.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Raw image.
+    cell_mask : np.ndarray or None, optional
+        Binary cell mask. Default is None.
+
+    Returns
+    -------
+    float
+        Median intensity outside the cell mask; NaN without a cell mask or when cells cover all but
+        ``MIN_BACKGROUND_FRACTION`` of the frame.
+    """
+    if cell_mask is None:
+        return np.nan
+    outside = np.asarray(image)[~np.asarray(cell_mask, dtype=bool)]
+    if outside.size == 0 or outside.size < MIN_BACKGROUND_FRACTION * np.size(image):
+        return np.nan
+    return float(np.median(outside))
+
+
+def z_band_contrast(labels: np.ndarray, z_mask: np.ndarray, image: np.ndarray, pixelsize: float,
+                    background: float, ring_width: float = CONTRAST_RING_WIDTH,
+                    cell_mask: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Ratiometric contrast of each Z-band against the non-Z-band pixels around it.
+
+    The contrast of a Z-band is (mean intensity of the Z-band - background) / (mean intensity of its ring -
+    background). The ring of a Z-band is the non-Z-band pixels within ``ring_width`` µm whose nearest Z-band
+    pixel belongs to it, so neighbouring Z-bands split the space between them; pixels nearest to a Z-band pixel
+    without a label (too short), and pixels outside the cell mask, belong to no ring.
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        Labelled Z-bands, 1..n.
+    z_mask : np.ndarray
+        Binary mask of all Z-band pixels, labelled or not.
+    image : np.ndarray
+        Raw image.
+    pixelsize : float
+        Pixel size in µm.
+    background : float
+        Background intensity of the frame.
+    ring_width : float, optional
+        Width of the ring in µm. Default is ``CONTRAST_RING_WIDTH``.
+    cell_mask : np.ndarray or None, optional
+        Binary cell mask; ring pixels outside it are left out. None keeps all. Default is None.
+
+    Returns
+    -------
+    contrast : np.ndarray
+        Contrast of each Z-band, shape (n,). NaN where the ring is smaller than ``CONTRAST_MIN_RING_AREA`` or
+        not brighter than the background.
+    surround : np.ndarray
+        Mean intensity of the ring of each Z-band minus the background, shape (n,): the denominator of the
+        contrast. NaN where the ring is smaller than ``CONTRAST_MIN_RING_AREA``.
+    """
+    n = int(labels.max()) if labels.size else 0
+    if n == 0:
+        return np.zeros(0), np.zeros(0)
+    in_z = np.asarray(z_mask, dtype=bool) | (labels > 0)
+    dist, (rr, cc) = ndimage.distance_transform_edt(~in_z, return_indices=True)
+    ring = labels[rr, cc]                                       # label of the nearest Z-band pixel
+    ring[in_z | (dist > ring_width / pixelsize)] = 0
+    if cell_mask is not None:
+        ring[~np.asarray(cell_mask, dtype=bool)] = 0
+    img = np.asarray(image, dtype=np.float64).ravel()
+    lab, ring = labels.ravel(), ring.ravel()
+    n_z = np.bincount(lab, minlength=n + 1)[1:]
+    n_ring = np.bincount(ring, minlength=n + 1)[1:]
+    with np.errstate(invalid='ignore', divide='ignore'):
+        mean_z = np.bincount(lab, weights=img, minlength=n + 1)[1:] / n_z
+        surround = np.bincount(ring, weights=img, minlength=n + 1)[1:] / n_ring - background
+        contrast = (mean_z - background) / surround
+    small = n_ring * pixelsize ** 2 < CONTRAST_MIN_RING_AREA
+    surround[small] = np.nan
+    contrast[small | ~(surround > 0)] = np.nan
+    return contrast, surround
 
 
 def segment_z_bands(image: np.ndarray, threshold: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
@@ -60,11 +151,12 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
                     pixelsize: float, min_length: float = 1.0, threshold: float = 0.5,
                     median_filter_radius: float = 0.25,
                     a_min: float = 0.3, theta_phi_min: float = 0.2, d_max: float = 4.0,
-                    d_min: float = 0.25, max_axial_offset: float = 0.9) -> Tuple:
+                    d_min: float = 0.25, max_axial_offset: float = 0.9,
+                    background: Optional[float] = None, cell_mask: Optional[np.ndarray] = None) -> Dict:
     """
-    Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, orientation,
-    straightness, lateral distance, alignment, number of lateral neighbors per z-band, and characteristics of
-    groups of lateral z-bands (length, alignment, size).
+    Analyzes segmented z-bands in a single frame, extracting metrics such as length, intensity, ratiometric
+    contrast, orientation, lateral distance, number of lateral neighbors per z-band, and the length of groups of
+    laterally connected z-bands.
 
     Parameters
     ----------
@@ -87,7 +179,9 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
     median_filter_radius : float, optional
         Radius in µm of the kernel smoothing the orientation field. Default is 0.25.
     a_min : float, optional
-        Minimum lateral alignment; links with smaller alignment are set to NaN. Default is 0.3.
+        Minimum linking score of two z-band ends (product of the cosines between the two end directions and
+        between each end direction and the connecting line, 0-1); pairs with a smaller score are not linked.
+        Default is 0.3.
     theta_phi_min : float, optional
         Minimum cosine between a z-band end's direction and the line from that end to
         the other z-band's end. Default is 0.2.
@@ -99,16 +193,22 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         Maximum offset in µm of a lateral connection along the sarcomere axis (perpendicular to the Z-bands).
         A connection continues a Z-band across a gap; one offset by about half a sarcomere or more reaches the
         next Z-band of the neighbouring myofibril instead. None disables the limit. Default is 0.9.
+    background : float or None, optional
+        Background intensity of the raw image (camera offset plus medium), subtracted before the contrast
+        ratio is taken; see :func:`estimate_background`. None takes the 1st percentile of the image.
+        Default is None.
+    cell_mask : np.ndarray or None, optional
+        Binary cell mask; the rings of the contrast are restricted to it. Default is None.
 
     Returns
     -------
-    tuple
-        Arrays and values describing the analyzed z-band properties, in order:
-        lengths, intensities, straightness, average mask intensity, mask area,
-        orientations, orientational order parameter, list of z-band labels, processed
-        labels image, number of lateral neighbors, lateral distances, lateral
-        alignments, links between z-band ends, coordinates of z-band ends, linked
-        groups of z-bands, and their sizes, lengths, and alignments.
+    dict
+        ``length`` (µm), ``intensity`` (mean raw intensity), ``contrast`` and ``surround`` (see
+        :func:`z_band_contrast`) of each z-band; ``mask_intensity``, ``mask_area`` (µm²) of the z-band mask; ``orientation`` of each z-band
+        and their orientational order parameter ``oop``; ``labels_list`` and the relabelled ``labels`` image;
+        ``lat_neighbors`` (number of lateral neighbors of each z-band), ``lat_dist`` (µm) of the lateral links,
+        ``links`` between z-band ends and the ``ends`` (µm) of each z-band; ``lat_groups`` (laterally linked
+        groups of z-bands) with their lengths ``lat_length_groups`` (µm); and the ``background`` used.
     """
     # analyze skeletonized labels to determine z-band backbone length
     props_skel = regionprops_table(labels_skel, properties=['label', ],
@@ -131,20 +231,22 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
                                                             radius=smooth_radius_px)
 
     # analyze z-band labels
-    props = regionprops_table(labels, intensity_image=image_raw, properties=['label', 'area', 'convex_area',
-                                                                             'mean_intensity', 'orientation',
-                                                                             'image', 'bbox', 'centroid'])
+    props = regionprops_table(labels, intensity_image=image_raw, properties=['label', 'mean_intensity',
+                                                                             'orientation', 'image', 'bbox',
+                                                                             'centroid'])
     # z-band length
     length = length[length >= min_length]
-
-    # straightness of z-bands (area/convex_hull)
-    straightness = props['area'] / props['convex_area']
 
     # fluorescence intensity of each individual z-band, the total area, and the average intensity of z-band mask
     intensity = props['mean_intensity']
     z_mask = zbands > threshold
     z_mask_area = np.sum(z_mask.astype('uint8')) * pixelsize ** 2
     z_mask_intensity = np.mean(image_raw[z_mask])
+
+    # ratiometric contrast of each z-band against the non-z-band pixels around it, background-corrected
+    if background is None or not np.isfinite(background):
+        background = float(np.percentile(image_raw, 1))
+    contrast, surround = z_band_contrast(labels, z_mask, image_raw, pixelsize, background, cell_mask=cell_mask)
 
     # z band orientational order parameter
     orientation = props['orientation']
@@ -153,7 +255,7 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
     else:
         oop = np.nan
 
-    # local lateral z-band alignment and distance
+    # lateral connections of z-band ends and their distances
     n_z = len(np.unique(labels)) - 1
 
     if n_z > 0:
@@ -223,8 +325,8 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
                 z_orientation[i] = orientation_ends_i
                 z_ends[i] = z_ends_i.T * pixelsize
 
-        # lateral alignment index and distance of z-bands
-        def lateral_alignment(pos_i, pos_j, theta_i, theta_j):
+        # linking score of two z-band ends (used only to choose the lateral connections, not reported)
+        def linking_score(pos_i, pos_j, theta_i, theta_j):
             phi_ij = np.arctan2((pos_j[1] - pos_i[1]), (pos_j[0] - pos_i[0])) % (2 * np.pi)
             phi_ji = (phi_ij + np.pi) % (2 * np.pi)
 
@@ -253,10 +355,10 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         _z_orientation = np.reshape(z_orientation, (n_z * 2), order='F')
         _idxs = np.asarray(np.where(~np.isnan(D)))
 
-        # matrix with lateral alignments A
+        # matrix with linking scores A
         A = np.zeros_like(D) * np.nan
         for (i, j) in _idxs.T:
-            A_ij = lateral_alignment(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
+            A_ij = linking_score(_z_ends[i], _z_ends[j], _z_orientation[i], _z_orientation[j])
             A[i, j] = A_ij if A_ij >= a_min else np.nan
         D[np.isnan(A)] = np.nan
 
@@ -285,14 +387,14 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
 
         def compute_cost_matrix(D, A, penalty=1e6):
             """
-            Compute the cost matrix (1 - A) for linking Z-band ends, favoring optimal alignment.
+            Compute the cost matrix (1 - A) for linking Z-band ends, favoring the highest linking scores.
 
             Parameters
             ----------
             D : np.ndarray
                 Distance matrix between Z-band ends.
             A : np.ndarray
-                Alignment matrix between Z-band ends.
+                Linking-score matrix between Z-band ends.
             penalty : float, optional
                 Cost assigned to invalid links (NaN in ``D``). Default is 1e6.
 
@@ -301,7 +403,7 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
             np.ndarray
                 Cost matrix for linking Z-band ends.
             """
-            # Ensure alignment values are valid (replace NaNs with 0)
+            # Ensure scores are valid (replace NaNs with 0)
             A = np.nan_to_num(A, nan=0.0)
 
             # Compute cost matrix
@@ -347,20 +449,18 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
         # reshape arrays
         links = links.reshape((n_z, 2, n_z, 2), order='F')
         lat_dist = D.reshape((n_z, 2, n_z, 2), order='F')
-        lat_alignment = A.reshape((n_z, 2, n_z, 2), order='F')
 
         # number of lateral neighbors
         links_z = np.sum(links, axis=(1, 3))
         lat_neighbors = np.count_nonzero(links_z, axis=1)
 
-        # convert links, lat_dist and lat_alignment to lists
+        # convert links and lat_dist to lists
         links = np.where(links == 1)
         lat_dist = lat_dist[links]
-        lat_alignment = lat_alignment[links]
         links = np.asarray(links)
 
         # analyze laterally linked groups
-        def analyze_linked_groups(connectivity_matrix, distance_matrix, alignment_matrix):
+        def analyze_linked_groups(connectivity_matrix, distance_matrix):
             G = nx.Graph()
 
             for n in range(n_z):
@@ -368,37 +468,32 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
 
             # Efficiently add edges based on connectivity and criteria
             for n, (idx_i, end_i, idx_j, end_j) in enumerate(connectivity_matrix.T):
-                G.add_edge(idx_i, idx_j, alignment=alignment_matrix[n], distance=distance_matrix[n])
+                G.add_edge(idx_i, idx_j, distance=distance_matrix[n])
 
             # Find connected components in the graph with best matches
             _linked_groups = list(nx.connected_components(G))
 
-            _size_groups = np.asarray([len(group) for group in _linked_groups])
             # Calculate length of each group
             _length_groups = []
-            _alignment_groups = []
             for group in _linked_groups:
                 sum_distance = 0
-                sum_alignment = 0
                 for node in group:
                     edges = G.edges(node, data=True)
                     for _, _, data in edges:
                         if G.has_edge(_, node):  # Check if edge is within the current group
                             sum_distance += data['distance']
-                            sum_alignment += data['alignment']
                 sum_distance /= 2  # Each edge is counted twice (undirected graph), so divide by 2
                 _length_groups.append(sum_distance + np.sum(length[list(group)]))
-                _alignment_groups.append(sum_alignment / len(group))
             _linked_groups = [list(s) for s in _linked_groups]
-            return (_linked_groups, np.asarray(_size_groups), np.asarray(_length_groups),
-                    np.asarray(_alignment_groups))
+            return _linked_groups, np.asarray(_length_groups)
 
-        linked_groups, size_groups, length_groups, alignment_groups = analyze_linked_groups(links, lat_dist,
-                                                                                            lat_alignment)
+        linked_groups, length_groups = analyze_linked_groups(links, lat_dist)
     else:
-        (lat_neighbors, lat_dist, lat_alignment, links, z_ends,
-         linked_groups, size_groups, length_groups, alignment_groups) = [], [], [], [], [], [], [], [], []
+        lat_neighbors, lat_dist, links, z_ends, linked_groups, length_groups = [], [], [], [], [], []
 
-    return (length, intensity, straightness, z_mask_intensity, z_mask_area, orientation, oop, labels_list, labels,
-            lat_neighbors, lat_dist, lat_alignment, links, z_ends, linked_groups, size_groups, length_groups,
-            alignment_groups)
+    return {'length': length, 'intensity': intensity, 'contrast': contrast, 'surround': surround,
+            'mask_intensity': z_mask_intensity,
+            'mask_area': z_mask_area, 'orientation': orientation, 'oop': oop, 'labels_list': labels_list,
+            'labels': labels, 'lat_neighbors': lat_neighbors, 'lat_dist': lat_dist,
+            'links': links, 'ends': z_ends, 'lat_groups': linked_groups, 'lat_length_groups': length_groups,
+            'background': background}

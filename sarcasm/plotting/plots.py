@@ -43,6 +43,14 @@ class Plots:
     """Plotting functions for SarcAsM and Motion objects."""
 
     @staticmethod
+    def _frame(sarc_obj, frame) -> int:
+        """The frame argument of a plot as one validated frame number: an int, numpy integer, 0-d array or
+        one-element sequence (``[k]`` from a parsed frame list) all name frame ``k``."""
+        if hasattr(sarc_obj, '_canonical_frame'):
+            return sarc_obj._canonical_frame(frame)
+        return int(frame)
+
+    @staticmethod
     def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
                            spine_color='w', xlim=None, ylim=None):
         """
@@ -250,6 +258,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
 
         img = sarc_obj.read_imgs(frames=frame)
         img = np.clip(img, np.percentile(img, clip_thrs[0]), np.percentile(img, clip_thrs[1]))
@@ -443,6 +452,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert sarc_obj._mask_exists('zbands'), ('Z-band mask not found. Run detect_sarcomeres first.')
 
         img = sarc_obj._read_mask('zbands', frames=frame)
@@ -508,6 +518,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         if not sarc_obj._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Run detect_sarcomeres first.")
 
@@ -573,6 +584,7 @@ class Plots:
         title : str, optional
             The title for the plot. Default is None.
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert sarc_obj._mask_exists('cell_mask'), ('Cell mask not found. Run detect_sarcomeres first.')
 
         img = sarc_obj._read_mask('cell_mask', frames=frame) > threshold
@@ -613,6 +625,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
         assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
@@ -686,6 +699,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
         assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
@@ -694,7 +708,7 @@ class Plots:
         if plot_groups:
             groups = sarc_obj.data['structure.zbands.lat_groups'][frame]
             labels_plot = np.zeros_like(labels)
-            for i, group in enumerate(groups[1:]):
+            for i, group in enumerate(groups):
                 mask = np.zeros_like(labels, dtype=bool)
                 for label in group:
                     mask += (labels == label + 1)
@@ -786,6 +800,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert sarc_obj._mask_exists('orientation'), \
             'Sarcomere orientation map does not exist! Run detect_sarcomeres first.'
 
@@ -906,6 +921,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert sarc_obj._mask_exists('sarcomere_mask'), ('No sarcomere masks stored. '
                                                          'Run detect_sarcomeres first.')
 
@@ -1019,6 +1035,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert 'structure.sarcomere.pos' in sarc_obj.data.keys(), ('Sarcomere vectors not yet calculated, '
                                                                  'run analyze_sarcomere_vectors first.')
         assert frame in sarc_obj.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
@@ -1143,6 +1160,7 @@ class Plots:
         alpha_z_bands : float, optional
             Opacity of the Z-band background. Default is 1.
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert 'structure.domain.n' in sarc_obj.data.keys(), ('Sarcomere domains not analyzed. '
                                                                'Run analyze_sarcomere_domains first.')
         assert frame in sarc_obj.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
@@ -1231,6 +1249,7 @@ class Plots:
         inset_bounds : tuple of float, optional
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
+        frame = Plots._frame(sarc_obj, frame)
         assert 'structure.myofibril.lines' in sarc_obj.data.keys(), ('Myofibrils not analyzed. '
                                                                 'Run analyze_myofibrils first.')
         assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
@@ -1341,6 +1360,7 @@ class Plots:
         No background image is drawn by default; pass
         ``show_image=True, invert_image=True`` for an inverted raw-image backdrop.
         """
+        frame = Plots._frame(sarc_obj, frame)
         # create myofibril length map
         assert 'structure.myofibril.lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
                                                                 'Run analyze_myofibrils first.')
@@ -1497,6 +1517,7 @@ class Plots:
         rotate_yticks : bool, optional
             If True, rotate the y-axis tick labels by 90 degrees. Default is False.
         """
+        frame = Plots._frame(sarc_obj, frame)
         data = sarc_obj.data[feature][frame]
         # Flatten data if it has more than one dimension
         if data.ndim > 1:
@@ -2113,6 +2134,7 @@ class Plots:
         alpha_z_bands : float, optional
             Opacity of the Z-band background. Default is 1.
         """
+        frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
@@ -2218,6 +2240,7 @@ class Plots:
             :class:`matplotlib.collections.LineCollection` (the default selection is
             :meth:`track_vector_mask`).
         """
+        frame = Plots._frame(sarc_obj, frame)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         t = sarc_obj._tracked_frame_index(frame)
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
@@ -2242,6 +2265,7 @@ class Plots:
         np.ndarray
             Boolean mask, shape ``(n_tracks,)``.
         """
+        frame = Plots._frame(sarc_obj, frame)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         t = sarc_obj._tracked_frame_index(frame)
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
@@ -2347,6 +2371,7 @@ class Plots:
         matplotlib.collections.LineCollection
             The drawn vectors (``set_segments`` / ``set_array`` to update).
         """
+        frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         cmap_d, clim_d, clabel = Plots.TRACK_COLOR_DEFAULTS[color_by]
@@ -2448,6 +2473,7 @@ class Plots:
         alpha_z_bands : float, optional
             Opacity of the Z-band background. Default is 1.
         """
+        frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.group_id' not in sarc_obj.data:
             raise ValueError('No track grouping found. Run group_tracks(...) first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
@@ -2918,6 +2944,7 @@ class Plots:
         alpha_z_bands : float, optional
             Opacity of the Z-band background. Default is 1.
         """
+        frame = Plots._frame(sarc_obj, frame)
         if sarc_obj.data.get('motion.groups.kind') != 'myofibril':
             raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "
                              "Run group_tracks(by='myofibril') first.")
@@ -3047,6 +3074,7 @@ class Plots:
         alpha_image : float, optional
             Opacity of the raw image background. Default is 1.
         """
+        frame = Plots._frame(sarc_obj, frame)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0)) if 'motion.tracks.n_frames' in sarc_obj.data else 0
         Plots.plot_tracks(ax, sarc_obj, frame=frame, color_by='coverage', cmap=cmap,
                           linewidth=linewidth, only_observed=True, max_tracks=max_tracks,

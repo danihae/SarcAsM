@@ -18,6 +18,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
+import warnings
 import numpy as np
 import pandas as pd
 import torch
@@ -242,9 +243,11 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, sequence of int}, optional
-            Frames for sarcomere detection ('all', a single frame index, or
-            selected frames). Default is 'all'.
+        frames : {'all', int, sequence of int} or None, optional
+            Frames for sarcomere detection: ``'all'`` (or None), a frame number, or
+            any sequence of frame numbers (list, tuple, range, array; order and
+            repeats do not matter). ``k``, ``[k]`` and ``np.array([k])`` are the same
+            selection. Frames outside the movie raise a ValueError. Default is 'all'.
         model_path : str or None, optional
             ``'auto'`` (or None) picks the bundled checkpoint by pixel size: ``'legacy'``
             below 0.08 µm/px (high-magnification, e.g. high-speed single-cell movies),
@@ -284,23 +287,21 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        frames = self._normalize_frames(frames)
+        frames = self._canonical_frames(frames)
         max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
-        if isinstance(frames, str) and frames == 'all':
+        n_stack = self.metadata.n_stack or 1
+        if frames == 'all' or frames == list(range(n_stack)):
             # Hand the detector a lazy handle so the raw stack is read block by
             # block instead of being materialised in full.
             if not self.store.has_image():
                 self.read_imgs()  # first open: ingest the source TIFF into the store
             images = self.store.image_handle() if self.store.has_image() else self.read_imgs()
             list_frames = list(range(images.shape[0] if len(images.shape) > 2 else 1))
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            images = self.read_imgs(frames=frames)
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [frames]
-            else:
-                list_frames = list(frames)
         else:
-            raise ValueError('frames argument not valid')
+            # a subset of a movie: read as a (n, H, W) stack also for a single frame, so that the masks hold
+            # one page per detected frame however the frame was spelled (k, [k], np.int64(k), ...)
+            images = self.read_imgs(frames=frames)
+            list_frames = frames
 
         # Rescaling is done inside detect_sarcomeres_unet, which also scales the
         # predicted masks back to the input resolution. Doing it here as well would
@@ -343,6 +344,10 @@ class SarcAsM(SarcAsMBase):
             'params.detect_sarcomeres.patch_size_used': info.get('patch_size'),
         }
         self.data.update(_dict)
+        if self.auto_save:
+            # the masks are already on disk; store the frames they belong to with them, so that a failure in
+            # the steps below cannot leave new masks next to the frame list of an earlier detection
+            self.store_structure_data()
         # the cell mask is one of the predicted outputs: its area / intensity
         # features belong to the detection step, not to a separate call
         self.analyze_cell_mask(frames=list_frames)
@@ -360,30 +365,18 @@ class SarcAsM(SarcAsMBase):
         if not self._mask_exists(name):
             return None
         arr = self._read_mask(name)
-        n_stack = self.metadata.n_stack
-        if n_stack <= 1:
+        n_stack = self.metadata.n_stack or 1
+        # only the detection masks are stored sparsely; the fast-movie Z-bands cover every frame
+        detected = self._detected_frames() if name in self._DETECTION_MASKS else None
+        if n_stack <= 1 or detected is None or detected == list(range(n_stack)):
             return arr
-        detected = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if detected == 'all' or detected is None:
-            return arr
-        if isinstance(detected, (int, np.integer)):
-            detected = [int(detected)]
-        else:
-            detected = [int(f) for f in detected]
-        if len(detected) == n_stack:
-            return arr
-        if arr.ndim >= 3 and arr.shape[0] == len(detected):
-            per_frame_shape = arr.shape[1:]
-            frames_iter = lambda i: arr[i]
-        elif len(detected) == 1:
-            per_frame_shape = arr.shape
-            frames_iter = lambda i: arr
-        else:
+        pages = arr if arr.ndim > self._MASK_FRAME_NDIM.get(name, 2) else arr[None]
+        if len(pages) != len(detected):
             return arr  # unexpected shape, pass through
-        full = np.zeros((n_stack,) + per_frame_shape, dtype=arr.dtype)
-        for i, f in enumerate(detected):
+        full = np.zeros((n_stack,) + pages.shape[1:], dtype=arr.dtype)
+        for page, f in zip(pages, detected):
             if 0 <= f < n_stack:
-                full[f] = frames_iter(i)
+                full[f] = page
         return full
 
     def detect_z_bands_fast_movie(self, model_path: Optional[str] = None,
@@ -443,6 +436,36 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
+    def _plan_frames(self, frames, step: str) -> List[int]:
+        """The frames an analysis step that reads the detection masks analyzes: ``'all'`` = every detected
+        frame, otherwise the canonical ``frames``, which must all have been detected. Masks and raw images are
+        read, and results filed, by frame number.
+
+        Raises
+        ------
+        ValueError
+            For frames that were not detected, naming the detected frames.
+        """
+        n_stack = self.metadata.n_stack or 1
+        requested = self._canonical_frames(frames)
+        detected = self._detected_frames()
+        detected = sorted(set(detected)) if detected is not None else list(range(n_stack))
+        if requested == 'all':
+            if detected != list(range(n_stack)):
+                logger.info(f'{step}: analyzing the {len(detected)} detected frame(s) {detected} of {n_stack}.')
+            return detected
+        missing = [f for f in requested if f not in detected]
+        if missing:
+            raise ValueError(f"{step}: frame(s) {missing} were not detected (detect_sarcomeres covered frames "
+                             f"{detected}). Run detect_sarcomeres(frames=...) on them first.")
+        return requested
+
+    def _read_raw_frames(self, frames: List[int]) -> np.ndarray:
+        """Raw images of the movie frames ``frames`` as a ``(len(frames), H, W)`` stack (single images too)."""
+        if (self.metadata.n_stack or 1) <= 1:
+            return np.asarray(self.read_imgs()).reshape(1, *self.metadata.size)
+        return np.asarray(self.read_imgs(frames=list(frames)))
+
     def analyze_cell_mask(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.1) -> None:
         """
         Analyze the area occupied by cells and compute average cell intensity and
@@ -453,35 +476,19 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, sequence of int}, optional
-            Frames to analyze ('all', a single frame index, or selected frames).
-            Default is 'all'.
+        frames : {'all', int, sequence of int} or None, optional
+            Frames to analyze: ``'all'`` (or None) for every detected frame, a frame
+            number, or any sequence of frame numbers; they must have been detected.
+            Results are stored under the frame numbers. Default is 'all'.
         threshold : float, optional
             Threshold for binarizing the cell mask; pixels above it are cell.
             Default is 0.1.
         """
-        frames = self._normalize_frames(frames)
         if not self._mask_exists('cell_mask'):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
-        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if (isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0):
-            cell_mask = self._read_mask('cell_mask')
-            images = self.read_imgs()
-            list_frames = list(range(len(images)))
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [int(frames)]
-            else:
-                list_frames = [int(f) for f in frames]
-            cell_mask = self._read_mask('cell_mask', frames=list_frames)
-            images = self.read_imgs(frames=frames)
-        else:
-            raise ValueError('frames argument not valid')
-
-        if len(cell_mask.shape) == 2:
-            cell_mask = np.expand_dims(cell_mask, 0)
-        if len(images.shape) == 2:
-            images = np.expand_dims(images, 0)
+        list_frames = self._plan_frames(frames, 'analyze_cell_mask')
+        cell_mask = self._read_mask('cell_mask', frames=list_frames)
+        images = self._read_raw_frames(list_frames)
 
         # per-frame arrays indexed by frame number (NaN for frames not analyzed), like every other
         # per-frame structure result, so that analyze_z_bands / analyze_sarcomere_vectors can index
@@ -510,6 +517,18 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
+    def _recording_background(self, n_frames: int = 5) -> float:
+        """Background intensity of the recording: the median over up to ``n_frames`` evenly spaced detected frames of
+        the median intensity outside their cell masks (camera offset plus medium, constant within a recording). It
+        does not depend on which frames an analysis call covers. NaN without free background in any of them."""
+        frames = sorted(set(self._detected_frames() or range(self.metadata.n_stack or 1)))
+        picks = np.linspace(0, len(frames) - 1, min(n_frames, len(frames))).round().astype(int)
+        frames = sorted({frames[i] for i in picks})
+        masks = self._read_mask('cell_mask', frames=frames) > self.data.get('params.analyze_cell_mask.threshold', 0.1)
+        images = self._read_raw_frames(frames)
+        values = np.array([z_band_analysis.estimate_background(image, mask) for image, mask in zip(images, masks)])
+        return float(np.nanmedian(values)) if np.isfinite(values).any() else np.nan
+
     def analyze_z_bands(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
                         a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0, max_axial_offset: float = 0.9,
@@ -517,11 +536,20 @@ class SarcAsM(SarcAsMBase):
         """
         Segment and analyze sarcomere z-bands.
 
+        Besides the geometry and lateral connections of the z-bands, each z-band gets a ratiometric
+        contrast (``structure.zbands.contrast``): its background-subtracted mean intensity divided by
+        that of the cell pixels within 1 µm around it. The background is the median intensity outside
+        the cell mask of the frame (``structure.zbands.background``). A frame (almost) fully covered by
+        cells has no free background and takes the background of the recording, the median over up to
+        five evenly spaced detected frames, as the camera offset is constant within a recording; only
+        when none of these has free background is the 1st percentile of the frame used.
+
         Parameters
         ----------
-        frames : {'all', int, sequence of int}, optional
-            Frames to analyze ('all', a single frame index, or selected frames).
-            Default is 'all'.
+        frames : {'all', int, sequence of int} or None, optional
+            Frames to analyze: ``'all'`` (or None) for every detected frame, a frame
+            number, or any sequence of frame numbers; they must have been detected.
+            Results are stored under the frame numbers. Default is 'all'.
         threshold : float, optional
             Threshold for binarizing z-bands prior to labeling (0-1).
             Default is 0.5.
@@ -534,10 +562,11 @@ class SarcAsM(SarcAsMBase):
         theta_phi_min : float, optional
             Minimal cosine of the angle between the pointed z-band vector and the
             vector connecting z-band ends; smaller values are not recognized as
-            connections (for lateral alignment and distance analysis).
+            connections.
             Default is 0.4.
         a_min : float, optional
-            Minimal lateral alignment between z-band ends to create a lateral
+            Minimal linking score of two z-band ends (product of the cosines between
+            the end directions and the connecting line, 0-1) to create a lateral
             connection. Default is 0.3.
         d_max : float, optional
             Maximal distance between z-band ends in µm; pairs farther apart are
@@ -554,38 +583,22 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
-        _detected_frames = self.data.get('params.detect_sarcomeres.frames', 'all')
-        if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            zbands = self._read_mask('zbands')
-            orientation_field = self._read_mask('orientation')
-            images = self.read_imgs()
-            list_frames = list(range(len(images)))
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or type(frames) is np.ndarray:
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [int(frames)]
-            else:
-                list_frames = [int(f) for f in frames]
-            zbands = self._read_mask('zbands', frames=list_frames)
-            # orientation is stored (frames, 2, H, W) — index by frame like zbands.
-            orientation_field = self._read_mask('orientation', frames=list_frames)
-            orientation_field = orientation_field.reshape(-1, 2, *orientation_field.shape[-2:])
-            images = self.read_imgs(frames=frames)
-        else:
-            raise ValueError('frames argument not valid')
-
-        if len(zbands.shape) == 2:
-            zbands = np.expand_dims(zbands, 0)
-        if len(images.shape) == 2:
-            images = np.expand_dims(images, 0)
-        if len(orientation_field.shape) == 3:
-            orientation_field = np.expand_dims(orientation_field, 0)
+        list_frames = self._plan_frames(frames, 'analyze_z_bands')
+        zbands = self._read_mask('zbands', frames=list_frames)
+        # orientation is stored (frames, 2, H, W) — read by frame like zbands.
+        orientation_field = self._read_mask('orientation', frames=list_frames)
+        images = self._read_raw_frames(list_frames)
+        # the cell mask sets the background of the Z-band contrast; binarized like analyze_cell_mask
+        cell_mask = None
+        if self._mask_exists('cell_mask'):
+            cell_mask = (self._read_mask('cell_mask', frames=list_frames)
+                         > self.data.get('params.analyze_cell_mask.threshold', 0.1))
         # One mask page per detected frame — see the same guard in
         # analyze_sarcomere_vectors.
-        n_imgs = min(len(zbands), len(images), len(orientation_field))
+        n_imgs = min(len(zbands), len(images), len(orientation_field),
+                     len(cell_mask) if cell_mask is not None else len(zbands))
         if n_imgs < len(list_frames):
             logger.warning(
                 f'detect_sarcomeres covered {n_imgs} frame(s), but {len(list_frames)} were '
@@ -593,27 +606,33 @@ class SarcAsM(SarcAsMBase):
                 'frames you want to analyze.')
             list_frames = list_frames[:n_imgs]
 
+        # background of the Z-band contrast: the median outside the cell mask of each frame; frames (almost)
+        # fully covered by cells take the background of the recording (see _recording_background), and without
+        # any free background the module falls back to the 1st percentile of the frame
+        backgrounds = np.full(n_imgs, np.nan)
+        if cell_mask is not None:
+            backgrounds = np.array([z_band_analysis.estimate_background(images[k], cell_mask[k])
+                                    for k in range(n_imgs)])
+            if not np.isfinite(backgrounds).all():
+                backgrounds[~np.isfinite(backgrounds)] = self._recording_background()
+
         # create empty lists
         def none_lists():
             return [None] * self.metadata.n_stack
-        z_length, z_intensity, z_straightness, z_orientation = (none_lists() for _ in range(4))
-        z_lat_neighbors, z_lat_alignment, z_lat_dist = (none_lists() for _ in range(3))
-        z_lat_size_groups, z_lat_length_groups, z_lat_alignment_groups = (none_lists() for _ in range(3))
+        z_length, z_intensity, z_contrast, z_orientation = (none_lists() for _ in range(4))
+        z_lat_neighbors, z_lat_dist, z_lat_length_groups = (none_lists() for _ in range(3))
         z_labels, z_ends, z_lat_links, z_lat_groups = (none_lists() for _ in range(4))
 
         # create empty arrays
         def nan_arrays():
             return np.full(self.metadata.n_stack, np.nan)
-        z_length_mean, z_length_std, z_length_max, z_length_sum, z_oop = (nan_arrays() for _ in range(5))
+        z_length_mean, z_length_std, z_length_max, z_oop = (nan_arrays() for _ in range(4))
         n_zbands, z_intensity_mean, z_intensity_std = (nan_arrays() for _ in range(3))
+        z_contrast_median, z_surround_median, z_background = nan_arrays(), nan_arrays(), nan_arrays()
         z_mask_area, z_mask_intensity, z_mask_area_ratio = (nan_arrays() for _ in range(3))
-        z_straightness_mean, z_straightness_std = (nan_arrays() for _ in range(2))
         z_lat_neighbors_mean, z_lat_neighbors_std = (nan_arrays() for _ in range(2))
-        z_lat_alignment_mean, z_lat_alignment_std = (nan_arrays() for _ in range(2))
         z_lat_dist_mean, z_lat_dist_std = (nan_arrays() for _ in range(2))
-        z_lat_size_groups_mean, z_lat_size_groups_std = (nan_arrays() for _ in range(2))
         z_lat_length_groups_mean, z_lat_length_groups_std = (nan_arrays(), nan_arrays())
-        z_lat_alignment_groups_mean, z_lat_alignment_groups_std = (nan_arrays() for _ in range(2))
 
         # iterate images
         logger.info('Starting Z-band analysis...')
@@ -624,85 +643,73 @@ class SarcAsM(SarcAsMBase):
             labels_i, labels_skel_i = z_band_analysis.segment_z_bands(zbands_i, threshold=threshold)
 
             # analyze z-band features
-            z_band_features = z_band_analysis.analyze_z_bands(
+            res = z_band_analysis.analyze_z_bands(
                 zbands_i, labels_i, labels_skel_i, image_i, orientation_field_i,
                 pixelsize=self.metadata.pixelsize, threshold=threshold,
                 min_length=min_length, median_filter_radius=median_filter_radius,
                 a_min=a_min, theta_phi_min=theta_phi_min,
-                d_max=d_max, d_min=d_min, max_axial_offset=max_axial_offset
+                d_max=d_max, d_min=d_min, max_axial_offset=max_axial_offset, background=backgrounds[i],
+                cell_mask=cell_mask[i] if cell_mask is not None else None
             )
-
-            (
-                z_length_i, z_intensity_i, z_straightness_i, z_mask_intensity_i, z_mask_area_i, orientation_i,
-                z_oop_i,
-                labels_list_i, labels_i, z_lat_neighbors_i, z_lat_dist_i, z_lat_alignment_i, z_lat_links_i, z_ends_i,
-                z_lat_groups_i, z_lat_size_groups_i, z_lat_length_groups_i, z_lat_alignment_groups_i,
-            ) = z_band_features
+            z_length_i, z_intensity_i, z_contrast_i = res['length'], res['intensity'], res['contrast']
+            z_lat_neighbors_i, z_lat_dist_i = res['lat_neighbors'], res['lat_dist']
+            z_lat_length_groups_i = res['lat_length_groups']
 
             # fill lists and arrays
             z_length[frame_i] = z_length_i
             z_intensity[frame_i] = z_intensity_i
-            z_straightness[frame_i] = z_straightness_i
-            z_lat_alignment[frame_i] = z_lat_alignment_i
+            z_contrast[frame_i] = z_contrast_i
             z_lat_neighbors[frame_i] = z_lat_neighbors_i
-            z_orientation[frame_i] = orientation_i
+            z_orientation[frame_i] = res['orientation']
             z_lat_dist[frame_i] = z_lat_dist_i
-            z_lat_size_groups[frame_i] = z_lat_size_groups_i
             z_lat_length_groups[frame_i] = z_lat_length_groups_i
-            z_lat_alignment_groups[frame_i] = z_lat_alignment_groups_i
-            z_mask_area[frame_i], z_mask_intensity[frame_i], z_oop[
-                frame_i] = z_mask_area_i, z_mask_intensity_i, z_oop_i
+            z_mask_area[frame_i], z_mask_intensity[frame_i], z_oop[frame_i] = (res['mask_area'],
+                                                                               res['mask_intensity'], res['oop'])
+            z_background[frame_i] = res['background']
             if 'structure.cell.mask_area' in self.data:
-                z_mask_area_ratio[frame_i] = z_mask_area_i / self.data['structure.cell.mask_area'][frame_i]
+                z_mask_area_ratio[frame_i] = res['mask_area'] / self.data['structure.cell.mask_area'][frame_i]
             else:
-                z_mask_area_ratio[frame_i] = z_mask_area_i / (self.metadata.size[0] * self.metadata.size[1])
+                z_mask_area_ratio[frame_i] = res['mask_area'] / (self.metadata.size[0] * self.metadata.size[1])
 
-            z_labels[frame_i] = sparse.coo_matrix(labels_i)
-            z_lat_links[frame_i] = z_lat_links_i
-            z_ends[frame_i] = z_ends_i
-            z_lat_groups[frame_i] = z_lat_groups_i
+            z_labels[frame_i] = sparse.coo_matrix(res['labels'])
+            z_lat_links[frame_i] = res['links']
+            z_ends[frame_i] = res['ends']
+            z_lat_groups[frame_i] = res['lat_groups']
 
             # calculate mean and std of z-band features
             if len(z_length_i) > 0:
-                z_length_mean[frame_i], z_length_std[frame_i], z_length_max[frame_i], z_length_sum[frame_i] = np.mean(
-                    z_length_i), np.std(
-                    z_length_i), np.max(z_length_i), np.sum(z_length_i)
+                z_length_mean[frame_i], z_length_std[frame_i], z_length_max[frame_i] = (
+                    np.mean(z_length_i), np.std(z_length_i), np.max(z_length_i))
             n_zbands[frame_i] = len(z_length_i)
             z_intensity_mean[frame_i], z_intensity_std[frame_i] = np.mean(z_intensity_i), np.std(z_intensity_i)
-            z_straightness_mean[frame_i], z_straightness_std[frame_i] = np.mean(z_straightness_i), np.std(
-                z_straightness_i)
+            if np.isfinite(z_contrast_i).any():
+                z_contrast_median[frame_i] = np.nanmedian(z_contrast_i)
+            if np.isfinite(res['surround']).any():
+                z_surround_median[frame_i] = np.nanmedian(res['surround'])
             z_lat_neighbors_mean[frame_i], z_lat_neighbors_std[frame_i] = np.mean(z_lat_neighbors_i), np.std(
                 z_lat_neighbors_i)
-            z_lat_alignment_mean[frame_i], z_lat_alignment_std[frame_i] = np.nanmean(z_lat_alignment_i), np.nanstd(
-                z_lat_alignment_i)
             z_lat_dist_mean[frame_i], z_lat_dist_std[frame_i] = np.nanmean(z_lat_dist_i), np.nanstd(z_lat_dist_i)
-            z_lat_size_groups_mean[frame_i], z_lat_size_groups_std[frame_i] = np.nanmean(
-                z_lat_size_groups_i), np.nanstd(
-                z_lat_size_groups_i)
             z_lat_length_groups_mean[frame_i], z_lat_length_groups_std[frame_i] = np.nanmean(
                 z_lat_length_groups_i), np.nanstd(
                 z_lat_length_groups_i)
-            z_lat_alignment_groups_mean[frame_i], z_lat_alignment_groups_std[frame_i] = np.nanmean(
-                z_lat_alignment_groups_i), np.nanstd(z_lat_alignment_groups_i)
 
         # create and save dictionary for cell structure
         z_band_data = {'structure.zbands.n': n_zbands, 'structure.zbands.length': z_length, 'structure.zbands.length_mean': z_length_mean, 'structure.zbands.length_std': z_length_std,
                        'structure.zbands.length_max': z_length_max, 'structure.zbands.intensity': z_intensity, 'structure.zbands.intensity_mean': z_intensity_mean,
-                       'structure.zbands.intensity_std': z_intensity_std, 'structure.zbands.orientation': z_orientation, 'structure.zbands.oop': z_oop,
-                       'structure.zbands.straightness': z_straightness, 'structure.zbands.mask_intensity': z_mask_intensity, 'structure.zbands.labels': z_labels,
-                       'structure.zbands.straightness_mean': z_straightness_mean, 'structure.zbands.straightness_std': z_straightness_std,
+                       'structure.zbands.intensity_std': z_intensity_std, 'structure.zbands.contrast': z_contrast,
+                       'structure.zbands.contrast_median': z_contrast_median,
+                       'structure.zbands.surround_intensity_median': z_surround_median,
+                       'structure.zbands.background': z_background,
+                       'structure.zbands.orientation': z_orientation, 'structure.zbands.oop': z_oop,
+                       'structure.zbands.mask_intensity': z_mask_intensity, 'structure.zbands.labels': z_labels,
                        'structure.zbands.mask_area': z_mask_area, 'structure.zbands.mask_area_ratio': z_mask_area_ratio, 'structure.zbands.lat_neighbors': z_lat_neighbors,
                        'structure.zbands.lat_neighbors_mean': z_lat_neighbors_mean, 'structure.zbands.lat_neighbors_std': z_lat_neighbors_std,
-                       'structure.zbands.lat_alignment': z_lat_alignment, 'structure.zbands.lat_alignment_mean': z_lat_alignment_mean,
-                       'structure.zbands.lat_alignment_std': z_lat_neighbors_std, 'structure.zbands.lat_dist': z_lat_dist, 'structure.zbands.ends': z_ends,
+                       'structure.zbands.lat_dist': z_lat_dist, 'structure.zbands.ends': z_ends,
                        'structure.zbands.lat_dist_mean': z_lat_dist_mean, 'structure.zbands.lat_dist_std': z_lat_dist_std, 'structure.zbands.lat_links': z_lat_links,
-                       'structure.zbands.lat_groups': z_lat_groups, 'structure.zbands.lat_size_groups': z_lat_size_groups,
-                       'structure.zbands.lat_size_groups_mean': z_lat_size_groups_mean, 'structure.zbands.lat_size_groups_std': z_lat_size_groups_std,
-                       'structure.zbands.lat_length_groups': z_lat_length_groups, 'structure.zbands.lat_alignment_groups': z_lat_alignment_groups,
+                       'structure.zbands.lat_groups': z_lat_groups,
+                       'structure.zbands.lat_length_groups': z_lat_length_groups,
                        'structure.zbands.lat_length_groups_mean': z_lat_length_groups_mean,
                        'structure.zbands.lat_length_groups_std': z_lat_length_groups_std,
-                       'structure.zbands.lat_alignment_groups_mean': z_lat_alignment_groups_mean,
-                       'structure.zbands.lat_alignment_groups_std': z_lat_alignment_groups_std,
                        'params.analyze_z_bands.frames': list_frames, 'params.analyze_z_bands.threshold': threshold,
                        'params.analyze_z_bands.min_length': min_length, 'params.analyze_z_bands.median_filter_radius': median_filter_radius,
                        'params.analyze_z_bands.theta_phi_min': theta_phi_min, 'params.analyze_z_bands.d_max': d_max,
@@ -719,16 +726,20 @@ class SarcAsM(SarcAsMBase):
                                   peak_prominence: float = 0.4,
                                   neighbor_radius: float = 1.0,
                                   max_neighbor_deviation: Optional[float] = 30.0,
+                                  registry_lateral_band: Tuple[float, float] = (1.5, 2.5),
+                                  registry_axial_range: int = 3,
+                                  registry_max_angle: float = 20.0,
                                   use_fast_movie_zbands: bool = True,
                                   progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
-        Extract sarcomere orientation and length vectors.
+        Extract sarcomere orientation and length vectors, and the Z-band registry of every vector.
 
         Parameters
         ----------
-        frames : {'all', int, sequence of int}, optional
-            Frames to analyze ('all', a single frame index, or selected frames).
-            Default is 'all'.
+        frames : {'all', int, sequence of int} or None, optional
+            Frames to analyze: ``'all'`` (or None) for every detected frame, a frame
+            number, or any sequence of frame numbers; they must have been detected.
+            Results are stored under the frame numbers. Default is 'all'.
         threshold_mbands : float, optional
             Threshold to binarize sarcomere M-bands. Lower values may yield more
             false-positive sarcomere vectors. Default is 0.25.
@@ -822,6 +833,26 @@ class SarcAsM(SarcAsMBase):
             ``neighbor_radius`` are removed. Default is 30.0; ``None`` keeps
             every vector. The number removed per frame is stored in
             ``structure.sarcomere.n_vectors_removed``.
+        registry_lateral_band : tuple of float, optional
+            Z-band registry: distance across the sarcomere axis, in µm, within which a
+            neighbouring sarcomere counts as one myofibril over. Default is (1.5, 2.5).
+        registry_axial_range : int, optional
+            Z-band registry: farthest neighbour along the myofibril, in sarcomeres.
+            Default is 3.
+        registry_max_angle : float, optional
+            Z-band registry: largest axial angle, in degrees, between a neighbour along
+            the myofibril and the vector for it to count. Default is 20.0.
+
+            The registry of a sarcomere vector is the mean cosine of the phase of the
+            neighbouring Z-discs on its own Z-disc lattice (the vector's two Z-discs
+            repeated every sarcomere length): 1 = the neighbours' Z-discs are level with
+            its own, 0 = random, −1 = they sit at its M-band. The lateral registry
+            uses the neighbours one myofibril over, the axial registry the neighbours
+            along the myofibril; see :func:`sarcasm.analysis.sarcomere_vectors.zband_registry`.
+            Stored per vector (``structure.sarcomere.registry_lateral`` / ``registry_axial``,
+            NaN without neighbours) and per frame as the means
+            (``registry_lateral_mean``, ``registry_axial_mean`` and their average
+            ``registry_mean``).
 
             This removes false-positive vectors: M-band fragments pointing
             across their neighbours, typically at crossings of differently
@@ -843,7 +874,6 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        frames = self._normalize_frames(frames)
         if not self._mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
@@ -867,34 +897,13 @@ class SarcAsM(SarcAsMBase):
                     '(zbands.tif) — use_fast_movie_zbands=False.'
                 )
 
-        _detected_frames = self.data['params.detect_sarcomeres.frames']
-        if ((isinstance(frames, str) and frames == 'all') or (self.metadata.n_stack == 1 and frames == 0)
-                or (_detected_frames != 'all' and len(_detected_frames) == 1)):
-            list_frames = list(range(self.metadata.n_stack))
-            z_bands = self._read_mask(zbands_name)
-            mbands = self._read_mask('mbands')
-            orientation_field = self._read_mask('orientation')
-            sarcomere_mask = self._read_mask('sarcomere_mask')
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, list) or isinstance(frames, np.ndarray):
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [int(frames)]
-            else:
-                list_frames = [int(f) for f in frames]
-            # _read_mask maps movie frames to the pages of the sparsely stored 2D masks
-            z_bands = self._read_mask(zbands_name, frames=list_frames)
-            mbands = self._read_mask('mbands', frames=list_frames)
-            orientation_field = self._read_mask('orientation', frames=list_frames)
-            sarcomere_mask = self._read_mask('sarcomere_mask', frames=list_frames)
-        else:
-            raise ValueError('frames argument not valid')
-        if len(z_bands.shape) == 2:
-            z_bands = np.expand_dims(z_bands, axis=0)
-        if len(mbands.shape) == 2:
-            mbands = np.expand_dims(mbands, axis=0)
-        if len(sarcomere_mask.shape) == 2:
-            sarcomere_mask = np.expand_dims(sarcomere_mask, axis=0)
-        if len(orientation_field.shape) == 3:
-            orientation_field = np.expand_dims(orientation_field, axis=0)
+        # All inputs are read by frame number: the 2D masks map it to their pages, the fast-movie Z-bands (one
+        # page per movie frame) are read at the frame itself, so every input of a frame comes from that frame.
+        list_frames = self._plan_frames(frames, 'analyze_sarcomere_vectors')
+        z_bands = self._read_mask(zbands_name, frames=list_frames)
+        mbands = self._read_mask('mbands', frames=list_frames)
+        orientation_field = self._read_mask('orientation', frames=list_frames)
+        sarcomere_mask = self._read_mask('sarcomere_mask', frames=list_frames)
 
         # a partial detection has fewer mask pages than frames requested; refuse
         # rather than let zip() silently truncate the analysis
@@ -945,6 +954,8 @@ class SarcAsM(SarcAsMBase):
         sarcomere_orientation_mean, sarcomere_orientation_std = nan_arrays(), nan_arrays()
         (n_vectors, n_vectors_removed, n_mbands, oop,
          sarcomere_area, sarcomere_area_ratio) = (nan_arrays() for _ in range(6))
+        registry_lateral, registry_axial = none_lists(), none_lists()
+        registry_lateral_mean, registry_axial_mean, registry_mean = (nan_arrays() for _ in range(3))
 
         # iterate images
         logger.info('Starting sarcomere length and orientation analysis...')
@@ -977,6 +988,18 @@ class SarcAsM(SarcAsMBase):
                     arr[keep_i] for arr in (pos_vectors_px_i, pos_vectors_i, midline_id_vectors_i,
                                             midline_length_vectors_i, sarcomere_length_vectors_i,
                                             sarcomere_orientation_vectors_i))
+
+            # Z-band registry of every vector (lateral: neighbours one myofibril over; axial: along the row)
+            registry_lateral_i, registry_axial_i = sarcomere_vectors.zband_registry(
+                pos_vectors_i, sarcomere_orientation_vectors_i, sarcomere_length_vectors_i,
+                lateral_band=registry_lateral_band, axial_range=registry_axial_range,
+                max_angle=registry_max_angle)
+            registry_lateral[frame_i], registry_axial[frame_i] = registry_lateral_i, registry_axial_i
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)          # all-NaN frames give NaN, not a warning
+                registry_lateral_mean[frame_i] = np.nanmean(registry_lateral_i) if registry_lateral_i.size else np.nan
+                registry_axial_mean[frame_i] = np.nanmean(registry_axial_i) if registry_axial_i.size else np.nan
+            registry_mean[frame_i] = 0.5 * (registry_lateral_mean[frame_i] + registry_axial_mean[frame_i])
 
             # write in list
             n_vectors[frame_i] = len(sarcomere_length_vectors_i)
@@ -1023,6 +1046,9 @@ class SarcAsM(SarcAsMBase):
                         'params.analyze_sarcomere_vectors.peak_prominence': peak_prominence,
                         'params.analyze_sarcomere_vectors.neighbor_radius': neighbor_radius,
                         'params.analyze_sarcomere_vectors.max_neighbor_deviation': max_neighbor_deviation,
+                        'params.analyze_sarcomere_vectors.registry_lateral_band': tuple(registry_lateral_band),
+                        'params.analyze_sarcomere_vectors.registry_axial_range': registry_axial_range,
+                        'params.analyze_sarcomere_vectors.registry_max_angle': registry_max_angle,
                         'params.analyze_sarcomere_vectors.use_fast_movie_zbands': use_fast_movie_zbands,
                         'params.analyze_sarcomere_vectors.zbands_source': zbands_source,
                         'structure.sarcomere.n_vectors': n_vectors,
@@ -1036,10 +1062,36 @@ class SarcAsM(SarcAsMBase):
                         'structure.sarcomere.slen_std': sarcomere_length_std,
                         'structure.sarcomere.orientation_mean': sarcomere_orientation_mean,
                         'structure.sarcomere.orientation_std': sarcomere_orientation_std,
-                        'structure.sarcomere.oop': oop}
+                        'structure.sarcomere.oop': oop,
+                        'structure.sarcomere.registry_lateral': registry_lateral,
+                        'structure.sarcomere.registry_axial': registry_axial,
+                        'structure.sarcomere.registry_lateral_mean': registry_lateral_mean,
+                        'structure.sarcomere.registry_axial_mean': registry_axial_mean,
+                        'structure.sarcomere.registry_mean': registry_mean}
         self.data.update(vectors_dict)
         if self.auto_save:
             self.store_structure_data()
+
+    def _vector_frames(self, frames) -> List[int]:
+        """The frames of the sarcomere vectors that a step building on them (myofibrils, domains) analyzes:
+        None or ``'all'`` = every frame analyze_sarcomere_vectors stored, otherwise the canonical ``frames``,
+        which must all carry vectors."""
+        analysed = sorted({int(f) for f in np.atleast_1d(
+            self.data.get('params.analyze_sarcomere_vectors.frames', [])).ravel()})
+        requested = self._canonical_frames(frames)
+        if requested == 'all':
+            return analysed
+        missing = [f for f in requested if f not in analysed]
+        if missing:
+            hint = ''
+            detected = sorted(set(self._detected_frames() or []))
+            if detected and analysed != detected and analysed == list(range(len(analysed))):
+                hint = (f' After the partial detection of frames {detected}, analyze_sarcomere_vectors stored '
+                        f'their vectors under positions {analysed}: pass frames={analysed}, or re-run '
+                        f'analyze_sarcomere_vectors(frames={detected}) to store them under their frame numbers.')
+            raise ValueError(f'Run analyze_sarcomere_vectors first for frames {missing} (sarcomere vectors '
+                             f'are stored for frames {analysed}).{hint}')
+        return requested
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
@@ -1051,9 +1103,9 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         frames : {'all', int, sequence of int} or None, optional
-            Frames to analyze: a single frame index, selected frames, or ``'all'``
-            for every frame that carries sarcomere vectors. If None, frames from
-            sarcomere vector analysis are used. Default is None.
+            Frames to analyze: a frame number, any sequence of frame numbers, or
+            ``'all'`` / None for every frame that carries sarcomere vectors.
+            Default is None.
         ratio_seeds : float, optional
             Ratio of sarcomere vectors used as seeds for line growth.
             Default is 0.1.
@@ -1073,34 +1125,9 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos_px' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
-        if frames is not None:
-            if isinstance(frames, str) and frames == 'all':
-                # every frame that carries vectors (detection may cover part of the movie)
-                frames = list(self.data['params.analyze_sarcomere_vectors.frames'])
-            elif self.metadata.n_stack == 1 and frames == 0:
-                frames = [0]
-            if np.issubdtype(type(frames), np.integer):
-                frames = [frames]
-            if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
-                raise ValueError(f'Run analyze_sarcomere_vectors first for frames {frames}.')
-        elif frames is None:
-            if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
-                frames = self.data['params.analyze_sarcomere_vectors.frames']
-            else:
-                raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere vectors' first!")
-
-        if frames == 'all':
-            n_imgs = self.metadata.n_stack
-            list_frames = list(range(n_imgs))
-        elif np.issubdtype(type(frames), np.integer):
-            list_frames = [int(frames)]
-        elif isinstance(frames, (list, np.ndarray)):
-            list_frames = list(frames)
-        else:
-            raise ValueError('Selection of frames not valid!')
+        list_frames = self._vector_frames(frames)
 
         pos_vectors_px = [self.data['structure.sarcomere.pos_px'][frame] for frame in list_frames]
         pos_vectors = [self.data['structure.sarcomere.pos'][frame] for frame in list_frames]
@@ -1114,9 +1141,8 @@ class SarcAsM(SarcAsMBase):
         def nan_arrays():
             return np.full(self.metadata.n_stack, np.nan)
         length_mean, length_std, length_max = (nan_arrays() for _ in range(3))
-        straightness_mean, straightness_std = (nan_arrays() for _ in range(2))
         bending_mean, bending_std = (nan_arrays() for _ in range(2))
-        myof_lines, lengths, straightness, frechet_straightness, bending = (none_lists() for _ in range(5))
+        myof_lines, lengths, bending = (none_lists() for _ in range(3))
 
         # iterate frames
         logger.info('Starting myofibril line analysis...')
@@ -1142,7 +1168,6 @@ class SarcAsM(SarcAsMBase):
                 if len(lines_i) > 0:
                     # line lengths and mean squared curvature (msc)
                     lengths_i = line_data_i['line_features']['length_lines']
-                    straightness_i = line_data_i['line_features']['straightness_lines']
                     bending_i = line_data_i['line_features']['bending_lines']
 
                     if len(lengths_i) > 0:
@@ -1164,21 +1189,15 @@ class SarcAsM(SarcAsMBase):
                         length_mean[frame_i], length_std[frame_i], length_max[frame_i] = (weighted_mean_length_i,
                                                                                           weighted_std_length_i,
                                                                                           np.nanmax(myof_map_flat_i))
-                        straightness_mean[frame_i], straightness_std[frame_i] = (np.mean(straightness_i),
-                                                                                 np.std(straightness_i))
-                        bending_mean[frame_i], bending_std[frame_i] = (np.mean(bending_i),
-                                                                                     np.std(bending_i))
+                        bending_mean[frame_i], bending_std[frame_i] = np.mean(bending_i), np.std(bending_i)
                     myof_lines[frame_i] = lines_i
                     lengths[frame_i] = lengths_i
-                    straightness[frame_i] = straightness_i
                     bending[frame_i] = bending_i
 
         # update structure dictionary
         myofibril_data = {'structure.myofibril.length_mean': length_mean,
                           'structure.myofibril.length_std': length_std, 'structure.myofibril.lines': myof_lines,
                           'structure.myofibril.length_max': length_max, 'structure.myofibril.length': lengths,
-                          'structure.myofibril.straightness': straightness, 'structure.myofibril.straightness_mean': straightness_mean,
-                          'structure.myofibril.straightness_std': straightness_std,
                           'structure.myofibril.bending': bending,
                           'structure.myofibril.bending_mean': bending_mean,
                           'structure.myofibril.bending_std': bending_std,
@@ -1206,9 +1225,9 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         frames : {'all', int, sequence of int} or None, optional
-            Frames to analyze: a single frame index, selected frames, or ``'all'``
-            for every frame that carries sarcomere vectors. If None, frames from
-            sarcomere vector analysis are used. Default is None.
+            Frames to analyze: a frame number, any sequence of frame numbers, or
+            ``'all'`` / None for every frame that carries sarcomere vectors.
+            Default is None.
         d_max : float, optional
             Max. distance threshold (µm) for creating a network edge between
             vector ends. Default is 3.
@@ -1232,41 +1251,20 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        frames = self._normalize_frames(frames)
         if 'structure.sarcomere.pos' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
-        if frames is not None:
-            if isinstance(frames, str) and frames == 'all':
-                # every frame that carries vectors (detection may cover part of the movie)
-                frames = list(self.data['params.analyze_sarcomere_vectors.frames'])
-            elif self.metadata.n_stack == 1 and frames == 0:
-                frames = [0]
-            if np.issubdtype(type(frames), np.integer):
-                frames = [frames]
-            if not set(frames).issubset(self.data['params.analyze_sarcomere_vectors.frames']):
-                raise ValueError(f'Run analyze_sarcomere_vectors first for frames {frames}.')
-        elif frames is None:
-            if 'params.analyze_sarcomere_vectors.frames' in self.data.keys():
-                frames = self.data['params.analyze_sarcomere_vectors.frames']
-            else:
-                raise ValueError("To use frames from sarcomere vector analysis, run 'analyze_sarcomere_vectors' first!")
-
-        if frames == 'all':
-            n_imgs = self.metadata.n_stack
-            list_frames = list(range(n_imgs))
-        elif np.issubdtype(type(frames), np.integer):
-            n_imgs = 1
-            list_frames = [int(frames)]
-        elif isinstance(frames, (list, np.ndarray)):
-            n_imgs = len(frames)
-            list_frames = list(frames)
-        else:
-            raise ValueError('Selection of frames not valid!')
+        list_frames = self._vector_frames(frames)
+        n_imgs = len(list_frames)
 
         pos_vectors = [np.asarray(self.data['structure.sarcomere.pos'][t]) for t in list_frames]
         sarcomere_length_vectors = [np.asarray(self.data['structure.sarcomere.slen'][t]) for t in list_frames]
         sarcomere_orientation_vectors = [np.asarray(self.data['structure.sarcomere.orientation'][t]) for t in list_frames]
         midline_id_vectors = [np.asarray(self.data['structure.sarcomere.midline_id'][t]) for t in list_frames]
+        # Z-band registry per vector (absent in stores analysed before it existed: the domain registry is skipped)
+        has_registry = 'structure.sarcomere.registry_lateral' in self.data
+        if not has_registry:
+            logger.info('No Z-band registry in the sarcomere vectors; re-run analyze_sarcomere_vectors for the '
+                        'per-domain registry.')
 
         # create empty arrays
         def none_lists():
@@ -1274,6 +1272,8 @@ class SarcAsM(SarcAsMBase):
         def nan_arrays():
             return np.full(self.metadata.n_stack, np.nan)
         n_domains, domain_area_mean, domain_area_std = (nan_arrays() for _ in range(3))
+        domain_registry_lateral, domain_registry_axial = none_lists(), none_lists()
+        domain_registry_lateral_mean, domain_registry_axial_mean = nan_arrays(), nan_arrays()
         domain_slen_mean, domain_slen_std = (nan_arrays() for _ in range(2))
         domain_oop_mean, domain_oop_std = (nan_arrays() for _ in range(2))
 
@@ -1317,6 +1317,22 @@ class SarcAsM(SarcAsMBase):
             domain_oop_mean[frame_i], domain_oop_std[frame_i] = (
                 np.mean(domain_oop[frame_i]), np.std(domain_oop[frame_i]))
 
+            # Z-band registry per domain: mean over the member vectors that have a value
+            if has_registry:
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', RuntimeWarning)
+                    reg_lat_all = np.asarray(self.data['structure.sarcomere.registry_lateral'][frame_i], float)
+                    reg_ax_all = np.asarray(self.data['structure.sarcomere.registry_axial'][frame_i], float)
+                    members = [np.asarray(idx, dtype=int) for idx in domains[frame_i]]
+                    domain_registry_lateral[frame_i] = np.array(
+                        [np.nanmean(reg_lat_all[idx]) if idx.size else np.nan for idx in members])
+                    domain_registry_axial[frame_i] = np.array(
+                        [np.nanmean(reg_ax_all[idx]) if idx.size else np.nan for idx in members])
+                    domain_registry_lateral_mean[frame_i] = np.nanmean(domain_registry_lateral[frame_i]) \
+                        if len(members) else np.nan
+                    domain_registry_axial_mean[frame_i] = np.nanmean(domain_registry_axial[frame_i]) \
+                        if len(members) else np.nan
+
         # update structure dictionary
         domain_data = {'structure.domain.n': n_domains, 'structure.domain.members': domains,
                        'structure.domain.area': domain_area, 'structure.domain.area_mean': domain_area_mean,
@@ -1334,6 +1350,12 @@ class SarcAsM(SarcAsMBase):
                        'params.analyze_sarcomere_domains.dilation_radius': dilation_radius,
                        'params.analyze_sarcomere_domains.store_mask': store_mask}
         
+        if has_registry:
+            domain_data.update({'structure.domain.registry_lateral': domain_registry_lateral,
+                                'structure.domain.registry_axial': domain_registry_axial,
+                                'structure.domain.registry_lateral_mean': domain_registry_lateral_mean,
+                                'structure.domain.registry_axial_mean': domain_registry_axial_mean})
+
         # add domain mask if stored
         if store_mask:
             domain_data['structure.domain.mask'] = domain_mask
@@ -1373,7 +1395,8 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         frames : {'all', int, sequence of int}, optional
-            Frames to track ('all' or a contiguous selection). 'all' resolves to
+            Frames to track ('all' or a contiguous selection, in any spelling of
+            frame numbers; order and repeats do not matter). 'all' resolves to
             every frame that carries sarcomere vectors, which is the frame range
             analyze_sarcomere_vectors actually covered, not necessarily the whole
             movie. Default is 'all'.
@@ -1427,7 +1450,7 @@ class SarcAsM(SarcAsMBase):
         """
         if motion_predictor not in ('none', 'flow'):
             raise ValueError(f"motion_predictor must be 'none' or 'flow', got {motion_predictor!r}.")
-        frames = self._normalize_frames(frames)
+        frames = self._canonical_frames(frames)
         if 'structure.sarcomere.pos_px' not in self.data:
             raise ValueError('Sarcomere vectors not analyzed. Run analyze_sarcomere_vectors first.')
 
@@ -1435,15 +1458,7 @@ class SarcAsM(SarcAsMBase):
         pv = self.data['structure.sarcomere.pos_px']
         n_analysable = min(self.metadata.n_stack, len(pv))
         analysed = [t for t in range(n_analysable) if pv[t] is not None]
-        if isinstance(frames, str) and frames == 'all':
-            list_frames = analysed
-        elif np.issubdtype(type(frames), np.integer) or isinstance(frames, (list, np.ndarray)):
-            if np.issubdtype(type(frames), np.integer):
-                list_frames = [int(frames)]
-            else:
-                list_frames = [int(f) for f in frames]
-        else:
-            raise ValueError('frames argument not valid')
+        list_frames = analysed if frames == 'all' else frames
 
         if len(list_frames) < 2:
             raise ValueError(
@@ -1947,6 +1962,7 @@ class SarcAsM(SarcAsMBase):
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
         if by not in self._GROUPING_LEVELS:
             raise ValueError(f"Unknown grouping '{by}'. Valid: {self._GROUPING_LEVELS}.")
+        reference_frame = self._canonical_frame(reference_frame, name='reference_frame')
 
         # A chain must span the whole fibre, so it keeps partially-tracked
         # sarcomeres that a group *mean* would rather discard (see the parameter
@@ -2283,11 +2299,12 @@ class SarcAsM(SarcAsMBase):
         Outputs are written under ``motion.<kind>.*`` (e.g. ``motion.pool.beating_rate``,
         ``motion.mband.slen``, ``motion.mband.contr``) with the same members for
         every grouping, so one set of plotting/export code serves them all:
-        the aggregated ``slen`` statistics, the ContractionNet cycle metrics, and
-        the per-group heterogeneity of the member tracks — serial/mutual
-        correlation of ΔSL and velocity across cycles (``corr_*`` /
-        ``ratio_*_mutual_serial``) and the wavelet oscillation spectra
-        (``oscill_*``), see :mod:`sarcasm.analysis.heterogeneity`.
+        the aggregated ``slen`` statistics, the ContractionNet cycle metrics
+        (including the percentile times ``time_to_50``, ``time_contr_10_90``,
+        ``time_relax_50`` and ``time_relax_90``), the per-group heterogeneity of
+        the member tracks — serial/mutual correlation of ΔSL and velocity across
+        cycles (``corr_*`` / ``ratio_*_mutual_serial``) and the wavelet oscillation
+        spectra (``oscill_*``), see :mod:`sarcasm.analysis.heterogeneity`.
 
         Parameters
         ----------
@@ -2372,7 +2389,6 @@ class SarcAsM(SarcAsMBase):
             tracks_slen, gid, n_groups, engine['contr'], engine['labels_contr'],
             engine['beating_rate'], frametime=self.metadata.frametime,
             filter_params=filter_params, slen_lims=slen_lims)
-
         # The aggregate, engine and heterogeneity dicts use bare feature names, so
         # the store key is just the path: every kind lands under motion/<kind>/
         # with identical members, with no per-kind special cases.
@@ -2458,9 +2474,9 @@ class SarcAsM(SarcAsMBase):
         analyze : bool, optional
             If True, run the standard LOI chain on the view
             (``detect_analyze_contractions`` -> ``get_trajectories`` ->
-            ``analyze_trajectories`` -> ``analyze_correlations`` ->
-            ``analyze_oscillations``) so it is immediately plot-ready.
-            Default is False.
+            ``analyze_trajectories`` -> ``analyze_popping`` ->
+            ``analyze_correlations`` -> ``analyze_oscillations``) so it is
+            immediately plot-ready. Default is False.
         persist_loi : bool, optional
             If True, persist the synthesized LOI to ``{base}/track_myofibril_{group}/``.
             Default is False (purely in-memory, keeps the dataset directory clean).
@@ -2509,6 +2525,7 @@ class SarcAsM(SarcAsMBase):
             m.detect_analyze_contractions()
             m.get_trajectories()
             m.analyze_trajectories()
+            m.analyze_popping()
             m.analyze_correlations()
             m.analyze_oscillations()
         return m
@@ -2816,6 +2833,7 @@ class SarcAsM(SarcAsMBase):
         if 'structure.sarcomere.pos' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
 
+        frame = self._canonical_frame(frame)
         if self.metadata.n_stack == 1:
             raise ValueError('LOI detection not possible in single images. '
                              'Sarcomere motion tracking is only possible in high-speed movies; (t, x, y) stacks.')
@@ -2855,11 +2873,11 @@ class SarcAsM(SarcAsMBase):
 
         Parameters
         ----------
-        frames : {'all', int, sequence of int}, optional
-            Frames to analyze ('all', a single frame index, or selected frames).
-            Default is 'all'.
+        frames : {'all', int, sequence of int} or None, optional
+            Frames to analyze ('all', a frame number, or any sequence of frame
+            numbers). Default is 'all'.
         """
-        frames = self._normalize_frames(frames)
+        frames = self._canonical_frames(frames)
         auto_save = self.auto_save
         self.auto_save = False                 # one store write at the end, not one per step
         try:

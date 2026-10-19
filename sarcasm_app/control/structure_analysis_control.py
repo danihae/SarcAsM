@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import SarcAsM
+from sarcasm._internal.frames import parse_frames_text
 from .chain_execution import ChainExecution
 from .application_control import ApplicationControl
 from .file_selection_control import _INVALID_INPUT_QSS
@@ -179,20 +180,13 @@ class StructureAnalysisControl:
         return worker
 
     def __parse_frames(self, frames_str: str):
-        if frames_str == '':
+        # 'all', or the sorted frame numbers; None for an empty or invalid field, which __chk_frames rejects
+        # (an invalid entry used to fall back to frame 0, and '1, 3' silently dropped frame 3)
+        try:
+            return parse_frames_text(frames_str)
+        except ValueError as e:
+            logger.warning(f'Frames: {e}')
             return None
-        if frames_str.lower().__eq__('all'):
-            return frames_str.lower()
-        if frames_str.isnumeric():
-            return int(frames_str)
-        if frames_str.__contains__(','):
-            list_str = frames_str.split(',')
-            parsed_list = []
-            for x in list_str:
-                if x.isnumeric():
-                    parsed_list.append(int(x))
-            return parsed_list
-        return 0  # if it's a wrong value just process first image (processing all could take long for a wrong input)
 
     def on_btn_z_band(self):
         if not self.__chk_initialized():
@@ -256,6 +250,11 @@ class StructureAnalysisControl:
                 max_neighbor_deviation=(
                     m.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
                     if m.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
+                registry_lateral_band=(
+                    m.parameters.get_parameter('structure.vectors.registry_lateral_band_min').get_value(),
+                    m.parameters.get_parameter('structure.vectors.registry_lateral_band_max').get_value()),
+                registry_axial_range=m.parameters.get_parameter('structure.vectors.registry_axial_range').get_value(),
+                registry_max_angle=m.parameters.get_parameter('structure.vectors.registry_max_angle').get_value(),
                 progress_notifier=progress_notifier
             )
             pass
@@ -366,12 +365,12 @@ class StructureAnalysisControl:
 
     def __check_frame_syntax(self):
         text = self.__structure_parameters_widget.le_general_frames.text()
-        value = self.__parse_frames(text)
-        if not text.isnumeric() and (value == 0 or value is None):
-            # this is an error
-            self.__structure_parameters_widget.le_general_frames.setStyleSheet(_INVALID_INPUT_QSS)
-        else:
-            self.__structure_parameters_widget.le_general_frames.setStyleSheet(_VALID_INPUT_QSS)
+        try:
+            valid = parse_frames_text(text) is not None
+        except ValueError:
+            valid = False
+        self.__structure_parameters_widget.le_general_frames.setStyleSheet(
+            _VALID_INPUT_QSS if valid else _INVALID_INPUT_QSS)
 
     def on_analyze_structure(self):
         if not self.__chk_initialized():
@@ -487,6 +486,14 @@ class StructureAnalysisControl:
             widget.dsb_vectors_neighbor_radius)
         parameters.get_parameter(name='structure.vectors.max_neighbor_deviation').connect(
             widget.dsb_vectors_max_neighbor_deviation)
+        parameters.get_parameter(name='structure.vectors.registry_lateral_band_min').connect(
+            widget.dsb_vectors_registry_lateral_band_min)
+        parameters.get_parameter(name='structure.vectors.registry_lateral_band_max').connect(
+            widget.dsb_vectors_registry_lateral_band_max)
+        parameters.get_parameter(name='structure.vectors.registry_axial_range').connect(
+            widget.sb_vectors_registry_axial_range)
+        parameters.get_parameter(name='structure.vectors.registry_max_angle').connect(
+            widget.dsb_vectors_registry_max_angle)
 
         parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)

@@ -341,7 +341,10 @@ def _write_ragged(parent: "zarr.Group", member: str, frames: list) -> None:
     lengths = np.array([0 if a is None else (a.shape[0] if a.ndim else 1) for a in arrs],
                        dtype=np.int64)
     none_mask = np.array([a is None for a in arrs], dtype=bool)
-    nonempty = [a for a in arrs if a is not None and a.size > 0]
+    # select by the same leading length the offsets count: an element such as (4, 0) adds 4 to the offsets, so it
+    # must also be in the concatenation (which then fails on mismatched trailing shapes instead of silently
+    # shifting every later frame onto the wrong values)
+    nonempty = [a for a in arrs if a is not None and (a.shape[0] if a.ndim else 1) > 0]
     if nonempty:
         values = np.concatenate([np.atleast_1d(a) for a in nonempty], axis=0)
     else:

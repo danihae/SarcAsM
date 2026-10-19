@@ -40,7 +40,7 @@ Daniel Haertter, Lara Hauke, Til Driehorst, Kengo Nishi, Jaden Long, Malte Tibur
 
 - Robust AI-based sarcomere feature detection in microscopy images
 - Comprehensive multilevel analysis of sarcomere structure
-    - Z-bands morphometrics and lateral alignment
+    - Z-band morphometrics, lateral Z-band connections and Z-band registry
     - Sarcomere lengths and orientations (sarcomere 'vectors')
     - Myofibril lengths and shape
     - Cell-level myofibril domains 

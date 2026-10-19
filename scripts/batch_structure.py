@@ -15,8 +15,9 @@ from sarcasm import SarcAsM
 folder = 'D:/2023_SarcAsM_drugs_chronic/'
 
 # Frames to analyze. 'all' takes every frame of a time-lapse; 0 analyzes the
-# first frame only, which is what a folder of single images needs. A subset must
-# start at frame 0, e.g. range(0, 10).
+# first frame only, which is what a folder of single images needs. Any selection
+# of frames works, e.g. [0, 12, 24] or range(0, 10); results are stored under
+# their frame numbers.
 frames = 'all'
 
 # --- how much GPU each worker may take ---------------------------------------

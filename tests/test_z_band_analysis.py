@@ -32,10 +32,10 @@ def _analyse(zbands, **kw):
     field = np.stack([np.ones_like(zbands), np.zeros_like(zbands)])      # sarcomere axis along x
     labels, skel = zba.segment_z_bands(zbands, threshold=0.5)
     res = zba.analyze_z_bands(zbands, labels, skel, zbands, field, pixelsize=PX, **PARAMS, **kw)
-    ends = np.asarray(res[13], float) / PX                                 # (n_z, 2 ends, row/col) px
-    links = np.asarray(res[12])
+    ends = np.asarray(res['ends'], float) / PX                             # (n_z, 2 ends, row/col) px
+    links = np.asarray(res['links'])
     pairs = {tuple(sorted((int(i), int(j)))) for i, _, j, _ in links.T} if links.size else set()
-    return ends, pairs, np.asarray(res[16], float)
+    return ends, pairs, np.asarray(res['lat_length_groups'], float)
 
 
 def _band_at(ends, row, col):
@@ -80,3 +80,77 @@ def test_two_ends_of_one_zband_are_never_linked():
     ends, pairs, _ = _analyse(zb, max_axial_offset=None)
     assert len(ends) == 2
     assert all(i != j for i, j in pairs)
+
+
+def _cell_scene(px, cols_um=(15.0,), size_um=30.0):
+    """Vertical Z-bands (10 µm long, 0.3 µm wide) at x = cols_um in a cell (5-25 µm square): Z-bands 300, cell
+    pixels within 1.5 µm of a Z-band 150, farther cell pixels 400, medium outside the cell 100."""
+    n = int(round(size_um / px))
+    yy, xx = np.mgrid[0:n, 0:n] * px
+    zb = np.zeros((n, n), bool)
+    for c in cols_um:
+        zb |= (np.abs(xx - c) <= 0.15) & (yy >= 10) & (yy <= 20)
+    cell = (yy >= 5) & (yy <= 25) & (xx >= 5) & (xx <= 25)
+    near = ndimage.distance_transform_edt(~zb) * px <= 1.5
+    image = np.where(cell, np.where(near, 150.0, 400.0), 100.0)
+    image[zb] = 300.0
+    return zb.astype(np.float32), image, cell
+
+
+def _contrast(px=PX, cols_um=(15.0,)):
+    zbands, image, cell = _cell_scene(px, cols_um)
+    field = np.stack([np.ones_like(zbands), np.zeros_like(zbands)])
+    labels, skel = zba.segment_z_bands(zbands, threshold=0.5)
+    res = zba.analyze_z_bands(zbands, labels, skel, image, field, pixelsize=px, **PARAMS,
+                              background=zba.estimate_background(image, cell), cell_mask=cell)
+    return np.asarray(res['contrast'], float)
+
+
+def test_contrast_is_the_background_corrected_ratio_to_the_surrounding_pixels():
+    np.testing.assert_allclose(_contrast(), [(300 - 100) / (150 - 100)])
+
+
+def test_contrast_does_not_depend_on_the_pixel_size():
+    np.testing.assert_allclose(_contrast(px=0.05), [4.0])
+
+
+def test_neighbouring_zband_is_not_part_of_the_ring():
+    np.testing.assert_allclose(_contrast(cols_um=(14.5, 15.5)), [4.0, 4.0])
+
+
+def test_wider_ring_reaches_the_far_cytoplasm():
+    zbands, image, _ = _cell_scene(PX)
+    labels = (zbands > 0.5).astype(int)
+    contrast, surround = zba.z_band_contrast(labels, zbands > 0.5, image, PX, 100.0, ring_width=2.0)
+    assert contrast[0] < 3.0 and surround[0] > 50.0
+
+
+def test_background_is_the_median_outside_the_cell():
+    image = np.arange(100.0).reshape(10, 10)
+    assert zba.estimate_background(image, image >= 50) == np.median(image[image < 50])
+    assert np.isnan(zba.estimate_background(image, np.ones((10, 10), bool)))     # no free background
+    assert np.isnan(zba.estimate_background(image, None))
+
+
+def test_contrast_falls_back_to_a_low_percentile_without_background():
+    zbands, image, _ = _cell_scene(PX)
+    field = np.stack([np.ones_like(zbands), np.zeros_like(zbands)])
+    labels, skel = zba.segment_z_bands(zbands, threshold=0.5)
+    res = zba.analyze_z_bands(zbands, labels, skel, image, field, pixelsize=PX, **PARAMS, background=np.nan)
+    assert res['background'] == np.percentile(image, 1)
+
+
+def test_no_zbands_gives_an_empty_contrast():
+    contrast, surround = zba.z_band_contrast(np.zeros((20, 20), int), np.zeros((20, 20), bool), np.ones((20, 20)),
+                                             PX, 0.0)
+    assert contrast.size == 0 and surround.size == 0
+
+
+def test_ring_stays_inside_the_cell():
+    # a Z-band 0.5 µm from the cell edge: its ring would reach the bright medium outside the cell
+    zbands, image, cell = _cell_scene(PX, cols_um=(5.5,))
+    image[~cell] = 600.0
+    labels = (zbands > 0.5).astype(int)
+    contrast, surround = zba.z_band_contrast(labels, zbands > 0.5, image, PX, 100.0, cell_mask=cell)
+    np.testing.assert_allclose(surround, [50.0])
+    np.testing.assert_allclose(contrast, [4.0])

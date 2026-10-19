@@ -197,6 +197,10 @@ def run_cycle_engine(
             'time_to_peak': np.zeros((0, 1)),
             'time_to_relax': np.zeros((0, 1)),
             'time_contr': np.zeros((0, 1)),
+            'time_to_50': np.zeros((0, 1)),
+            'time_contr_10_90': np.zeros((0, 1)),
+            'time_relax_50': np.zeros((0, 1)),
+            'time_relax_90': np.zeros((0, 1)),
         }
 
     contr = contraction_analysis.detect_contractions(

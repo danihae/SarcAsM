@@ -15,17 +15,19 @@
 
 import json
 import logging
+import operator
 import os
 import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Union, Literal, Dict, Any, List
+from typing import Union, Literal, Dict, Any, List, Optional
 
 import numpy as np
 import tifffile
 import torch
 
 from sarcasm.exceptions import MetaDataError
+from sarcasm._internal.frames import canonical_frame, canonical_frames
 from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.io.ome_store import (
     OmeZarrStore,
@@ -37,6 +39,16 @@ from sarcasm.io.ome_store import (
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
+
+
+def _frame_int(value) -> int:
+    """A frame number from an int, numpy integer or 0-d integer array; bools and floats are refused."""
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"Frame numbers must be integers, got the bool {value!r}.")
+    try:
+        return operator.index(value)
+    except TypeError:
+        raise TypeError(f"Frame numbers must be integers, got {type(value).__name__} {value!r}.") from None
 
 
 def _format_bytes(n: int) -> str:
@@ -360,60 +372,98 @@ class SarcAsMBase:
             return [int(f) for f in frames]
         return frames
 
+    def _canonical_frames(self, frames, name: str = 'frames'):
+        """``'all'`` or the sorted unique frame numbers selected by ``frames``, validated against the movie.
+
+        The single entry point of every analysis step: ``k``, ``np.int64(k)``, ``[k]``, ``(k,)``,
+        ``range(k, k + 1)``, ``np.array([k])`` and ``np.array(k)`` all give ``[k]``; None gives ``'all'``.
+        See :func:`sarcasm._internal.frames.canonical_frames`.
+        """
+        return canonical_frames(frames, self.metadata.n_stack, name=name)
+
+    def _canonical_frame(self, frame, name: str = 'frame') -> int:
+        """One validated frame number (int, numpy integer, 0-d array or one-element sequence)."""
+        return canonical_frame(frame, self.metadata.n_stack, name=name)
+
+    def _detected_frames(self) -> Optional[List[int]]:
+        """Frame numbers of the pages of the detection masks, in page order; None when detection params are
+        missing (masks then cover every frame)."""
+        data = getattr(self, 'data', None)
+        detected = data.get('params.detect_sarcomeres.frames', 'all') if data is not None else 'all'
+        if detected is None or isinstance(detected, str):
+            return None
+        return [int(f) for f in np.atleast_1d(np.asarray(detected)).ravel()]
+
+    # masks written by detect_sarcomeres: stored only for the detected frames, one page per frame
+    _DETECTION_MASKS = ('cell_mask', 'zbands', 'mbands', 'orientation', 'sarcomere_mask')
+    # number of axes of one frame of a mask; a stored array with one axis more holds a page axis
+    _MASK_FRAME_NDIM = {'orientation': 3}
+
     def _read_mask(self, name: str, frames=None) -> np.ndarray:
-        """Read a mask from the store, optionally selecting ``frames`` (int, slice or
-        any sequence of ints), mirroring ``tifffile.imread(..., key=frames)``."""
+        """Read a mask from the store, optionally selecting movie ``frames``, like ``read_imgs``.
+
+        ``frames`` is a frame number (int, numpy integer, 0-d array) -> one frame, ``(H, W)`` (``(2, H, W)``
+        for the orientation field); a sequence of frame numbers (any order, repeats allowed) or a slice -> one
+        page per requested frame, ``(n, H, W)``. Frame numbers are mapped to the pages of a partially detected
+        mask, whether the store holds the pages with a frame axis (``(n, H, W)``, also for a single detected
+        frame) or a single frame without one (``(H, W)``, single images and stores written before the frame
+        axis was kept). None returns the stored array unchanged.
+        """
         if not self._mask_exists(name):
             raise FileNotFoundError(
                 f"Required analysis mask '{name}' not found in the store.\n"
                 f"Run 'detect_sarcomeres' to create it.")
         if frames is None:
             return self.store.read_mask(name)
-        # When only a single frame was detected (or the movie is single-frame),
-        # masks are stored without a leading frame axis, so a scalar frame index
-        # refers to the whole stored mask, not a pixel row (mirrors read_imgs).
-        data = getattr(self, 'data', None)
-        detected = data.get('params.detect_sarcomeres.frames', 'all') if data is not None else 'all'
-        single_frame_store = (
-            self.metadata.n_stack in (None, 1)
-            or (isinstance(detected, (list, tuple, np.ndarray)) and len(detected) == 1))
-        if single_frame_store:
-            if isinstance(frames, (int, np.integer)):
-                return self.store.read_mask(name)
-            if not isinstance(frames, slice) and len(frames) == 1:
-                return self.store.read_mask(name)[None]
-        frames = self._mask_pages(name, self._normalize_frames(frames))
+        handle = self.store.mask_handle(name)
+        paged = handle.ndim > self._MASK_FRAME_NDIM.get(name, 2)
+        scalar = not isinstance(frames, (slice, list, tuple, range)) and np.ndim(frames) == 0
+        if isinstance(frames, slice):
+            requested = list(range(*frames.indices(int(self.metadata.n_stack or 1))))
+        elif scalar:
+            requested = [_frame_int(frames)]
+        else:
+            requested = [_frame_int(f) for f in np.asarray(list(frames) if isinstance(frames, range)
+                                                            else frames, dtype=object).ravel()]
+        if not requested:
+            raise ValueError(f"No frames selected for mask '{name}'.")
+        pages = self._mask_pages(name, requested, n_pages=handle.shape[0] if paged else 1)
+        if not paged:                             # one stored frame, no frame axis
+            single = np.asarray(handle[...])
+            return single if scalar else np.stack([single] * len(pages))
         # Slice inside the store so only the requested chunks (one frame each)
         # load, instead of materialising the whole stack and slicing in numpy.
-        return self.store.read_mask(name, frames=frames)
+        return np.asarray(handle[pages[0]] if scalar else handle[pages])
 
-    # masks written by detect_sarcomeres: stored only for the detected frames, in detection order
-    _DETECTION_MASKS = ('cell_mask', 'zbands', 'mbands', 'orientation', 'sarcomere_mask')
-
-    def _mask_pages(self, name: str, frames):
-        """Translate movie-frame indices into page indices of a sparsely stored detection mask.
+    def _mask_pages(self, name: str, frames, n_pages: Optional[int] = None) -> List[int]:
+        """Translate movie-frame numbers into page indices of a stored mask.
 
         ``detect_sarcomeres(frames=[32, 33])`` stores two pages; ``_read_mask('zbands', frames=33)``
         must then read page 1. Masks covering every frame (all frames detected, the 3D fast-movie
-        Z-bands, optical flow) and slices are returned unchanged.
+        Z-bands, optical flow) have one page per frame.
+
+        Raises
+        ------
+        ValueError
+            For a frame that was not detected, naming the detected frames.
         """
-        data = getattr(self, 'data', None)
-        detected = data.get('params.detect_sarcomeres.frames', 'all') if data is not None else 'all'
-        if name not in self._DETECTION_MASKS or detected is None or isinstance(detected, str):
-            return frames
-        if isinstance(frames, slice):
-            return frames
-        detected = [int(detected)] if isinstance(detected, (int, np.integer)) else [int(f) for f in detected]
-        if detected == list(range(self.metadata.n_stack)):
-            return frames
-        scalar = isinstance(frames, (int, np.integer))
-        requested = [int(frames)] if scalar else [int(f) for f in frames]
-        try:
+        requested = [int(f) for f in frames]
+        detected = self._detected_frames() if name in self._DETECTION_MASKS else None
+        n = int(self.metadata.n_stack or 1)
+        if detected is None or detected == list(range(n)):
+            pages = requested
+        else:
+            missing = [f for f in requested if f not in detected]
+            if missing:
+                raise ValueError(f"Frame(s) {missing} of mask '{name}' were not detected (detected frames: "
+                                 f"{detected}). Run detect_sarcomeres on these frames first.")
             pages = [detected.index(f) for f in requested]
-        except ValueError:
-            raise ValueError(f"Frame(s) {requested} of mask '{name}' were not detected (detected frames: "
-                             f"{detected}). Run detect_sarcomeres on these frames first.")
-        return pages[0] if scalar else pages
+        if n_pages is not None:
+            bad = [f for f, p in zip(requested, pages) if not 0 <= p < n_pages]
+            if bad:
+                raise ValueError(f"Frame(s) {bad} out of range for mask '{name}', which holds {n_pages} "
+                                 f"frame(s).")
+        return pages
 
     def __dir__(self) -> list[str]:
         """Augment autocomplete with dynamic attributes"""
@@ -771,20 +821,31 @@ class SarcAsMBase:
         np.ndarray
             Image data in internal format ``(Y, X)`` or ``(Stack, Y, X)``.
         """
+        frames = self._image_selection(frames)
         # Fast path: pixels already ingested into the store -> lazy zarr slice.
         if self.store.has_image():
             arr = self.store.image_handle()
-            if (frames is None or (isinstance(frames, str) and frames == 'all')
-                    or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
-                return arr[...]
-            return arr[self._normalize_frames(frames)]
+            return arr[...] if frames is None else arr[frames]
 
         # First open of a TIFF: read it, ingest into the store, then slice.
         data = self._read_source_tif(axes=axes)
-        if (frames is None or (isinstance(frames, str) and frames == 'all')
-                or self.metadata.n_stack is None or self.metadata.n_stack <= 1):
-            return data
-        return data[self._normalize_frames(frames)]
+        return data if frames is None else data[frames]
+
+    def _image_selection(self, frames):
+        """Index for ``read_imgs``: None for the whole image/movie, an int for one frame (also from a numpy
+        integer or 0-d array), a slice, or a list of ints in the caller's order. A single image has frame 0
+        only; any other frame is refused instead of silently returning frame 0."""
+        if frames is None or (isinstance(frames, str) and frames == 'all'):
+            return None
+        if self.metadata.n_stack is None or self.metadata.n_stack <= 1:
+            if not isinstance(frames, slice):
+                canonical_frames(frames, 1)               # raises for anything but frame 0
+            return None
+        if isinstance(frames, slice):
+            return frames
+        if not isinstance(frames, (list, tuple, range)) and np.ndim(frames) == 0:
+            return _frame_int(frames)
+        return self._normalize_frames(frames)
 
     def _read_source_tif(self, axes=None):
         """Read the full source TIFF into internal format and ingest it into the store."""

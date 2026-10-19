@@ -574,7 +574,7 @@
        <widget class="QLabel" name="label_8">
         <property name="toolTip">
          <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+            Smaller values are not recognized as connections (lateral Z-band connections). Defaults to 0.25.</string>
         </property>
         <property name="text">
          <string>Theta phi min </string>
@@ -585,7 +585,7 @@
        <widget class="QDoubleSpinBox" name="dsb_z_band_theta_phi_min">
         <property name="toolTip">
          <string>Minimal cosine of the angle between the pointed z-band vector and the connecting vector between ends of z-bands.
-            Smaller values are not recognized as connections (for lateral alignment and distance analysis). Defaults to 0.25.</string>
+            Smaller values are not recognized as connections (lateral Z-band connections). Defaults to 0.25.</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -598,7 +598,7 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_17">
         <property name="toolTip">
-         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+         <string>Minimal linking score of two z-band ends (0-1; product of the cosines between the end directions and the connecting line). Defaults to 0.3.</string>
         </property>
         <property name="text">
          <string>A min</string>
@@ -608,7 +608,7 @@
       <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="dsb_z_band_a_min">
         <property name="toolTip">
-         <string>Minimal lateral alignment between z-band ends. Defaults to 0.1.</string>
+         <string>Minimal linking score of two z-band ends (0-1; product of the cosines between the end directions and the connecting line). Defaults to 0.3.</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -695,7 +695,7 @@
          <widget class="QLabel" name="label_20">
           <property name="toolTip">
            <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+            (lateral Z-band connections). Defaults to 5.0.</string>
           </property>
           <property name="text">
            <string>Max:</string>
@@ -706,7 +706,7 @@
          <widget class="QDoubleSpinBox" name="dsb_z_band_d_max">
           <property name="toolTip">
            <string>Maximal distance between z-band ends (in µm). Z-band end pairs with larger distances are not connected
-            (for lateral alignment and distance analysis). Defaults to 5.0.</string>
+            (lateral Z-band connections). Defaults to 5.0.</string>
           </property>
           <property name="decimals">
            <number>3</number>

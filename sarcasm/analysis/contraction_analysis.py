@@ -318,10 +318,11 @@ def analyze_contraction_parameters(
         Frames from either end within which a cycle counts as incomplete (must match
         the value passed to :func:`detect_contractions`). Metrics an incomplete cycle
         cannot support are set to NaN rather than computed from a truncated window:
-        ``time_contr`` whenever either edge is missing; ``time_to_peak`` when the
-        onset is missing; ``time_to_relax`` when the offset is missing; and an
-        amplitude/velocity extremum whenever it falls *on* the truncated boundary,
-        because the true extremum then lies outside the recording. Default is 3.
+        ``time_contr`` whenever either edge is missing; ``time_to_peak`` and the
+        shortening-phase percentile times when the onset is missing; ``time_to_relax``
+        when the offset is missing; and an amplitude/velocity extremum whenever it falls
+        *on* the truncated boundary, because the true extremum then lies outside the
+        recording. Default is 3.
 
     Returns
     -------
@@ -338,6 +339,17 @@ def analyze_contraction_parameters(
         - 'time_to_peak' : np.ndarray ``(n_domains, max_n_contr)``, time to maximal contraction (s)
         - 'time_to_relax' : np.ndarray ``(n_domains, max_n_contr)``, time from peak to relaxation (s)
         - 'time_contr' : np.ndarray ``(n_domains, max_n_contr)``, contraction duration (s)
+        - 'time_to_50' : np.ndarray ``(n_domains, max_n_contr)``, time from the onset of the cycle to 50 %
+          of the shortening (s)
+        - 'time_contr_10_90' : np.ndarray ``(n_domains, max_n_contr)``, time from 10 % to 90 % of the
+          shortening (s)
+        - 'time_relax_50' : np.ndarray ``(n_domains, max_n_contr)``, time from the peak to 50 % relaxation (s)
+        - 'time_relax_90' : np.ndarray ``(n_domains, max_n_contr)``, time from the peak to 90 % relaxation (s)
+
+        The percentile times are measured at the first crossing of the fraction of the cycle's peak
+        shortening ``contr_max`` (relative to ``equ``), interpolated linearly between frames. Relaxation is
+        followed past the end of the contraction window up to the onset of the next cycle; a cycle without
+        shortening, or whose trace never reaches the level, gives NaN.
     """
     n_domains = group_slen.shape[0]
     max_n_contr = int(np.max(domain_n_contr)) if np.max(domain_n_contr) > 0 else 1
@@ -351,6 +363,8 @@ def analyze_contraction_parameters(
     domain_time_to_peak = np.full((n_domains, max_n_contr), np.nan)
     domain_time_to_relax = np.full((n_domains, max_n_contr), np.nan)
     domain_time_contr = np.full((n_domains, max_n_contr), np.nan)
+    domain_time_to_50, domain_time_contr_10_90, domain_time_relax_50, domain_time_relax_90 = (
+        np.full((n_domains, max_n_contr), np.nan) for _ in range(4))
     
     window_length, polyorder = filter_params
     
@@ -428,6 +442,25 @@ def analyze_contraction_parameters(
                         domain_time_to_peak[domain_idx, contr_idx] = peak_idx * frametime
                     if not cut_end:
                         domain_time_to_relax[domain_idx, contr_idx] = (n_cyc - peak_idx) * frametime
+
+                    # percentile times: first crossings of fractions of the peak shortening
+                    amp = delta_cycle[peak_idx]
+                    if amp < 0:
+                        if not cut_start:
+                            rise = delta_cycle[:peak_idx + 1]
+                            t10, t50, t90 = (_first_crossing(rise, p * amp, falling=True) for p in (0.1, 0.5, 0.9))
+                            domain_time_to_50[domain_idx, contr_idx] = t50 * frametime
+                            domain_time_contr_10_90[domain_idx, contr_idx] = (t90 - t10) * frametime
+                        # relaxation runs on past the end of the window, up to the onset of the next cycle
+                        frames_cycle = np.flatnonzero(cycle_mask)
+                        later = np.flatnonzero((labels > 0) & (labels != contr_idx + 1))
+                        later = later[later > frames_cycle[-1]]
+                        stop = int(later[0]) if later.size else len(delta_slen)
+                        decay = delta_slen[frames_cycle[peak_idx]:stop]
+                        domain_time_relax_50[domain_idx, contr_idx] = _first_crossing(
+                            decay, 0.5 * amp, falling=False) * frametime
+                        domain_time_relax_90[domain_idx, contr_idx] = _first_crossing(
+                            decay, 0.1 * amp, falling=False) * frametime
     
     return {
         'equ': domain_equ,
@@ -438,7 +471,39 @@ def analyze_contraction_parameters(
         'time_to_peak': domain_time_to_peak,
         'time_to_relax': domain_time_to_relax,
         'time_contr': domain_time_contr,
+        'time_to_50': domain_time_to_50,
+        'time_contr_10_90': domain_time_contr_10_90,
+        'time_relax_50': domain_time_relax_50,
+        'time_relax_90': domain_time_relax_90,
     }
+
+
+def _first_crossing(x: np.ndarray, level: float, falling: bool) -> float:
+    """
+    Fractional index of the first crossing of ``level`` in ``x``, interpolated linearly between samples.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        1D trace.
+    level : float
+        Level to cross.
+    falling : bool
+        True for the first sample at or below ``level``, False for the first at or above it.
+
+    Returns
+    -------
+    float
+        Fractional sample index of the crossing; NaN if ``x`` never reaches ``level`` or is already past it at
+        its first sample (the crossing happened before the segment).
+    """
+    hit = np.flatnonzero(x <= level) if falling else np.flatnonzero(x >= level)
+    if hit.size == 0 or hit[0] == 0:
+        return np.nan
+    j = int(hit[0])
+    if not np.isfinite(x[j - 1]):
+        return float(j)
+    return (j - 1) + (x[j - 1] - level) / (x[j - 1] - x[j])
 
 
 def _interpolate_nans(arr: np.ndarray) -> np.ndarray:

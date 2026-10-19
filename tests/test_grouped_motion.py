@@ -155,6 +155,60 @@ def test_extremum_on_a_truncated_boundary_is_dropped():
     assert np.isnan(out['time_contr'][0, 0])
 
 
+def _ramp_twitch(T=80, onset=20, rise=7, step=0.03, relax_step=0.01, window=28, equ=1.95):
+    """Linear shortening by ``step`` µm per frame for ``rise`` frames, then linear relaxation by ``relax_step``
+    per frame; the cycle window covers ``window`` frames from the onset."""
+    delta = np.zeros(T)
+    k = np.arange(T) - onset
+    amp = -step * rise
+    delta[(k >= 0) & (k <= rise)] = -step * k[(k >= 0) & (k <= rise)]
+    after = k > rise
+    delta[after] = np.minimum(amp + relax_step * (k[after] - rise), 0.0)
+    return equ + delta, _labelled_cycles(T, [(onset, onset + window)])
+
+
+def test_percentile_times_interpolate_the_first_crossings():
+    """Peak -0.21 µm after 7 frames of -0.03 µm, relaxation +0.01 µm per frame: 50 % shortening at 3.5
+    frames, 10 % at 0.7 and 90 % at 6.3, 50 % / 90 % relaxation 10.5 / 18.9 frames after the peak."""
+    slen, labels = _ramp_twitch()
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
+    assert out['contr_max'][0, 0] == pytest.approx(-0.21)
+    assert out['time_to_50'][0, 0] == pytest.approx(3.5 * _FT)
+    assert out['time_contr_10_90'][0, 0] == pytest.approx(5.6 * _FT)
+    assert out['time_relax_50'][0, 0] == pytest.approx(10.5 * _FT)
+    assert out['time_relax_90'][0, 0] == pytest.approx(18.9 * _FT)
+
+
+def test_relaxation_is_followed_past_the_end_of_the_window():
+    slen, labels = _ramp_twitch(window=12)                      # window closes before 90 % relaxation
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
+    assert out['time_relax_90'][0, 0] == pytest.approx(18.9 * _FT)
+
+
+def test_percentile_times_need_the_onset_and_a_crossing():
+    slen, labels = _ramp_twitch(onset=1)                        # onset inside the start buffer
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
+    assert np.isnan(out['time_to_50'][0, 0]) and np.isnan(out['time_contr_10_90'][0, 0])
+    assert np.isfinite(out['time_relax_50'][0, 0])
+    slen, labels = _ramp_twitch(T=110, onset=60, relax_step=0.002)   # never relaxes to 10 % in the recording
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
+    assert np.isnan(out['time_relax_90'][0, 0])
+
+
+def test_percentile_time_is_nan_when_the_level_is_crossed_before_the_onset():
+    """A cycle whose detected onset lies after the trace already passed 50 % has no measurable time to 50 %."""
+    slen, labels = _ramp_twitch()
+    labels = np.roll(labels, 5)                     # onset 5 frames late: at -0.15 µm, past the -0.105 level
+    out = contraction_analysis.analyze_contraction_parameters(
+        slen[None, :], labels[None, :], np.array([1]), frametime=_FT, buffer_frames=_BUF)
+    assert np.isnan(out['time_to_50'][0, 0]) and np.isnan(out['time_contr_10_90'][0, 0])
+    assert np.isfinite(out['time_relax_50'][0, 0])
+
+
 def test_equilibrium_excludes_edge_contraction_frames():
     """Edge cycles stay in the mask, so they no longer pollute the quiet baseline.
 
@@ -671,6 +725,105 @@ def test_member_slen_falls_back_to_diff_for_a_legacy_loi():
     # a stored slen on a non-synthetic LOI is still ignored (legacy semantics)
     m2 = _fake_motion({'z_pos': z, 'slen': np.full((3, 5), 99.0)})
     assert np.allclose(m2._member_slen(), np.diff(z, axis=0))
+
+
+def test_nan_sav_golay_leaves_its_input_unchanged():
+    """The legacy LOI engine smoothed lengths through this helper's side effect on its input."""
+    rng = np.random.default_rng(1)
+    x = 1.9 + 0.05 * rng.standard_normal((3, 60))
+    x[1, 20:23] = np.nan
+    before = x.copy()
+    y = Utils.nan_sav_golay(x, 13, 5, axis=0)
+    assert np.array_equal(x, before, equal_nan=True)
+    assert not np.allclose(y[0], x[0])
+    assert np.array_equal(np.isnan(y), np.isnan(x))
+
+
+def _beating_chain(K=5, T=200, period=40, rise=8, seed=0):
+    """Member lengths of a beating chain with noise: shortening by 0.03 µm/frame for ``rise`` frames, then
+    relaxation by 0.01 µm/frame, one cycle per ``period`` frames starting at frame 2 (truncated first cycle)."""
+    rng = np.random.default_rng(seed)
+    delta = np.zeros(T)
+    for onset in range(2, T, period):
+        k = np.arange(T) - onset
+        cyc = (k >= 0) & (k < period)
+        delta[cyc] = np.where(k[cyc] <= rise, -0.03 * k[cyc], np.minimum(-0.03 * rise + 0.01 * (k[cyc] - rise), 0))
+    member = 1.95 + delta + 0.01 * rng.standard_normal((K, T))
+    labels = np.zeros(T, int)
+    for i, onset in enumerate(range(2, T, period), start=1):
+        labels[onset:min(onset + 30, T)] = i
+    return member, labels
+
+
+def test_get_trajectories_twice_gives_the_result_of_one_call_on_a_chain():
+    """get_trajectories replaces a synthetic chain's 'slen' by the smoothed lengths; a second call used to
+    smooth those again."""
+    member, labels = _beating_chain()
+    z, slen, _ = grouped_motion.synthesize_loi_chain(member, 0.01)
+
+    def run(n_calls):
+        m = _fake_motion({'z_pos': z, 'slen': slen.copy(), 'synthetic': True, 'contr': (labels > 0).astype(int)})
+        m.auto_save = False
+        for _ in range(n_calls):
+            m.get_trajectories()
+        return m.loi_data
+
+    once, twice = run(1), run(2)
+    for key in ('slen', 'vel', 'equ', 'delta_slen'):
+        assert np.array_equal(once[key], twice[key], equal_nan=True), key
+    assert np.array_equal(once['slen_raw'], slen, equal_nan=True)
+
+
+def _trajectory_motion(delta, labels, frametime=_FT):
+    """A Motion holding the get_trajectories output for ΔSL traces ``delta`` (n, T) and cycle ``labels``."""
+    from scipy.ndimage import label
+    delta = np.atleast_2d(np.asarray(delta, float))
+    vel = np.gradient(delta, frametime, axis=1)
+    m = _fake_motion({'delta_slen': delta, 'vel': vel, 'delta_slen_avg': np.nanmean(delta, axis=0),
+                      'vel_avg': np.nanmean(vel, axis=0), 'labels_contr': labels,
+                      'n_contr': int(label(labels > 0)[1]), 'contr': (labels > 0).astype(int)}, frametime)
+    m.auto_save = False
+    return m
+
+
+def test_analyze_trajectories_custom_perc_are_interpolated_first_crossings():
+    slen, labels = _ramp_twitch()                      # peak -0.21 µm 7 frames after the onset
+    m = _trajectory_motion(slen - 1.95, labels)
+    m.analyze_trajectories(custom_perc=[(0, 50), (10, 90), (100, 50), (100, 0)])
+    t = m.loi_data['custom_perc_time'][:, 0, 0] / _FT
+    np.testing.assert_allclose(t, [3.5, 5.6, 10.5, 21.0])
+    assert m.loi_data['time_to_relax'][0, 0] / _FT == pytest.approx(21.0)
+    np.testing.assert_allclose(m.loi_data['custom_perc_time_avg'][:, 0] / _FT, [3.5, 5.6, 10.5, 21.0])
+
+
+def test_analyze_trajectories_custom_perc_with_gaps_gives_nan_instead_of_failing():
+    slen, labels = _ramp_twitch()
+    delta = np.stack([slen - 1.95, slen - 1.95, np.full(slen.size, np.nan)])
+    delta[0, 22] = np.nan                              # a gap before the 50 % point
+    m = _trajectory_motion(delta, labels)
+    m.analyze_trajectories(custom_perc=[(0, 50)])      # used to raise on the all-NaN member
+    t = m.loi_data['custom_perc_time'][0, :, 0] / _FT
+    assert np.isnan(t[0]) and t[1] == pytest.approx(3.5) and np.isnan(t[2])
+    assert np.isnan(m.loi_data['time_to_peak'][0, 0])  # the same rule as for the time to peak
+
+
+def test_analyze_trajectories_edge_cycles_keep_only_what_the_recording_shows():
+    """A cycle starting before the recording has no measurable time to peak; one ending after it has no time to
+    relaxation, and an extremum on the cut edge may continue outside the recording."""
+    T = 60
+    labels = _labelled_cycles(T, [(0, 10), (20, 34), (50, 60)])
+    delta = np.zeros(T)
+    delta[0:10] = -0.2 + 0.02 * np.arange(10)          # relaxing from a peak before frame 0
+    delta[20:34] = -0.2 * (1 - np.abs(np.linspace(-1, 1, 14)))
+    delta[50:60] = -0.01 * np.arange(10)               # still shortening at the last frame
+    m = _trajectory_motion(delta, labels)
+    m.analyze_trajectories(custom_perc=[(0, 50), (100, 50)])
+    d = m.loi_data
+    assert np.isnan(d['contr_max'][0, 0]) and np.isnan(d['time_to_peak'][0, 0])     # peak on the cut start
+    assert d['contr_max'][0, 1] == pytest.approx(delta[20:34].min())               # complete cycle as before
+    assert d['time_to_peak'][0, 1] == pytest.approx(np.argmin(delta[20:34]) * _FT)
+    assert np.isnan(d['contr_max'][0, 2]) and np.isnan(d['time_to_relax'][0, 2])   # peak on the cut end
+    assert np.isnan(d['custom_perc_time'][0, 0, 0]) and np.isnan(d['custom_perc_time'][1, 0, 2])
 
 
 def test_group_tracks_myofibril_ordering():

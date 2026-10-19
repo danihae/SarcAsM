@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from sarcasm.analysis import sarcomere_vectors as sv
 from sarcasm.utils import Utils
@@ -420,3 +421,120 @@ def test_neighbor_filter_degenerate_inputs():
     assert np.isnan(dev[3]) and n_nb[3] == 0
     assert np.isfinite(dev[[2, 4]]).all() and np.nanmax(dev) < 1e-9
     assert sv.filter_vectors_by_neighbors(pos, theta).all()
+
+
+def test_frame_without_mbands_gives_empty_arrays_of_the_same_dimensionality():
+    """A plain empty list next to (n, 2) position arrays made the results store fall back to writing the whole
+    per-frame position list as an inline JSON attribute."""
+    shape = (32, 32)
+    field = np.stack([np.ones(shape), np.zeros(shape)])
+    out = sv.get_sarcomere_vectors(np.zeros(shape, np.float32), np.zeros(shape, bool), field, pixelsize=0.1)
+    pos_px, pos, mid, mid_len, slen, ori, n_mbands = out
+    assert n_mbands == 0
+    assert pos_px.shape == (0, 2) and pos.shape == (0, 2)
+    assert mid.shape == mid_len.shape == slen.shape == ori.shape == (0,)
+
+
+# --- Z-band registry --------------------------------------------------------
+
+def _row(n: int = 6, slen: float = 1.8, theta: float = 0.0, y: float = 0.0,
+         x0: float = 0.0, lengths=None):
+    """``n`` sarcomeres end to end along one myofibril, sharing Z-discs, laid out along the columns (axis
+    ``theta = 0``: ``t = (sin θ, cos θ) = (0, 1)``); the first centre at ``x0``. ``lengths`` overrides the per-sarcomere lengths (the stored ``slen`` stays ``slen`` so that the
+    lattice of every vector is the nominal one, as in a real recording with a local-median length)."""
+    L = np.full(n, slen) if lengths is None else np.asarray(lengths, float)
+    ends = x0 - L[0] / 2 + np.r_[0, np.cumsum(L)]
+    centres = 0.5 * (ends[:-1] + ends[1:])
+    pos = np.stack([np.full(n, y), centres], axis=1)              # (row, col) µm; axis along the columns
+    return pos, np.full(n, theta), np.full(n, slen)
+
+
+def _two_rows(shift: float, slen: float = 1.8, n: int = 6, gap: float = 2.0):
+    """Two parallel myofibrils ``gap`` µm apart; the second shifted by ``shift`` µm along the axis."""
+    p1, o1, l1 = _row(n, slen)
+    p2, o2, l2 = _row(n, slen, y=gap, x0=shift)
+    return np.vstack([p1, p2]), np.concatenate([o1, o2]), np.concatenate([l1, l2])
+
+
+def test_registry_lateral_is_one_for_level_zdiscs():
+    pos, ori, L = _two_rows(shift=0.0)
+    lat, ax = sv.zband_registry(pos, ori, L)
+    np.testing.assert_allclose(lat[np.isfinite(lat)], 1.0, atol=1e-6)
+    assert np.isfinite(lat).sum() == len(pos)
+
+
+def test_registry_lateral_is_minus_one_for_zdiscs_at_the_mband():
+    pos, ori, L = _two_rows(shift=0.9)                            # half a sarcomere
+    lat, _ = sv.zband_registry(pos, ori, L)
+    np.testing.assert_allclose(lat[np.isfinite(lat)], -1.0, atol=1e-6)
+
+
+def test_registry_lateral_is_zero_for_a_quarter_shift():
+    pos, ori, L = _two_rows(shift=0.45)                           # a quarter sarcomere: cos(π/2)
+    lat, _ = sv.zband_registry(pos, ori, L)
+    np.testing.assert_allclose(lat[np.isfinite(lat)], 0.0, atol=1e-6)
+
+
+def test_registry_axial_is_one_along_a_regular_row():
+    pos, ori, L = _row(8)
+    _, ax = sv.zband_registry(pos, ori, L)
+    np.testing.assert_allclose(ax[np.isfinite(ax)], 1.0, atol=1e-6)
+    assert np.isfinite(ax).all()
+
+
+def test_registry_axial_drops_when_the_spacing_drifts():
+    """Sarcomeres 1.25 L long put the Z-discs two sarcomeres down the row at the M-band positions."""
+    pos, ori, L = _row(7, lengths=np.full(7, 1.25 * 1.8))
+    _, ax = sv.zband_registry(pos, ori, L)
+    assert np.nanmean(ax) < 0.0
+
+
+def test_registry_excludes_vectors_without_neighbours_instead_of_scoring_zero():
+    pos, ori, L = _row(6)                                         # one myofibril: nothing beside it
+    lat, ax = sv.zband_registry(pos, ori, L)
+    assert np.isnan(lat).all() and np.isfinite(ax).all()
+    lone = sv.zband_registry(np.array([[0.0, 0.0]]), np.array([0.0]), np.array([1.8]))
+    assert all(np.isnan(v).all() for v in lone)
+
+
+def test_registry_is_axially_flip_invariant():
+    pos, ori, L = _two_rows(shift=0.3)
+    rng = np.random.default_rng(0)
+    flipped = ori + np.where(rng.random(len(ori)) < 0.5, np.pi, 0.0)
+    for variant in (flipped, np.mod(flipped, np.pi)):
+        a = sv.zband_registry(pos, ori, L)
+        b = sv.zband_registry(pos, variant, L)
+        for x, y in zip(a, b):
+            np.testing.assert_allclose(np.nan_to_num(x, nan=9.0), np.nan_to_num(y, nan=9.0), atol=1e-9)
+
+
+def test_registry_ignores_an_oblique_row_neighbour_but_not_an_oblique_lateral_one():
+    pos, ori, L = _two_rows(shift=0.0)
+    tilted = ori.copy(); tilted[8] += np.radians(30)              # one vector of the second row, 30° off
+    lat, ax = sv.zband_registry(pos, tilted, L)
+    # its row neighbours no longer count it (beyond max_angle), its lateral partner in row 1 still does
+    assert np.isfinite(lat[2])
+    lat0, ax0 = sv.zband_registry(pos, ori, L)
+    assert np.isfinite(ax0).all()
+
+
+def test_registry_parameters_are_in_micrometres_and_degrees():
+    pos, ori, L = _two_rows(shift=0.0, gap=2.0)
+    lat_in, _ = sv.zband_registry(pos, ori, L, lateral_band=(1.5, 2.5))
+    lat_out, _ = sv.zband_registry(pos, ori, L, lateral_band=(2.5, 3.5))   # the neighbour is 2 µm away
+    assert np.isfinite(lat_in).all() and np.isnan(lat_out).all()
+    pos, ori, L = _row(8)
+    _, ax1 = sv.zband_registry(pos, ori, L, axial_range=1)
+    _, ax3 = sv.zband_registry(pos, ori, L, axial_range=3)
+    np.testing.assert_allclose(ax1[np.isfinite(ax1)], 1.0); np.testing.assert_allclose(ax3[np.isfinite(ax3)], 1.0)
+
+
+def test_registry_degenerate_inputs():
+    lat, ax = sv.zband_registry(np.empty((0, 2)), np.empty(0), np.empty(0))
+    assert lat.shape == (0,) and ax.shape == (0,)
+    pos, ori, L = _two_rows(shift=0.0)
+    L = L.copy(); L[0] = np.nan
+    lat, ax = sv.zband_registry(pos, ori, L)
+    assert np.isnan(lat[0]) and np.isnan(ax[0])
+    assert np.isnan(lat[6]), 'its lateral partner was the dropped vector'
+    assert np.isfinite(np.delete(lat, [0, 6])).all() and np.isfinite(ax[1:]).all()

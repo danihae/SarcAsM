@@ -27,6 +27,14 @@ from sarcasm.structure import SarcAsM
 
 FramesSpec = Union[None, Tuple[float, float], Sequence[int], np.ndarray]
 
+
+def _movie_frame(sarc_obj: SarcAsM, position: int) -> int:
+    """Movie frame number at ``position`` of the tracked frame list. The renderers are driven by these
+    positions (see :meth:`Animations.resolve_frames`); a tracking that did not start at frame 0 shifts them
+    against the movie. Without tracks the positions are the movie frames."""
+    tracked = sarc_obj.data.get('params.track_sarcomere_vectors.frames') if 'motion.tracks.n' in sarc_obj.data else None
+    return int(position) if tracked is None else int(np.asarray(tracked).ravel()[int(position)])
+
 #: Shading of ContractionNet contraction periods in the time-series panels.
 CONTR_COLOR = 'lavender'
 
@@ -50,11 +58,12 @@ class _ImageLayer:
 
     def read(self, frame: int) -> np.ndarray:
         if frame not in self._cache:
+            movie_frame = _movie_frame(self.sarc, frame)
             if self.layer == 'image':
-                self._cache[frame] = np.asarray(self.sarc.read_imgs(frames=int(frame)), dtype=float)
+                self._cache[frame] = np.asarray(self.sarc.read_imgs(frames=movie_frame), dtype=float)
             else:
                 name = 'zbands_fast_movie' if self.sarc._mask_exists('zbands_fast_movie') else 'zbands'
-                self._cache[frame] = np.asarray(self.sarc._read_mask(name, frames=int(frame)), dtype=float)
+                self._cache[frame] = np.asarray(self.sarc._read_mask(name, frames=movie_frame), dtype=float)
         return self._cache[frame]
 
     def preload(self, max_bytes: float = 1.5e9) -> None:
@@ -62,11 +71,12 @@ class _ImageLayer:
         h, w = self.sarc.metadata.size[-2:]
         if self.frames.size * h * w * 8 > max_bytes:
             return
+        movie_frames = [_movie_frame(self.sarc, f) for f in self.frames]
         if self.layer == 'image':
-            arr = np.asarray(self.sarc.read_imgs(frames=[int(f) for f in self.frames]), dtype=float)
+            arr = np.asarray(self.sarc.read_imgs(frames=movie_frames), dtype=float)
         else:
             name = 'zbands_fast_movie' if self.sarc._mask_exists('zbands_fast_movie') else 'zbands'
-            arr = np.asarray(self.sarc._read_mask(name, frames=[int(f) for f in self.frames]), dtype=float)
+            arr = np.asarray(self.sarc._read_mask(name, frames=movie_frames), dtype=float)
         arr = arr.reshape(self.frames.size, h, w)
         self._cache = {int(f): arr[i] for i, f in enumerate(self.frames)}
 
@@ -120,8 +130,8 @@ class _TrackVectorLayer:
 
     def setup(self, ax: Axes, frame: int) -> None:
         self.values = Plots.track_color_values(self.sarc, self.color_by, self.kin)
-        self.lc = Plots.plot_track_vectors(ax, self.sarc, frame, color_by=self.color_by, cmap=self.cmap,
-                                           clim=self.clim, linewidth=self.linewidth,
+        self.lc = Plots.plot_track_vectors(ax, self.sarc, _movie_frame(self.sarc, frame), color_by=self.color_by,
+                                           cmap=self.cmap, clim=self.clim, linewidth=self.linewidth,
                                            only_observed=self.only_observed, scalebar=False, colorbar=False,
                                            kinematics=self.kin)
         if self.colorbar and self.color_by != 'group':
@@ -131,21 +141,20 @@ class _TrackVectorLayer:
             cb.set_label(Plots.TRACK_COLOR_DEFAULTS[self.color_by][2], fontsize=PlotUtils.fontsize - 2, labelpad=1)
             cb.ax.tick_params(labelsize=PlotUtils.fontsize - 3, length=2)
         n_tracks = int(self.sarc.data['motion.tracks.n'])
-        t = self.sarc._tracked_frame_index(frame)
-        pos = np.asarray(self.sarc.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
+        pos = np.asarray(self.sarc.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, frame]
         for members in self.highlight:
             members = np.asarray(members, dtype=int)
             ax.plot(pos[members, 1], pos[members, 0], '-', color='w', lw=1.8, alpha=0.95, zorder=5)
             ax.plot(pos[members, 1], pos[members, 0], '-', color='k', lw=0.8, alpha=0.95, zorder=6)
 
     def update(self, frame: int) -> None:
-        mask = Plots.track_vector_mask(self.sarc, frame, only_observed=self.only_observed)
-        t = self.sarc._tracked_frame_index(frame)
-        vals = self.values[:, t] if self.values.ndim == 2 else self.values
+        movie_frame = _movie_frame(self.sarc, frame)
+        mask = Plots.track_vector_mask(self.sarc, movie_frame, only_observed=self.only_observed)
+        vals = self.values[:, frame] if self.values.ndim == 2 else self.values
         if self.color_by == 'group':
             mask &= vals >= 0
         mask &= np.isfinite(vals)
-        self.lc.set_segments(Plots.track_vector_segments(self.sarc, frame, mask))
+        self.lc.set_segments(Plots.track_vector_segments(self.sarc, movie_frame, mask))
         if self.color_by == 'group':
             n_groups = max(int(self.sarc.data.get('motion.groups.n', 0)), 1)
             self.lc.set_colors(plt.get_cmap(self.cmap or 'gist_rainbow')((vals[mask].astype(int) % n_groups) / n_groups))

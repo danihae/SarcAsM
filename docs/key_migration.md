@@ -31,6 +31,14 @@ always the parameter's name in the method signature. Four keys had drifted from 
 
 The `z_` prefix is replaced by the group name.
 
+Not computed any more in 1.0 (the rows below keep their names for renaming 0.5 tables):
+`structure.zbands.straightness` (+ `_mean`, `_std`), which measured Z-band length rather than
+curvature (area / convex-hull area falls with length), and `structure.zbands.lat_size_groups`
+(+ `_mean`, `_std`), which duplicates the lateral neighbours: the mean group size is
+`2 / (2 - structure.zbands.lat_neighbors_mean)` and the size of each group is the length of its
+entry in `structure.zbands.lat_groups`. The same holds for `structure.myofibril.straightness`
+(+ `_mean`, `_std`) below; `structure.myofibril.bending` stays.
+
 | old | new |
 |---|---|
 | `n_zbands` | `structure.zbands.n` |
@@ -39,12 +47,12 @@ The `z_` prefix is replaced by the group name.
 | `z_intensity_mean` | `structure.zbands.intensity_mean` |
 | `z_intensity_std` | `structure.zbands.intensity_std` |
 | `z_labels` | `structure.zbands.labels` |
-| `z_lat_alignment` | `structure.zbands.lat_alignment` |
-| `z_lat_alignment_groups` | `structure.zbands.lat_alignment_groups` |
-| `z_lat_alignment_groups_mean` | `structure.zbands.lat_alignment_groups_mean` |
-| `z_lat_alignment_groups_std` | `structure.zbands.lat_alignment_groups_std` |
-| `z_lat_alignment_mean` | `structure.zbands.lat_alignment_mean` |
-| `z_lat_alignment_std` | `structure.zbands.lat_alignment_std` |
+| `z_lat_alignment` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
+| `z_lat_alignment_groups` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
+| `z_lat_alignment_groups_mean` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
+| `z_lat_alignment_groups_std` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
+| `z_lat_alignment_mean` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
+| `z_lat_alignment_std` | — (removed in 1.0, see `structure.sarcomere.registry_*`) |
 | `z_lat_dist` | `structure.zbands.lat_dist` |
 | `z_lat_dist_mean` | `structure.zbands.lat_dist_mean` |
 | `z_lat_dist_std` | `structure.zbands.lat_dist_std` |
@@ -93,6 +101,8 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | `sarcomere_orientation_mean` | `structure.sarcomere.orientation_mean` |
 | `sarcomere_orientation_std` | `structure.sarcomere.orientation_std` |
 | `sarcomere_orientation_vectors` | `structure.sarcomere.orientation` |
+| — (new) | `structure.sarcomere.registry_lateral`, `structure.sarcomere.registry_axial` (per vector) |
+| — (new) | `structure.sarcomere.registry_lateral_mean`, `structure.sarcomere.registry_axial_mean`, `structure.sarcomere.registry_mean` (per frame) |
 
 ## `SarcAsM.analyze_myofibrils`
 
@@ -127,6 +137,8 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | `domain_slen_std` | `structure.domain.slen_std` |
 | `domains` | `structure.domain.members` |
 | `n_domains` | `structure.domain.n` |
+| — (new) | `structure.domain.registry_lateral`, `structure.domain.registry_axial` (per domain) |
+| — (new) | `structure.domain.registry_lateral_mean`, `structure.domain.registry_axial_mean` (per frame) |
 
 ## `SarcAsM.detect_lois`
 

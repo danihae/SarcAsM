@@ -100,6 +100,23 @@ def test_empty_sparse_members_roundtrip(tmp_path):
         assert _equal(data[k], r[k]), f"mismatch for {k}"
 
 
+def test_per_frame_arrays_with_an_empty_trailing_axis_roundtrip(tmp_path):
+    """Lateral Z-band links are (4, n_links) per frame: a frame without links, (4, 0), next to a frame with links
+    used to read back with the other frame's links, as the offsets counted its 4 rows but the values skipped it."""
+    links = [np.zeros((4, 0), dtype=np.int64), np.arange(20).reshape(4, 5), np.arange(8).reshape(4, 2)]
+    for frames in (links, links[:2]):
+        p = tmp_path / f"links{len(frames)}.zarr"
+        write_results({"structure.zbands.lat_links": frames}, p)
+        back = Results(p)["structure.zbands.lat_links"]
+        assert [np.shape(b) for b in back] == [f.shape for f in frames]
+        assert all(np.array_equal(b, f) for b, f in zip(back, frames))
+    pos = [np.random.default_rng(1).random((5, 2)), np.empty((0, 2)), np.random.default_rng(2).random((3, 2))]
+    p = tmp_path / "pos.zarr"
+    write_results({"structure.sarcomere.pos": pos}, p)
+    back = Results(p)["structure.sarcomere.pos"]
+    assert [np.shape(b) for b in back] == [(5, 2), (0, 2), (3, 2)] and np.allclose(back[2], pos[2])
+
+
 @pytest.mark.parametrize("row_chunk", [False, True])
 def test_empty_array_gets_a_valid_chunk_spec(row_chunk):
     """zarr >= 3.3 rejects ``chunks=None`` ("None is not a valid chunk input"),

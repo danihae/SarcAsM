@@ -87,6 +87,28 @@ def test_resolve_frames_and_fps():
     assert Animations.playback_fps(sarc, fps=25, slow_motion=2.5) == pytest.approx(10.0)
 
 
+def test_renderers_map_tracked_positions_to_movie_frames():
+    """A tracking that starts at movie frame 3: the renderers are driven by positions in the tracked frame
+    list, so position p must show movie frame 3 + p (it used to read movie frame p and fail on the tracks)."""
+    from sarcasm.plotting.animation import _ImageLayer, _TrackVectorLayer
+    T, start = 10, 3
+    sarc = _fake_tracks(T=T)
+    sarc.metadata.n_stack = start + T
+    sarc.data['params.track_sarcomere_vectors.frames'] = list(range(start, start + T))
+    sarc.read_imgs = lambda frames: (np.full((64, 128), frames, float) if np.ndim(frames) == 0
+                                     else np.stack([np.full((64, 128), f, float) for f in frames]))
+    image = _ImageLayer(sarc, np.arange(T))
+    assert image.read(0)[0, 0] == start
+    image.preload()
+    assert image.read(2)[0, 0] == start + 2
+    fig, ax = plt.subplots()
+    vectors = _TrackVectorLayer(sarc, colorbar=False)
+    vectors.setup(ax, 0)
+    vectors.update(3)                        # position 3 holds the gap of track 0
+    assert len(vectors.lc.get_segments()) == 4
+    plt.close(fig)
+
+
 @pytest.fixture(scope='module')
 def tracked_store():
     """The tracked 20 kPa test store (tracks, pooled analysis, M-band grouping); read only."""

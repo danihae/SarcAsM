@@ -211,59 +211,6 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
     midline_std_length_lines = [np.nanstd(midline_length_vectors_t[l]) for l in lines]
     midline_min_length_lines = [np.nanmin(midline_length_vectors_t[l]) for l in lines]
 
-    # Straightness
-    def frechet_straightness(points):
-        """
-        Compute a Fréchet-inspired straightness measure.
-
-        Defined as ``1 - (max perpendicular deviation from chord / chord length)``.
-
-        Parameters
-        ----------
-        points : np.ndarray
-            Polyline vertices, shape ``(n_points, 2)``.
-
-        Returns
-        -------
-        float
-            Straightness measure (1 = perfectly straight).
-        """
-
-        if len(points) < 2:
-            return 1.0  # Single point is trivially straight
-
-        # Calculate chord vector between first and last points
-        chord_vector = points[-1] - points[0]
-        chord_length = np.linalg.norm(chord_vector)
-
-        if chord_length < 1e-9:  # Handle degenerate chord
-            return 0.0
-
-        # Unit vector along chord direction
-        unit_chord = chord_vector / chord_length
-
-        # Vectors from first point to each polyline vertex
-        displacement_vectors = points - points[0]
-
-        # Scalar projections onto chord (dot product with unit vector)
-        chord_projections = np.sum(displacement_vectors * unit_chord, axis=1)
-
-        # Ideal points along chord line
-        projected_points = points[0] + chord_projections[:, np.newaxis] * unit_chord
-
-        # Perpendicular deviations from actual path
-        deviation_vectors = points - projected_points
-        perpendicular_deviations = np.linalg.norm(deviation_vectors, axis=1)
-
-        max_deviation = np.max(perpendicular_deviations)
-
-        return 1.0 - (max_deviation / chord_length)
-
-    straightness_lines = [
-        frechet_straightness(points_t[line])
-        for line in lines
-    ]
-
     # Bending: mean squared angular change
     tangential_vector_line_segments = [np.diff(points_t[l], axis=0) for l in lines]
     tangential_angle_line_segments = [np.asarray([np.arctan2(v[1], v[0]) for v in vectors]) for vectors in
@@ -278,7 +225,6 @@ def line_growth(points_t: np.ndarray, sarcomere_length_vectors_t: np.ndarray,
                      'sarcomere_mean_length_lines': sarcomere_mean_length_lines,
                      'sarcomere_std_length_lines': sarcomere_std_length_lines,
                      'bending_lines': bending_lines,
-                     'straightness_lines': straightness_lines,
                      'midline_mean_length_lines': midline_mean_length_lines,
                      'midline_std_length_lines': midline_std_length_lines,
                      'midline_min_length_lines': midline_min_length_lines}

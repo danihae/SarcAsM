@@ -8,6 +8,39 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Added
 
+- Z-band registry of the sarcomere vectors (`analyze_sarcomere_vectors`). Every sarcomere vector defines a
+  Z-disc lattice, its two Z-discs repeated every sarcomere length along its axis; a neighbouring sarcomere's
+  Z-disc at offset *x* from the nearest lattice line scores cos(2π *x* / L), averaged over its two discs:
+  1 when the Z-discs are level with the vector's own, 0 on average for random positions, −1 when they sit at
+  its M-band. The lateral registry is the mean score over the neighbours one myofibril over
+  (`registry_lateral_band`, default 1.5–2.5 µm across the axis), the axial registry over the parallel
+  neighbours along the myofibril (`registry_axial_range`, default 3 sarcomeres; `registry_max_angle`, default
+  20°). Stored per vector (`structure.sarcomere.registry_lateral` / `registry_axial`, NaN for vectors without
+  such neighbours) and per frame as `registry_lateral_mean`, `registry_axial_mean` and their average
+  `registry_mean`; `analyze_sarcomere_domains` adds the same per domain
+  (`structure.domain.registry_lateral` / `registry_axial` and their frame means). It needs only the stored
+  vectors (about 0.1 s per 2000² frame). On a chronic plate the lateral registry rose from 0.10 at day 0.5
+  to 0.26 at day 8 and the axial registry from 0.55 to 0.68; mavacamten (10 µM) lowered them to 0.04 and 0.47.
+  The parameters are in the app's vector settings and in batch processing.
+- Ratiometric Z-band contrast (`analyze_z_bands`): for each Z-band, (mean intensity of the Z-band −
+  background) / (mean intensity of the non-Z-band cell pixels within 1 µm of it − background), stored as
+  `structure.zbands.contrast` with the per-frame median `structure.zbands.contrast_median`. Neighbouring
+  Z-bands split the space between them, so the ring holds no Z-band pixels. The background is the median
+  intensity outside the cell mask (`structure.zbands.background`); frames almost fully covered by cells take
+  the background of the recording (the median over up to five evenly spaced detected frames). Unlike the
+  absolute intensities, the ratio does not depend on exposure,
+  gain or bleaching. It measures the in-focus Z-band signal relative to the diffuse signal around it
+  (unassembled α-actinin and out-of-focus light), which is stored as
+  `structure.zbands.surround_intensity_median`. On a chronic plate the contrast was 3.7 under mavacamten
+  against 2.2 in controls, because the diffuse signal was weaker, and it fell during the first four days of
+  culture, when the Z-band signal dropped while the diffuse signal stayed constant; blur lowers it by about
+  6 % per 0.1 µm.
+- Percentile twitch kinetics in the track-based motion analysis (`analyze_track_motion`, every grouping
+  kind): `time_to_50` (onset to 50 % shortening), `time_contr_10_90` (10 % to 90 % shortening),
+  `time_relax_50` and `time_relax_90` (peak to 50 % / 90 % relaxation). They are first crossings of
+  fractions of the cycle's peak shortening, interpolated between frames; relaxation is followed past the
+  end of the contraction window up to the next cycle. Before, times to custom percentages existed only as
+  the opt-in `custom_perc` of the legacy LOI analysis.
 - `analyze_sarcomere_vectors` removes false-positive sarcomere vectors. A vector whose
   orientation deviates by more than `max_neighbor_deviation` (default 30°) from the mean
   orientation of the vectors within `neighbor_radius` (default 1 µm) is dropped; these are
@@ -25,6 +58,19 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- Frame selection is the same for every step and stored by frame number. Every `frames` argument
+  (detection, the analyses, tracking, `full_analysis_structure`) and every single frame (`reference_frame`,
+  `detect_lois`, the plots) accepts a frame number in any spelling: `k`, `np.int64(k)`, `[k]`, `(k,)`,
+  `range(k, k + 1)` and `np.array([k])` select the same frame, and frame lists may be unsorted or repeat
+  frames. Results are stored under their frame numbers in every case: after `detect_sarcomeres(frames=[5,
+  9])`, `analyze_z_bands()` stores frames 5 and 9 under 5 and 9 (before: under positions 0 and 1), and
+  `analyze_z_bands(frames=0)` after `detect_sarcomeres(frames=1)` raises instead of analysing frame 1 under
+  0. Frames that were not detected, negative or out-of-range frames, floats and empty selections raise an
+  error that names the valid frames, instead of failing inside zarr, running on another frame or being stored
+  under index −1. A detection of one frame of a movie stores its masks with a frame axis, like any other
+  subset; stores written before read correctly. The app's frame field accepts `all`, one frame or frames
+  separated by commas and marks anything else as invalid; before, an invalid entry ran frame 0 and `1, 3`
+  ran frame 1 only.
 - Lateral Z-band connections (`analyze_z_bands`) no longer join staggered Z-bands. A connection
   continues a Z-band across a gap, so a pair of Z-band ends is not linked when the link is offset
   along the sarcomere axis by more than `max_axial_offset` (new parameter, default 0.9 µm, about
@@ -36,8 +82,77 @@ All notable changes to SarcAsM are documented here. The format follows
   about 20 % shorter. `max_axial_offset=None` turns the offset limit off. The setting is in the
   app's Z-band parameters and in batch processing.
 
+### Removed
+
+- Z-band straightness (`structure.zbands.straightness`, `_mean`, `_std`) and myofibril straightness
+  (`structure.myofibril.straightness`, `_mean`, `_std`). Z-band straightness (area / convex-hull area)
+  measured Z-band length rather than curvature: per Z-band it fell with length (Spearman −0.72), and its
+  decline over 8 days of culture disappeared when Z-bands of equal length were compared. Myofibril
+  straightness was length-dependent in the same way; `structure.myofibril.bending` stays.
+- `structure.zbands.lat_size_groups` (`_mean`, `_std`). With at most one lateral link per Z-band end, the
+  laterally linked groups are chains, so the mean group size is `2 / (2 − lat_neighbors_mean)` and the size
+  of each group is the length of its entry in `structure.zbands.lat_groups`.
+- Lateral Z-band alignment A (`structure.zbands.lat_alignment`, `_mean`, `_std`, and per lateral group
+  `lat_alignment_groups`, `_mean`, `_std`). A scored the geometry of each lateral connection, so it
+  described the connections the linker had already accepted rather than the order of the tissue: on a
+  recomputed chronic plate it stayed at 0.79-0.80 under 10 µM mavacamten while sarcomeres fell apart. The
+  Z-band registry of the sarcomere vectors replaces it (see Added). The score still chooses the lateral
+  connections (`a_min`) but is no longer reported; the compound-screen feature set of `downstream.mfpca`
+  uses the lateral and axial registry instead.
+- `z_band_analysis.analyze_z_bands` returns a dict instead of an 18-element tuple.
+- Stores analysed before keep the removed keys until they are re-analysed with `restart=True`.
+
 ### Fixed
 
+- Z-band intensities (`intensity_mean`, `intensity_std`, `mask_intensity`) after a detection of selected
+  frames, e.g. a single frame of a time-lapse in the app, were measured on the first raw frames of the movie
+  instead of the detected ones. `analyze_cell_mask(frames='all')` after such a detection paired the masks
+  with the first raw frames in the same way; it now analyzes the detected frames.
+- `detect_sarcomeres(frames=[k])` (any one-element selection) stored masks that `analyze_cell_mask` could not
+  read, so detection failed with an `IndexError` after the masks were written but before their frame list
+  was. Detection now stores the frame list right after the masks.
+- After a detection of one frame k of a movie, the analyses filed the Z-band and vector results of
+  `frames=k` under 0 but the cell-mask features under k, so `analyze_myofibrils(frames=k)` failed and the
+  area ratios were NaN. After a detection of several frames, `frames='all'` divided the Z-band and sarcomere
+  areas by the cell area of another frame (twice the true ratio in a test movie). Vector analysis with the
+  fast-movie Z-bands combined the Z-bands of frame 0 with the M-bands of the detected frame, overlay plots
+  drew raw frame 0 under the results of the detected frame, and `load_mask_full_stack('zbands_fast_movie')`
+  returned the stack repeated once per frame.
+- The per-sarcomere LOI analysis (`Motion.analyze_trajectories`) reported the time to peak of contraction
+  cycles that began before the recording and the time to relaxation of cycles that ended after it, and the
+  extrema of a cycle where they sit on such a cut edge. These are NaN now, with the rules
+  `analyze_track_motion` uses since 1.0; complete cycles keep their values (on eLife-era LOIs and track
+  chains every value of a complete cycle is unchanged). The eLife analysis dropped edge cycles altogether.
+- `Motion.analyze_trajectories(custom_perc=...)` failed with `All-NaN slice encountered` when one sarcomere
+  had no value in a cycle, and a NaN in a cycle could return the time of the wrong sample. The times are now
+  the first crossings of the percentages of the cycle's peak shortening, interpolated between frames, as for
+  the percentile times of `analyze_track_motion` (before: the sample nearest to the level anywhere in the
+  shortening or relaxation phase); NaN for a cycle with gaps, without shortening, or whose trace does not
+  reach the level.
+- `get_trajectories` called a second time on a myofibril chain from tracks (`get_track_motion`) smoothed the
+  already smoothed sarcomere lengths again, because `Utils.nan_sav_golay` smoothed its input in place and the
+  chain's lengths are stored under the key the smoothed ones replace. The measured lengths are kept as
+  `slen_raw`, `nan_sav_golay` no longer changes its input, and a single call gives the same values as
+  before.
+- `get_track_motion(analyze=True)` did not run `analyze_popping`, so `Plots.plot_popping_events` failed on
+  the fibre it returned.
+- The animations (`animate_image`, `animate_track_vectors`, `animate_results`) showed movie frame p at
+  position p of the tracked frames, i.e. the wrong raw frames and Z-bands, and failed on the tracks, when
+  tracking did not start at frame 0.
+- The lateral Z-band group plot (`Plots.plot_z_lateral_connections` with groups) and the app's group layer
+  left out the first group of every frame.
+- `analyze_sarcomere_domains`, the domain plot, the app's domain layer and `group_tracks(by='domain')` failed
+  with an `OverflowError` on frames with more than 255 domains, because the domain mask was 8-bit; it is
+  16-bit now.
+- A frame without M-bands returned its vector positions as a plain empty list. Next to the `(n, 2)`
+  arrays of the other frames, that made the results store write the whole per-frame list of
+  `structure.sarcomere.pos` / `pos_px` as an inline JSON attribute instead of a ragged array: in a plate
+  analysis 233 of 864 stores were affected, with `zarr.json` files of up to 221 MB. Such a frame now
+  yields empty arrays of the usual shape.
+- Per-frame results whose arrays vary along a trailing axis were read back from the wrong frames when one
+  frame was empty along it: the lateral Z-band links of a frame with Z-bands but no links, `(4, 0)`, shifted
+  the stored offsets, so the next frame read back the links of another frame (the lateral-connection plots
+  then failed with an index error). Such lists are now stored as attributes.
 - The two ends of one Z-band are excluded from lateral linking again. The exclusion mask paired
   rows (2k, 2k + 1) of the list of Z-band ends, which is stored in Fortran order, so it excluded
   end pairs of two different Z-bands and let a curved Z-band link to itself.

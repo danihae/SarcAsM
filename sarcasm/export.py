@@ -229,15 +229,17 @@ class Export:
                               'structure.domain.oop_std', 'structure.domain.slen_mean', 'structure.domain.n',
                               'structure.myofibril.length_max', 'structure.myofibril.length_mean', 'structure.myofibril.length_std',
                               'structure.myofibril.bending_mean', 'structure.myofibril.bending_std',
-                              'structure.myofibril.straightness_mean', 'structure.myofibril.straightness_std',
                               'structure.sarcomere.area', 'structure.sarcomere.area_ratio', 'structure.sarcomere.slen_mean',
                               'structure.sarcomere.slen_std', 'structure.sarcomere.oop', 'structure.zbands.n', 'structure.sarcomere.n_mbands', 'structure.sarcomere.n_vectors',
                               'structure.sarcomere.n_vectors_removed',
-                              'structure.zbands.intensity_mean', 'structure.zbands.intensity_std', 'structure.zbands.lat_alignment_mean',
-                              'structure.zbands.lat_alignment_std', 'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std', 'structure.zbands.lat_length_groups_mean',
+                              'structure.sarcomere.registry_lateral_mean', 'structure.sarcomere.registry_axial_mean',
+                              'structure.sarcomere.registry_mean',
+                              'structure.domain.registry_lateral_mean', 'structure.domain.registry_axial_mean',
+                              'structure.zbands.intensity_mean', 'structure.zbands.intensity_std', 'structure.zbands.contrast_median',
+                              'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std', 'structure.zbands.lat_length_groups_mean',
                               'structure.zbands.lat_neighbors_mean', 'structure.zbands.lat_neighbors_std', 'structure.zbands.length_max',
                               'structure.zbands.length_mean', 'structure.zbands.length_std', 'structure.zbands.oop', 'structure.zbands.mask_area', 'structure.zbands.mask_area_ratio',
-                              'structure.zbands.mask_intensity', 'structure.zbands.straightness_mean', 'structure.zbands.straightness_std']
+                              'structure.zbands.mask_intensity']
 
     # Track-based grouped-motion feature suffixes (resolved per grouping kind to
     # ``<kind>_<suffix>`` keys written by SarcAsM.analyze_track_motion). One value
@@ -246,6 +248,7 @@ class Export:
                            'n_contr_complete',
                            'contr_max', 'elong_max', 'vel_contr_max', 'vel_elong_max',
                            'time_to_peak', 'time_to_relax', 'time_contr',
+                           'time_to_50', 'time_contr_10_90', 'time_relax_50', 'time_relax_90',
                            'slen_std', 'equ_std',
                            'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
                            'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',

@@ -388,6 +388,9 @@ class Utils:
         if window_length % 2 == 0:
             window_length += 1
 
+        # the runs are filtered in place: work on a copy, so the caller's array keeps its values
+        data = np.array(data, copy=True)
+
         # Placeholder for filtered data
         filtered_data = np.full(data.shape, np.nan)
 

@@ -113,6 +113,34 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_sarcomere_domains',
         'name': 'STD domain sarcomere length [µm]'
     },
+    'structure.domain.registry_lateral': {
+        'description': 'Mean lateral Z-band registry of the sarcomere vectors within each domain (-1 to 1, 0 = random). '
+                       'List with np.array for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'SarcAsM.analyze_sarcomere_domains',
+        'name': 'Domain lateral Z-band registry'
+    },
+    'structure.domain.registry_axial': {
+        'description': 'Mean axial Z-band registry of the sarcomere vectors within each domain (-1 to 1, 0 = random). '
+                       'List with np.array for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'SarcAsM.analyze_sarcomere_domains',
+        'name': 'Domain axial Z-band registry'
+    },
+    'structure.domain.registry_lateral_mean': {
+        'description': 'Mean lateral Z-band registry across all sarcomere domains in the image. '
+                       'np.ndarray with one value per frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_domains',
+        'name': 'Mean domain lateral Z-band registry'
+    },
+    'structure.domain.registry_axial_mean': {
+        'description': 'Mean axial Z-band registry across all sarcomere domains in the image. '
+                       'np.ndarray with one value per frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_domains',
+        'name': 'Mean domain axial Z-band registry'
+    },
     'structure.domain.slen': {
         'description': 'Mean sarcomere length within each sarcomere domain. List with np.array for each frame.',
         'data type': list[np.ndarray],
@@ -191,27 +219,6 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_myofibrils',
         'name': 'STD myofibril bending'
     },
-    'structure.myofibril.straightness': {
-        'description': 'Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
-                       'List with np.ndarray for each frame.',
-        'data type': list[list[np.ndarray]],
-        'function': 'SarcAsM.analyze_myofibrils',
-        'name': 'Myofibril straightness'
-    },
-    'structure.myofibril.straightness_mean': {
-        'description': 'Mean of Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_myofibrils',
-        'name': 'Mean myofibril straightness'
-    },
-    'structure.myofibril.straightness_std': {
-        'description': 'Standard deviation of Frechet straightness (max. perpendicular distance to direct end-to-end line) of myofibril lines in each frame. ' 
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_myofibrils',
-        'name': 'STD myofibril straightness'
-    },
     'structure.domain.n': {
         'description': 'Number of sarcomere domains in each frame. np.array with value for each frame.',
         'data type': np.ndarray,
@@ -229,6 +236,44 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': '# Sarcomere vectors'
+    },
+    'structure.sarcomere.registry_lateral': {
+        'description': 'Lateral Z-band registry of each sarcomere vector: mean cosine of the phase of the Z-discs of '
+                       'the neighbours one myofibril over on the vector\'s own Z-disc lattice (1 = level with its '
+                       'Z-discs, 0 = random, -1 = at its M-band); NaN without such neighbours. '
+                       'List with np.array for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Lateral Z-band registry'
+    },
+    'structure.sarcomere.registry_axial': {
+        'description': 'Axial Z-band registry of each sarcomere vector: the same cosine for the parallel neighbours '
+                       'along the myofibril (1-3 sarcomeres away); NaN without such neighbours. '
+                       'List with np.array for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Axial Z-band registry'
+    },
+    'structure.sarcomere.registry_lateral_mean': {
+        'description': 'Mean lateral Z-band registry of the sarcomere vectors with a lateral neighbour '
+                       '(-1 to 1, 0 = random). np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Lateral Z-band registry'
+    },
+    'structure.sarcomere.registry_axial_mean': {
+        'description': 'Mean axial Z-band registry of the sarcomere vectors with a neighbour along the myofibril '
+                       '(-1 to 1, 0 = random). np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Axial Z-band registry'
+    },
+    'structure.sarcomere.registry_mean': {
+        'description': 'Z-band registry: mean of the lateral and the axial registry of the frame (-1 to 1, 0 = random). '
+                       'np.array with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Z-band registry'
     },
     'structure.sarcomere.n_vectors_removed': {
         'description': 'Number of sarcomere vectors removed in each frame because their orientation '
@@ -309,18 +354,12 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': 'STD sarcomere orientation [rad]'
     },
-    'z_avg_intensity': {
-        'description': 'Average intensity of Z-bands, i.e. average pixel values of all Z-bands. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Z-band intensity'
-    },
     'structure.zbands.ends': {
-        'description': 'Position of Z-band ends in pixels.',
+        'description': 'Positions (row, col) of the two ends of each Z-band in µm, shape (n_zbands, 2, 2). '
+                       'List with np.ndarray for each frame.',
         'data type': list[np.ndarray],
         'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Z-band ends [px]'
+        'name': 'Z-band ends [µm]'
     },
     'structure.zbands.intensity': {
         'description': 'Intensity of individual Z-band objects. List with np.ndarray for each frame.',
@@ -340,54 +379,52 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_z_bands',
         'name': 'STD Z-band intensity'
     },
+    'structure.zbands.contrast': {
+        'description': 'Ratiometric contrast of each Z-band: (mean intensity of the Z-band - background) / '
+                       '(mean intensity of the non-Z-band cell pixels within 1 µm of it - background). '
+                       'Neighbouring Z-bands split the space between them, so the ring holds no Z-band pixels. The '
+                       'background is the median intensity outside the cell mask (see structure.zbands.background). '
+                       'The ratio does not depend on exposure, gain or bleaching. It measures the in-focus Z-band '
+                       'signal relative to the diffuse signal around it, which comes from unassembled alpha-actinin '
+                       'and out-of-focus light and therefore from cell thickness; on a chronic culture plate most of '
+                       'the changes with drug treatment and maturation came from this diffuse signal (see '
+                       'structure.zbands.surround_intensity_median), and blur lowers the ratio. NaN where the ring is '
+                       'not brighter than the background. List with np.ndarray for each frame.',
+        'data type': list[np.ndarray],
+        'function': 'SarcAsM.analyze_z_bands',
+        'name': 'Z-band contrast'
+    },
+    'structure.zbands.contrast_median': {
+        'description': 'Median ratiometric contrast of the Z-bands in each frame (see structure.zbands.contrast). '
+                       'np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_z_bands',
+        'name': 'Median Z-band contrast'
+    },
+    'structure.zbands.surround_intensity_median': {
+        'description': 'Median over the Z-bands of the background-subtracted mean intensity of the cell pixels '
+                       'within 1 µm around each Z-band: the denominator of structure.zbands.contrast, i.e. the '
+                       'diffuse signal around the Z-bands. Absolute intensity, so it depends on exposure and '
+                       'expression. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_z_bands',
+        'name': 'Median Z-band surround intensity'
+    },
+    'structure.zbands.background': {
+        'description': 'Background intensity subtracted for the Z-band contrast: the median intensity outside the '
+                       'cell mask. Frames (almost) fully covered by cells take the background of the recording, the '
+                       'median over up to five evenly spaced detected frames; without any free background in those, '
+                       'the 1st percentile of the frame. np.ndarray with value for each frame.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_z_bands',
+        'name': 'Z-band contrast background'
+    },
     'structure.zbands.labels': {
         'description': 'Z-band labels. Image with pixel values reflecting object labels. '
                        'Stored as a sparse matrix, use labels.to_numpy() to convert to np.ndarray.',
         'data type': sparse.csr_matrix,
         'function': 'SarcAsM.analyze_z_bands',
         'name': 'Z-band labels'
-    },
-    'structure.zbands.lat_alignment': {
-        'description': 'Lateral alignment A of pairs of adjacent Z-bands. '
-                       'List with np.ndarray for each frame.',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Z-band lateral alignment'
-    },
-    'structure.zbands.lat_alignment_groups': {
-        'description': 'Mean alignment of pairs of adjacent Z-bands in lateral groups. '
-                       'List with np.ndarray for each frame.',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Z-band alignment lat. groups'
-    },
-    'structure.zbands.lat_alignment_groups_mean': {
-        'description': 'Frame-level average of mean alignment of pairs of Z-bands in lateral groups. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Mean alignment in lateral Z-band groups'
-    },
-    'structure.zbands.lat_alignment_groups_std': {
-        'description': 'Frame-level standard deviation of mean alignment in lateral groups. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'STD alignment in lateral Z-band groups'
-    },
-    'structure.zbands.lat_alignment_mean': {
-        'description': 'Mean lateral alignment of adjacent Z-bands. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Mean Z-band lateral alignment'
-    },
-    'structure.zbands.lat_alignment_std': {
-        'description': 'Standard deviation of lateral alignment of adjacent Z-bands. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'STD Z-band lateral alignment'
     },
     'structure.zbands.lat_dist': {
         'description': 'Distance of pairs of laterally adjacent Z-bands. '
@@ -466,27 +503,6 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_z_bands',
         'name': 'STD Z-band lateral neighbors [#]'
     },
-    'structure.zbands.lat_size_groups': {
-        'description': 'Size of groups of laterally aligned Z-band objects. '
-                       'List with np.ndarray for each frame.',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Size of laterally aligned Z-band groups [#]'
-    },
-    'structure.zbands.lat_size_groups_mean': {
-        'description': 'Mean size of groups of laterally aligned Z-band objects. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Mean size groups lat. aligned Z-band [#]'
-    },
-    'structure.zbands.lat_size_groups_std': {
-        'description': 'Standard deviation of size of groups of laterally aligned Z-band objects. '
-                       'np.ndarray with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'STD size lat. aligned Z-band [#]'
-    },
     'structure.zbands.length': {
         'description': 'Length of Z-band objects. '
                        'List with np.ndarray of each frame.',
@@ -495,7 +511,7 @@ structure_feature_dict = {
         'name': 'Z-band length [µm]'
     },
     'structure.zbands.length_max': {
-        'description': 'here description',
+        'description': 'Length of the longest Z-band in each frame, in µm. np.ndarray with value for each frame.',
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_z_bands',
         'name': 'Max Z length [µm]'
@@ -548,25 +564,6 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_z_bands',
         'name': 'Z-band mask intensity'
-    },
-    'structure.zbands.straightness': {
-        'description': 'Straightness of Z-band objects, measured by ratio of end-to-end length to contour length. '
-                       'List with np.ndarray of each frame.',
-        'data type': list[np.ndarray],
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Z-band straightness'
-    },
-    'structure.zbands.straightness_mean': {
-        'description': 'Mean Z-band straightness for each frame. np.array with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'Mean Z-band straightness'
-    },
-    'structure.zbands.straightness_std': {
-        'description': 'Standard deviation of Z-band straightness for each frame. np.array with value for each frame.',
-        'data type': np.ndarray,
-        'function': 'SarcAsM.analyze_z_bands',
-        'name': 'STD Z-band straightness'
     },
     # --- 2D sarcomere-vector tracking (SarcAsM.track_sarcomere_vectors) ---
     'structure.sarcomere.pos_px': {
@@ -847,6 +844,34 @@ motion_feature_dict = {
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
         'name': 'Group contraction duration [s]'},
+    'time_to_50': {
+        'description': 'Time from the onset of each cycle to 50 % of its peak shortening (s): the first crossing '
+                       'of half of contr_max (relative to equ), interpolated between frames. NaN when the onset '
+                       'lies outside the recording. np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group time to 50 % shortening [s]'},
+    'time_contr_10_90': {
+        'description': 'Time from 10 % to 90 % of the peak shortening of each cycle (s), first crossings '
+                       'interpolated between frames; does not depend on where the onset of the contraction is '
+                       'placed. NaN when the onset lies outside the recording. np.ndarray with shape (n_groups, '
+                       'max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group shortening time 10-90 % [s]'},
+    'time_relax_50': {
+        'description': 'Time from the peak of each cycle to 50 % relaxation (s): the first crossing of half of '
+                       'contr_max after the peak, interpolated between frames, followed up to the onset of the '
+                       'next cycle. np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group time to 50 % relaxation [s]'},
+    'time_relax_90': {
+        'description': 'Time from the peak of each cycle to 90 % relaxation (s), i.e. back to 10 % of '
+                       'contr_max; see time_relax_50. np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group time to 90 % relaxation [s]'},
     'slen': {
         'description': 'Aggregated per-group sarcomere length over time, shape (n_groups, T).',
         'data type': np.ndarray,

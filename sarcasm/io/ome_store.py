@@ -611,12 +611,26 @@ class OmeZarrStore:
         np.ndarray
             The mask pixels.
         """
+        arr = self.mask_handle(name)
+        return arr[...] if frames is None else arr[frames]
+
+    def mask_handle(self, name: str) -> "zarr.Array":
+        """Return a lazy zarr handle for a derived mask (shape and slices without loading).
+
+        Parameters
+        ----------
+        name : str
+            Mask name.
+
+        Returns
+        -------
+        zarr.Array
+            Lazy handle to the mask array.
+        """
         root = self._root("r")
         if name in list(_ensure_group_ro(root, LABELS)):
-            arr = root[f"{LABELS}/{name}/{IMAGE}"]
-        else:
-            arr = root[f"{MASKS}/{name}"]
-        return arr[...] if frames is None else arr[frames]
+            return root[f"{LABELS}/{name}/{IMAGE}"]
+        return root[f"{MASKS}/{name}"]
 
     def has_mask(self, name: str) -> bool:
         """Return True if a mask ``name`` exists in either mask group.

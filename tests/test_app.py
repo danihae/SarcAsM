@@ -302,56 +302,35 @@ class TestUtilityFunctions:
 
 
 class TestFrameParsing:
-    """Test frame parsing in structure analysis control."""
+    """The frame field of the structure panel, parsed by the shared parser (a copy of the old parser lived
+    here and pinned its bugs: invalid text -> frame 0, '1, 3' -> [1])."""
 
-    @pytest.fixture
-    def mock_structure_control(self):
-        """Create a mock structure control for testing parse_frames."""
-        # Access the private method through a test wrapper
-        class FrameParser:
-            @staticmethod
-            def parse_frames(frames_str: str):
-                if frames_str == '':
-                    return None
-                if frames_str.lower() == 'all':
-                    return frames_str.lower()
-                if frames_str.isnumeric():
-                    return int(frames_str)
-                if ',' in frames_str:
-                    list_str = frames_str.split(',')
-                    parsed_list = []
-                    for x in list_str:
-                        if x.isnumeric():
-                            parsed_list.append(int(x))
-                    return parsed_list
-                return 0
-        return FrameParser()
+    def test_parse_frames_empty(self):
+        from sarcasm._internal.frames import parse_frames_text
+        assert parse_frames_text('') is None
+        assert parse_frames_text('   ') is None
 
-    def test_parse_frames_empty(self, mock_structure_control):
-        """Test parsing empty frame string."""
-        assert mock_structure_control.parse_frames('') is None
+    def test_parse_frames_all(self):
+        from sarcasm._internal.frames import parse_frames_text
+        for text in ('all', 'ALL', 'All', ' all '):
+            assert parse_frames_text(text) == 'all'
 
-    def test_parse_frames_all(self, mock_structure_control):
-        """Test parsing 'all' keyword."""
-        assert mock_structure_control.parse_frames('all') == 'all'
-        assert mock_structure_control.parse_frames('ALL') == 'all'
-        assert mock_structure_control.parse_frames('All') == 'all'
+    def test_parse_frames_single(self):
+        from sarcasm._internal.frames import parse_frames_text
+        assert parse_frames_text('0') == [0]
+        assert parse_frames_text(' 5') == [5]
+        assert parse_frames_text('100,') == [100]
 
-    def test_parse_frames_single(self, mock_structure_control):
-        """Test parsing single frame number."""
-        assert mock_structure_control.parse_frames('0') == 0
-        assert mock_structure_control.parse_frames('5') == 5
-        assert mock_structure_control.parse_frames('100') == 100
+    def test_parse_frames_list(self):
+        from sarcasm._internal.frames import parse_frames_text
+        assert parse_frames_text('0,1,2') == [0, 1, 2]
+        assert parse_frames_text('10, 5,1') == [1, 5, 10]
 
-    def test_parse_frames_list(self, mock_structure_control):
-        """Test parsing comma-separated frame list."""
-        assert mock_structure_control.parse_frames('0,1,2') == [0, 1, 2]
-        assert mock_structure_control.parse_frames('1,5,10') == [1, 5, 10]
-
-    def test_parse_frames_invalid(self, mock_structure_control):
-        """Test parsing invalid frame string."""
-        # Invalid strings return 0
-        assert mock_structure_control.parse_frames('invalid') == 0
+    @pytest.mark.parametrize('text', ['invalid', '-1', '1-3', '1.5', '0,2,x'])
+    def test_parse_frames_invalid(self, text):
+        from sarcasm._internal.frames import parse_frames_text
+        with pytest.raises(ValueError):
+            parse_frames_text(text)
 
 
 class TestConfigurationFiles:
@@ -527,9 +506,12 @@ class TestTrackLayers:
         from sarcasm import SarcAsM
         from sarcasm_app.control.application_control import ApplicationControl
         from sarcasm_app.model import ApplicationModel
-        cell = SarcAsM(motion_file_path_class)
-        if 'motion.tracks.slen' not in cell.data or cell.data.get('structure.myofibril.lines') is None:
-            pytest.skip('20 kPa store has no tracks / myofibril lines')
+        # in memory only: the 20 kPa store is the shared reference and keeps its results
+        cell = SarcAsM(motion_file_path_class, auto_save=False)
+        if 'motion.tracks.slen' not in cell.data:
+            pytest.skip('20 kPa store has no tracks')
+        if 0 not in list(cell.data.get('params.analyze_myofibrils.frames', [])):
+            cell.analyze_myofibrils(frames=0)              # the store holds no myofibril lines
         cell.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
         cell.scale = (1, cell.metadata.pixelsize, cell.metadata.pixelsize)
         model = ApplicationModel()
@@ -539,6 +521,7 @@ class TestTrackLayers:
         ctl._model = model
         ctl._viewer = self._FakeViewer()
         ctl.track_selected_callbacks, ctl.group_selected_callbacks = [], []
+        ctl._track_click_installed = False
         return ctl
 
     def test_layer_table_is_per_observation(self, control):

@@ -130,6 +130,10 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.vectors.filter_neighbors').set_value(True)
         self.__parameters.get_parameter(name='structure.vectors.neighbor_radius').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.max_neighbor_deviation').set_value(30.0)
+        self.__parameters.get_parameter(name='structure.vectors.registry_lateral_band_min').set_value(1.5)
+        self.__parameters.get_parameter(name='structure.vectors.registry_lateral_band_max').set_value(2.5)
+        self.__parameters.get_parameter(name='structure.vectors.registry_axial_range').set_value(3)
+        self.__parameters.get_parameter(name='structure.vectors.registry_max_angle').set_value(20.0)
 
 
         self.__parameters.get_parameter(name='structure.myofibril.ratio_seeds').set_value(0.1)
@@ -254,6 +258,10 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='structure.vectors.filter_neighbors')
         self.__parameters.set_parameter(name='structure.vectors.neighbor_radius')
         self.__parameters.set_parameter(name='structure.vectors.max_neighbor_deviation')
+        self.__parameters.set_parameter(name='structure.vectors.registry_lateral_band_min')
+        self.__parameters.set_parameter(name='structure.vectors.registry_lateral_band_max')
+        self.__parameters.set_parameter(name='structure.vectors.registry_axial_range')
+        self.__parameters.set_parameter(name='structure.vectors.registry_max_angle')
 
 
         self.__parameters.set_parameter(name='structure.myofibril.ratio_seeds')

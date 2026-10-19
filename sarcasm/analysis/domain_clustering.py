@@ -299,7 +299,7 @@ def analyze_domains(domains: List, pos_vectors: np.ndarray,
     (area_domains, sarcomere_orientation_domains, sarcomere_oop_domains, sarcomere_length_mean_domains,
      sarcomere_length_std_domains) = [], [], [], [], []
 
-    mask_domains = np.zeros(size, dtype='uint8')
+    mask_domains = np.zeros(size, dtype='uint16')
 
     j = 1
     for i, domain_i in enumerate(domains):

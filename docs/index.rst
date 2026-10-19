@@ -22,7 +22,7 @@ SarcAsM comes packed with features designed for comprehensive sarcomere analysis
 *   **AI-Driven Detection:** Robustly identifies sarcomere features in microscopy images using advanced AI.
 *   **In-Depth Structural Analysis:** Provides a multi-level examination of sarcomere architecture, including:
 
-    *   Z-band morphometrics and lateral alignment.
+    *   Z-band morphometrics, lateral Z-band connections and Z-band registry.
     *   Sarcomere lengths and orientations (sarcomere 'vectors').
     *   Myofibril characteristics (length, shape).
     *   Cell-level myofibril domain organization.

@@ -288,7 +288,10 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     list_labels, coords_mbands, length_mbands = (props['label'], props['coords'],
                                                      props['feret_diameter_max'] * pixelsize)
 
-    pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors = [], [], [], []
+    # a frame without M-bands yields empty arrays of the same dimensionality as a frame with them, so the
+    # per-frame lists stay homogeneous (the results store writes them as ragged arrays)
+    pos_vectors_px, pos_vectors = np.empty((0, 2), dtype=np.int64), np.empty((0, 2))
+    midline_id_vectors, midline_length_vectors = np.empty(0), np.empty(0)
     if n_mbands > 0:
         # Pre-calculate total number of points for efficient pre-allocation
         total_points = sum(coords.shape[0] for coords in coords_mbands)
@@ -346,7 +349,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
 
 
     else:
-        sarcomere_length_vectors, _z_band_thickness_vectors, sarcomere_orientation_vectors = [], [], []
+        sarcomere_length_vectors, sarcomere_orientation_vectors = np.empty(0), np.empty(0)
 
     return (pos_vectors_px, pos_vectors, midline_id_vectors, midline_length_vectors, sarcomere_length_vectors,
             sarcomere_orientation_vectors, n_mbands)
@@ -436,3 +439,157 @@ def filter_vectors_by_neighbors(
     """
     deviation, _ = neighbor_orientation_deviation(pos, orientation, neighbor_radius)
     return ~(deviation > max_neighbor_deviation)
+
+
+# --- Z-band registry --------------------------------------------------------
+
+# implementation constants of zband_registry (not parameters): one vector per cell of this size is scored (the
+# vectors sample each M-band about one pixel apart), the sarcomere length of a vector is the median over the
+# vectors within this radius, and a neighbour counts as "in the row" below this distance off the axis
+REGISTRY_THIN_CELL = 0.3      # µm
+REGISTRY_LENGTH_RADIUS = 1.0  # µm
+REGISTRY_ROW_WIDTH = 0.5      # µm
+
+
+def _zband_phase_score(pos, orientation, slen, I, J):
+    """Z-disc phase score of the neighbour pairs (I, J): cos(2π x / L_i) of the offset x of each of j's two Z-discs
+    from the nearest Z-disc line of i (i's Z-discs repeated every L_i along its axis), averaged over the two discs.
+    Returns (a, b, dtheta, score): offset of j's centre along i's axis, across it, axial angle between the two."""
+    t = np.stack([np.sin(orientation), np.cos(orientation)], axis=1)
+    n = np.stack([np.cos(orientation), -np.sin(orientation)], axis=1)
+    d = pos[J] - pos[I]
+    a = np.einsum('ij,ij->i', d, t[I])
+    b = np.abs(np.einsum('ij,ij->i', d, n[I]))
+    dtheta = np.abs(np.angle(np.exp(2j * (orientation[J] - orientation[I])))) / 2   # axial: θ and θ + π agree
+    L_i, L_j = slen[I], slen[J]
+    # the discs of j lie at a ± L_j / 2 along i's axis; the lines of i at ± L_i / 2 + k L_i
+    score = -0.5 * (np.cos(2 * np.pi * (a - L_j / 2) / L_i) + np.cos(2 * np.pi * (a + L_j / 2) / L_i))
+    return a, b, dtheta, score
+
+
+def zband_registry(
+        pos: np.ndarray,
+        orientation: np.ndarray,
+        slen: np.ndarray,
+        lateral_band: Tuple[float, float] = (1.5, 2.5),
+        axial_range: int = 3,
+        max_angle: float = 20.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Lateral and axial Z-band registry of every sarcomere vector.
+
+    Each sarcomere vector (centre ``pos``, axis ``orientation``, length ``L``)
+    defines a Z-disc lattice: its two Z-discs at ``± L / 2`` along the axis,
+    repeated every ``L``. A neighbouring sarcomere's Z-disc at offset ``x``
+    along that axis from the nearest lattice line scores ``cos(2π x / L)``,
+    averaged over the neighbour's two discs: 1 when the Z-discs are level with
+    the vector's own, 0 on average for random positions, −1 when they sit at
+    the M-band position (half a sarcomere off).
+
+    The **lateral** registry is the mean score over the neighbours one
+    myofibril over: ``lateral_band[0]`` to ``lateral_band[1]`` µm across the
+    axis and within ``L / 2`` along it, whatever their orientation (a tilted
+    neighbour lowers the score through the phase of its projected discs). The
+    **axial** registry is the mean score over the neighbours along the
+    vector's own row (less than 0.5 µm off the axis) that are 1 to
+    ``axial_range`` sarcomeres away and parallel within ``max_angle``. A
+    vector without a neighbour of the required kind gets NaN, never 0.
+
+    ``L`` is the median vector length within 1 µm, and one vector per
+    0.3 µm cell is scored (the vectors sample each M-band about a pixel
+    apart); the scored value is assigned to every vector of the cell.
+
+    Parameters
+    ----------
+    pos : np.ndarray
+        Vector positions ``(n, 2)`` in µm.
+    orientation : np.ndarray
+        Vector orientations ``(n,)`` in radians (axial, ``[0, π)``).
+    slen : np.ndarray
+        Sarcomere lengths ``(n,)`` in µm.
+    lateral_band : tuple of float, optional
+        Distance across the axis, in µm, within which a neighbour counts as
+        one myofibril over. Default is (1.5, 2.5).
+    axial_range : int, optional
+        Farthest neighbour along the row, in sarcomeres. Default is 3.
+    max_angle : float, optional
+        Largest axial angle, in degrees, between a row neighbour and the
+        vector for it to count. Default is 20.0.
+
+    Returns
+    -------
+    lateral, axial : np.ndarray
+        Registry per vector ``(n,)``, in ``[-1, 1]``, NaN without neighbours.
+    """
+    pos = np.asarray(pos, dtype=float).reshape(-1, 2)
+    orientation = np.asarray(orientation, dtype=float).ravel()
+    slen = np.asarray(slen, dtype=float).ravel()
+    n_all = len(pos)
+    lateral = np.full(n_all, np.nan)
+    axial = np.full(n_all, np.nan)
+    ok = np.isfinite(pos).all(axis=1) & np.isfinite(orientation) & np.isfinite(slen) & (slen > 0)
+    if ok.sum() < 2:
+        return lateral, axial
+    idx_ok = np.flatnonzero(ok)
+    p, o, L = pos[ok], orientation[ok], slen[ok]
+
+    # one vector per thinning cell; the cell's value is given to all of its vectors afterwards
+    cell = np.floor(p / REGISTRY_THIN_CELL).astype(np.int64)
+    key = cell[:, 0] * (10 ** 7) + cell[:, 1]
+    _, first, inverse = np.unique(key, return_index=True, return_inverse=True)
+    ps, os_, Ls = p[first], o[first], L[first]
+    n = len(ps)
+    tree = cKDTree(ps)
+
+    # local sarcomere length: median over the thinned vectors within REGISTRY_LENGTH_RADIUS
+    if n > 1:
+        pairs = tree.query_pairs(REGISTRY_LENGTH_RADIUS, output_type='ndarray')
+        I = np.concatenate([pairs[:, 0], pairs[:, 1], np.arange(n)])
+        J = np.concatenate([pairs[:, 1], pairs[:, 0], np.arange(n)])
+        order = np.argsort(I, kind='stable')
+        I, J = I[order], J[order]
+        counts = np.bincount(I, minlength=n)
+        start = np.r_[0, np.cumsum(counts)[:-1]]
+        M = np.full((n, int(counts.max())), np.nan)
+        M[I, np.arange(len(I)) - np.repeat(start, counts)] = Ls[J]
+        Ls = np.nanmedian(M, axis=1)
+    L_max = float(np.max(Ls))
+
+    def _mean_by_source(I, mask, score):
+        s = np.bincount(I[mask], weights=score[mask], minlength=n)
+        c = np.bincount(I[mask], minlength=n)
+        return np.where(c > 0, s / np.maximum(c, 1), np.nan)
+
+    # lateral: neighbours in the band across the axis and within L / 2 along it
+    radius = float(np.hypot(lateral_band[1], 0.5 * L_max))
+    pairs = tree.query_pairs(radius, output_type='ndarray')
+    if len(pairs):
+        I = np.concatenate([pairs[:, 0], pairs[:, 1]])
+        J = np.concatenate([pairs[:, 1], pairs[:, 0]])
+        a, b, _, score = _zband_phase_score(ps, os_, Ls, I, J)
+        beside = (np.abs(a) <= Ls[I] / 2) & (b >= lateral_band[0]) & (b < lateral_band[1])
+        lat_thin = _mean_by_source(I, beside, score)
+    else:
+        lat_thin = np.full(n, np.nan)
+
+    # axial: the parallel neighbours 1..axial_range sarcomeres along the row, found from the lattice positions
+    t = np.stack([np.sin(os_), np.cos(os_)], axis=1)
+    ks = np.arange(1, int(axial_range) + 1)
+    query = np.concatenate([ps + sign * k * Ls[:, None] * t for k in ks for sign in (1.0, -1.0)])
+    source = np.tile(np.arange(n), 2 * len(ks))
+    k_of = np.repeat(ks, 2 * n)
+    reach = float(np.hypot(0.5 * L_max, REGISTRY_ROW_WIDTH))
+    hits = cKDTree(query).sparse_distance_matrix(tree, reach, output_type='coo_matrix')
+    I, J, K = source[hits.row], hits.col, k_of[hits.row]
+    keep = I != J
+    I, J, K = I[keep], J[keep], K[keep]
+    if len(I):
+        a, b, dtheta, score = _zband_phase_score(ps, os_, Ls, I, J)
+        in_row = ((b < REGISTRY_ROW_WIDTH) & (np.rint(np.abs(a) / Ls[I]) == K)
+                  & (dtheta <= np.radians(max_angle)))
+        ax_thin = _mean_by_source(I, in_row, score)
+    else:
+        ax_thin = np.full(n, np.nan)
+
+    lateral[idx_ok] = lat_thin[inverse]
+    axial[idx_ok] = ax_thin[inverse]
+    return lateral, axial

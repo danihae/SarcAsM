@@ -324,17 +324,16 @@ class TestStructurePlots:
         """
         Class-scoped fixture providing a fully analyzed SarcAsM object.
         Runs all required analysis steps once for the entire test class.
-        
-        Note: We detect on frame 1 to test non-zero frame handling, but
-        the data is stored at index 0 (first analyzed frame), so subsequent
-        analysis and plotting use frame=0.
+
+        Detects frame 1 only, to test non-zero frame handling: every result is
+        stored under frame number 1, so analysis and plotting use frame=1.
         """
         sarc = SarcAsM(structure_crop_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=1)
-        sarc.analyze_z_bands(frames=[0])
-        sarc.analyze_sarcomere_vectors(frames=0)
-        sarc.analyze_sarcomere_domains(frames=0)
-        sarc.analyze_myofibrils(frames=0)
+        sarc.analyze_z_bands(frames=[1])
+        sarc.analyze_sarcomere_vectors(frames=1)
+        sarc.analyze_sarcomere_domains(frames=1)
+        sarc.analyze_myofibrils(frames=1)
         return sarc
 
     def test_data_key_is_its_path_on_a_real_store(self, analyzed_structure):
@@ -366,49 +365,49 @@ class TestStructurePlots:
     def test_plot_image(self, analyzed_structure):
         """Test plot_image function."""
         fig, ax = plt.subplots()
-        Plots.plot_image(ax, analyzed_structure, frame=0)
+        Plots.plot_image(ax, analyzed_structure, frame=1)
         assert ax.images, "No image was plotted"
         plt.close(fig)
 
     def test_plot_z_bands(self, analyzed_structure):
         """Test plot_z_bands function."""
         fig, ax = plt.subplots()
-        Plots.plot_z_bands(ax, analyzed_structure, frame=0)
+        Plots.plot_z_bands(ax, analyzed_structure, frame=1)
         assert ax.images, "No Z-band image was plotted"
         plt.close(fig)
 
     def test_plot_z_bands_midlines(self, analyzed_structure):
         """Test plot_z_bands_midlines function."""
         fig, ax = plt.subplots()
-        Plots.plot_z_bands_midlines(ax, analyzed_structure, frame=0)
+        Plots.plot_z_bands_midlines(ax, analyzed_structure, frame=1)
         assert ax.images, "No Z-bands/midlines image was plotted"
         plt.close(fig)
 
     def test_plot_cell_mask(self, analyzed_structure):
         """Test plot_cell_mask function."""
         fig, ax = plt.subplots()
-        Plots.plot_cell_mask(ax, analyzed_structure, frame=0)
+        Plots.plot_cell_mask(ax, analyzed_structure, frame=1)
         assert ax.images, "No cell mask was plotted"
         plt.close(fig)
 
     def test_plot_z_segmentation(self, analyzed_structure):
         """Test plot_z_segmentation function."""
         fig, ax = plt.subplots()
-        Plots.plot_z_segmentation(ax, analyzed_structure, frame=0)
+        Plots.plot_z_segmentation(ax, analyzed_structure, frame=1)
         assert ax.images, "No Z-band segmentation was plotted"
         plt.close(fig)
 
     def test_plot_z_lateral_connections(self, analyzed_structure):
         """Test plot_z_lateral_connections function."""
         fig, ax = plt.subplots()
-        Plots.plot_z_lateral_connections(ax, analyzed_structure, frame=0)
+        Plots.plot_z_lateral_connections(ax, analyzed_structure, frame=1)
         assert ax.images, "No Z-band lateral connections were plotted"
         plt.close(fig)
 
     def test_plot_sarcomere_orientation_field(self, analyzed_structure):
         """Test plot_sarcomere_orientation_field function."""
         fig, (ax1, ax2) = plt.subplots(1, 2)
-        Plots.plot_sarcomere_orientation_field(ax1, ax2, analyzed_structure, frame=0)
+        Plots.plot_sarcomere_orientation_field(ax1, ax2, analyzed_structure, frame=1)
         assert ax1.images, "No orientation field X was plotted"
         assert ax2.images, "No orientation field Y was plotted"
         plt.close(fig)
@@ -416,14 +415,14 @@ class TestStructurePlots:
     def test_plot_sarcomere_mask(self, analyzed_structure):
         """Test plot_sarcomere_mask function."""
         fig, ax = plt.subplots()
-        Plots.plot_sarcomere_mask(ax, analyzed_structure, frame=0)
+        Plots.plot_sarcomere_mask(ax, analyzed_structure, frame=1)
         assert ax.images, "No sarcomere mask was plotted"
         plt.close(fig)
 
     def test_plot_sarcomere_vectors(self, analyzed_structure):
         """Test plot_sarcomere_vectors function."""
         fig, ax = plt.subplots()
-        Plots.plot_sarcomere_vectors(ax, analyzed_structure, frame=0)
+        Plots.plot_sarcomere_vectors(ax, analyzed_structure, frame=1)
         # Check for quiver plot (collections) or scatter points
         assert ax.images or ax.collections, "No sarcomere vectors were plotted"
         plt.close(fig)
@@ -431,17 +430,17 @@ class TestStructurePlots:
     def test_plot_sarcomere_domains(self, analyzed_structure):
         """Test plot_sarcomere_domains function."""
         fig, ax = plt.subplots()
-        Plots.plot_sarcomere_domains(ax, analyzed_structure, frame=0)
+        Plots.plot_sarcomere_domains(ax, analyzed_structure, frame=1)
         assert ax.images, "No sarcomere domains were plotted"
         plt.close(fig)
 
     def test_plot_myofibril_lines(self, analyzed_structure):
         """Test plot_myofibril_lines function."""
         # Skip if no myofibril lines were found
-        if analyzed_structure.data['structure.myofibril.lines'][0] is None:
+        if analyzed_structure.data['structure.myofibril.lines'][1] is None:
             pytest.skip("No myofibril lines detected in test data")
         fig, ax = plt.subplots()
-        Plots.plot_myofibril_lines(ax, analyzed_structure, frame=0)
+        Plots.plot_myofibril_lines(ax, analyzed_structure, frame=1)
         # May have images (z-bands) and/or lines
         assert ax.images or ax.lines, "No myofibril lines were plotted"
         plt.close(fig)
@@ -449,17 +448,17 @@ class TestStructurePlots:
     def test_plot_myofibril_length_map(self, analyzed_structure):
         """Test plot_myofibril_length_map function."""
         # Skip if no myofibril lines were found or if method not available
-        if analyzed_structure.data['structure.myofibril.lines'][0] is None:
+        if analyzed_structure.data['structure.myofibril.lines'][1] is None:
             pytest.skip("No myofibril lines detected in test data")
         fig, ax = plt.subplots()
-        Plots.plot_myofibril_length_map(ax, analyzed_structure, frame=0)
+        Plots.plot_myofibril_length_map(ax, analyzed_structure, frame=1)
         assert ax.images, "No myofibril length map was plotted"
         plt.close(fig)
 
     def test_plot_histogram_structure(self, analyzed_structure):
         """Test plot_histogram_structure function."""
         fig, ax = plt.subplots()
-        Plots.plot_histogram_structure(ax, analyzed_structure, feature='structure.sarcomere.slen', frame=0)
+        Plots.plot_histogram_structure(ax, analyzed_structure, feature='structure.sarcomere.slen', frame=1)
         # Check for histogram patches
         assert ax.patches, "No histogram was plotted"
         plt.close(fig)
@@ -592,6 +591,21 @@ def test_vectors_on_a_frame_without_m_bands(structure_crop_file_path):
     assert len(d['structure.sarcomere.pos'][0]) == 0 and len(d['structure.sarcomere.slen'][0]) == 0
     for key in ('slen_mean', 'orientation_mean', 'orientation_std', 'oop'):
         assert np.isnan(d[f'structure.sarcomere.{key}'][0]), key
+
+
+def test_contrast_background_of_a_covered_frame_does_not_depend_on_the_call(structure_crop_file_path):
+    """A frame fully covered by cells has no free background and takes the background of the recording, so its
+    Z-band contrast is the same whether it is analyzed alone or together with other frames."""
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames='all')
+    mask = np.asarray(sarc.store.read_mask('cell_mask')).copy()
+    mask[1] = 1.0
+    sarc.store.write_mask('cell_mask', mask)
+    sarc.analyze_z_bands(frames='all')
+    together = (sarc.data['structure.zbands.background'][1], sarc.data['structure.zbands.contrast_median'][1])
+    sarc.analyze_z_bands(frames=[1])
+    alone = (sarc.data['structure.zbands.background'][1], sarc.data['structure.zbands.contrast_median'][1])
+    assert np.isfinite(together[0]) and together == alone
 
 
 def test_orientation_mean_and_std_are_axial(structure_crop_file_path):

@@ -747,7 +747,7 @@ class ApplicationControl:
             labels_frame = cell.data['structure.zbands.labels'][frame].toarray()
             groups_frame = cell.data['structure.zbands.lat_groups'][frame]
             labels_groups_frame = np.zeros_like(labels_frame)
-            for i, group in enumerate(groups_frame[1:]):
+            for i, group in enumerate(groups_frame):
                 mask = np.zeros_like(labels_frame, dtype=bool)
                 for label in group:
                     mask |= (labels_frame == label + 1)

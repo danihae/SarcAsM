@@ -23,13 +23,74 @@ from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
 from scipy.stats import kstest, geom
 
 from contraction_net.prediction import predict_contractions, recommended_threshold
-from sarcasm.analysis import heterogeneity
+from sarcasm.analysis import contraction_analysis, heterogeneity
 from sarcasm.analysis.contraction_analysis import cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
+
+
+def _cycle_metrics(delta: np.ndarray, vel: np.ndarray, cut_start: bool, cut_end: bool,
+                   custom_perc: List[Tuple[float, float]], frametime: float) -> np.ndarray:
+    """contr_max, elong_max, vel_contr_max, vel_elong_max, time_to_peak, time_to_relax and the ``custom_perc``
+    times of one trace (ΔSL ``delta``, velocity ``vel``) in one contraction cycle; NaN where the recording does
+    not show them (see :meth:`Motion.analyze_trajectories`)."""
+    out = np.full(6 + len(custom_perc), np.nan)
+    n = len(delta)
+
+    def observed(arg: int) -> bool:
+        # an extremum on a truncated edge of the cycle may continue outside the recording
+        return not ((cut_start and arg == 0) or (cut_end and arg == n - 1))
+
+    # velocities do not need the resting length, so they exist also where ΔSL does not (equ NaN)
+    if not np.all(np.isnan(vel)):
+        slowest, fastest = int(np.nanargmin(vel)), int(np.nanargmax(vel))
+        if observed(slowest):
+            out[2] = vel[slowest]
+        if observed(fastest):
+            out[3] = vel[fastest]
+    if np.all(np.isnan(delta)):
+        return out
+    peak, top = int(np.nanargmin(delta)), int(np.nanargmax(delta))
+    if observed(peak):
+        out[0] = delta[peak]
+    if observed(top):
+        out[1] = delta[top]
+    # times need a gap-free cycle and an observed peak
+    if np.isnan(delta).any() or not observed(peak):
+        return out
+    if not cut_start:
+        out[4] = peak * frametime
+    if not cut_end:
+        out[5] = (n - peak) * frametime
+    for k, (p0, p1) in enumerate(custom_perc):
+        relaxing = p0 > p1
+        out[6 + k] = (_percent_time(delta, peak, p1, relaxing, cut_start, cut_end)
+                      - _percent_time(delta, peak, p0, relaxing, cut_start, cut_end)) * frametime
+    return out
+
+
+def _percent_time(delta: np.ndarray, peak: int, p: float, relaxing: bool, cut_start: bool, cut_end: bool) -> float:
+    """Fractional frame at which a cycle trace first reaches ``p`` % of its peak shortening ``delta[peak]``:
+    counted from the onset on the shortening side (0 % = onset, 100 % = peak), from the peak on the relaxation
+    side (100 % = peak, 0 % = end of the cycle). NaN without shortening, when the onset (shortening) or the end
+    of the cycle (0 % relaxation) lies outside the recording, or when the trace does not reach the level."""
+    amp = delta[peak]
+    if not amp < 0:
+        return np.nan
+    if relaxing:
+        if p == 100:
+            return 0.0
+        if p == 0:
+            return np.nan if cut_end else float(len(delta) - peak)
+        return contraction_analysis._first_crossing(delta[peak:], p / 100 * amp, falling=False)
+    if cut_start:
+        return np.nan
+    if p == 0:
+        return 0.0
+    return contraction_analysis._first_crossing(delta[:peak + 1], p / 100 * amp, falling=True)
 
 
 class Motion(SarcAsMBase):
@@ -156,7 +217,8 @@ class Motion(SarcAsMBase):
 
         For a **synthesized** chain (``Motion.from_loi_data`` with
         ``synthetic=True``, i.e. a fibre built from 2D tracks) the honest
-        per-member series is already stored under ``'slen'``. It must be used
+        per-member series is already stored under ``'slen'`` (``'slen_raw'``
+        once :meth:`get_trajectories` has smoothed ``'slen'``). It must be used
         directly: each member there is an independently tracked sarcomere, so a
         member with no observation is NaN on its own row only, whereas
         ``np.diff(z_pos)`` would additionally blank every row below it (see
@@ -167,7 +229,9 @@ class Motion(SarcAsMBase):
         np.ndarray
             A fresh ``(n_sarcomeres, T)`` array, safe for the caller to modify.
         """
-        stored = self.loi_data.get('slen') if self.loi_data.get('synthetic') else None
+        # 'slen_raw' holds the measured lengths once get_trajectories has replaced 'slen' by the smoothed ones
+        stored = (self.loi_data.get('slen_raw', self.loi_data.get('slen'))
+                  if self.loi_data.get('synthetic') else None)
         if stored is not None:
             stored = np.asarray(stored, dtype=float)
             expected = np.asarray(self.loi_data['z_pos']).shape[0] - 1
@@ -352,14 +416,20 @@ class Motion(SarcAsMBase):
         """
         # calculate sarcomere lengths
         slen = self._member_slen()
+        if self.loi_data.get('synthetic'):
+            # 'slen' is replaced by the smoothed lengths below; keep the measured ones, so that a second call
+            # starts from them again instead of smoothing the smoothed lengths
+            self.loi_data.setdefault('slen_raw', slen.copy())
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         slen_avg = np.nanmean(slen, axis=0)
         n_sarcomeres = slen.shape[0]
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
         frametime = self.metadata.frametime
 
-        # smooth slen with sav. golay filter and calculate velocity
-        vel = Utils.custom_diff(Utils.nan_sav_golay(slen, filter_params_vel[0], filter_params_vel[1]), frametime)
+        # smooth slen with sav. golay filter and calculate velocity; the smoothed lengths are also the ones stored
+        # and used for equ and delta_slen below (slen_avg above averages the unsmoothed lengths)
+        slen = Utils.nan_sav_golay(slen, filter_params_vel[0], filter_params_vel[1])
+        vel = Utils.custom_diff(slen, frametime)
         vel_avg = np.nanmean(vel, axis=0)
 
         # calculate sarcomere equ length and delta sarcomere length
@@ -399,126 +469,53 @@ class Motion(SarcAsMBase):
         Analyze sarcomere single and average trajectories (extrema of sarcomeres contraction and velocity)
         and sarcomere popping
 
+        Contraction cycles at the edges of the recording (``contr_complete`` False) keep what the recording
+        shows, as in :func:`~sarcasm.analysis.contraction_analysis.analyze_contraction_parameters`: an
+        extremum is NaN when it sits on the truncated edge of the cycle, the time to peak needs the onset and
+        the time to relaxation the end of the cycle.
+
         Parameters
         ----------
         custom_perc : list of tuple of float, or None, optional
             List of ``(p0, p1)`` percentage pairs defining custom intervals to
             analyze, e.g. the time from p0% to p1% of individual and average
-            sarcomere length change. If ``p0 < p1`` shortening is analyzed; if
-            ``p1 < p0`` elongation is analyzed. Default is None.
+            sarcomere length change. If ``p0 < p1`` shortening is analyzed (0% =
+            onset of the cycle, 100% = peak); if ``p1 < p0`` relaxation is analyzed
+            (100% = peak, 0% = end of the cycle). A percentage is reached at the
+            first crossing of that fraction of the cycle's peak shortening,
+            interpolated linearly between frames, like the percentile times of
+            :meth:`~sarcasm.structure.SarcAsM.analyze_track_motion`. NaN for a
+            cycle with gaps, without shortening, or whose trace does not reach
+            the level (or reaches it before the onset). Default is None.
         """
-        # initialize arrays
-        # maximal contraction
-        contr_max = np.zeros((len(self.loi_data['delta_slen']), self.loi_data['n_contr'])) * np.nan
-        contr_max_avg = np.zeros(self.loi_data['n_contr']) * np.nan
-        # maximal elongation
-        elong_max = np.zeros_like(contr_max) * np.nan
-        elong_max_avg = np.zeros_like(contr_max_avg) * np.nan
-        # maximal velocity in both directions
-        vel_contr_max = np.zeros_like(contr_max) * np.nan
-        vel_elong_max = np.zeros_like(contr_max) * np.nan
-        vel_contr_max_avg = np.zeros_like(contr_max_avg) * np.nan
-        vel_elong_max_avg = np.zeros_like(contr_max_avg) * np.nan
-        # time to peak (0% to 100%)
-        time_to_peak = np.zeros_like(contr_max) * np.nan
-        time_to_peak_avg = np.zeros_like(contr_max_avg) * np.nan
-        # relaxation time (100% to 0%)
-        time_to_relax = np.zeros_like(contr_max) * np.nan
-        time_to_relax_avg = np.zeros_like(contr_max_avg) * np.nan
-        # custom percentages (p0% to p1%)
         if custom_perc and not isinstance(custom_perc, list):
             custom_perc = [custom_perc]
         elif not custom_perc:
             custom_perc = []
-        custom_perc_time = [np.zeros_like(contr_max) for _ in range(len(custom_perc))]
-        custom_perc_time_avg = [np.zeros_like(contr_max_avg) for _ in range(len(custom_perc))]
-
-        # iterate individual sarcomeres
+        if any(p0 == p1 for p0, p1 in custom_perc):
+            raise ValueError('p0 and p1 must be different.')
+        n_contr = self.loi_data['n_contr']
         labels_contr = self.loi_data['labels_contr']
-        for j, delta_j in enumerate(self.loi_data['delta_slen']):
-            vel_j = self.loi_data['vel'][j]
-            for i in range(self.loi_data['n_contr']):
-                # get time-series of one contraction cycle (start to start)
-                delta_i = delta_j[labels_contr == i + 1]
-                vel_i = vel_j[labels_contr == i + 1]
-                # find extrema
-                contr_max[j][i] = np.nanmin(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
-                elong_max[j][i] = np.nanmax(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
-                vel_contr_max[j][i] = np.nanmin(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
-                vel_elong_max[j][i] = np.nanmax(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
-                # time to peak
-                if np.count_nonzero(np.isnan(delta_i)) == 0:
-                    time_to_peak[j][i] = np.nanargmin(delta_i) * self.metadata.frametime
-                    time_to_relax[j][i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata.frametime
-                if custom_perc:
-                    for k, (p0, p1) in enumerate(custom_perc):
-                        if p0 < p1:  # shortening
-                            delta_shortening_i = delta_i[: np.nanargmin(delta_i)+1]
-                            if len(delta_shortening_i) > 0:
-                                if p0 == 0:
-                                    t0, contr0 = 0, 0
-                                else:
-                                    t0, contr0 = Utils.find_closest(delta_shortening_i, contr_max[j][i] * p0 * 0.01)
-                                t1, contr1 = Utils.find_closest(delta_shortening_i, contr_max[j][i] * p1 * 0.01)
-                            else:
-                                t0, contr0 = np.nan, np.nan
-                                t1, contr1 = np.nan, np.nan
-                        elif p0 > p1:  # elongation
-                            delta_elongation_i = delta_i[np.nanargmin(delta_i):]
-                            if len(delta_elongation_i) > 0:
-                                if p1 == 0:
-                                    t1, contr1 = len(delta_elongation_i), 0
-                                else:
-                                    t1, contr1 = Utils.find_closest(delta_elongation_i, contr_max[j][i] * p1 * 0.01)
-                                t0, contr0 = Utils.find_closest(delta_elongation_i, contr_max[j][i] * p0 * 0.01)
-                            else:
-                                t0, contr0 = np.nan, np.nan
-                                t1, contr1 = np.nan, np.nan
-                        else:
-                            raise ValueError('p0 and p1 must be different.')
-                        custom_perc_time[k][j, i] = (t1 - t0) * self.metadata.frametime
+        buffer_frames = self.loi_data.get('params.detect_analyze_contractions.buffer_frames', 3)
+        trunc_start, trunc_end = cycle_truncation_flags(labels_contr, n_contr, buffer_frames)
 
-        # average contraction
-        for i in range(self.loi_data['n_contr']):
-            # get time-series of one contraction cycle (start to start)
-            delta_i = self.loi_data['delta_slen_avg'][labels_contr == i + 1]
-            vel_i = self.loi_data['vel_avg'][labels_contr == i + 1]
-            # find extrema
-            contr_max_avg[i] = np.nanmin(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
-            elong_max_avg[i] = np.nanmax(delta_i) if np.any(~np.isnan(delta_i)) else np.nan
-            vel_contr_max_avg[i] = np.nanmin(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
-            vel_elong_max_avg[i] = np.nanmax(vel_i) if np.any(~np.isnan(vel_i)) else np.nan
-            # time to peak
-            if np.count_nonzero(np.isnan(delta_i)) == 0:
-                time_to_peak_avg[i] = np.nanargmin(delta_i) * self.metadata.frametime
-                time_to_relax_avg[i] = (len(delta_i) - np.nanargmin(delta_i)) * self.metadata.frametime
-            if custom_perc:
-                for k, (p0, p1) in enumerate(custom_perc):
-                    if p0 < p1:  # shortening
-                        delta_shortening_i = delta_i[: np.nanargmin(delta_i)+1]
-                        if len(delta_shortening_i) > 0:
-                            if p0 == 0:
-                                t0_avg, contr0_avg = 0, 0
-                            else:
-                                t0_avg, contr0_avg = Utils.find_closest(delta_shortening_i, contr_max_avg[i] * p0 * 0.01)
-                            t1_avg, contr1_avg = Utils.find_closest(delta_shortening_i, contr_max_avg[i] * p1 * 0.01)
-                        else:
-                            t0_avg, contr0_avg = np.nan, np.nan
-                            t1_avg, contr1_avg = np.nan, np.nan
-                    elif p0 > p1:  # elongation
-                        delta_elongation_i = delta_i[np.nanargmin(delta_i):]
-                        if len(delta_elongation_i) > 0:
-                            if p1 == 0:
-                                t1_avg, contr1_avg = len(delta_elongation_i), 0
-                            else:
-                                t1_avg, contr1_avg = Utils.find_closest(delta_elongation_i, contr_max_avg[i] * p1 * 0.01)
-                            t0_avg, contr0_avg = Utils.find_closest(delta_elongation_i, contr_max_avg[i] * p0 * 0.01)
-                        else:
-                            t0_avg, contr0_avg = np.nan, np.nan
-                            t1_avg, contr1_avg = np.nan, np.nan
-                    else:
-                        raise ValueError('p0 and p1 must be different.')
-                    custom_perc_time_avg[k][i] = (t1_avg - t0_avg) * self.metadata.frametime
+        # one row per sarcomere and a last one for the average trace; per cycle the columns are contr_max,
+        # elong_max, vel_contr_max, vel_elong_max, time_to_peak, time_to_relax and the custom_perc times
+        traces = list(zip(self.loi_data['delta_slen'], self.loi_data['vel']))
+        traces.append((self.loi_data['delta_slen_avg'], self.loi_data['vel_avg']))
+        metrics = np.full((len(traces), n_contr, 6 + len(custom_perc)), np.nan)
+        for i in range(n_contr):
+            in_cycle = labels_contr == i + 1
+            for j, (delta_j, vel_j) in enumerate(traces):
+                metrics[j, i] = _cycle_metrics(np.asarray(delta_j)[in_cycle], np.asarray(vel_j)[in_cycle],
+                                               bool(trunc_start[i]), bool(trunc_end[i]), custom_perc,
+                                               self.metadata.frametime)
+        (contr_max, elong_max, vel_contr_max, vel_elong_max,
+         time_to_peak, time_to_relax) = (metrics[:-1, :, c].copy() for c in range(6))
+        (contr_max_avg, elong_max_avg, vel_contr_max_avg, vel_elong_max_avg,
+         time_to_peak_avg, time_to_relax_avg) = (metrics[-1, :, c].copy() for c in range(6))
+        custom_perc_time = np.moveaxis(metrics[:-1, :, 6:], -1, 0) if custom_perc else np.asarray([])
+        custom_perc_time_avg = np.moveaxis(metrics[-1, :, 6:], -1, 0) if custom_perc else np.asarray([])
 
         # calculate surplus motion index
         self.calculate_surplus_motion_index()

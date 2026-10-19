@@ -105,9 +105,12 @@ class TestGetTrackMotion:
 
     @pytest.fixture(scope='class')
     def sarc(self, motion_file_path_class):
-        s = SarcAsM(motion_file_path_class)
-        if 'motion.tracks.slen' not in s.data or s.data.get('structure.myofibril.lines') is None:
-            pytest.skip('20 kPa store has no tracks / myofibril lines')
+        # in memory only: the 20 kPa store is the shared reference and keeps its results
+        s = SarcAsM(motion_file_path_class, auto_save=False)
+        if 'motion.tracks.slen' not in s.data:
+            pytest.skip('20 kPa store has no tracks')
+        if 0 not in list(s.data.get('params.analyze_myofibrils.frames', [])):
+            s.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
         s.group_tracks(by='myofibril', reference_frame=0)
         return s
 
@@ -117,11 +120,11 @@ class TestGetTrackMotion:
 
     @pytest.fixture(scope='class')
     def raw(self, sarc):
-        """The chain before ``get_trajectories`` smooths ``slen`` in place."""
+        """The chain before ``get_trajectories`` replaces ``slen`` by the smoothed lengths."""
         return sarc.get_track_motion(0)
 
     def test_requires_a_chain_grouping(self, motion_file_path_class):
-        s = SarcAsM(motion_file_path_class)
+        s = SarcAsM(motion_file_path_class, auto_save=False)
         s.group_tracks(by='pool')
         with pytest.raises(ValueError, match='myofibril'):
             s.get_track_motion(0)
@@ -178,10 +181,13 @@ class TestTrackKinematics:
 
     @pytest.fixture(scope='class')
     def sarc(self, motion_file_path_class):
-        s = SarcAsM(motion_file_path_class)
+        # in memory only: the 20 kPa store is the shared reference and keeps its results
+        s = SarcAsM(motion_file_path_class, auto_save=False)
         if 'motion.tracks.slen' not in s.data:
             pytest.skip('20 kPa store has no tracks')
         s.analyze_track_motion(by='pool')                  # pooled cycles for the equilibrium / raster
+        if 0 not in list(s.data.get('params.analyze_myofibrils.frames', [])):
+            s.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
         s.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
         return s
 

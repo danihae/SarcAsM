@@ -31,23 +31,24 @@ STRUCTURE_TIERS: TierSections = {
         'Sarcomeres': [
             'structure.sarcomere.slen_mean', 'structure.sarcomere.slen_std',
             'structure.sarcomere.oop',
+            'structure.sarcomere.registry_lateral_mean', 'structure.sarcomere.registry_axial_mean',
+            'structure.sarcomere.registry_mean',
             'structure.sarcomere.n_vectors',
         ],
         'Z-bands': [
             'structure.zbands.n', 'structure.sarcomere.n_mbands',
             'structure.zbands.length_mean', 'structure.zbands.length_std',
-            'structure.zbands.intensity_mean',
-            'structure.zbands.lat_alignment_mean', 'structure.zbands.lat_alignment_std',
+            'structure.zbands.intensity_mean', 'structure.zbands.contrast_median',
             'structure.zbands.lat_dist_mean', 'structure.zbands.lat_dist_std',
         ],
         'Myofibrils': [
             'structure.myofibril.length_mean', 'structure.myofibril.length_max',
             'structure.myofibril.bending_mean',
-            'structure.myofibril.straightness_mean',
         ],
         'Domains': [
             'structure.domain.n',
             'structure.domain.area_mean', 'structure.domain.oop_mean', 'structure.domain.slen_mean',
+            'structure.domain.registry_lateral_mean', 'structure.domain.registry_axial_mean',
         ],
     },
     'Advanced': {
@@ -63,28 +64,27 @@ STRUCTURE_TIERS: TierSections = {
             'structure.zbands.length_max',
             'structure.zbands.oop',
             'structure.zbands.mask_area', 'structure.zbands.mask_area_ratio', 'structure.zbands.mask_intensity',
-            'structure.zbands.straightness_mean', 'structure.zbands.straightness_std',
+            'structure.zbands.surround_intensity_median', 'structure.zbands.background',
             'structure.zbands.lat_neighbors_mean', 'structure.zbands.lat_neighbors_std',
             'structure.zbands.lat_length_groups_mean', 'structure.zbands.lat_length_groups_std',
-            'structure.zbands.lat_size_groups_mean', 'structure.zbands.lat_size_groups_std',
-            'structure.zbands.lat_alignment_groups_mean', 'structure.zbands.lat_alignment_groups_std',
         ],
         'Myofibrils': [
             'structure.myofibril.length_std',
             'structure.myofibril.bending_std',
-            'structure.myofibril.straightness_std',
         ],
         'Domains': [
             'structure.domain.area_std', 'structure.domain.oop_std',
         ],
         'Raw distributions (full detail only)': [
             'structure.sarcomere.slen', 'structure.sarcomere.orientation',
+            'structure.sarcomere.registry_lateral', 'structure.sarcomere.registry_axial',
             'structure.sarcomere.midline_length',
-            'structure.zbands.length', 'structure.zbands.intensity', 'structure.zbands.straightness', 'structure.zbands.orientation',
-            'structure.zbands.lat_alignment', 'structure.zbands.lat_dist',
-            'structure.zbands.lat_neighbors', 'structure.zbands.lat_length_groups', 'structure.zbands.lat_size_groups',
-            'structure.myofibril.length', 'structure.myofibril.bending', 'structure.myofibril.straightness',
+            'structure.zbands.length', 'structure.zbands.intensity', 'structure.zbands.contrast', 'structure.zbands.orientation',
+            'structure.zbands.lat_dist',
+            'structure.zbands.lat_neighbors', 'structure.zbands.lat_length_groups',
+            'structure.myofibril.length', 'structure.myofibril.bending',
             'structure.domain.area', 'structure.domain.oop', 'structure.domain.slen', 'structure.domain.orientation',
+            'structure.domain.registry_lateral', 'structure.domain.registry_axial',
         ],
     },
 }
@@ -107,6 +107,7 @@ MOTION_TIERS: TierSections = {
     'Advanced': {
         'Timing': [
             'time_to_relax', 'time_contr',
+            'time_to_50', 'time_contr_10_90', 'time_relax_50', 'time_relax_90',
         ],
         'Heterogeneity (serial / mutual correlation across cycles)': [
             'slen_std', 'equ_std',
