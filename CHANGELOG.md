@@ -6,6 +6,8 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0b2] — 2026-10-19
+
 ### Added
 
 - Z-band registry of the sarcomere vectors (`analyze_sarcomere_vectors`). Every sarcomere vector defines a
