@@ -13,6 +13,15 @@ All notable changes to SarcAsM are documented here. The format follows
   `oop`, `orientation` and the domain mask (e.g. 135 member lists for 20 domains), and the per-domain
   Z-band registry was averaged over all clusters. It now holds only the domains that passed, in label order.
   The domain masks drawn by the plots and the app and the domain grouping of tracks are unchanged.
+- LOI contraction detection (`Motion.predict_contractions`) missed weak contractions: it averaged the ContractionNet
+  probability over all Z-band position and sarcomere length traces together, so length traces dominated by noise
+  diluted a clear Z-band signal below the threshold (a 1 µM Mavacamten LOI with a 5-nm mean shortening: Z-band
+  channel 0.70, length channel 0.18, joint mean 0.40 < 0.45, no contraction detected). The probability is now
+  averaged per channel and the larger channel mean is thresholded. On 50 hand-annotated LOIs the median F1 score is
+  unchanged within 0.01 (16 LOIs from wells held out in training: 0.926 → 0.918), the Mavacamten LOI goes from 0
+  to 0.79, and slightly more frames next to annotated contractions are called contracting. This also applies to
+  track chains viewed as LOIs (`get_track_motion`); the group analysis of `analyze_track_motion`, which applies
+  the network to the group-average length, is not affected.
 
 ## [1.0.0b2] — 2026-10-19
 

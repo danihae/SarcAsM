@@ -712,8 +712,13 @@ class Motion(SarcAsMBase):
         """
         Predict contractions from Z-band motion and sarcomere lengths.
 
-        Predicts per-trace contraction state, then averages and thresholds it
-        for a more accurate contraction estimate.
+        Predicts the per-trace contraction probability, averages it separately over
+        the Z-band position traces and over the sarcomere length traces, and
+        thresholds the larger of the two means. Taking the more confident channel
+        matters for weak contractions: the Z-band displacement accumulates the
+        shortening along the line, so it can carry a clear signal while every single
+        sarcomere length is dominated by noise, and averaging both channels together
+        would dilute it below the threshold.
 
         Parameters
         ----------
@@ -734,11 +739,11 @@ class Motion(SarcAsMBase):
         """
         if threshold is None:
             threshold = recommended_threshold(weights)
-        data = np.concatenate([z_pos, slen])
         # gap-fill transiently for the prediction only; stored traces keep their NaNs
-        contr_all = np.asarray([predict_contractions(Motion._fill_trace_nans(d), weights)[0] for d in data])
-        contr_mean = np.nanmean(contr_all, axis=0)
-        return contr_mean > threshold
+        channel_means = [np.nanmean([predict_contractions(Motion._fill_trace_nans(d), weights)[0] for d in data],
+                                    axis=0)
+                         for data in (z_pos, slen) if len(data)]
+        return np.max(channel_means, axis=0) > threshold
 
     @staticmethod
     def _fill_trace_nans(trace: np.ndarray) -> np.ndarray:

@@ -475,3 +475,31 @@ class TestCorpusIntegration:
             item = ds[i]
             assert torch.isfinite(item['input']).all()
             assert item['target'].shape[0] == 3
+
+
+class TestLoiChannelCombination:
+    """``Motion.predict_contractions`` averages the Z-band and the length traces separately and
+    thresholds the more confident channel mean, so a channel of pure noise cannot dilute a clear one."""
+
+    @staticmethod
+    def _fake_net(monkeypatch, prob_of):
+        import sarcasm.motion as motion
+        monkeypatch.setattr(motion, 'predict_contractions', lambda d, w: np.asarray([prob_of(d)]))
+
+    def test_weak_length_channel_does_not_dilute_zband_channel(self, monkeypatch):
+        from sarcasm.motion import Motion
+        state = np.r_[np.zeros(20), np.ones(20), np.zeros(20)]
+        # Z-band traces carry the contraction (probability 0.7), length traces only noise (0.1);
+        # the mean over all traces (0.4) would fall below the threshold
+        self._fake_net(monkeypatch, lambda d: 0.7 * state if d[0] > 5 else np.full(state.size, 0.1))
+        z_pos = np.full((3, state.size), 10.0)
+        slen = np.full((3, state.size), 1.8)
+        got = Motion.predict_contractions(z_pos, slen, 'unused.pt', threshold=0.45)
+        np.testing.assert_array_equal(got, state.astype(bool))
+
+    def test_quiescent_channels_stay_quiescent(self, monkeypatch):
+        from sarcasm.motion import Motion
+        self._fake_net(monkeypatch, lambda d: np.full(d.size, 0.2))
+        got = Motion.predict_contractions(np.full((2, 50), 10.0), np.full((2, 50), 1.8), 'unused.pt',
+                                          threshold=0.45)
+        assert not got.any()
