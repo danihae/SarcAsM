@@ -699,17 +699,38 @@ structure_feature_dict = {
     },
     'motion.tracks.slen': {
         'description': 'Per-track sarcomere length over time in µm. np.ndarray, shape (n_tracks, T); '
-                       'NaN on gap (unobserved) frames. The core per-sarcomere length-vs-time signal.',
+                       'NaN on gap (unobserved) frames. The core per-sarcomere length-vs-time signal. With '
+                       'refine_lengths (default) re-measured along the sarcomere axis of the track (the median '
+                       'of its detected orientations), not normal to Z-bands tilted by shear; the detection '
+                       'lengths are in motion.tracks.slen_raw.',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track sarcomere length [µm]'
     },
     'motion.tracks.orientations': {
         'description': 'Per-track sarcomere orientation over time in radians. np.ndarray, shape (n_tracks, T); '
-                       'NaN on gap frames.',
+                       'NaN on gap frames. With refine_lengths (default) the sarcomere axis of the track, along '
+                       'which motion.tracks.slen was measured (constant per track unless orientation_window_s '
+                       'is set).',
         'data type': np.ndarray,
         'function': 'SarcAsM.track_sarcomere_vectors',
         'name': 'Track orientation [rad]'
+    },
+    'motion.tracks.slen_raw': {
+        'description': 'Per-track sarcomere length of the matched detection in µm, before refine_lengths '
+                       're-measured it along the sarcomere axis of the track. np.ndarray, shape (n_tracks, T); '
+                       'NaN on gap frames. Only present when the refinement ran.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.track_sarcomere_vectors',
+        'name': 'Track sarcomere length, detection [µm]'
+    },
+    'motion.tracks.orientations_raw': {
+        'description': 'Per-track orientation of the matched detection in radians (the Z-band normal '
+                       'in that frame), before refine_lengths. np.ndarray, shape (n_tracks, T); NaN on gap '
+                       'frames. Only present when the refinement ran.',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.track_sarcomere_vectors',
+        'name': 'Track orientation, detection [rad]'
     },
     'motion.tracks.observed': {
         'description': 'Boolean mask, True where a real detection was matched (vs a predicted gap frame). '

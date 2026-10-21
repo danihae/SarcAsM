@@ -1367,18 +1367,28 @@ class Utils:
     @staticmethod
     def fast_profile_lines(image, start_points, end_points, linewidth=3, mode='constant', cval=0.0):
         """
-        Sample many profile lines at once (vectorized scikit-image profile_line).
+        Sample many profile lines at once, one sample per pixel along each line.
+
+        The samples of a line are centred on its midpoint and spaced exactly one pixel
+        apart along it (so a distance of *n* samples is *n* pixels, as
+        :meth:`process_profiles_batch` assumes), and the image is interpolated
+        bilinearly at every sample. Nearest-neighbour sampling, as used before 1.0,
+        rounded every sample to a pixel and thereby lengthened the peak-to-peak
+        sarcomere lengths by ~2 % with a spread that depended on the sub-pixel
+        position of the line; samples spread over ``ceil(length + 1)`` points were
+        also 1 % closer than a pixel.
 
         Parameters
         ----------
         image : np.ndarray
             Input image from which to sample the profile lines.
         start_points : array_like
-            Starting coordinates of the lines, shape ``(N, 2)``.
+            Starting coordinates of the lines, shape ``(2, N)`` (row, col).
         end_points : array_like
-            Ending coordinates of the lines, shape ``(N, 2)``.
+            Ending coordinates of the lines, shape ``(2, N)`` (row, col).
         linewidth : int, optional
-            Width of the profile line, in pixels. Default is 3.
+            Width of the profile line, in pixels; the profile is the mean over
+            ``linewidth`` parallel lines one pixel apart. Default is 3.
         mode : str, optional
             Boundary mode passed to ``map_coordinates``. Default is 'constant'.
         cval : float, optional
@@ -1387,88 +1397,59 @@ class Utils:
         Returns
         -------
         list of np.ndarray
-            Sampled profile values for each line.
+            Sampled profile values for each line; line *i* has
+            ``2 * floor(|end_i - start_i| / 2) + 1`` samples, the middle one at its
+            midpoint.
         """
-        # Convert to array and swap row/col order to match image coordinates
-        start_points = np.asarray(start_points).T
-        end_points = np.asarray(end_points).T
-
-        # Calculate pixel coordinates along each line
-        vectors = end_points - start_points
-        lengths = np.ceil(np.sqrt(np.sum(vectors ** 2, axis=1)) + 1).astype(int)
+        start_points = np.asarray(start_points, dtype=float).T
+        end_points = np.asarray(end_points, dtype=float).T
         n_lines = len(start_points)
+        if n_lines == 0:
+            return []
+        vectors = end_points - start_points
+        norms = np.sqrt(np.sum(vectors ** 2, axis=1))
+        unit = vectors / np.maximum(norms, 1e-12)[:, None]
+        centres = (start_points + end_points) / 2
+        halves = np.floor(norms / 2).astype(int)            # samples on each side of the midpoint
+        if linewidth > 1:
+            perp = np.stack([-unit[:, 1], unit[:, 0]], axis=1)
+            offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
 
-        # fast path for uniform profile length: fully vectorized coordinates
-        if n_lines > 0 and int(lengths.min()) == int(lengths.max()):
-            L = int(lengths[0])
-            t = np.linspace(0.0, 1.0, L)  # (L,)
-            # (n_lines, L, 2): positions along each line
-            line_coords = (start_points[:, None, :]
-                           + t[None, :, None] * vectors[:, None, :])
-
+        # fast path for uniform length: fully vectorized coordinates
+        if int(halves.min()) == int(halves.max()):
+            K = int(halves[0])
+            L = 2 * K + 1
+            s = np.arange(-K, K + 1, dtype=float)
+            line_coords = centres[:, None, :] + s[None, :, None] * unit[:, None, :]      # (n_lines, L, 2)
             if linewidth > 1:
-                perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
-                perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))
-                # Avoid divide-by-zero for degenerate lines (length 0).
-                perp_norms[perp_norms == 0] = 1.0
-                perp_vectors = perp_vectors / perp_norms  # (n_lines, 2)
-                offsets = np.linspace(-(linewidth - 1) / 2,
-                                       (linewidth - 1) / 2, linewidth)  # (lw,)
-                # (n_lines, L, lw, 2): coordinates with perpendicular offsets
-                offset_shift = (perp_vectors[:, None, None, :]
-                                * offsets[None, None, :, None])
-                full = line_coords[:, :, None, :] + offset_shift
-                flat_coords = full.reshape(-1, 2).T  # (2, n_lines * L * linewidth)
-            else:
-                flat_coords = line_coords.reshape(-1, 2).T  # (2, n_lines * L)
-
-            samples = map_coordinates(image, flat_coords, order=0, mode=mode, cval=cval)
-
-            if linewidth > 1:
+                full = line_coords[:, :, None, :] + perp[:, None, None, :] * offsets[None, None, :, None]
+                samples = map_coordinates(image, full.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
                 profiles = samples.reshape(n_lines, L, linewidth).mean(axis=-1)
             else:
+                samples = map_coordinates(image, line_coords.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
                 profiles = samples.reshape(n_lines, L)
-            # Return as list of 1-D arrays to preserve caller API.
             return [profiles[i] for i in range(n_lines)]
 
         # Fallback: variable-length profiles.
-        if linewidth > 1:
-            perp_vectors = np.stack([-vectors[:, 1], vectors[:, 0]], axis=1)
-            perp_norms = np.sqrt(np.sum(perp_vectors ** 2, axis=1, keepdims=True))
-            perp_vectors = perp_vectors / perp_norms
-            offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
-
-            coords_list = []
-            for i in range(n_lines):
-                t = np.linspace(0, 1, lengths[i])[:, np.newaxis]
-                line_coords = start_points[i] + t * vectors[i]
-                line_coords = (line_coords[:, np.newaxis, :] +
-                               perp_vectors[i][np.newaxis, np.newaxis, :] * offsets[:, np.newaxis])
-                rows = line_coords[..., 0].ravel()
-                cols = line_coords[..., 1].ravel()
-                coords_list.append(np.stack([rows, cols]))
-        else:
-            coords_list = []
-            for i in range(n_lines):
-                t = np.linspace(0, 1, lengths[i])
-                line_coords = start_points[i] + t[:, np.newaxis] * vectors[i]
-                coords_list.append(np.stack([line_coords[:, 0], line_coords[:, 1]]))
-
-        all_coords = np.hstack(coords_list)
-        profiles = map_coordinates(image, all_coords, order=0, mode=mode, cval=cval)
-
+        coords_list, lengths = [], []
+        for i in range(n_lines):
+            K = int(halves[i])
+            s = np.arange(-K, K + 1, dtype=float)
+            line = centres[i][None, :] + s[:, None] * unit[i][None, :]                   # (L_i, 2)
+            if linewidth > 1:
+                line = line[:, None, :] + perp[i][None, None, :] * offsets[None, :, None]   # (L_i, lw, 2)
+            coords_list.append(line.reshape(-1, 2))
+            lengths.append(2 * K + 1)
+        samples = map_coordinates(image, np.concatenate(coords_list, axis=0).T, order=1, mode=mode, cval=cval)
         result = []
         start_idx = 0
         for i in range(n_lines):
+            n = lengths[i] * (linewidth if linewidth > 1 else 1)
+            profile = samples[start_idx:start_idx + n]
             if linewidth > 1:
-                n_pixels = lengths[i] * linewidth
-                profile = profiles[start_idx:start_idx + n_pixels]
                 profile = profile.reshape(lengths[i], linewidth).mean(axis=1)
-            else:
-                profile = profiles[start_idx:start_idx + lengths[i]]
             result.append(profile)
-            start_idx += lengths[i] * linewidth if linewidth > 1 else lengths[i]
-
+            start_idx += n
         return result
 
     @staticmethod

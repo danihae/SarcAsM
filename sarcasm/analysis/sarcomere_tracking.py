@@ -1027,3 +1027,162 @@ def track_sarcomere_vectors(
     }
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Length refinement along tracks
+# ---------------------------------------------------------------------------
+
+def track_axis_orientations(
+    orientations: np.ndarray,
+    observed: np.ndarray,
+    window_frames: Optional[int] = None,
+) -> np.ndarray:
+    """The sarcomere axis of every track: its detected orientations without their fast changes.
+
+    Sarcomeres do not turn during a contraction. Their Z-bands tilt, because
+    neighbouring myofibrils shorten by different amounts (a shear), and the
+    per-frame orientation of a sarcomere vector, the normal of the Z-bands at its
+    M-band pixel in that frame, follows that tilt and jitters on top of it. On a
+    61-fps movie the Z-bands tilted by 5° (SD) during contractions, while the axis
+    of the sarcomeres, from the tracked displacement field, turned by less than 1°.
+    So each track's axis is taken as the median of its detected orientations, over
+    the whole track by default or, for long recordings in which the tissue slowly
+    turns, over a running window.
+
+    The median runs on the double-angle components (``cos 2θ``, ``sin 2θ``), since
+    orientations are axial; it ignores the contraction tilt as long as contractions
+    fill less than half of the frames it covers. Unobserved frames are bridged by
+    linear interpolation for a running window only and stay NaN in the output.
+
+    Parameters
+    ----------
+    orientations : np.ndarray
+        ``(n_tracks, T)`` orientations in radians.
+    observed : np.ndarray
+        ``(n_tracks, T)`` bool, True where a detection was matched.
+    window_frames : int, optional
+        None (default) gives every track one orientation; an odd number of frames
+        gives a running median over that window; ``1`` returns the input.
+
+    Returns
+    -------
+    np.ndarray
+        ``(n_tracks, T)`` orientations in [0, π), NaN on unobserved frames.
+    """
+    from scipy.ndimage import median_filter
+    ori = np.asarray(orientations, dtype=float)
+    ok = np.asarray(observed, dtype=bool) & np.isfinite(ori)
+    out = np.where(ok, np.mod(ori, np.pi), np.nan)
+    if window_frames is not None:
+        window_frames = int(window_frames)
+        if window_frames % 2 == 0:
+            window_frames += 1
+        if window_frames <= 1:
+            return out
+    idx = np.arange(ori.shape[1])
+    for i in range(ori.shape[0]):
+        m = ok[i]
+        if not m.any():
+            continue
+        c, s = np.cos(2.0 * ori[i, m]), np.sin(2.0 * ori[i, m])
+        if window_frames is None:
+            out[i, m] = np.mod(0.5 * np.arctan2(np.median(s), np.median(c)), np.pi)
+        else:
+            c = median_filter(np.interp(idx, idx[m], c), window_frames, mode='nearest')
+            s = median_filter(np.interp(idx, idx[m], s), window_frames, mode='nearest')
+            out[i, m] = np.mod(0.5 * np.arctan2(s, c), np.pi)[m]
+    return out
+
+
+def refine_track_lengths(
+    positions_px: np.ndarray,
+    orientations: np.ndarray,
+    observed: np.ndarray,
+    read_zbands: Callable[[int], np.ndarray],
+    pixelsize: float,
+    window_frames: Optional[int] = None,
+    slen_lims: Tuple[float, float] = (1, 3),
+    interp_factor: int = 4,
+    linewidth: float = 0.3,
+    interpolation_method: str = 'akima',
+    peak_prominence: float = 0.4,
+    progress_notifier=None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Re-measure every observed track frame's length along the track's sarcomere axis and move
+    its position to the midpoint between its two Z-bands.
+
+    The axis of each track is its detected orientation without the fast changes
+    (:func:`track_axis_orientations`), then the Z-band profile is sampled again at
+    the tracked M-band pixel along that axis and the length extracted with the same
+    estimator and settings as
+    :func:`sarcasm.analysis.sarcomere_vectors.get_sarcomere_vectors`. Along the
+    detection's orientation, i.e. normal to Z-bands that a shear has tilted by φ,
+    the spacing is shorter than along the filaments by cos φ; along the axis it is
+    not. With the detection orientations unchanged (``window_frames=1``) this
+    reproduces the detection's length exactly.
+
+    Parameters
+    ----------
+    positions_px : np.ndarray
+        ``(n_tracks, T, 2)`` tracked M-band pixels (row, col).
+    orientations, observed : np.ndarray
+        ``(n_tracks, T)`` per-frame orientations (radians) and the observed mask.
+    read_zbands : callable
+        ``read_zbands(k)`` returns the 2D Z-band map of tracker frame ``k``, the map
+        the vectors were measured on.
+    pixelsize : float
+        Pixel size in µm.
+    window_frames : int, optional
+        None (default): one axis per track; an odd number of frames: a running
+        median over that window; ``1`` re-measures along the detection orientations
+        unchanged (see :func:`track_axis_orientations`).
+    slen_lims, interp_factor, linewidth, interpolation_method, peak_prominence
+        Length-estimator settings, as used by ``analyze_sarcomere_vectors``.
+    progress_notifier : ProgressNotifier, optional
+        Reports per-frame progress.
+
+    Returns
+    -------
+    slen : np.ndarray
+        ``(n_tracks, T)`` lengths in µm; NaN on unobserved frames and where the
+        profile along the axis has no valid pair of Z-bands.
+    orientations_axis : np.ndarray
+        ``(n_tracks, T)`` axis orientations, NaN on unobserved frames.
+    positions_px : np.ndarray
+        ``(n_tracks, T, 2)`` the input positions, each measured frame moved along the
+        axis to the midpoint between the two Z-band peaks of its profile. The tracker
+        follows integer M-band skeleton pixels, so its raw positions carry a +-0.5 px
+        quantisation that would otherwise appear as jitter in the position and Z-band
+        trajectories; the midpoint is the sub-pixel M-band position, as
+        :func:`~sarcasm.analysis.sarcomere_vectors.get_sarcomere_vectors` uses for the
+        detections. Frames without a valid pair of Z-bands keep their input position.
+    """
+    from ..utils import Utils
+    positions_px = np.asarray(positions_px, dtype=float)
+    ori_s = track_axis_orientations(orientations, observed, window_frames)
+    n, T = ori_s.shape
+    slen = np.full((n, T), np.nan, dtype=np.float32)
+    positions_out = positions_px.copy()
+    linewidth_px = max(int(round(linewidth / pixelsize, 0)), 1)
+    half_length = (slen_lims[1] * 1.3) / 2 / pixelsize
+    frames = range(T) if progress_notifier is None else progress_notifier.iterator(range(T), total=T)
+    for k in frames:
+        rows = np.flatnonzero(np.isfinite(ori_s[:, k]))
+        if rows.size == 0:
+            continue
+        theta = ori_s[rows, k]
+        centres = positions_px[rows, k].T
+        direction = np.stack((np.sin(theta) * half_length, np.cos(theta) * half_length), axis=0)
+        profiles = Utils.fast_profile_lines(np.asarray(read_zbands(k)), centres + direction, centres - direction,
+                                            linewidth=linewidth_px)
+        lengths, offsets = Utils.process_profiles_batch(
+            profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
+            interpolation_method=interpolation_method, prominence=peak_prominence)
+        slen[rows, k] = lengths
+        # the profile runs from centre + direction to centre - direction, so a positive offset of the
+        # Z-band midpoint lies against the direction (the convention of get_sarcomere_vectors)
+        ok = np.isfinite(lengths) & np.isfinite(offsets)
+        shift = (offsets[ok] / pixelsize)[:, None] * np.stack((np.sin(theta[ok]), np.cos(theta[ok])), axis=1)
+        positions_out[rows[ok], k] -= shift
+    return slen, ori_s, positions_out

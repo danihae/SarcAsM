@@ -506,6 +506,51 @@ class TestDomainMotionPlots:
         sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
         return sarc
 
+    def test_track_length_refinement(self, analyzed_domain_motion):
+        """refine_lengths (default on): the detection values are kept as *_raw, re-measuring them with the
+        unchanged orientation reproduces them exactly (same Z-band map, same estimator settings), and the
+        refined lengths keep every observed frame and stay close to the detection lengths."""
+        from sarcasm.analysis import sarcomere_tracking as st
+        sarc = analyzed_domain_motion
+        d = sarc.data
+        assert bool(d['params.track_sarcomere_vectors.refine_lengths'])
+        assert d['params.analyze_sarcomere_vectors.interpolation_method'] == 'akima'
+        raw = np.asarray(d['motion.tracks.slen_raw'], dtype=float)
+        refined = np.asarray(d['motion.tracks.slen'], dtype=float)
+        observed = np.asarray(d['motion.tracks.observed'], dtype=bool)
+        frames = list(d['params.track_sarcomere_vectors.frames'])
+        zbands = ('zbands_fast_movie' if d['params.analyze_sarcomere_vectors.zbands_source'] == 'fast_movie_3d'
+                  else 'zbands')
+        # the stored positions are the refined (Z-band midpoint) ones; the detections' integer M-band pixels
+        # come back through detection_id
+        det_id = np.asarray(d['motion.tracks.detection_id'])
+        pos_raw = np.array(d['motion.tracks.positions_px'], dtype=float)
+        for k, f in enumerate(frames):
+            rows = np.flatnonzero(observed[:, k] & (det_id[:, k] >= 0))
+            pos_raw[rows, k] = np.asarray(d['structure.sarcomere.pos_px'][int(f)])[det_id[rows, k]]
+        shift = np.asarray(d['motion.tracks.positions_px'], dtype=float) - pos_raw
+        ori_axis = np.asarray(d['motion.tracks.orientations'], dtype=float)
+        ok = observed & np.isfinite(shift[..., 0]) & np.isfinite(ori_axis)
+        perp = np.abs(-shift[ok][:, 0] * np.cos(ori_axis[ok]) + shift[ok][:, 1] * np.sin(ori_axis[ok]))
+        along = np.abs(shift[ok][:, 0] * np.sin(ori_axis[ok]) + shift[ok][:, 1] * np.cos(ori_axis[ok]))
+        assert np.max(perp) < 1e-2                       # moved along the sarcomere axis only (float32 storage)
+        assert np.percentile(along, 95) < 1.5            # by the sub-pixel midpoint offset, not more
+        again, _, _ = st.refine_track_lengths(
+            pos_raw, d['motion.tracks.orientations_raw'], observed,
+            lambda k: sarc._read_mask(zbands, frames=int(frames[k])), sarc.metadata.pixelsize, window_frames=1,
+            slen_lims=tuple(d['params.analyze_sarcomere_vectors.slen_lims']),
+            interp_factor=int(d['params.analyze_sarcomere_vectors.interp_factor']),
+            linewidth=float(d['params.analyze_sarcomere_vectors.linewidth']), interpolation_method='akima',
+            peak_prominence=float(d['params.analyze_sarcomere_vectors.peak_prominence']))
+        m = observed & np.isfinite(raw)
+        # exact up to the float32 storage of the track orientations, which flips a handful of profiles that sit
+        # exactly at a peak-acceptance threshold (9 of ~370k on this movie)
+        diff = np.abs(again[m] - raw[m])
+        assert np.mean(diff < 1e-5) > 0.9999
+        assert np.nanmax(diff) < 0.02
+        assert np.isfinite(refined[m]).all()
+        assert np.median(np.abs(refined[m] - raw[m])) < 0.02
+
     def test_at_least_two_contractions_are_analysed(self, analyzed_domain_motion):
         """The window must span more than one contraction cycle.
 

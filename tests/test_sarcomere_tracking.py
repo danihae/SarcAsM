@@ -446,3 +446,127 @@ def test_predictor_none_is_the_default_path():
                                    predictor=None)
     for key in ('motion.tracks.positions_px', 'motion.tracks.slen', 'motion.tracks.observed', 'motion.tracks.detection_id'):
         assert np.array_equal(a[key], b[key], equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# Length refinement along tracks (refine_lengths)
+# ---------------------------------------------------------------------------
+
+def test_track_axis_orientations_is_axial_constant_and_ignores_gaps():
+    # alternating just above 0 and just below π: the same axis, so the median is ~0 (or ~π), never π/2
+    T = 40
+    ori = np.where(np.arange(T) % 2 == 0, 0.03, np.pi - 0.03)[None, :].astype(float)
+    observed = np.ones_like(ori, dtype=bool)
+    observed[0, 10:13] = False
+    ori[0, 10:13] = 1.2                      # values on unobserved frames must not leak in
+    out = st.track_axis_orientations(ori, observed)
+    dev = np.abs((out[0, observed[0]] + np.pi / 2) % np.pi - np.pi / 2)
+    assert np.nanmax(dev) < 0.05             # a wrap error would give ~π/2
+    assert np.ptp(out[0, observed[0]]) == 0  # one axis per track
+    assert np.all(np.isnan(out[0, 10:13]))   # gaps stay gaps
+    # a window of 1 returns the observed input unchanged (wrapped to [0, π))
+    np.testing.assert_allclose(st.track_axis_orientations(ori, observed, 1)[0, :10], ori[0, :10])
+
+
+def test_track_axis_running_median_follows_slow_turn_but_not_contractions():
+    # the tissue turns slowly by 0.2 rad; every beat of 20 frames tilts the Z-bands by 0.1 rad for 8 frames
+    T = 400
+    t = np.arange(T)
+    slow = 0.2 * t / T
+    ori = (slow + np.where(t % 20 < 8, 0.1, 0.0))[None, :]
+    observed = np.ones_like(ori, dtype=bool)
+    running = st.track_axis_orientations(ori, observed, window_frames=61)
+    assert np.max(np.abs(running[0, 30:-30] - slow[30:-30])) < 0.02      # vs the 0.1-rad tilt of each beat
+    assert np.ptp(st.track_axis_orientations(ori, observed)[0]) == 0
+
+
+def _stripe_zbands(shape=(80, 200), period_px=30.0, sigma_px=2.5, x0=10.0, shear=0.0, row0=40.0):
+    """Z-band map of straight Z-bands perpendicular to x (sarcomere axis along x, orientation 0). ``shear``
+    shifts every row along x by ``shear * (row - row0)``, which tilts the Z-bands but keeps their spacing along x
+    (the sarcomere axis), as when neighbouring myofibrils shorten by different amounts."""
+    y, x = np.mgrid[:shape[0], :shape[1]].astype(float)
+    d = np.mod(x - shear * (y - row0) - x0 + period_px / 2, period_px) - period_px / 2   # along x
+    return np.exp(-0.5 * (d / np.sqrt(1 + shear ** 2) / sigma_px) ** 2).astype(np.float32)
+
+
+def test_refine_track_lengths_recovers_spacing_from_jittered_orientation():
+    pixelsize, period = 0.06, 30.0
+    truth = period * pixelsize
+    z = _stripe_zbands(period_px=period)
+    n, T = 6, 60
+    pos = np.zeros((n, T, 2))
+    pos[:, :, 0] = (20.0 + 8.0 * np.arange(n))[:, None]
+    pos[:, :, 1] = (85.0 + period * (np.arange(n) % 3))[:, None]          # on M-bands, between two Z-bands
+    observed = np.ones((n, T), bool)
+    rng = np.random.default_rng(1)
+    jitter = np.deg2rad(rng.normal(0, 10, size=(n, T)))
+    exact, _, _ = st.refine_track_lengths(pos, np.zeros((n, T)), observed, lambda k: z, pixelsize, window_frames=1)
+    assert np.nanmax(np.abs(exact - truth)) < 0.005
+    raw, _, _ = st.refine_track_lengths(pos, jitter, observed, lambda k: z, pixelsize, window_frames=1)
+    axis, ori_a, _ = st.refine_track_lengths(pos, jitter, observed, lambda k: z, pixelsize)
+    assert np.nanmean(np.abs(axis - truth)) < 0.5 * np.nanmean(np.abs(raw - truth))
+    axial_dev = np.abs((ori_a + np.pi / 2) % np.pi - np.pi / 2)          # distance to the true axis 0, mod π
+    assert np.nanmean(axial_dev) < 0.25 * np.nanmean(np.abs(jitter))
+
+
+def test_refine_track_lengths_measures_along_the_axis_not_normal_to_sheared_zbands():
+    # relaxed frames, then contraction frames in which a shear tilts the Z-bands by 10° (spacing along the
+    # axis unchanged); the detection follows the Z-band normal. Normal to the tilted bands the spacing is
+    # shorter by cos 10° (27 nm here); along the track's axis it is the true length.
+    pixelsize, period, tilt = 0.06, 30.0, np.deg2rad(10.0)
+    truth = period * pixelsize
+    relaxed, sheared = _stripe_zbands(period_px=period), _stripe_zbands(period_px=period, shear=np.tan(tilt))
+    n, T = 4, 30
+    contraction = np.arange(T) >= 20
+    pos = np.zeros((n, T, 2))
+    pos[:, :, 0] = 40.0                                                    # on the row the shear pivots about
+    pos[:, :, 1] = (85.0 + period * (np.arange(n) % 3))[:, None]           # on M-bands of that row
+    detected = np.where(contraction, -tilt, 0.0)[None, :].repeat(n, 0)    # normal of the tilted Z-bands
+    observed = np.ones((n, T), bool)
+    read = lambda k: sheared if contraction[k] else relaxed                # noqa: E731
+    normal, _, _ = st.refine_track_lengths(pos, detected, observed, read, pixelsize, window_frames=1)
+    axis, _, _ = st.refine_track_lengths(pos, detected, observed, read, pixelsize)
+    np.testing.assert_allclose(normal[:, contraction], truth * np.cos(tilt), atol=0.006)
+    np.testing.assert_allclose(axis, truth, atol=0.005)
+
+
+def test_refine_track_lengths_moves_positions_to_the_zband_midpoint():
+    # the tracker follows integer M-band pixels; a track sitting 1-2 px off the midpoint between its Z-bands
+    # (x0 + period/2 + multiples of the period) is moved onto it, its length is the spacing either way
+    pixelsize, period, x0 = 0.06, 30.0, 10.0
+    z = _stripe_zbands(period_px=period, x0=x0)
+    n, T = 5, 4
+    mid = x0 + period / 2 + period * 2                                       # 85: midpoint between two Z-bands
+    off = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    pos = np.zeros((n, T, 2))
+    pos[:, :, 0] = (20.0 + 8.0 * np.arange(n))[:, None]
+    pos[:, :, 1] = (mid + off)[:, None]
+    observed = np.ones((n, T), bool)
+    observed[0, -1] = False
+    pos[0, -1] = np.nan
+    slen, _, moved = st.refine_track_lengths(pos, np.zeros((n, T)), observed, lambda k: z, pixelsize, window_frames=1)
+    np.testing.assert_allclose(slen[observed], period * pixelsize, atol=0.005)
+    cols = moved[observed][:, 1]
+    assert np.ptp(cols) < 0.05                                               # the +-2 px quantisation is gone
+    np.testing.assert_allclose(cols, mid, atol=0.1)
+    np.testing.assert_allclose(moved[observed][:, 0], pos[observed][:, 0])    # rows (across the axis): untouched
+    assert np.all(np.isnan(moved[0, -1]))                                    # unobserved frame left as given
+
+
+def test_orientation_window_warns_about_too_few_frames(caplog):
+    import logging
+    import types
+    from sarcasm import SarcAsM
+    sarc = SarcAsM.__new__(SarcAsM)
+    # 5 fps: 0.1 s holds half a frame -> warning, one axis per track instead of a running median
+    sarc.metadata = types.SimpleNamespace(frametime=0.2, pixelsize=0.1)
+    with caplog.at_level(logging.WARNING):
+        assert sarc._orientation_window_frames(0.1) is None
+    assert 'holds 0.50 frames' in caplog.text and 'at least 5' in caplog.text
+    assert sarc._orientation_window_frames(None) is None
+    assert sarc._orientation_window_frames(3.0) == 15
+    sarc.metadata = types.SimpleNamespace(frametime=None, pixelsize=0.1)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        assert sarc._orientation_window_frames(2.0) is None
+    assert 'frametime is unknown' in caplog.text
