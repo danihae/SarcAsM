@@ -16,7 +16,18 @@ from matplotlib.collections import LineCollection  # noqa: E402
 from sarcasm import Animations, Plots, SarcAsM, Utils  # noqa: E402
 
 STORE_TIF = Path(__file__).parent.parent / 'test_data' / 'high_speed_single_ACTN2-citrine_CM' / '20kPa.tif'
-needs_store = pytest.mark.skipif(not STORE_TIF.exists(), reason='tracked 20kPa test store not available')
+
+
+def _store_available(path: Path) -> bool:
+    """False without the data: a clone without ``git lfs pull`` (CI) leaves a pointer file in place of the tif,
+    so ``exists()`` alone would hand the pointer to tifffile."""
+    if not path.exists():
+        return False
+    with open(path, 'rb') as fh:
+        return not fh.read(64).startswith(b'version https://git-lfs')
+
+
+needs_store = pytest.mark.skipif(not _store_available(STORE_TIF), reason='tracked 20kPa test store not available')
 
 
 def _fake_tracks(n_tracks=5, T=10, slen=1.8, pixelsize=0.1, theta=0.0):
