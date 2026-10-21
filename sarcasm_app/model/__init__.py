@@ -188,14 +188,14 @@ class ApplicationModel:
         # LOI auto-detection (used when grouping by 'loi' without drawn lines)
         self.__parameters.get_parameter(name='loi.detect.n_lois').set_value(4)
         self.__parameters.get_parameter(name='loi.detect.ratio_seeds').set_value(0.1)
-        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(4)
-        self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.5)
+        self.__parameters.get_parameter(name='loi.detect.persistence').set_value(8)
+        self.__parameters.get_parameter(name='loi.detect.threshold_distance').set_value(0.3)
         self.__parameters.get_parameter(name='loi.detect.mode').set_value('longest_in_cluster')
         self.__parameters.get_parameter(name='loi.detect.number_limits_lower').set_value(10)
         self.__parameters.get_parameter(name='loi.detect.number_limits_upper').set_value(50)
         self.__parameters.get_parameter(name='loi.detect.length_limits_lower').set_value(0.0)
         self.__parameters.get_parameter(name='loi.detect.length_limits_upper').set_value(200.0)
-        self.__parameters.get_parameter(name='loi.detect.cluster_threshold_lois').set_value(40.0)
+        self.__parameters.get_parameter(name='loi.detect.cluster_threshold_lois').set_value(2.5)
         self.__parameters.get_parameter(name='loi.detect.linkage').set_value('single')
 
     def _set_defaults_batch(self):

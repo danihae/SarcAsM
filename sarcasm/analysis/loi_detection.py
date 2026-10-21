@@ -20,7 +20,6 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict
-from scipy.spatial.distance import directed_hausdorff
 from scipy.optimize import curve_fit
 from sklearn.cluster import AgglomerativeClustering
 import random
@@ -117,7 +116,8 @@ def hausdorff_distance_lois(lines_vectors: List[np.ndarray], symmetry_mode: str 
     Parameters
     ----------
     lines_vectors : list of np.ndarray
-        Position vectors for each LOI.
+        Point positions (N_i, 2) of each LOI. The distances have the unit of the positions
+        (``SarcAsM`` passes µm).
     symmetry_mode : {'min', 'max'}, optional
         Whether to use min or max of H(loi_i, loi_j) and H(loi_j, loi_i).
         Default is 'max'.
@@ -127,30 +127,29 @@ def hausdorff_distance_lois(lines_vectors: List[np.ndarray], symmetry_mode: str 
     hausdorff_dist_matrix : np.ndarray
         Symmetric matrix of pairwise Hausdorff distances.
     """
+    if symmetry_mode not in ('min', 'max'):
+        raise ValueError(f"symmetry_mode must be 'min' or 'max', got '{symmetry_mode}'")
     n_lois = len(lines_vectors)
-    hausdorff_dist_matrix = np.zeros((n_lois, n_lois))
+    if n_lois == 0:
+        return np.zeros((0, 0))
+    lines = [np.asarray(v, dtype=float).reshape(len(v), -1) for v in lines_vectors]
+    points = np.concatenate(lines)
+    starts = np.cumsum([0] + [len(v) for v in lines[:-1]])
 
-    for i, loi_i in enumerate(lines_vectors):
-        for j, loi_j in enumerate(lines_vectors):
-            if symmetry_mode == 'min':
-                hausdorff_dist_matrix[i, j] = min(
-                    directed_hausdorff(loi_i, loi_j)[0],
-                    directed_hausdorff(loi_j, loi_i)[0]
-                )
-            elif symmetry_mode == 'max':
-                hausdorff_dist_matrix[i, j] = max(
-                    directed_hausdorff(loi_i, loi_j)[0],
-                    directed_hausdorff(loi_j, loi_i)[0]
-                )
-            else:
-                raise ValueError(f"symmetry_mode must be 'min' or 'max', got '{symmetry_mode}'")
+    # directed[i, j] = H(loi_i -> loi_j) = max over points a of i of the distance from a to the nearest point of j:
+    # distances from the points of line i to all points, reduced to the nearest point per line, then max over a
+    directed = np.empty((n_lois, n_lois))
+    for i, loi_i in enumerate(lines):
+        d = np.sqrt(((loi_i[:, None, :] - points[None, :, :]) ** 2).sum(-1))
+        directed[i] = np.minimum.reduceat(d, starts, axis=1).max(axis=0)
 
-    return hausdorff_dist_matrix
+    combine = np.minimum if symmetry_mode == 'min' else np.maximum
+    return combine(directed, directed.T)
 
 
 def cluster_lois(
         hausdorff_dist_matrix: np.ndarray,
-        distance_threshold: float = 40,
+        distance_threshold: float = 2.5,
         linkage: str = 'single'
 ) -> Tuple[np.ndarray, int]:
     """
@@ -161,8 +160,8 @@ def cluster_lois(
     hausdorff_dist_matrix : np.ndarray
         Precomputed pairwise distance matrix.
     distance_threshold : float, optional
-        Linkage distance threshold above which clusters are not merged.
-        Default is 40.
+        Linkage distance threshold above which clusters are not merged, in the unit of
+        ``hausdorff_dist_matrix`` (µm in SarcAsM). Default is 2.5.
     linkage : {'complete', 'average', 'single'}, optional
         Linkage criterion to use:
         'single' uses the minimum of distances between all observations of the
@@ -282,6 +281,14 @@ def fit_straight_line_to_clusters(
     return list(loi_lines), list(len_loi_lines)
 
 
+def _largest_clusters(cluster_labels: np.ndarray, n_clusters: int) -> np.ndarray:
+    """Cluster labels ordered by the number of lines in the cluster, largest first (ties by label). A small
+    cluster is often a fragment running along a myofibril whose lines form a larger cluster, so the selection
+    starts from the largest clusters."""
+    sizes = np.bincount(np.asarray(cluster_labels, dtype=int), minlength=n_clusters)
+    return np.argsort(-sizes, kind='stable')
+
+
 def select_longest_in_cluster(
         lines: List[np.ndarray],
         pos_vectors: np.ndarray,
@@ -290,7 +297,7 @@ def select_longest_in_cluster(
         n_lois: int
 ) -> Tuple[List[np.ndarray], List[int]]:
     """
-    Select the longest LOI from each cluster.
+    Select the longest LOI of each of the ``n_lois`` largest clusters (most lines).
 
     Parameters
     ----------
@@ -317,9 +324,9 @@ def select_longest_in_cluster(
         its geometry — lets a consumer rebuild the LOI as a 1D head-to-tail thread
         of sarcomeres instead of re-deriving membership from proximity.
     """
-    longest = []   # (index chain, positions) per cluster
+    longest = []   # (index chain, positions) per cluster, largest cluster first
 
-    for label_i in range(n_clusters):
+    for label_i in _largest_clusters(cluster_labels, n_clusters):
         # Get all lines in this cluster
         lines_cluster_i = [line_j for j, line_j in enumerate(lines) if cluster_labels[j] == label_i]
         if not lines_cluster_i:
@@ -330,12 +337,10 @@ def select_longest_in_cluster(
         chain = lines_cluster_i[int(np.argmax(length_lines_cluster_i))]
         longest.append((np.asarray(chain), pos_vectors[chain]))
 
-    # Sort by length and select top n
-    sorted_by_length = sorted(longest, key=lambda c: len(c[1]), reverse=True)
     if len(longest) < n_lois:
         logger.warning(f'Only {len(longest)}<{n_lois} clusters identified.')
 
-    selected = sorted_by_length[:n_lois]
+    selected = longest[:n_lois]
     loi_index_lines = [c[0] for c in selected]
     loi_lines = [c[1] for c in selected]
     len_loi_lines = [len(line_i) for line_i in loi_lines]
@@ -351,7 +356,7 @@ def select_random_from_cluster(
         n_lois: int
 ) -> Tuple[List[np.ndarray], List[int], List[np.ndarray]]:
     """
-    Select a random LOI from each cluster.
+    Select a random LOI from each of the ``n_lois`` largest clusters (most lines).
 
     Parameters
     ----------
@@ -378,7 +383,7 @@ def select_random_from_cluster(
     """
     random_lines = []
 
-    for label_i in range(n_clusters):
+    for label_i in _largest_clusters(cluster_labels, n_clusters)[:n_lois]:
         # Get all lines in this cluster
         chains_cluster_i = [line_j for j, line_j in enumerate(lines) if cluster_labels[j] == label_i]
         if not chains_cluster_i:
@@ -387,8 +392,7 @@ def select_random_from_cluster(
         chain = random.choice(chains_cluster_i)
         random_lines.append((np.asarray(chain), pos_vectors[chain]))
 
-    # Randomly select n_lois from the available clusters
-    selected = random.sample(random_lines, min(n_lois, len(random_lines)))
+    selected = random_lines
     loi_index_lines = [c[0] for c in selected]
     loi_lines = [c[1] for c in selected]
     len_loi_lines = [len(line_i) for line_i in loi_lines]

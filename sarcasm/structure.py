@@ -2624,7 +2624,7 @@ class SarcAsM(SarcAsMBase):
 
     def _hausdorff_distance_lois(self, symmetry_mode: str = 'max') -> None:
         """
-        Compute Hausdorff distances between all good LOIs.
+        Compute Hausdorff distances (µm) between all good LOIs.
 
         Parameters
         ----------
@@ -2634,7 +2634,8 @@ class SarcAsM(SarcAsMBase):
         """
         # Delegate to loi_detection module
         hausdorff_dist_matrix = loi_detection.hausdorff_distance_lois(
-            lines_vectors=self.data['motion.loi.data']['lines_vectors'],
+            lines_vectors=[np.asarray(v, dtype=float) * self.metadata.pixelsize
+                           for v in self.data['motion.loi.data']['lines_vectors']],
             symmetry_mode=symmetry_mode
         )
 
@@ -2642,15 +2643,14 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             self.store_structure_data()
 
-    def _cluster_lois(self, distance_threshold_lois: float = 40, linkage: str = 'single') -> None:
+    def _cluster_lois(self, distance_threshold_lois: float = 2.5, linkage: str = 'single') -> None:
         """
         Agglomerative clustering of good LOIs using predefined Hausdorff distance matrix using scikit-learn.
 
         Parameters
         ----------
         distance_threshold_lois : float, optional
-            Linkage distance threshold above which clusters are not merged.
-            Default is 40.
+            Hausdorff distance (µm) above which clusters are not merged. Default is 2.5.
         linkage : {'complete', 'average', 'single'}, optional
             Linkage criterion determining the inter-cluster distance to minimize
             when merging: 'average' uses the mean pairwise distance, 'complete'
@@ -2756,8 +2756,8 @@ class SarcAsM(SarcAsMBase):
     def detect_lois(self, frame: int = 0, 
                     n_lois: int = 4, 
                     ratio_seeds: float = 0.1, 
-                    persistence: int = 4,
-                    threshold_distance: float = 0.5,
+                    persistence: int = 8,
+                    threshold_distance: float = 0.3,
                     mode: str = 'longest_in_cluster', 
                     random_seed: Optional[int] = None,
                     number_lims: Tuple[int, int] = (10, 50), 
@@ -2767,7 +2767,7 @@ class SarcAsM(SarcAsMBase):
                     midline_mean_length_lims: Tuple[float, float] = (0, 50),
                     midline_std_length_lims: Tuple[float, float] = (0, 50),
                     midline_min_length_lims: Tuple[float, float] = (0, 50), 
-                    distance_threshold_lois: float = 40,
+                    distance_threshold_lois: float = 2.5,
                     linkage: str = 'single',
                     ) -> None:
         """
@@ -2789,17 +2789,20 @@ class SarcAsM(SarcAsMBase):
             Ratio of sarcomere vectors used as seed vectors for LOI growth.
             Default is 0.1.
         persistence : int, optional
-            Persistence parameter influencing line-growth direction and
-            termination. Default is 4.
+            Number of preceding line points whose mean length and orientation
+            predict the next step; larger values give straighter LOIs. Default is 8.
         threshold_distance : float, optional
-            Maximum distance for nearest-neighbor estimation during line growth,
-            in µm. Default is 0.5.
+            Search radius (µm) around the predicted position for the next
+            sarcomere vector. Sarcomere vectors are dense M-band midline points,
+            so a larger radius lets each step snap sideways along the M-band
+            and makes LOIs wavy. Default is 0.3.
         mode : {'fit_straight_line', 'longest_in_cluster', 'random_from_cluster', 'random_line'}, optional
             Mode for selecting LOIs from identified clusters:
             'fit_straight_line' fits a straight line to all midline points in the
             cluster; 'longest_in_cluster' selects the longest (possibly curved)
-            line per cluster; 'random_from_cluster' selects a random line per
-            cluster; 'random_line' selects random lines passing the filters.
+            line of each of the ``n_lois`` largest clusters (most lines);
+            'random_from_cluster' selects a random line of each of the ``n_lois``
+            largest clusters; 'random_line' selects random lines passing the filters.
             Default is 'longest_in_cluster'.
         random_seed : int or None, optional
             Random seed for selecting random starting vectors (reproducibility).
@@ -2825,8 +2828,8 @@ class SarcAsM(SarcAsMBase):
             Limits (min, max) for minimum midline length within an LOI.
             Default is (0, 50).
         distance_threshold_lois : float, optional
-            Distance threshold for clustering LOIs; clusters are not merged above
-            it. Default is 40.
+            Hausdorff distance (µm) between lines above which clusters are not
+            merged. Default is 2.5.
         linkage : {'complete', 'average', 'single'}, optional
             Linkage criterion for clustering. Default is 'single'.
         """

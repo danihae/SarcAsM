@@ -451,7 +451,7 @@
          <item row="2" column="1">
           <widget class="QSpinBox" name="sb_loi_persistence">
            <property name="maximum"><number>1000</number></property>
-           <property name="value"><number>4</number></property>
+           <property name="value"><number>8</number></property>
           </widget>
          </item>
          <item row="3" column="0">
@@ -465,7 +465,7 @@
           <widget class="QDoubleSpinBox" name="dsb_loi_threshold_distance">
            <property name="decimals"><number>3</number></property>
            <property name="maximum"><double>1000.000000000000000</double></property>
-           <property name="value"><double>0.500000000000000</double></property>
+           <property name="value"><double>0.300000000000000</double></property>
           </widget>
          </item>
          <item row="4" column="0">
@@ -515,15 +515,15 @@
          <item row="7" column="0">
           <widget class="QLabel" name="label_loi_cluster">
            <property name="text">
-            <string>Cluster threshold</string>
+            <string>Cluster threshold [µm]</string>
            </property>
           </widget>
          </item>
          <item row="7" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_cluster_threshold">
-           <property name="decimals"><number>1</number></property>
+           <property name="decimals"><number>2</number></property>
            <property name="maximum"><double>100000.000000000000000</double></property>
-           <property name="value"><double>40.000000000000000</double></property>
+           <property name="value"><double>2.500000000000000</double></property>
           </widget>
          </item>
          <item row="8" column="0">

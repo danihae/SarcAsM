@@ -73,3 +73,33 @@ def test_line_growth_returns_unique_point_lines():
     assert len(out['lines']) == 6
     for line in out['lines']:
         assert len(line) == len(set(line.tolist())) == 6
+
+
+class TestLoiClustering:
+    """LOI clustering works on Hausdorff distances in µm, so the result does not depend on the pixel size."""
+
+    @staticmethod
+    def _lines(rng, n=12):
+        return [np.cumsum(rng.normal(0, 1, (rng.integers(3, 30), 2)), axis=0) + rng.uniform(0, 40, 2)
+                for _ in range(n)]
+
+    def test_hausdorff_matrix_matches_scipy(self):
+        from scipy.spatial.distance import directed_hausdorff
+        from sarcasm.analysis.loi_detection import hausdorff_distance_lois
+        lines = self._lines(np.random.default_rng(0))
+        for mode, combine in (('max', max), ('min', min)):
+            got = hausdorff_distance_lois(lines, symmetry_mode=mode)
+            want = np.array([[combine(directed_hausdorff(a, b)[0], directed_hausdorff(b, a)[0]) for b in lines]
+                             for a in lines])
+            np.testing.assert_allclose(got, want, atol=1e-12)
+
+    def test_clusters_do_not_depend_on_pixel_size(self):
+        from sarcasm.analysis.loi_detection import cluster_lois, hausdorff_distance_lois
+        lines_um = self._lines(np.random.default_rng(1), n=20)
+        labels = []
+        for pixelsize in (0.06, 0.26):
+            lines_px = [v / pixelsize for v in lines_um]
+            # what SarcAsM._hausdorff_distance_lois does: positions in px times the pixel size
+            h = hausdorff_distance_lois([v * pixelsize for v in lines_px])
+            labels.append(cluster_lois(h, distance_threshold=2.5)[0])
+        np.testing.assert_array_equal(labels[0], labels[1])
