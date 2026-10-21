@@ -553,10 +553,13 @@ def test_refine_track_lengths_moves_positions_to_the_zband_midpoint():
     assert np.all(np.isnan(moved[0, -1]))                                    # unobserved frame left as given
 
 
-def test_orientation_window_warns_about_too_few_frames(caplog):
+def test_orientation_window_warns_about_too_few_frames(caplog, monkeypatch):
     import logging
     import types
     from sarcasm import SarcAsM
+    # caplog listens on the root logger, and SarcAsM.__init__ (run by any earlier store-backed test) turns the
+    # package logger's propagation off
+    monkeypatch.setattr(logging.getLogger('sarcasm'), 'propagate', True)
     sarc = SarcAsM.__new__(SarcAsM)
     # 5 fps: 0.1 s holds half a frame -> warning, one axis per track instead of a running median
     sarc.metadata = types.SimpleNamespace(frametime=0.2, pixelsize=0.1)
