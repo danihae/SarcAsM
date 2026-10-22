@@ -18,9 +18,9 @@ All notable changes to SarcAsM are documented here. The format follows
 - Pixel-size check in `analyze_sarcomere_vectors`: the stripe period of the raw image along the sarcomere axis
   (autocorrelation of intensity profiles through the vectors of the first analyzed frame, independent of the
   pixel size) is compared with the measured sarcomere length. When the period is less than 0.75x the length, a
-  warning asks whether the pixel size is right: a pixel size about 2x too small makes the detection pair every
-  other Z-band, so the lengths look normal while every trajectory jumps by half a sarcomere. New result
-  `structure.sarcomere.stripe_period_ratio`; `sarcomere_vectors.stripe_period`,
+  warning asks whether the pixel size is right (no value is suggested): a pixel size about 2x too small makes the
+  detection pair every other Z-band, so the lengths look normal while every trajectory jumps by half a
+  sarcomere. New result `structure.sarcomere.stripe_period_ratio`; `sarcomere_vectors.stripe_period`,
   `sarcomere_vectors.pixelsize_plausibility`.
 
 ### Changed

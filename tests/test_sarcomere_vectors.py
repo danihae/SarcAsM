@@ -578,6 +578,5 @@ def test_pixelsize_plausibility_catches_a_pixel_size_twice_too_small():
     """The silent failure: at half the pixel size the measured lengths still look normal (the detection pairs
     every other Z-disc), only the stripe period gives it away."""
     msg = sv.pixelsize_plausibility(8.0, 1.75, 0.108)                # MHH movies: 0.86 µm stripes
-    assert msg is not None and msg.startswith('Are you sure that 0.108 µm/px is the right pixel size?')
-    assert 'About 0.219 µm/px' in msg                                 # 0.108 / (0.864 / 1.75)
+    assert msg == 'Are you sure that 0.108 µm/px is the right pixel size?'
     assert sv.pixelsize_plausibility(17.0, 3.40, 0.1) is not None     # whatever the tissue

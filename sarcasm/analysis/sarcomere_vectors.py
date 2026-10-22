@@ -685,5 +685,4 @@ def pixelsize_plausibility(period_px: float, slen_um: float, pixelsize: float) -
     ratio = period_px * pixelsize / slen_um
     if ratio >= MIN_STRIPE_RATIO:
         return None
-    return (f'Are you sure that {pixelsize:.4g} µm/px is the right pixel size? '
-            f'About {pixelsize / ratio:.3g} µm/px would match the image.')
+    return f'Are you sure that {pixelsize:.4g} µm/px is the right pixel size?'
