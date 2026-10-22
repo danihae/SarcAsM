@@ -47,7 +47,7 @@ class ChainExecution:
             pass
         elif old is True and new is False and self.__current_worker is not None and self.__current_worker.succeeded is False:
             if self.__message_display_function is not None:
-                self.__message_display_function('chain execution exited due to not successful partial-operation')
+                self.__message_display_function('Stopped: a step failed (see the message above).')
                 self.__currently_processing.rollback_internals(get_lambda=self.__get_lambda,
                                                                set_lambda=self.__set_lambda,
                                                                parser_lambda=self.__parser_lambda)
@@ -58,7 +58,7 @@ class ChainExecution:
     def __finishing_step(self):
         if self.__current_step >= len(self.__execution_list):
             if self.__message_display_function is not None:
-                self.__message_display_function('chain execution exited successfully')
+                self.__message_display_function('All steps finished.')
             self.__currently_processing.rollback_internals(get_lambda=self.__get_lambda,
                                                            set_lambda=self.__set_lambda,
                                                            parser_lambda=self.__parser_lambda)

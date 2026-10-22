@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 import qtutils
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import SarcAsM
@@ -136,8 +136,12 @@ class StructureAnalysisControl:
         frames = self.__main_control.model.parameters.get_parameter('structure.frames').get_value()
         if frames is None or frames == '':
             self.__check_frame_syntax()
-            logger.warning(
-                'No frames selected, please select the frame(s) in the specified format')
+            text = self.__structure_parameters_widget.le_general_frames.text()
+            message = (f'"{text}" is not a valid frame selection. Enter one frame (3), frames separated by '
+                       f'commas (0, 4, 9) or a range (0-99, both ends included); frames start at 0. '
+                       f'Or choose "All frames".')
+            logger.warning(message)
+            QMessageBox.warning(self.__structure_parameters_widget.le_general_frames, 'Invalid frames', message)
             return False
         return True
 
@@ -149,6 +153,8 @@ class StructureAnalysisControl:
 
     def on_btn_z_bands_predict(self):
         if not self.__chk_initialized():
+            return
+        if not self.__chk_frames():
             return
         if not self.__chk_prediction_network():
             return
@@ -519,18 +525,23 @@ class StructureAnalysisControl:
         self.__main_control.init_m_band_stack()
         self.__main_control.init_cell_mask_stack()
         self.__main_control.init_sarcomere_mask_stack()
+        self.__main_control.show_only_results('ZbandMask')
 
     def __detect_z_bands_fast_movie_finished(self):
         self.__main_control.init_z_band_stack(fastmovie=True)
 
     def __z_band_analysis_finished(self):
         self.__main_control.init_z_lateral_connections()
+        self.__main_control.show_only_results('ZbandMask', 'ZbandLatConnections')
 
     def __sarcomere_analysis_finished(self):
         self.__main_control.init_sarcomere_vector_stack()
+        self.__main_control.show_only_results('SarcomereVectors', 'MidlinePoints')
 
     def __myofibril_analysis_finished(self):
         self.__main_control.init_myofibril_lines_stack()
+        self.__main_control.show_only_results('MyofibrilLines')
 
     def __domain_analysis_finished(self):
         self.__main_control.init_sarcomere_domain_stack()
+        self.__main_control.show_only_results('SarcomereDomains')

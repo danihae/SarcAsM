@@ -14,6 +14,7 @@
 
 import logging
 import os
+import re
 import traceback
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +28,8 @@ import napari
 import numpy as np
 import torch
 from PyQt5.QtCore import QObject, QEvent, QTimer, pyqtSignal, QThread
-from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit, QApplication
+from PyQt5.QtGui import QTextCursor
+from PyQt5.QtWidgets import QWidget, QProgressBar, QTextEdit, QApplication, QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from ..model import ApplicationModel
@@ -69,6 +71,17 @@ class _ViewerFileDropFilter(QObject):
         return False
 
 
+def _log_traceback_to_file(tb: str) -> None:
+    """Write a worker traceback to the error log file only, not to the message panel."""
+    from sarcasm_app.control.error_logging import FileErrorHandler
+    record = logging.LogRecord('sarcasm_app', logging.ERROR, __file__, 0, f'Worker exception:\n{tb}', None, None)
+    for handler in logging.getLogger('sarcasm_app').handlers:
+        if isinstance(handler, FileErrorHandler):
+            handler.handle(record)
+            return
+    logger.debug(tb)
+
+
 class ApplicationControl:
     """
     Main application control.
@@ -102,7 +115,6 @@ class ApplicationControl:
 
         self.progress_notifier = ProgressNotifier()
         self.progress_notifier.set_progress_report(lambda p: self.update_progress(p * 100))
-        self.debug("dummy line")  # to prevent the actual first line to get replaced by testing progress detail
         self.progress_notifier.set_progress_detail(
             lambda hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta: self.debug_replace(
                 "%02d:%02d:%02d / %02d:%02d:%02d" % (hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
@@ -112,16 +124,25 @@ class ApplicationControl:
         if self.__debug_action is not None:
             self.__debug_action(message)
 
+    #: the progress line written by debug_replace ("hh:mm:ss / hh:mm:ss")
+    _PROGRESS_LINE = re.compile(r'^\d\d:\d\d:\d\d / \d\d:\d\d:\d\d$')
+
     def debug_replace(self, message):
+        """Show the progress timer as the last line, replacing the previous timer line only
+        (never a log message), and keep it on a line of its own."""
         te = self._window.findChild(QTextEdit, name="messageArea")
-        if te is not None:
+        if te is None:
+            return
+        cursor = te.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        cursor.movePosition(QTextCursor.StartOfBlock, QTextCursor.KeepAnchor)
+        if self._PROGRESS_LINE.match(cursor.selectedText().strip()):
+            cursor.insertText(message)
+        else:
+            cursor.movePosition(QTextCursor.End)
             text = te.toPlainText()
-            te.setText(text[:text.rfind('\n')])
-            te.append(message)
-            # te.verticalScrollBar().setValue(te.verticalScrollBar().maximum())  # scroll messageArea to last line!
-            TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
-            # remove last line
-            # append message as last line
+            cursor.insertText(('' if not text or text.endswith('\n') else '\n') + message)
+        TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
 
     def set_debug_action(self, debug_action):
         self.__debug_action = debug_action
@@ -482,13 +503,39 @@ class ApplicationControl:
             ids.append(g)
         if not paths:
             return
+        # numbers only while they stay readable; with many fibres a click identifies the group
+        text = ({'string': '{group}', 'size': 8, 'color': 'white', 'anchor': 'upper_left',
+                 'translation': (-2, 0)} if len(ids) <= self.MAX_GROUP_LABELS else None)
         layer = self.viewer.add_shapes(paths, name='Groups', shape_type='path',
                                        edge_color=np.asarray(colors), edge_width=1.5, opacity=0.8,
-                                       features={'group': np.asarray(ids)},
-                                       text={'string': '{group}', 'size': 8, 'color': 'white',
-                                             'anchor': 'upper_left', 'translation': (-2, 0)},
+                                       features={'group': np.asarray(ids)}, text=text,
                                        visible=visible, scale=cell.scale[-2:], ndim=2)
         layer.mouse_drag_callbacks.append(self._on_group_click)
+        self.activate_image_layer()
+
+    #: the Groups layer labels its fibre paths only up to this many groups
+    MAX_GROUP_LABELS = 30
+    #: result layers; show_only_results() hides the ones not named
+    RESULT_LAYERS = ('ZbandMask', 'MbandMask', 'CellMask', 'SarcomereMask', 'ZbandLatGroups',
+                     'ZbandLatConnections', 'SarcomereVectors', 'MidlinePoints', 'MyofibrilLines',
+                     'SarcomereDomains')
+
+    def activate_image_layer(self):
+        """Make the raw image the active layer, so napari's editing tools and keyboard
+        shortcuts (add / select points, paint labels) cannot change a result layer by accident."""
+        try:
+            if 'ImageData' in self.viewer.layers:
+                self.viewer.layers.selection.active = self.viewer.layers['ImageData']
+        except Exception as e:
+            logger.debug(f'activate_image_layer skipped: {e}')
+
+    def show_only_results(self, *names):
+        """Show the image and the named result layers, hide the other result layers (they
+        stay in the layer list, one click away), and make the image the active layer."""
+        for name in self.RESULT_LAYERS:
+            if name in self.viewer.layers:
+                self.viewer.layers[name].visible = name in names
+        self.activate_image_layer()
 
     def highlight_group(self, group):
         """Ring the members of ``group`` in the viewer (all frames); None clears.
@@ -518,6 +565,7 @@ class ApplicationControl:
         self.viewer.add_points(pts, name='Selected group', ndim=ndim, face_color='transparent',
                                border_color='yellow', border_width=0.25, size=size,
                                opacity=1.0, scale=cell.scale)
+        self.activate_image_layer()
 
     def _on_group_click(self, layer, event):
         """Mouse callback on the Groups layer: a click on a fibre path selects its group."""
@@ -946,7 +994,7 @@ class ApplicationControl:
         this method should work (tested roughly :D)
         """
         if self.model.currentlyProcessing.get_value():
-            logger.warning('Still processing something')
+            logger.warning('Please wait: another step is still running.')
             return
 
         self.model.currentlyProcessing.set_value(True)
@@ -971,12 +1019,11 @@ class ApplicationControl:
                     self.call_lambda(self, parameters)
                     self.finished_successful.emit()
                     self.succeeded = True
-                except Exception:
-                    tb = traceback.format_exc()
-                    logger.error(f"Worker exception:\n{tb}")
+                except Exception as e:
+                    _log_traceback_to_file(traceback.format_exc())
                     self.succeeded = False
-                    self.exception.emit(tb)
-                self.progress.emit(100)
+                    self.exception.emit(f'{type(e).__name__}: {e}')
+                self.progress.emit(100 if self.succeeded else 0)
                 self.finished.emit()
 
         # Step 2: Create a QThread object
@@ -996,21 +1043,50 @@ class ApplicationControl:
         worker.finished.connect(worker.deleteLater)
         self.__worker_thread.finished.connect(self.__worker_thread.deleteLater)
 
-        worker.exception.connect(self.debug)
+        step = start_message.strip()
+        worker.exception.connect(lambda text: self.report_error(step, text))
         worker.progress.connect(self.update_progress)
         worker.progress_details.connect(self.debug_replace)
         # Step 6: Start the thread
         self.__worker_thread.start()
         # Final resets
 
-        self.__worker_thread.finished.connect(lambda: self.__finished_task(finished_message))
+        # no "Finished …" after a failure: report_error has already said what happened
+        self.__worker_thread.finished.connect(
+            lambda: self.__finished_task(finished_message if worker.succeeded else None))
 
         return worker
+
+    #: plain-language hints for errors a user can fix (substring of the message -> hint)
+    ERROR_HINTS = (
+        ('Sarcomere vectors not analyzed',
+         'Run the structure analysis first, with "All frames" selected: motion analysis needs the '
+         'sarcomeres of every frame.'),
+        ('Required analysis mask',
+         'Run "1. Detect sarcomeres" (or "Run full structure analysis") first.'),
+        ('not tracked', 'Run "1. Track sarcomere vectors" (or "Track → Group → Analyze") first.'),
+        ('No track motion', 'Run the motion analysis ("Track → Group → Analyze") first.'),
+        ('MetaDataError', 'Check frame time, pixel size, axes and channel in the Metadata row.'),
+        ('frametime', 'Enter the frame time (seconds per frame) in the Metadata row.'),
+    )
+
+    def report_error(self, step: str, text: str):
+        """Tell the user that a background step failed: one log line and a dialog with a hint.
+        The full traceback is in the log file (see Help → About / ~/.sarcasm/logs)."""
+        from sarcasm_app.control.error_logging import get_log_file_path
+        hint = next((h for key, h in self.ERROR_HINTS if key in text), None)
+        logger.error(f'{step} failed: {text}')
+        if hint:
+            logger.info(hint)
+        body = f'{text}\n\n{hint}' if hint else text
+        QMessageBox.warning(self._window, f'{step} failed',
+                            f'{body}\n\nDetails are in the log file:\n{get_log_file_path()}')
 
     def worker_thread(self, on_finished):
         if self.__worker_thread is not None:
             self.__worker_thread.finished.connect(on_finished)
 
     def __finished_task(self, finished_message=None):
-        logger.info(finished_message)
+        if finished_message:
+            logger.info(finished_message)
         self.model.currentlyProcessing.set_value(False)

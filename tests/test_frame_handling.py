@@ -82,11 +82,12 @@ class TestParseFramesText:
         ('all', 'all'), (' ALL ', 'all'), ('', None), ('   ', None),
         ('1', [1]), (' 1', [1]), ('1,', [1]), ('1, 3', [1, 3]), ('3,1', [1, 3]), ('1,1', [1]),
         ('0 4 9', [0, 4, 9]), ('0;4', [0, 4]),
+        ('1-3', [1, 2, 3]), ('0-2, 5', [0, 1, 2, 5]), ('4-4', [4]),
     ])
     def test_valid(self, text, expected):
         assert parse_frames_text(text) == expected
 
-    @pytest.mark.parametrize('text', ['a', '-1', '1-3', '1.5', '0,2,x', ',', '٣'])
+    @pytest.mark.parametrize('text', ['a', '-1', '3-1', '1-', '1-2-3', '1.5', '0,2,x', ',', '٣'])
     def test_invalid_is_an_error_not_frame_0(self, text):
         with pytest.raises(ValueError):
             parse_frames_text(text)

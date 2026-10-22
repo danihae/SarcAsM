@@ -114,6 +114,22 @@ class TestParameters:
         assert params.get_parameter('structure.predict.rescale_factor').get_value() == 1.0
         assert params.get_parameter('batch.pixel.size').get_value() == 0.1
 
+    @pytest.mark.parametrize('param, method, kwarg', [
+        ('structure.vectors.line_width', 'analyze_sarcomere_vectors', 'linewidth'),
+        ('structure.vectors.interpolation_factor', 'analyze_sarcomere_vectors', 'interp_factor'),
+        ('structure.vectors.radius', 'analyze_sarcomere_vectors', 'median_filter_radius'),
+        ('structure.z_band_analysis.threshold', 'analyze_z_bands', 'threshold'),
+        ('structure.z_band_analysis.min_length', 'analyze_z_bands', 'min_length'),
+        ('structure.z_band_analysis.max_axial_offset', 'analyze_z_bands', 'max_axial_offset'),
+    ])
+    def test_gui_defaults_match_the_python_defaults(self, model, param, method, kwarg):
+        """The same image must give the same numbers in the GUI as with SarcAsM() defaults
+        (linewidth 0.2 / interp_factor 0 in the GUI once gave 3398 instead of 3447 vectors)."""
+        import inspect
+        from sarcasm import SarcAsM
+        api = inspect.signature(getattr(SarcAsM, method)).parameters[kwarg].default
+        assert model.parameters.get_parameter(param).get_value() == pytest.approx(api)
+
     def test_auto_patch_size_is_the_default(self, model):
         """Both prediction groups default to letting the device decide the patch size."""
         params = model.parameters
@@ -326,7 +342,7 @@ class TestFrameParsing:
         assert parse_frames_text('0,1,2') == [0, 1, 2]
         assert parse_frames_text('10, 5,1') == [1, 5, 10]
 
-    @pytest.mark.parametrize('text', ['invalid', '-1', '1-3', '1.5', '0,2,x'])
+    @pytest.mark.parametrize('text', ['invalid', '-1', '3-1', '1.5', '0,2,x'])
     def test_parse_frames_invalid(self, text):
         from sarcasm._internal.frames import parse_frames_text
         with pytest.raises(ValueError):
@@ -404,7 +420,8 @@ class TestBatchProcessingParameters:
         assert params.get_parameter('batch.pixel.size').get_value() == 0.1
         assert params.get_parameter('batch.frame.time').get_value() == 0.1
         assert params.get_parameter('batch.channel').get_value() == 0
-        assert params.get_parameter('batch.thread_pool_size').get_value() == 3
+        # 1: files in parallel crash on macOS (numba workqueue) and corrupt GPU inference
+        assert params.get_parameter('batch.thread_pool_size').get_value() == 1
         assert params.get_parameter('batch.force.override').get_value() is False
 
 
@@ -638,3 +655,58 @@ def test_sarcomere_vector_layer_geometry(motion_file_path):
     axis = np.column_stack([np.sin(ori), np.cos(ori)]) * (0.5 * slen)[:, None]
     assert np.allclose(np.nan_to_num(block[:n, 1, 1:]), np.nan_to_num(axis))  # +axis, half a sarcomere
     assert np.allclose(np.nan_to_num(block[n:, 1, 1:]), np.nan_to_num(-axis))  # -axis
+
+
+class TestGuiFixes2026_10:
+    """Regression tests for the 2026-10-22 GUI review."""
+
+    def test_batch_runs_files_one_by_one_when_parallel_is_unsafe(self):
+        from sarcasm_app.control import batch_processing_control as b
+        with patch.object(b, '_parallel_files_safe', return_value=False):
+            assert b._safe_pool_size(3) == 1
+        with patch.object(b, '_parallel_files_safe', return_value=True):
+            assert b._safe_pool_size(3) == 3
+        assert b._safe_pool_size(1) == 1
+
+    def test_batch_pool_default_is_one(self):
+        from sarcasm_app.model import ApplicationModel
+        assert ApplicationModel().parameters.get_parameter('batch.thread_pool_size').get_value() == 1
+
+    @pytest.mark.parametrize('aspect', [10.0, 5.0, 2.5, 1.0, 0.8, 0.5, 0.2, 0.05])
+    @pytest.mark.parametrize('is_fibre', [True, False])
+    def test_summary_layout_keeps_map_proportions(self, aspect, is_fibre):
+        """The coverage map's panel has about the image's aspect ratio (within the height limits)."""
+        from sarcasm_app.control.motion_analysis_control import summary_layout, SUMMARY_WIDTH_IN
+        layout, heights = summary_layout(aspect, is_fibre)
+        assert len(layout) == len(heights) and len({len(r) for r in layout}) == 1   # rectangular grid
+        names = {n for row in layout for n in row}
+        assert {'coverage', 'groups', 'slen', 'dslen', 'raster'} <= names
+        assert ('fibrils' in names) == is_fibre
+        row = next(i for i, r in enumerate(layout) if 'coverage' in r)
+        width = SUMMARY_WIDTH_IN * layout[row].count('coverage') / len(layout[row])
+        panel_aspect = width / heights[row]
+        assert 1.5 <= heights[row] <= 9.0
+        # the panel is never more than ~3x off the image's shape, so imshow does not shrink it to a sliver
+        # the panel matches the image's shape unless the row hit its height limit (the image is then
+        # drawn undistorted, only smaller, with some empty space beside or below it)
+        at_limit = heights[row] <= 1.5 or heights[row] >= 8.0
+        assert at_limit or (panel_aspect / aspect < 3.5 and aspect / panel_aspect < 3.5)
+
+    def test_trace_table_exports_every_member_with_units(self):
+        from PyQt5.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication([])          # keep a reference, or Qt aborts
+        from sarcasm_app.view.track_trace_dock import TrackTraceDock
+        T = 5
+        kin = {'slen': np.arange(3 * T, dtype=float).reshape(3, T), 'delta_slen': np.zeros((3, T)),
+               'vel': np.zeros((3, T)), 'contr': np.array([0, 1, 1, 0, 0], bool)}
+        dock = TrackTraceDock()
+        dock.set_source(kin, np.array([0, 0, 1]), 0.01, 'myofibril')
+        dock.cb_series.setCurrentText('SL')
+        dock.show_group(0)
+        table = dock.traces_table()
+        assert list(table.columns) == ['time [s]', 'myofibril 0 mean SL [µm]', 'contracting (group signal)',
+                                       'track 0 SL [µm]', 'track 1 SL [µm]']
+        assert table['time [s]'].iloc[-1] == pytest.approx(0.04)
+        assert list(table['track 1 SL [µm]']) == [5, 6, 7, 8, 9]
+        dock.deleteLater()
+        assert app is not None

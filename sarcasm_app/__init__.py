@@ -273,8 +273,8 @@ class Application:
         radio_sel = QRadioButton("Selected:")
         radio_all.setToolTip("Run analysis on every frame in the file")
         radio_sel.setToolTip(
-            "Run analysis on specific frames only. "
-            "Enter a single frame number or comma-separated list (frames start at 0)."
+            "Run analysis on specific frames only: one frame (3), frames separated by commas "
+            "(0, 4, 9) or a range (0-99, both ends included). Frames start at 0."
         )
         grp = QButtonGroup(scope)
         grp.addButton(radio_all)
@@ -284,7 +284,7 @@ class Application:
 
         # Re-parent the existing QLineEdit into this row.
         le.setParent(scope)
-        le.setPlaceholderText("e.g. 0, 1, 5")
+        le.setPlaceholderText("e.g. 0-99 or 0, 5, 9")
         le.setMaximumWidth(220)
         row.addWidget(le)
         row.addStretch(1)

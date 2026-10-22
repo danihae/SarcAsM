@@ -130,9 +130,12 @@ class QTextEditHandler(logging.Handler):
         cursor = self.text_edit.textCursor()
         cursor.movePosition(QTextCursor.End)
         
-        # Insert prefix (if any) and message with color
+        # Insert prefix (if any) and message with color, on a line of its own: the
+        # progress timer (ApplicationControl.debug_replace) leaves no trailing newline
         cursor.setCharFormat(text_format)
-        cursor.insertText(prefix + message + '\n')
+        text = self.text_edit.toPlainText()
+        lead = '\n' if text and not text.endswith('\n') else ''
+        cursor.insertText(lead + prefix + message + '\n')
         
         # Scroll to bottom to show latest message
         self.text_edit.setTextCursor(cursor)

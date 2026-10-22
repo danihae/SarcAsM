@@ -15,12 +15,36 @@ All notable changes to SarcAsM are documented here. The format follows
   result key), 2 for bad usage, 1 otherwise. `sarcasm` without a command still opens the GUI. See `docs/cli.rst`.
 - `llms.txt` at the repository root: the commands and the rules that keep results correct, for language-model
   agents.
+- GUI: "Export data (.csv)…" in the sarcomere time-series panel saves the plotted traces as a table (time, group
+  mean, the clicked sarcomere and every sarcomere of the group, units in the column names).
+- GUI: the motion export lets you choose the grouping (every grouping analysed for the file, not only the last).
+- .xlsx exports from the GUI get a `metadata` sheet (file, calibration, version) and a `metrics` sheet (name, unit,
+  description of each exported metric); the `data` sheet is unchanged. `Export.append_info_sheets`.
+- Batch export (`BatchExport.export_data`): a `per_frame` sheet (.xlsx) or `<name>_per_frame.csv` with every
+  analysed frame of every movie, one row per file and frame. `Export.split_per_frame`.
+- Frame selections accept ranges: `0-99` (both ends included), also mixed with single frames (`0-49, 60`).
+- `Plots.plot_slen_mean` / `plot_delta_slen_mean(readable_labels=True)`: rows named by grouping
+  ("Myofibril 3", not "M3") and y tick labels on the bottom row only.
 
 ### Changed
 
 - `import sarcasm` resolves its public names on first access, so it no longer imports torch, numba and matplotlib
   up front (`sarcasm --help` 5.8 s → 0.1 s). `from sarcasm import *` is unchanged.
 - Picking channel 0 of a multi-channel image by default logs a warning instead of info.
+- GUI defaults now equal the Python defaults: sarcomere-vector profile line width 0.3 µm (was 0.2) and
+  interpolation factor 4 (was 0), so the same image gives the same numbers in the GUI and with `SarcAsM()`; the
+  track-coverage floor follows the grouping (0.1 for myofibril / LOI, 0.5 otherwise), as `group_tracks` does.
+- GUI batch processing: thread-pool size 1 by default, and files run one after another whenever parallel files are
+  unsafe (GPU inference, or numba without a thread-safe threading layer, i.e. always on macOS).
+- GUI: errors of an analysis step show a dialog in plain language with a hint (e.g. "run the structure analysis on
+  all frames first"); the traceback goes to the log file only. No "Finished …" message after a failure.
+- GUI: after each analysis step the viewer shows the image and that step's result (the other result layers stay
+  in the layer list, hidden), the raw image is the active layer (napari's editing tools cannot change a result by
+  accident), and fibre paths are numbered only up to 30 groups.
+- GUI: "Plot summary" and "Show fibre detail" open their figures in their own window with zoom / save toolbar; the
+  summary layout follows the image aspect ratio (wide, square and tall movies).
+- One summary line for groups without a beating rate instead of one warning per group; metadata warnings are
+  shown once and name the GUI field as well as the Python argument.
 
 ### Fixed
 
@@ -32,6 +56,24 @@ All notable changes to SarcAsM are documented here. The format follows
   stack saved without `axes` this way), and channel 0 is then a single frame of the movie. Pass `axes='TYX'`, or
   `channel=` if the channels are real.
 - A Git LFS pointer in place of the image fails with a message naming `git lfs pull` instead of a TIFF error.
+- Apple GPUs: when macOS aborted the U-Net's GPU work (the display needed the GPU) the predicted masks held
+  garbage and were stored without any error; identical files gave 2061, 0 and 3398 sarcomere vectors in one GUI
+  batch. The abort is now detected, the prediction runs again, and a second abort raises instead of storing
+  wrong masks (`sarcasm._internal.gpu_watch`).
+- GUI batch processing crashed (segfault) with the default thread-pool size of 3 on macOS.
+- GUI batch motion analysis only found TIFFs one folder below the root (and none when the path had no trailing
+  slash); it now processes the same files as the structure batch.
+- GUI batch export wrote per-frame features of movies as text (`"[1.8087 nan]"`); the cells hold numbers now
+  (the analysed frame, or the mean over the analysed frames, each frame in the new `per_frame` sheet).
+- GUI: correcting the axes (e.g. `TYX` for a movie saved as channels) or the channel only changed the label: the
+  file now opens again with the new layout. Changing the pixel size (or, with motion results, the frame time) of
+  an analysed file asks to delete the results computed with the old value instead of mixing them silently.
+- GUI: an invalid frame selection (e.g. `0:10`) logged a warning and then ran detection on all frames; it now
+  stops with a dialog.
+- GUI: "Plot summary" and "Show fibre detail" showed nothing in the packaged app (non-GUI matplotlib backend).
+- GUI: export dialogs proposed a folder that does not exist; they now propose the image's folder. "Cell &
+  coverage" no longer shows as "Cell _coverage". The success message counts metrics and groups correctly.
+- GUI log: progress timers no longer run into the next message ("00:00:00 / 00:00:00Predicting …").
 
 ## [1.0.0b3] — 2026-10-21
 
