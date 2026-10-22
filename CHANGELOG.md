@@ -55,6 +55,9 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Fixed
 
+- GUI: the structure analysis of a single image (one frame) ended with "Vectors dimensions (3) must be
+  equal to ndim (2)" and showed no sarcomere arrows; the domain layer got a needless frame slider. Motion
+  analysis on a single image now says it needs a movie instead of failing inside tracking.
 - Reopening an analysed file ignored an explicit `pixelsize=`, `frametime=`, `axes=` or `channel=` without notice:
   the stored metadata replaced it. A value that differs from the store now raises `MetaDataError` pointing to
   `restart=True` (a warning in the GUI); a frame time the store does not have is filled in.

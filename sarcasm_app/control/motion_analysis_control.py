@@ -27,6 +27,7 @@ from typing import Optional
 import numpy as np
 import qtutils
 from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import Plots, SarcAsM
@@ -125,6 +126,16 @@ class MotionAnalysisControl:
             return False
         return True
 
+    def __chk_movie(self) -> bool:
+        """Motion analysis needs a movie; say so instead of failing deep in tracking."""
+        if self.__main_control.model.cell.metadata.n_stack < 2:
+            QMessageBox.warning(self.__motion_analysis_widget, 'Motion analysis needs a movie',
+                                'This file is a single image, so there is no motion to analyse. '
+                                'If it is a movie, check the Axes field (e.g. TYX) and press '
+                                '"Save metadata".')
+            return False
+        return True
+
     def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
 
@@ -154,7 +165,7 @@ class MotionAnalysisControl:
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
-        if not self.__chk_initialized():
+        if not self.__chk_initialized() or not self.__chk_movie():
             return
         cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         worker = self.__main_control.run_async_new(
@@ -246,7 +257,7 @@ class MotionAnalysisControl:
     # master: track -> group -> analyze
     # ------------------------------------------------------------------ #
     def on_analyze_motion(self):
-        if not self.__chk_initialized():
+        if not self.__chk_initialized() or not self.__chk_movie():
             return
         self.__main_control.raise_viewer()
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)

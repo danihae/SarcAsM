@@ -893,9 +893,12 @@ class ApplicationControl:
         if not starts:
             return
         vectors = np.stack([np.concatenate(starts), np.concatenate(dirs)], axis=1)             # (2n, 2, 3)
+        mids = np.concatenate(mids)
+        if len(cell.scale) == 2:                  # single image: the viewer has no time axis
+            vectors, mids = vectors[..., 1:], mids[:, 1:]
         self.viewer.add_vectors(vectors, edge_width=0.5, edge_color='lightgray', name='SarcomereVectors',
                                 opacity=0.8, vector_style='arrow', visible=visible, scale=cell.scale)
-        self.viewer.add_points(np.concatenate(mids), name='MidlinePoints', face_color='darkgreen',
+        self.viewer.add_points(mids, name='MidlinePoints', face_color='darkgreen',
                                size=0.2 / px, visible=visible, scale=cell.scale)
 
     def init_sarcomere_mask_stack(self, visible=True):
@@ -976,9 +979,11 @@ class ApplicationControl:
             size=size
         )
 
-        with ThreadPoolExecutor(max_workers=min(8, len(frames_to_analyze))) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, min(8, len(frames_to_analyze)))) as executor:
             for frame, mask in executor.map(process_frame_partial, frames_to_analyze):
                 _domain_masks[frame] = mask
+        if total_frames == 1:                    # single image: the viewer has no time axis
+            _domain_masks = _domain_masks[0]
         self.viewer.add_labels(_domain_masks, name='SarcomereDomains', opacity=0.35, visible=visible,
                                scale=self.model.cell.scale)
 

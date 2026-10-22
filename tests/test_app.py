@@ -692,6 +692,29 @@ class TestGuiFixes2026_10:
         at_limit = heights[row] <= 1.5 or heights[row] >= 8.0
         assert at_limit or (panel_aspect / aspect < 3.5 and aspect / panel_aspect < 3.5)
 
+    @pytest.mark.parametrize('n_stack', [1, 3])
+    def test_sarcomere_vectors_match_viewer_dims(self, n_stack):
+        """A single image has no time axis: arrows and points must be 2D there (napari raised
+        'Vectors dimensions (3) must be equal to ndim (2)' after the structure analysis)."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from sarcasm_app.control.application_control import ApplicationControl
+        px = 0.1
+        per_frame = lambda v: [np.asarray(v, float)] * n_stack
+        data = {'structure.sarcomere.pos': per_frame([[1.0, 2.0], [3.0, 4.0]]),
+                'structure.sarcomere.orientation': per_frame([0.0, 1.0]),
+                'structure.sarcomere.slen': per_frame([1.8, 1.9]),
+                'params.analyze_sarcomere_vectors.frames': list(range(n_stack))}
+        scale = (px, px) if n_stack == 1 else (1, px, px)
+        cell = SimpleNamespace(data=data, scale=scale,
+                               metadata=SimpleNamespace(pixelsize=px, n_stack=n_stack))
+        ctl = SimpleNamespace(model=SimpleNamespace(cell=cell), viewer=MagicMock())
+        ApplicationControl.init_sarcomere_vector_stack(ctl)
+        vectors = ctl.viewer.add_vectors.call_args.args[0]
+        points = ctl.viewer.add_points.call_args.args[0]
+        assert vectors.shape == (4 * n_stack, 2, len(scale))
+        assert points.shape == (2 * n_stack, len(scale))
+
     def test_trace_table_exports_every_member_with_units(self):
         from PyQt5.QtWidgets import QApplication
         app = QApplication.instance() or QApplication([])          # keep a reference, or Qt aborts
