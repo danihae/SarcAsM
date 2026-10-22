@@ -185,3 +185,62 @@ class TestBatchExportRoundTrip:
         assert 'structure.sarcomere.slen_mean' in batch.data.columns
         fresh = BatchExport([], folder=batch.folder, load_data=True)
         assert fresh.data.shape == batch.data.shape
+
+
+# ---------------------------------------------------------------------------
+# per-frame arrays in the one-row-per-file batch table
+# ---------------------------------------------------------------------------
+
+def _batch_rows():
+    """Structure rows as BatchExport.get_data collects them: per-frame features are arrays
+    with one entry per frame, NaN for frames that were not analyzed."""
+    return [
+        {'file_name': 'one_frame.tif', 'file_path': '/d/one_frame.tif', 'n_stack': 2,
+         'structure.sarcomere.slen_mean': np.array([1.8, np.nan]),
+         'structure.sarcomere.slen': [np.array([1.7, 1.9]), None]},          # ragged: left alone
+        {'file_name': 'two_frames.tif', 'file_path': '/d/two_frames.tif', 'n_stack': 3,
+         'structure.sarcomere.slen_mean': np.array([1.8, 2.0, np.nan]),
+         'structure.sarcomere.slen': None},
+        {'file_name': 'image.tif', 'file_path': '/d/image.tif', 'n_stack': 1,
+         'structure.sarcomere.slen_mean': np.array([1.7]), 'structure.sarcomere.slen': None},
+    ]
+
+
+def test_split_per_frame_gives_numbers_not_array_text():
+    main, per_frame = Export.split_per_frame(_batch_rows())
+    assert main['structure.sarcomere.slen_mean'].iloc[0] == pytest.approx(1.8)    # the analyzed frame
+    assert main['structure.sarcomere.slen_mean'].iloc[1] == pytest.approx(1.9)    # mean of two frames
+    assert list(per_frame['file_name']) == ['one_frame.tif', 'two_frames.tif', 'two_frames.tif']
+    assert list(per_frame['frame']) == [0, 0, 1]
+    assert list(per_frame['structure.sarcomere.slen_mean']) == pytest.approx([1.8, 1.8, 2.0])
+
+
+@pytest.mark.parametrize('fmt', ['.xlsx', '.csv'])
+def test_batch_export_writes_numbers_and_a_per_frame_table(tmp_path, fmt):
+    be = BatchExport([], folder=str(tmp_path))
+    be.data = pd.DataFrame.from_records(_batch_rows())
+    out = tmp_path / f'batch{fmt}'
+    be.export_data(str(out), fmt)
+    if fmt == '.xlsx':
+        sheets = pd.read_excel(out, sheet_name=None)
+        main, per_frame = sheets[list(sheets)[0]], sheets['per_frame']
+    else:
+        main, per_frame = pd.read_csv(out), pd.read_csv(tmp_path / 'batch_per_frame.csv')
+    values = main['structure.sarcomere.slen_mean']
+    assert values.dtype.kind == 'f'                       # a number Excel can use, not "[1.8 nan]"
+    assert list(values) == pytest.approx([1.8, 1.9, 1.7])
+    assert len(per_frame) == 3
+
+
+def test_append_info_sheets_lists_file_and_units(tmp_path, motion_file_path):
+    sarc = SarcAsM(motion_file_path)
+    out = tmp_path / 'structure.xlsx'
+    keys = ['structure.sarcomere.slen_mean', 'structure.sarcomere.oop']
+    Export.write_dict(str(out), Export.get_structure_dict(sarc, keys), 'xlsx')
+    Export.append_info_sheets(str(out), sarc, keys)
+    sheets = pd.read_excel(out, sheet_name=None)
+    assert list(sheets) == ['data', 'metadata', 'metrics']          # the data sheet stays first
+    meta = dict(zip(sheets['metadata']['field'], sheets['metadata']['value']))
+    assert meta['file_name'] == sarc.metadata.file_name
+    units = dict(zip(sheets['metrics']['metric'], sheets['metrics']['unit'].fillna('')))
+    assert units['structure.sarcomere.slen_mean'] == 'µm' and units['structure.sarcomere.oop'] == ''

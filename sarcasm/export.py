@@ -20,7 +20,7 @@ collects features from many recordings into one table.
 import json
 import logging
 import os.path
-from typing import Union, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import types
 import numpy as np
@@ -192,7 +192,13 @@ class BatchExport:
 
     def export_data(self, file_path, format='.xlsx'):
         """
-        Export the DataFrame to .xlsx or .csv format.
+        Export the DataFrame to .xlsx or .csv format, one row per file (or group).
+
+        A per-frame feature of a movie becomes one number per cell: the value of the
+        analyzed frame, or the mean over the analyzed frames when there are several.
+        Every analyzed frame is then also written in long format (one row per file and
+        frame): a ``per_frame`` sheet in the .xlsx, or ``<name>_per_frame.csv`` next to
+        the .csv.
 
         Parameters
         ----------
@@ -201,13 +207,20 @@ class BatchExport:
         format : {'.xlsx', '.csv'}, optional
             Format of the output file. Default is '.xlsx'.
         """
-        _data = Export.tabular_frame(self._require_data())
-        if format == '.xlsx':
-            _data.to_excel(file_path, index=False)
-        elif format == '.csv':
-            _data.to_csv(file_path, index=False)
-        else:
+        if format not in ('.xlsx', '.csv'):
             raise ValueError('Unsupported file format')
+        main, per_frame = Export.split_per_frame(self._require_data())
+        _data = Export.tabular_frame(main)
+        if format == '.xlsx':
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                _data.to_excel(writer, index=False)
+                if per_frame is not None:
+                    per_frame.to_excel(writer, sheet_name='per_frame', index=False)
+        else:
+            _data.to_csv(file_path, index=False)
+            if per_frame is not None:
+                root, ext = os.path.splitext(str(file_path))
+                per_frame.to_csv(f'{root}_per_frame{ext}', index=False)
 
 
 
@@ -320,6 +333,76 @@ class Export:
         """
         structure_dict = Export.get_structure_dict(sarc_obj, structure_keys=structure_keys)
         Export.write_dict(file_path, structure_dict, fileformat, raw=raw)
+
+    @staticmethod
+    def append_info_sheets(file_path: str, sarc_obj, keys: List[str], registry: str = 'structure') -> None:
+        """Add a ``metadata`` and a ``metrics`` sheet to an exported .xlsx workbook.
+
+        ``metadata`` lists the analyzed file and its calibration (one row per field;
+        skipped when ``sarc_obj`` is None, e.g. for a batch table with one row per file);
+        ``metrics`` lists each exported metric with its display name, unit and
+        description. The existing sheets are left unchanged.
+        """
+        import re
+        from sarcasm.features import describe_key
+        meta_df = None
+        if sarc_obj is not None:
+            meta = {k: (v if isinstance(v, (int, float, str, bool, type(None))) else str(v))
+                    for k, v in sarc_obj.metadata.to_dict().items() if k not in _NON_TABULAR_METADATA_KEYS}
+            meta_df = pd.DataFrame({'field': list(meta), 'value': list(meta.values())})
+        rows = []
+        for key in keys:
+            entry = describe_key(key, registry) or {}
+            name = entry.get('name', key)
+            unit = re.search(r'\[([^\]]+)\]', name)
+            rows.append({'metric': key, 'name': re.sub(r'\s*\[[^\]]+\]', '', name),
+                         'unit': unit.group(1) if unit else '',
+                         'description': entry.get('description', ''),
+                         'computed by': entry.get('function', '')})
+        with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+            if meta_df is not None:
+                meta_df.to_excel(writer, sheet_name='metadata', index=False)
+            pd.DataFrame.from_records(rows).to_excel(writer, sheet_name='metrics', index=False)
+
+    @staticmethod
+    def split_per_frame(records) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
+        """Split per-frame feature arrays out of a one-row-per-file table.
+
+        A cell holding a numeric array with one entry per frame (``n_stack`` > 1; frames
+        not analyzed are NaN) is replaced by the analyzed frame's value, or by the mean
+        over the analyzed frames when there are several. Returns that table and a long
+        table (``file_name``, ``file_path``, ``frame`` and the per-frame features, one
+        row per file and analyzed frame), or None when no cell held per-frame values.
+        """
+        df = (records if isinstance(records, pd.DataFrame) else pd.DataFrame.from_records(records)).copy()
+        if 'n_stack' not in df.columns:
+            return df, None
+        long_rows = []
+        for i in df.index:
+            n = df.at[i, 'n_stack']
+            if not isinstance(n, (int, np.integer)) or n < 2:
+                continue
+            frames: Dict[int, dict] = {}
+            for col in df.columns:
+                if col in _METADATA_KEYS:
+                    continue
+                v = df.at[i, col]
+                if not isinstance(v, (list, np.ndarray)) or len(v) != n:
+                    continue
+                arr = np.asarray(v, dtype=object)
+                try:
+                    arr = arr.astype(float)
+                except (TypeError, ValueError):
+                    continue                                   # ragged per-object lists stay as they are
+                finite = np.flatnonzero(np.isfinite(arr))
+                df.at[i, col] = float(arr[finite].mean()) if finite.size else np.nan
+                for f in finite:
+                    frames.setdefault(int(f), {})[col] = float(arr[f])
+            for f in sorted(frames):
+                long_rows.append({'file_name': df.at[i, 'file_name'] if 'file_name' in df.columns else None,
+                                  'file_path': df.at[i, 'file_path'] if 'file_path' in df.columns else None,
+                                  'frame': f, **frames[f]})
+        return df, (pd.DataFrame.from_records(long_rows) if long_rows else None)
 
     @staticmethod
     def flatten_single(x):
