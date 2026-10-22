@@ -67,6 +67,7 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
 
    installation
    quickstart
+   cli
    gui
    key_migration
 

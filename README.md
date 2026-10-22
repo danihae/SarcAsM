@@ -136,6 +136,21 @@ manual line-of-interest motion workflow was replaced by 2D sarcomere tracking, r
 in a single `.ome.zarr` store, and result keys changed. Analyses from 0.5 have to be recomputed;
 see the [changelog](CHANGELOG.md) and the [key migration table](docs/key_migration.md).
 
+### Command line
+
+The `sarcasm` command runs the analysis headless and prints JSON, for shell scripts,
+cluster jobs and AI coding agents:
+
+```bash
+sarcasm info movie.tif                    # axes and calibration
+sarcasm structure movie.tif --frames 0    # structure features
+sarcasm motion movie.tif --by myofibril   # tracking + contraction analysis
+sarcasm features --find slen              # feature definitions and units
+```
+
+See the [CLI documentation](https://sarcasm.readthedocs.io/en/latest/cli.html); a summary
+for language-model agents is in [`llms.txt`](https://github.com/danihae/SarcAsM/blob/main/llms.txt).
+
 ### App
 
 ![SarcAsM GUI Workflow](https://raw.githubusercontent.com/danihae/sarcasm/main/docs/images/SarcAsM_app.gif)
@@ -155,7 +170,7 @@ There are two main ways to run the SarcAsM App:
     *   If you have installed SarcAsM into a Python environment (e.g., via pip or conda from the source), you can launch the GUI using this command:
       ```
       # After activating your environment (e.g., conda activate sarcasm-env)
-      python -m sarcasm_app
+      python -m sarcasm_app   # or: sarcasm
       ```
     *   Alternatively, you can run `./sarcasm_app/__main__.py` directly from the SarcAsM root directory if the necessary dependencies are in your PYTHONPATH.
 

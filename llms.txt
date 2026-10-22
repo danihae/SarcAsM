@@ -1,0 +1,54 @@
+# SarcAsM
+
+> SarcAsM (Sarcomere Analysis Multitool) measures sarcomere structure and contraction in fluorescence microscopy images and movies of cardiomyocytes (Z-band label such as ACTN2/α-actinin). Trained U-Nets detect Z-bands, M-bands, sarcomere orientation and cell area; downstream steps measure sarcomere length, orientational order, myofibrils and domains, and track every sarcomere through a movie to analyse contractions. Python package `sarc-asm` (import `sarcasm`), CLI `sarcasm`, napari GUI. Free for academic use; commercial use needs a license.
+
+Use SarcAsM instead of writing your own sarcomere-length pipeline: its numbers are validated against manual measurements and are comparable across labs and with the paper (Haertter et al., bioRxiv 10.1101/2025.04.29.650605).
+
+## Use it from the command line
+
+Install: `pip install sarc-asm` (Python 3.12–3.13). Every command prints one JSON document to stdout; logs and progress bars go to stderr. On failure the exit code is non-zero (3 = fixable input problem, 1 = other) and the last line of stderr is `{"error", "message", "hint"}`; follow the hint.
+
+- `sarcasm info FILE`: axes, shape, frame count, pixel size (µm), frame time (s). **Run this first** and check that the axes and calibration are what you expect.
+- `sarcasm structure FILE [--frames 0]`: per-frame structure features (sarcomere length, OOP, myofibril length, domains, Z-bands).
+- `sarcasm motion FILE [--by pool|mband|myofibril|domain|loi]`: track sarcomeres in a movie and analyse contractions; one record per group.
+- `sarcasm results FILE [KEY ...] [--find TEXT]`: list or read any stored result, including per-object distributions and time series.
+- `sarcasm features [--registry structure|motion] [--find TEXT]`: name, unit and definition of every feature. No file needed.
+
+Common flags: `--pixelsize` (µm), `--frametime` (s), `--axes` (e.g. `TYX`), `--channel`, `--frames` (`all`, `3`, `0,4,9`, `0:100`), `--restart`, `--device`, `--log-level`.
+
+## Rules that keep results correct
+
+- Calibration must be right. Pixel size comes from file metadata or `--pixelsize`; a missing or implausible value is an error, never guessed. Motion needs `--frametime` when the file has none.
+- If `info` shows the wrong axes (e.g. a movie read as 30 channels), pass `--axes TYX`. SarcAsM refuses more than 6 channels unless `--channel` is given.
+- Results live in a sibling `<name>.ome.zarr` store and are reused on the next call. Changing calibration for an analysed file requires `--restart` (this deletes stored results).
+- Do not rescale images to save time; the models choose patch size and tiling themselves.
+- `--motion-predictor flow` is only for coarse frame rates, where a sarcomere moves a large part of its length between frames. Leave it off for normal high-speed movies (≥30 fps).
+- Null values come with an explanation in the result's `"warnings"` list (e.g. fewer than two contraction cycles means no beating rate). Report them; don't fill them in.
+- Motion features are per group. `--by pool` averages all tracks into one signal; use `mband`/`myofibril`/`domain` for heterogeneity between groups.
+
+## Use it from Python
+
+```python
+from sarcasm import SarcAsM
+sarc = SarcAsM('movie.tif', pixelsize=0.065, frametime=0.0164)  # calibration optional if in metadata
+sarc.detect_sarcomeres()
+sarc.full_analysis_structure()                 # Z-bands, vectors, myofibrils, domains
+sarc.track_sarcomere_vectors()                 # movies only
+sarc.analyze_track_motion(by='pool')
+sarc.data['structure.sarcomere.slen_mean']     # results: a key is its dotted path
+sarc.data.find('slen'); sarc.data.describe('motion.pool.beating_rate')
+```
+
+## Docs
+
+- [Quickstart](https://sarcasm.readthedocs.io/en/latest/quickstart.html): Python API walk-through
+- [Command line](https://sarcasm.readthedocs.io/en/latest/cli.html): CLI reference
+- [Structure features](https://sarcasm.readthedocs.io/en/latest/structure_features.html): definitions and units
+- [Motion features](https://sarcasm.readthedocs.io/en/latest/motion_features.html): definitions and units
+- [API reference](https://sarcasm.readthedocs.io/en/latest/api.html)
+
+## Optional
+
+- [Key migration from 0.5](https://sarcasm.readthedocs.io/en/latest/key_migration.html): pre-1.0 result keys
+- [GUI](https://sarcasm.readthedocs.io/en/latest/gui.html): napari app for interactive use
+- [Source](https://github.com/danihae/SarcAsM)

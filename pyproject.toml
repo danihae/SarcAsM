@@ -12,6 +12,7 @@ authors = [
     { name = "Daniel Haertter", email = "dani.hae@posteo.de" }
 ]
 license = { file = "LICENSE" }
+keywords = ["sarcomere", "cardiomyocyte", "myofibril", "microscopy", "image analysis", "deep learning", "contractility", "tracking", "drug screening", "napari"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -53,7 +54,7 @@ Issues = "https://github.com/danihae/SarcAsM/issues"
 Changelog = "https://github.com/danihae/SarcAsM/blob/main/CHANGELOG.md"
 
 [project.scripts]
-sarcasm = "sarcasm_app.__main__:main"
+sarcasm = "sarcasm.cli:main"
 
 [project.optional-dependencies]
 app = ["pyinstaller>=6.0.0"]
@@ -115,6 +116,7 @@ include = [
   "contraction_net/",
   "LICENSE",
   "README.md",
+  "llms.txt",
   "CHANGELOG.md",
   "pyproject.toml"
 ]
