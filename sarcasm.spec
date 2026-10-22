@@ -108,7 +108,7 @@ a = Analysis(
         'vispy.glsl',
         'vispy.app.backends._pyqt5',
         'freetype'
-    ] + collect_submodules('sarcasm_app') + collect_submodules('vispy'),
+    ] + collect_submodules('sarcasm') + collect_submodules('sarcasm_app') + collect_submodules('vispy'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

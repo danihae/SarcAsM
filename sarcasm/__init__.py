@@ -14,17 +14,30 @@
 
 """SarcAsM: sarcomere analysis of cardiomyocytes (public API re-exports)."""
 
+from importlib import import_module as _import_module
+
 from ._version import __version__
-from .core import SarcAsMBase
-from .structure import SarcAsM
-from .motion import Motion
-from .utils import Utils
-from .features import (structure_feature_dict, motion_feature_dict,
-                       describe_key, pretty_name, MOTION_KINDS)
-from .io.ioutils import IOUtils
-from .plotting.plots import Plots
-from .plotting.plot_utils import PlotUtils
-from .plotting.animation import Animations
-from .export import Export, BatchExport
-from .type_utils import TypeUtils
-from .training_data_generation import TrainingDataGenerator
+
+# Public names resolve on first access (PEP 562), so ``import sarcasm`` and the
+# CLI do not pay for torch, numba and matplotlib until they are needed.
+_EXPORTS = {
+    'SarcAsMBase': '.core', 'SarcAsM': '.structure', 'Motion': '.motion', 'Utils': '.utils',
+    'structure_feature_dict': '.features', 'motion_feature_dict': '.features',
+    'describe_key': '.features', 'pretty_name': '.features', 'MOTION_KINDS': '.features',
+    'IOUtils': '.io.ioutils', 'Plots': '.plotting.plots', 'PlotUtils': '.plotting.plot_utils',
+    'Animations': '.plotting.animation', 'Export': '.export', 'BatchExport': '.export',
+    'TypeUtils': '.type_utils', 'TrainingDataGenerator': '.training_data_generation',
+}
+__all__ = ['__version__', *_EXPORTS]
+
+
+def __getattr__(name):
+    if name in _EXPORTS:
+        value = getattr(_import_module(_EXPORTS[name], __name__), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module 'sarcasm' has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_EXPORTS))
