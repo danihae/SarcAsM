@@ -175,7 +175,7 @@ def synthetic_movie(tmp_path):
     path = tmp_path / 'synthetic.tif'
     tifffile.imwrite(path, frames, imagej=True,
                      resolution=(1 / pixelsize, 1 / pixelsize),
-                     metadata={'unit': 'um', 'finterval': frametime, 'fps': 1 / frametime})
+                     metadata={'axes': 'TYX', 'unit': 'um', 'finterval': frametime, 'fps': 1 / frametime})
     return str(path), T
 
 

@@ -15,6 +15,7 @@
 
 import json
 import logging
+import math
 import operator
 import os
 import textwrap
@@ -171,6 +172,14 @@ class SarcAsMBase:
         self.file_path = os.path.abspath(str(file_path))
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"Input file not found: {self.file_path}")
+        # A Git LFS pointer is a ~130-byte text stub in place of the image; without this
+        # check tifffile fails later with an unrelated-looking "not a TIFF file" error.
+        if os.path.isfile(self.file_path):
+            with open(self.file_path, 'rb') as fh:
+                if fh.read(64).startswith(b'version https://git-lfs'):
+                    raise ValueError(
+                        f"{self.file_path} is a Git LFS pointer, not an image. "
+                        f"Fetch the real file with 'git lfs pull'.")
 
         # Configuration
         self.auto_save = auto_save
@@ -233,6 +242,8 @@ class SarcAsMBase:
                 logger.error(f"Loading metadata from store failed: {e}")
                 if not self.use_gui:
                     raise MetaDataError("Loading metadata from store failed.") from e
+            self._check_explicit_calibration(pixelsize=pixelsize, frametime=frametime,
+                                             channel=channel, axes=axes)
         elif legacy is not None and not self.restart and self.meta_file.exists():
             try:
                 self.metadata = ImageMetadata.load_from_file(self.meta_file)
@@ -276,6 +287,42 @@ class SarcAsMBase:
                     "Expected torch.device instance or valid device string "
                     f"(e.g., 'cuda', 'cpu', 'mps')"
                 )
+
+    def _check_explicit_calibration(self, **explicit) -> None:
+        """Refuse constructor calibration that contradicts an existing store.
+
+        The stored metadata wins on reopen because the stored pixels and results were
+        computed with it, so a differing ``pixelsize=``/``frametime=``/``channel=``/``axes=``
+        would otherwise be dropped without notice.
+        """
+        conflicts = []
+        for name, value in explicit.items():
+            if value is None:
+                continue
+            stored = getattr(self.metadata, name, None)
+            if name == 'frametime' and stored is None:
+                # nothing was computed with a frame time yet: fill it in
+                self.metadata.frametime = float(value)
+                if self.metadata.n_stack and self.metadata.n_stack > 1:
+                    self.metadata.time = np.arange(self.metadata.n_stack) * self.metadata.frametime
+                self.save_metadata()
+                continue
+            if isinstance(value, str) and isinstance(stored, str):
+                same = value.upper() == stored.upper()
+            elif isinstance(value, (int, float)) and isinstance(stored, (int, float)):
+                same = math.isclose(float(value), float(stored), rel_tol=1e-6)
+            else:
+                same = stored is None and value is None
+            if not same:
+                conflicts.append(f"{name}={value!r} (store: {stored!r})")
+        if not conflicts:
+            return
+        message = (f"{', '.join(conflicts)}: the existing analysis in {self.store_path} was made "
+                   f"with different calibration. Pass restart=True to re-analyze with the new "
+                   f"values (this deletes the stored results), or omit them to keep the stored ones.")
+        if not self.use_gui:
+            raise MetaDataError(message)
+        logger.warning(message)
 
     def _setup_logging(self, log_level: Union[str, int]) -> None:
         """
@@ -398,6 +445,24 @@ class SarcAsMBase:
     _DETECTION_MASKS = ('cell_mask', 'zbands', 'mbands', 'orientation', 'sarcomere_mask')
     # number of axes of one frame of a mask; a stored array with one axis more holds a page axis
     _MASK_FRAME_NDIM = {'orientation': 3}
+    # more channels than this without an explicit channel= is treated as a mislabelled T/Z axis
+    _MAX_PLAUSIBLE_CHANNELS = 6
+
+    def _check_channel_count(self, n_chan: int, axes: str) -> None:
+        """Fail on an implausible channel count when no channel was chosen explicitly."""
+        if self.metadata.channel is not None or n_chan <= self._MAX_PLAUSIBLE_CHANNELS:
+            return
+        # Fluorescence stacks rarely carry more than a handful of channels; dozens
+        # of "channels" almost always mean a time or Z axis mislabelled in the
+        # file header, and analysing channel 0 would silently use one frame.
+        message = (
+            f"The image has {n_chan} channels according to its metadata (axes "
+            f"'{axes}'), which usually means a time or Z axis was saved as channels. "
+            f"Pass axes= with the true order (e.g. axes='TYX'), or channel=<int> "
+            f"if these really are channels.")
+        if not self.use_gui:
+            raise MetaDataError(message)
+        logger.warning(message)
 
     def _read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a mask from the store, optionally selecting movie ``frames``, like ``read_imgs``.
@@ -1040,11 +1105,13 @@ class SarcAsMBase:
                 chan_idx = 0  # trivial
             else:
                 if self.metadata.channel is None:
-                    logger.info(
-                        f"Multi-channel image detected (n={n_chan}). "
-                        f"Using channel 0 by default. "
-                        f"Pass SarcAsM(..., channel=<int>) to override."
-                    )
+                    self._check_channel_count(n_chan, axes)
+                    if n_chan <= self._MAX_PLAUSIBLE_CHANNELS:
+                        logger.warning(
+                            f"Multi-channel image detected (n={n_chan}). "
+                            f"Using channel 0 by default. "
+                            f"Pass SarcAsM(..., channel=<int>) to override."
+                        )
                     chan_idx = 0
                 else:
                     chan_idx = int(self.metadata.channel)
@@ -1181,6 +1248,8 @@ class SarcAsMBase:
             stack_len = series.shape[axes.index('Z')]
 
         # Validation checks
+        if 'C' in axes:
+            self._check_channel_count(series.shape[axes.index('C')], axes)
         if self.metadata.pixelsize is None and not self.use_gui:
             raise MetaDataError(
                 f"Pixel size could not be extracted from {self.file_path}. "

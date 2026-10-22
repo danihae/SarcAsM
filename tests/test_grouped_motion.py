@@ -969,13 +969,15 @@ def test_motion_from_loi_data_runs_loi_engine(motion_file_path):
     t = np.arange(T)
     base = 1.95 - 0.2 * np.clip(np.sin(2 * np.pi * t / 16.0), 0, None)
     member = np.stack([base + 0.01 * np.sin(t / 3.0 + k) for k in range(4)])
-    z, slen, time = grouped_motion.synthesize_loi_chain(member, frametime=0.01)
+    # the chain must share the movie's frame time: a different one contradicts the store
+    frametime = SarcAsM(str(fp)).metadata.frametime or 0.01
+    z, slen, time = grouped_motion.synthesize_loi_chain(member, frametime=frametime)
     m = Motion.from_loi_data(
         str(fp), 'track_myofibril_test',
         {'z_pos': z, 'z_pos_raw': z.copy(), 'slen': slen, 'time': time, 'n_sarcomeres': 4},
-        auto_save=False, frametime=0.01)
+        auto_save=False, frametime=frametime)
     assert m.loi_data['synthetic'] is True
-    assert m.metadata.frametime is not None   # from override or stored/embedded metadata
+    assert m.metadata.frametime == pytest.approx(frametime)
     # the battle-tested LOI engine runs unchanged on the synthesized chain
     m.detect_analyze_contractions()
     m.get_trajectories()
