@@ -538,3 +538,46 @@ def test_registry_degenerate_inputs():
     assert np.isnan(lat[0]) and np.isnan(ax[0])
     assert np.isnan(lat[6]), 'its lateral partner was the dropped vector'
     assert np.isfinite(np.delete(lat, [0, 6])).all() and np.isfinite(ax[1:]).all()
+
+
+# --------------------------------------------------------------------------- pixel-size check
+def _stripes(period_px: float, angle: float, size: int = 200, width_px: float = 1.5):
+    """Image of Z-disc stripes every ``period_px`` along the axis (sin a, cos a) in (row, col), with vector
+    centres on the M-band positions between them."""
+    r, c = np.mgrid[:size, :size].astype(float)
+    s = r * np.sin(angle) + c * np.cos(angle)
+    phase = (s / period_px) % 1.0
+    d = np.minimum(phase, 1 - phase) * period_px
+    image = np.exp(-0.5 * (d / width_px) ** 2)
+    rng = np.random.default_rng(1)
+    pos = rng.uniform(0.3 * size, 0.7 * size, (300, 2))
+    return image, pos, np.full(len(pos), angle)
+
+
+@pytest.mark.parametrize('period_px, angle', [(28.0, 0.0), (8.0, 0.0), (16.0, 0.6), (12.5, 2.1)])
+def test_stripe_period_reads_the_repeat_distance_along_the_sarcomere_axis(period_px, angle):
+    image, pos, ori = _stripes(period_px, angle)
+    assert sv.stripe_period(image, pos, ori, slen_px=period_px) == pytest.approx(period_px, abs=0.5)
+
+
+def test_stripe_period_is_nan_without_stripes_or_vectors():
+    image = np.random.default_rng(0).normal(size=(100, 100))
+    pos = np.full((50, 2), 50.0)
+    assert np.isnan(sv.stripe_period(np.ones((100, 100)), pos, np.zeros(50), slen_px=20))
+    assert np.isnan(sv.stripe_period(image, np.empty((0, 2)), np.empty(0), slen_px=20))
+    assert np.isnan(sv.stripe_period(image, pos, np.zeros(50), slen_px=np.nan))
+
+
+def test_pixelsize_plausibility_passes_a_consistent_calibration():
+    assert sv.pixelsize_plausibility(28.0, 1.70, 0.0605) is None     # 1.69 µm stripes, 1.70 µm sarcomeres
+    assert sv.pixelsize_plausibility(np.nan, 1.70, 0.0605) is None   # no period: nothing to say
+    assert sv.pixelsize_plausibility(34.0, 3.38, 0.1) is None        # long (skeletal) sarcomeres are fine
+
+
+def test_pixelsize_plausibility_catches_a_pixel_size_twice_too_small():
+    """The silent failure: at half the pixel size the measured lengths still look normal (the detection pairs
+    every other Z-disc), only the stripe period gives it away."""
+    msg = sv.pixelsize_plausibility(8.0, 1.75, 0.108)                # MHH movies: 0.86 µm stripes
+    assert msg is not None and msg.startswith('Are you sure that 0.108 µm/px is the right pixel size?')
+    assert 'about 0.219 µm/px' in msg                                 # 0.108 / (0.864 / 1.75)
+    assert sv.pixelsize_plausibility(17.0, 3.40, 0.1) is not None     # whatever the tissue

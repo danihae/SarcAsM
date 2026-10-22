@@ -593,3 +593,100 @@ def zband_registry(
     lateral[idx_ok] = lat_thin[inverse]
     axial[idx_ok] = ax_thin[inverse]
     return lateral, axial
+
+
+
+# Below this ratio of the raw image's stripe period to the measured sarcomere length the pixel size is suspect.
+MIN_STRIPE_RATIO = 0.75
+
+
+def stripe_period(image: np.ndarray, pos_px: np.ndarray, orientation: np.ndarray, slen_px: float,
+                  n_profiles: int = 500, seed: int = 0) -> float:
+    """Repeat distance of the raw image's stripes along the sarcomere axis, in pixels.
+
+    Samples the raw intensity along the sarcomere axis of up to ``n_profiles`` vectors (± 2.5 measured
+    sarcomere lengths around each centre), averages the profiles' autocorrelations and returns the lag of
+    the first peak. It reads the pixels only, so it does not depend on the pixel size, and it does not use
+    the U-Net output beyond where to look and in which direction.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Raw image of one frame, shape ``(H, W)``.
+    pos_px : np.ndarray
+        Vector centres ``(N, 2)`` as (row, col) pixels.
+    orientation : np.ndarray
+        Sarcomere orientation of each vector (rad); the axis is ``(sin o, cos o)`` in (row, col).
+    slen_px : float
+        Median measured sarcomere length in pixels; sets the profile length.
+    n_profiles : int, optional
+        Number of vectors sampled. Default is 500.
+    seed : int, optional
+        Seed of the random vector sample. Default is 0.
+
+    Returns
+    -------
+    float
+        Stripe period in pixels, NaN if there is no periodic signal (no autocorrelation peak above 0.05
+        at a lag of 3 px or more).
+    """
+    pos_px = np.asarray(pos_px, dtype=float).reshape(-1, 2)
+    orientation = np.asarray(orientation, dtype=float).reshape(-1)
+    ok = np.isfinite(orientation) & np.isfinite(pos_px).all(axis=1)
+    pos_px, orientation = pos_px[ok], orientation[ok]
+    if len(pos_px) == 0 or not np.isfinite(slen_px) or slen_px <= 0:
+        return np.nan
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(pos_px), min(n_profiles, len(pos_px)), replace=False)
+    step = 0.25
+    t = np.arange(-2.5 * slen_px, 2.5 * slen_px + step, step)
+    rows = pos_px[idx, :1] + np.sin(orientation[idx])[:, None] * t
+    cols = pos_px[idx, 1:] + np.cos(orientation[idx])[:, None] * t
+    profiles = ndimage.map_coordinates(np.asarray(image, dtype=float), [rows.ravel(), cols.ravel()],
+                                       order=1, mode='nearest').reshape(rows.shape)
+    profiles -= profiles.mean(axis=1, keepdims=True)
+    power = np.sum(profiles ** 2, axis=1)
+    profiles = profiles[power > 0]
+    if len(profiles) == 0:
+        return np.nan
+    n = profiles.shape[1]
+    spectrum = np.fft.rfft(profiles, 2 * n, axis=1)
+    ac = np.fft.irfft(np.abs(spectrum) ** 2, axis=1)[:, :n]
+    ac = np.mean(ac / ac[:, :1], axis=0)
+    lags = np.arange(n) * step
+    peaks = np.flatnonzero((ac[1:-1] > ac[:-2]) & (ac[1:-1] >= ac[2:]) & (ac[1:-1] > 0.05)) + 1
+    peaks = peaks[lags[peaks] >= 3]             # a stripe period below 3 px cannot be resolved
+    return float(lags[peaks[0]]) if peaks.size else np.nan
+
+
+def pixelsize_plausibility(period_px: float, slen_um: float, pixelsize: float) -> Union[str, None]:
+    """Warning text when the pixel size looks about 2x too small, else None.
+
+    A Z-disc label repeats once per sarcomere, so the raw image's stripe period should equal the measured
+    sarcomere length. If it is about half of it, the pixel size is too small: the detection pairs every other
+    Z-disc, the lengths still look normal, and every trajectory jumps by half a sarcomere.
+
+    Parameters
+    ----------
+    period_px : float
+        Stripe period of the raw image in pixels (:func:`stripe_period`).
+    slen_um : float
+        Median measured sarcomere length (µm).
+    pixelsize : float
+        Pixel size used for the analysis (µm).
+
+    Returns
+    -------
+    str or None
+        Warning text, None if the ratio is fine or the period could not be measured.
+    """
+    if not (np.isfinite(period_px) and np.isfinite(slen_um) and slen_um > 0):
+        return None
+    ratio = period_px * pixelsize / slen_um
+    if ratio >= MIN_STRIPE_RATIO:
+        return None
+    return (f'Are you sure that {pixelsize:.4g} µm/px is the right pixel size? The image stripes repeat every '
+            f'{period_px * pixelsize:.2f} µm, {ratio:.2f}x the measured sarcomere length of {slen_um:.2f} µm. '
+            f'This happens when the pixel size is too small (about {pixelsize / ratio:.3g} µm/px would match): '
+            f'the lengths look normal, but the trajectories jump by half a sarcomere. Ignore this if the label '
+            f'shows two stripes per sarcomere.')

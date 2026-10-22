@@ -25,6 +25,13 @@ All notable changes to SarcAsM are documented here. The format follows
 - Frame selections accept ranges: `0-99` (both ends included), also mixed with single frames (`0-49, 60`).
 - `Plots.plot_slen_mean` / `plot_delta_slen_mean(readable_labels=True)`: rows named by grouping
   ("Myofibril 3", not "M3") and y tick labels on the bottom row only.
+- Pixel-size check in `analyze_sarcomere_vectors`: the stripe period of the raw image along the sarcomere axis
+  (autocorrelation of intensity profiles through the vectors of the first analyzed frame, independent of the
+  pixel size) is compared with the measured sarcomere length. When the period is less than 0.75x the length, a
+  warning asks whether the pixel size is right: a pixel size about 2x too small makes the detection pair every
+  other Z-band, so the lengths look normal while every trajectory jumps by half a sarcomere. New result
+  `structure.sarcomere.stripe_period_ratio`; `sarcomere_vectors.stripe_period`,
+  `sarcomere_vectors.pixelsize_plausibility`.
 
 ### Changed
 
