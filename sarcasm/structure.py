@@ -1036,6 +1036,9 @@ class SarcAsM(SarcAsMBase):
             if 'structure.cell.mask_area' in self.data:
                 sarcomere_area_ratio[frame_i] = sarcomere_area[frame_i] / self.data['structure.cell.mask_area'][frame_i]
 
+        stripe_ratio = self._check_pixelsize(list_frames, pos_vectors_px, sarcomere_orientation_vectors,
+                                             sarcomere_length_vectors)
+
         vectors_dict = {'params.analyze_sarcomere_vectors.frames': list_frames,
                         'params.analyze_sarcomere_vectors.threshold_sarcomere_mask': threshold_sarcomere_mask,
                         'params.analyze_sarcomere_vectors.median_filter_radius': median_filter_radius,
@@ -1068,10 +1071,30 @@ class SarcAsM(SarcAsMBase):
                         'structure.sarcomere.registry_axial': registry_axial,
                         'structure.sarcomere.registry_lateral_mean': registry_lateral_mean,
                         'structure.sarcomere.registry_axial_mean': registry_axial_mean,
-                        'structure.sarcomere.registry_mean': registry_mean}
+                        'structure.sarcomere.registry_mean': registry_mean,
+                        'structure.sarcomere.stripe_period_ratio': stripe_ratio}
         self.data.update(vectors_dict)
         if self.auto_save:
             self.store_structure_data()
+
+    def _check_pixelsize(self, list_frames, pos_vectors_px, orientation_vectors, length_vectors,
+                         min_vectors: int = 20) -> float:
+        """Stripe period of the raw image / median sarcomere length on the first analyzed frame with at least
+        ``min_vectors`` vectors; logs a warning when the pixel size looks too small
+        (:func:`sarcomere_vectors.pixelsize_plausibility`). NaN when it cannot be measured."""
+        frame = next((f for f in list_frames
+                      if length_vectors[f] is not None and len(length_vectors[f]) >= min_vectors), None)
+        if frame is None:
+            return np.nan
+        pixelsize = self.metadata.pixelsize
+        slen_um = float(np.nanmedian(length_vectors[frame]))
+        image = self._read_raw_frames([frame])[0]
+        period_px = sarcomere_vectors.stripe_period(image, pos_vectors_px[frame], orientation_vectors[frame],
+                                                    slen_um / pixelsize)
+        message = sarcomere_vectors.pixelsize_plausibility(period_px, slen_um, pixelsize)
+        if message:
+            logger.warning(message)
+        return float(period_px * pixelsize / slen_um) if np.isfinite(period_px) else np.nan
 
     def _vector_frames(self, frames) -> List[int]:
         """The frames of the sarcomere vectors that a step building on them (myofibrils, domains) analyzes:

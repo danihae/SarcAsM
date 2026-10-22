@@ -276,6 +276,15 @@ structure_feature_dict = {
         'function': 'SarcAsM.analyze_sarcomere_vectors',
         'name': 'Z-band registry'
     },
+    'structure.sarcomere.stripe_period_ratio': {
+        'description': 'Repeat distance of the stripes in the raw image along the sarcomere axis, divided by the '
+                       'median measured sarcomere length (first analyzed frame). About 1 for a Z-disc label; about '
+                       '0.5 when the pixel size is too small and the detection pairs every other Z-band, in which '
+                       'case a warning is logged (below 0.75). Single value, NaN without a periodic signal.',
+        'data type': float,
+        'function': 'SarcAsM.analyze_sarcomere_vectors',
+        'name': 'Stripe period / sarcomere length'
+    },
     'structure.sarcomere.n_vectors_removed': {
         'description': 'Number of sarcomere vectors removed in each frame because their orientation '
                        'deviates by more than max_neighbor_deviation from the vectors within '
