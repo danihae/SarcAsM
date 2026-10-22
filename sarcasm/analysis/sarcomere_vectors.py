@@ -685,8 +685,5 @@ def pixelsize_plausibility(period_px: float, slen_um: float, pixelsize: float) -
     ratio = period_px * pixelsize / slen_um
     if ratio >= MIN_STRIPE_RATIO:
         return None
-    return (f'Are you sure that {pixelsize:.4g} µm/px is the right pixel size? The image stripes repeat every '
-            f'{period_px * pixelsize:.2f} µm, {ratio:.2f}x the measured sarcomere length of {slen_um:.2f} µm. '
-            f'This happens when the pixel size is too small (about {pixelsize / ratio:.3g} µm/px would match): '
-            f'the lengths look normal, but the trajectories jump by half a sarcomere. Ignore this if the label '
-            f'shows two stripes per sarcomere.')
+    return (f'Are you sure that {pixelsize:.4g} µm/px is the right pixel size? '
+            f'About {pixelsize / ratio:.3g} µm/px would match the image.')
