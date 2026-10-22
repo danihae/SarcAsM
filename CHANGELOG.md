@@ -6,8 +6,69 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Headless command line: `sarcasm info | structure | motion | results | features FILE`. Each command prints one
+  JSON document to stdout (logs and progress bars on stderr) and repeats the warnings of the run in its
+  `"warnings"` list, which explain null values. An error is a JSON object with a hint on the last line of stderr;
+  the exit code is 3 for input to fix (missing file, missing or conflicting calibration, implausible axes, unknown
+  result key), 2 for bad usage, 1 otherwise. `sarcasm` without a command still opens the GUI. See `docs/cli.rst`.
+- `llms.txt` at the repository root: the commands and the rules that keep results correct, for language-model
+  agents.
+
+### Changed
+
+- `import sarcasm` resolves its public names on first access, so it no longer imports torch, numba and matplotlib
+  up front (`sarcasm --help` 5.8 s → 0.1 s). `from sarcasm import *` is unchanged.
+- Picking channel 0 of a multi-channel image by default logs a warning instead of info.
+
 ### Fixed
 
+- Reopening an analysed file ignored an explicit `pixelsize=`, `frametime=`, `axes=` or `channel=` without notice:
+  the stored metadata replaced it. A value that differs from the store now raises `MetaDataError` pointing to
+  `restart=True` (a warning in the GUI); a frame time the store does not have is filled in.
+- An image with more than 6 channels and no `channel=` raises `MetaDataError` instead of analysing channel 0.
+  Dozens of "channels" are a time or Z axis mislabelled in the file header (tifffile's ImageJ writer labels a 3D
+  stack saved without `axes` this way), and channel 0 is then a single frame of the movie. Pass `axes='TYX'`, or
+  `channel=` if the channels are real.
+- A Git LFS pointer in place of the image fails with a message naming `git lfs pull` instead of a TIFF error.
+
+## [1.0.0b3] — 2026-10-21
+
+### Added
+
+- `track_sarcomere_vectors(refine_lengths=True, orientation_window_s=None)`: after tracking, each track gets one
+  sarcomere axis, the median of its detected orientations, and its length is re-measured along that axis in every
+  frame, with the Z-band map and length estimator of `analyze_sarcomere_vectors`. Sarcomeres do not turn during a
+  contraction, but their Z-bands tilt where neighbouring myofibrils shorten by different amounts (a shear), and a
+  detection's orientation, the Z-band normal in that frame, follows that tilt and jitters on top of it; normal to
+  tilted Z-bands the spacing is shorter than along the filaments by the cosine of the tilt. On a 61-fps movie the
+  Z-bands tilted by 5° (SD) during contractions while the sarcomere axes, from the tracked displacement field,
+  turned by less than 1° (the tracker and decomposition recover a synthetic 4° rotation as 4.0° and a 4° shear as
+  3.9° tilt / 0.1° turn). Along the axis, the frame-to-frame length noise fell from 19.7 to 15.3 nm, the spread in
+  quiet diastolic windows from 20.8 to 17.7 nm, and the cell-average shortening was 10 % smaller (84 vs 93 nm;
+  individual per-cycle shortening 176 vs 197 nm) than along the detection orientations; the contraction windows
+  detected on these lengths were shorter (57 vs 63 % of the frames). `orientation_window_s`
+  gives a running median over that interval instead, for long recordings in which the tissue slowly turns (warns
+  and falls back to one axis per track with fewer than 5 frames in it or an unknown frametime). The detection
+  values are kept in `motion.tracks.slen_raw` / `motion.tracks.orientations_raw`. Functions:
+  `sarcomere_tracking.track_axis_orientations`, `sarcomere_tracking.refine_track_lengths`.
+- `analyze_sarcomere_vectors` now stores its `interpolation_method`
+  (`params.analyze_sarcomere_vectors.interpolation_method`), so later steps can re-measure with the same
+  estimator.
+
+### Fixed
+
+- `Utils.fast_profile_lines` (the Z-band profiles behind every sarcomere length) sampled the image
+  nearest-neighbour and spread its samples over `ceil(length + 1)` points, i.e. 1 % closer than a pixel, while
+  the length estimator assumes one pixel per sample. Every sarcomere length was therefore ~2 % too long
+  (+29 nm on a 61-fps movie of 3.4 M tracked frames, with a spread of 17 nm that depended on the sub-pixel
+  position of the profile), and the midpoint-corrected vector positions sat 0.5 px off along the axis. Profiles
+  are now sampled bilinearly, one sample per pixel, centred on the line's midpoint. Lengths measured with earlier
+  versions are longer by about 1.7 % + 1 %; length *changes* and velocities are affected by the 1 % only.
+- `track_sarcomere_vectors(refine_lengths=True)` also moves each track's position to the midpoint between its two
+  Z-bands in every frame (`motion.tracks.positions_px` / `positions_um`). The tracker follows integer M-band
+  skeleton pixels, whose ±0.5 px quantisation showed as a staircase in the position and Z-band trajectories.
 - `structure.domain.members` held every Leiden cluster of a frame, including those that the size filters
   (`area_min`, more than 10 vectors) removed, so it did not line up with `structure.domain.area`, `slen`,
   `oop`, `orientation` and the domain mask (e.g. 135 member lists for 20 domains), and the per-domain
@@ -22,6 +83,22 @@ All notable changes to SarcAsM are documented here. The format follows
   to 0.79, and slightly more frames next to annotated contractions are called contracting. This also applies to
   track chains viewed as LOIs (`get_track_motion`); the group analysis of `analyze_track_motion`, which applies
   the network to the group-average length, is not affected.
+- `detect_lois(distance_threshold_lois=...)` was in pixels (default 40), so the LOI clusters depended on the
+  pixel size (40 px = 2.4 µm at 0.061 µm/px, 10.4 µm at 0.26 µm/px). The Hausdorff distances between lines are
+  now computed in µm and the threshold is in µm, default 2.5 (≈ the old default at 0.06 µm/px).
+  `loi_detection.hausdorff_distance_lois` is vectorised (identical values; 2,300 lines in about a minute instead of
+  ~17 min).
+- `detect_lois(mode='longest_in_cluster')` took the longest line of the clusters ranked by the length of that
+  line, not of the largest clusters as documented, and `mode='random_from_cluster'` drew from randomly chosen
+  clusters of any size. Lines that grow along the same myofibril but differ in extent fall into different
+  clusters (the symmetric Hausdorff distance is set by where they diverge), so a one-line fragment along a long
+  myofibril competed with the cluster of that myofibril and the selected LOIs overlapped. Both modes now use the
+  `n_lois` largest clusters (most lines).
+- `detect_lois` defaults `persistence` 4 → 8 and `threshold_distance` 0.5 → 0.3 µm (also in the app, whose
+  cluster threshold is now in µm, default 2.5). Sarcomere vectors are dense M-band midline points, so each growth
+  step could snap up to 0.5 µm sideways along an M-band and the LOIs were wavy and drifted across Z-bands; with
+  the new defaults the mean change of direction per sarcomere of the selected LOIs on a 61-nm-pixel movie fell
+  from 2.5° to 1.4°.
 
 ## [1.0.0b2] — 2026-10-19
 
