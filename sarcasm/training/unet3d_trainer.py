@@ -66,8 +66,20 @@ def load_clips(folder, max_clips=None):
     files = sorted(glob.glob(os.path.join(folder, 'volume', '*.tif')))[:max_clips]
     if not files:
         raise FileNotFoundError(f'no clips in {folder}/volume')
-    movies = [tifffile.imread(f) for f in files]
-    labels = [tifffile.imread(os.path.join(folder, TARGET, os.path.basename(f))) for f in files]
+    movies, labels = [], []
+    for f in files:
+        # a clip truncated by an interrupted copy reads as a single frame; skip it instead of crashing a worker
+        try:
+            movie = tifffile.imread(f)
+            label = tifffile.imread(os.path.join(folder, TARGET, os.path.basename(f)))
+        except Exception as e:
+            print(f'skipping {f}: {e}', flush=True)
+            continue
+        if movie.ndim != 3 or movie.shape != label.shape:
+            print(f'skipping {f}: movie {movie.shape} vs label {label.shape}', flush=True)
+            continue
+        movies.append(movie)
+        labels.append(label)
     return movies, labels
 
 
