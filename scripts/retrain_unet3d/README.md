@@ -42,9 +42,9 @@ python 3_train.py --out runs/my_model \
     --data real=clips/real:0.5:real \
     --val synthetic=clips/synthetic_val --val real=clips/real_val
 
-# 4. compare with the bundled model and with per-frame 2D
+# 4. compare with the bundled models and with per-frame 2D
 python 4_evaluate.py clips/synthetic_val clips/real_val \
-    --model mine=runs/my_model/best.pt --model bundled --with_2d 0.1
+    --model mine=runs/my_model/best.pt --model generalist --model legacy --with_2d 0.1
 ```
 
 Then use the model:
@@ -63,9 +63,12 @@ sarc.detect_z_bands_fast_movie(model_path='runs/my_model/best.pt')
 * **Teacher labels are only as good as the 2D model.** Look at a few clips from step 2
   (e.g. in napari) before training. If the 2D model is wrong on your data, the 3D model
   learns the same mistake.
-* **Keep `--time_weight 0`** unless you really want smoother masks: the temporal penalty
-  makes the model lag behind fast motion. `4_evaluate.py` reports Dice on the
-  fastest-moving frames (`fast_*`) so you can see this.
+* **`--time_weight` trades trajectory noise against fast motion.** Without it the predicted
+  Z-bands flicker from frame to frame and sarcomere trajectories come out about twice as
+  noisy; the bundled `generalist` was fine-tuned with 3 (0.1 has no measurable effect in
+  this trainer). The penalty also smooths real fast events: Dice on the fastest-moving
+  frames (`fast_*` in `4_evaluate.py`) drops, and fewer sarcomere pops are found as the
+  weight grows (sarcasm/models/README.md). Check both on a tracked movie before choosing.
 * **Fine-tuning** from the bundled or your own model: `3_train.py --init model.pt --epochs 15 --lr 1e-4`.
 
 Code: `sarcasm/training/` (`synthetic_motion.py`, `teacher_labels.py`, `unet3d_trainer.py`).

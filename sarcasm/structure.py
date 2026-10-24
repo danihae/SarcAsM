@@ -391,8 +391,10 @@ class SarcAsM(SarcAsMBase):
         Parameters
         ----------
         model_path : str or None, optional
-            Path of trained 3D U-Net weights. None uses the default model.
-            Default is None.
+            ``'generalist'`` (or None) is the bundled 3D model for high-speed movies;
+            ``'legacy'`` the 3D model shipped before v1.0.0 (see sarcasm/models/README.md);
+            any other string is a path to custom 3D U-Net weights. The resolved model is stored as
+            ``params.detect_z_bands_fast_movie.model_path``. Default is None.
         max_patch_size : tuple of int or 'auto', optional
             Maximal patch dimensions ``(n_frames, n_x, n_y)`` for the CNN; each
             must be divisible by 16. 'auto' derives them from free device memory
@@ -408,9 +410,6 @@ class SarcAsM(SarcAsMBase):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        if model_path is None:
-            model_path = os.path.join(self.model_dir, 'model_z_bands_unet3d.pt')
-        
         # Delegate to detection module
         info = {}
         masks = detection.detect_z_bands_fast_movie_unet(
@@ -427,7 +426,7 @@ class SarcAsM(SarcAsMBase):
         )
         for name, arr in masks.items():
             self.store.write_mask(name, np.asarray(arr))
-        _dict = {'params.detect_z_bands_fast_movie.model_path': model_path,
+        _dict = {'params.detect_z_bands_fast_movie.model_path': info.get('model', model_path),
                  'params.detect_z_bands_fast_movie.max_patch_size': max_patch_size,
                  'params.detect_z_bands_fast_movie.patch_size_used': info.get('patch_size'),
                  'params.detect_z_bands_fast_movie.normalization_mode': normalization_mode,

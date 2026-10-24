@@ -8,10 +8,11 @@ Runs each model through the same prediction path SarcAsM uses
   tiou   frame-to-frame IoU of the prediction (flicker; the label's own value is 'tiou_label')
 
     python 4_evaluate.py clips/synthetic_val clips/collab_val \
-        --model new=runs/generalist/best.pt --model bundled --with_2d 0.108 --out eval.csv
+        --model new=runs/generalist/best.pt --model generalist --model legacy --with_2d 0.108 --out eval.csv
 
-'--model bundled' is the 3D model shipped with SarcAsM. '--with_2d PIXELSIZE' adds the
-per-frame 2D model (pixel size in µm; synthetic clips take it from their params.jsonl).
+'--model generalist' / '--model legacy' are the 3D models shipped with SarcAsM (default / pre-v1.0.0).
+'--with_2d PIXELSIZE' adds the per-frame 2D model (pixel size in µm; synthetic clips take it from
+their params.jsonl).
 """
 import argparse
 import glob
@@ -45,13 +46,13 @@ def predict_3d(movie, path):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('folders', nargs='+', help='validation clip folders')
-    ap.add_argument('--model', action='append', default=[], help="NAME=CHECKPOINT, or 'bundled'")
+    ap.add_argument('--model', action='append', default=[],
+                    help="NAME=CHECKPOINT, or a bundled alias ('generalist', 'legacy')")
     ap.add_argument('--with_2d', type=float, metavar='PIXELSIZE', help='also score the per-frame 2D model')
     ap.add_argument('--max_clips', type=int, default=50, help='per folder')
     ap.add_argument('--out', default='evaluation.csv')
     args = ap.parse_args()
-    models = {('bundled' if m == 'bundled' else m.split('=', 1)[0]):
-              (None if m == 'bundled' else m.split('=', 1)[1]) for m in args.model}
+    models = {m.split('=', 1)[0]: (m.split('=', 1)[1] if '=' in m else m) for m in args.model}
 
     rows = []
     for folder in args.folders:

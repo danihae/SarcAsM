@@ -41,6 +41,12 @@ GENERALIST_MODELS = {
 #: native resolution and fragments their Z-/M-band lines, while 'legacy' was trained on them.
 AUTO_LEGACY_BELOW_UM = 0.08
 
+# Named 3D Z-band checkpoints for high-speed movies: alias -> filename; see sarcasm/models/README.md.
+Z_BANDS_3D_MODELS = {
+    'generalist': 'model_z_bands_unet3d_v2.pt',
+    'legacy':     'model_z_bands_unet3d.pt',
+}
+
 
 def resolve_generalist_model(model_path, pixelsize, model_dir):
     """Resolve ``model_path`` (None / 'auto' / an alias / a file path) to a checkpoint.
@@ -59,6 +65,17 @@ def resolve_generalist_model(model_path, pixelsize, model_dir):
     else:
         return None, model_path
     return key, os.path.join(model_dir, GENERALIST_MODELS[key][0])
+
+
+def resolve_z_bands_3d_model(model_path, model_dir):
+    """Resolve ``model_path`` (None / an alias / a file path) of the 3D Z-band U-Net to a checkpoint.
+
+    Returns ``(key, path)`` like :func:`resolve_generalist_model`; None means ``'generalist'``.
+    """
+    key = 'generalist' if model_path is None else model_path
+    if key not in Z_BANDS_3D_MODELS:
+        return None, model_path
+    return key, os.path.join(model_dir, Z_BANDS_3D_MODELS[key])
 
 
 def _resize_xy_back(arr: np.ndarray, target_xy: Tuple[int, int]) -> np.ndarray:
@@ -400,9 +417,9 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, model_di
     ----------
     images : np.ndarray
         Images to process.
-    model_path : str
-        Path of trained network weights for 3D U-Net. If None, the bundled
-        z-band model is used.
+    model_path : str or None
+        ``'generalist'`` (or None) for the bundled default, ``'legacy'`` for the 3D model shipped
+        before v1.0.0, any other string for a path to custom 3D U-Net weights.
     model_dir : str
         Directory containing model files.
     max_patch_size : tuple of int or 'auto', optional
@@ -429,8 +446,9 @@ def detect_z_bands_fast_movie_unet(images: np.ndarray, model_path: str, model_di
     """
     logger.info('Predicting sarcomere z-bands ...')
 
-    if model_path is None:
-        model_path = os.path.join(model_dir, 'model_z_bands_unet3d.pt')
+    key, model_path = resolve_z_bands_3d_model(model_path, model_dir)
+    if info is not None:
+        info['model'] = key or model_path
     max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
     if not isinstance(max_patch_size, str) and len(max_patch_size) != 3:
         raise ValueError('patch size for prediction has to be be (frames, x, y)')

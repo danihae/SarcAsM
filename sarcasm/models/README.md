@@ -99,3 +99,48 @@ The same holds for v1 and v2. v2's cell mask matches v1's (area ratio 1.00, 41 i
 mask is larger — median +10 % (interquartile range +3 to +18 %) — so `sarcomere_area_ratio` comes out
 about 10 % higher, and its sarcomere-length spread is wider (table above). Results of the v1.0.0 betas
 reproduce with `model_path='generalist_v1'`.
+
+# 3D Z-band model for high-speed movies
+
+`detect_z_bands_fast_movie` predicts Z-bands from the whole movie at once, for high-speed recordings
+(about 6 or more frames per contraction). Only the Z-bands come from it; M-bands and orientation still
+come from the 2D model.
+
+| alias | file | notes |
+|---|---|---|
+| `generalist` | `model_z_bands_unet3d_v2.pt` | default |
+| `legacy` | `model_z_bands_unet3d.pt` | shipped before v1.0.0 |
+
+```python
+sarc.detect_z_bands_fast_movie()                     # 'generalist'
+sarc.detect_z_bands_fast_movie(model_path='legacy')  # the pre-v1.0.0 3D model
+```
+
+The resolved alias is stored as `params.detect_z_bands_fast_movie.model_path`.
+
+## What changed in v2
+
+`legacy` saw only one kind of movie. On movies from another microscope it recovers only 22–62 % of the
+Z-band pixels the 2D model finds, and on the Fig. 5 movie it drops Z-bands at peak contraction. v2 was trained with `scripts/retrain_unet3d/` on
+40 % synthetic movies with exact labels (stills moved by simulated contraction plus rigid and non-rigid
+jitter, including low photon counts), 30 % of our own movies and 30 % of movies from two other
+microscopes, both labelled frame by frame by the 2D model on flow-denoised frames. It was then fine-tuned
+with a temporal penalty (L1 between consecutive frames, weight 3; the checkpoint with the best validation
+score, after 2 of 12 epochs). The weight trades trajectory noise against sarcomere popping, which is fast and
+physiological. On the Fig. 5 movie, weight 0 / 2 / 3 / 5 / 10 gives a per-frame length noise of
+20.5 / 11.3 / 9.1 / 5.5 / 3.5 nm and finds popping in 10.2 / 9.5 / 8.9 / 8.3 / 6.2 % of sarcomere-beats.
+Weight 3 is the lowest that is no noisier than `legacy`.
+
+| | `legacy` | **v2** |
+|---|---|---|
+| synthetic movies, exact labels: Dice, all frames / fastest-moving quarter | 0.21 / 0.15 | **0.58 / 0.51** |
+| held-out movies from two other microscopes (2D teacher labels): Dice | 0.54 | **0.89** |
+| Fig. 5 movie (Series095, held out), tracked sarcomeres: per-frame length noise | 9.6 nm | 9.1 nm |
+| — popping: sarcomere-beats lengthening > 0.25 µm above rest | 7.7 % | **8.9 %** |
+| — length steps > 0.2 µm between frames, outside peak contraction, per 1000 | **0.39** | 0.63 |
+| — track coverage, median / fragmentation | 0.71 / 1.63 | 0.73 / 1.62 |
+| — pool contraction amplitude | 0.093 µm | 0.094 µm |
+
+Per-frame noise is 1.4826 × MAD of the second difference of each track's length, divided by √6, so rare
+real events such as popping do not enter it. Trajectories differ between the two models (noise, popping
+counts), so pick one per study; the Fig. 5 analysis of the paper used `legacy`.

@@ -13,6 +13,8 @@ All notable changes to SarcAsM are documented here. The format follows
   `"warnings"` list, which explain null values. An error is a JSON object with a hint on the last line of stderr;
   the exit code is 3 for input to fix (missing file, missing or conflicting calibration, implausible axes, unknown
   result key), 2 for bad usage, 1 otherwise. `sarcasm` without a command still opens the GUI. See `docs/cli.rst`.
+- `sarcasm.training` and `scripts/retrain_unet3d/`: make synthetic and 2D-labelled training clips, train and
+  evaluate a 3D Z-band U-Net for your own high-speed movies (README in the scripts folder).
 - `llms.txt` at the repository root: the commands and the rules that keep results correct, for language-model
   agents.
 - Pixel-size check in `analyze_sarcomere_vectors`: the stripe period of the raw image along the sarcomere axis
@@ -32,6 +34,13 @@ All notable changes to SarcAsM are documented here. The format follows
   normal (9.1° → 7.5° from the known axis on held-out micropatterns). Its sarcomere mask is ~10 % larger and its
   length spread wider, so do not mix it with v1 within one study: `model_path='generalist_v1'` reproduces the
   v1.0.0 betas. `'auto'` still picks `legacy` below 0.08 µm/px. Numbers in `sarcasm/models/README.md`.
+- New default 3D Z-band model for high-speed movies, `generalist` = `model_z_bands_unet3d_v2.pt`, trained on
+  synthetic movies with exact labels plus 2D-labelled movies from three microscopes and fine-tuned with a temporal
+  penalty. On held-out movies from other microscopes Dice 0.54 → 0.89; on the Fig. 5 movie tracked sarcomeres are
+  no noisier (per-frame length noise 9.6 → 9.1 nm) and more popping is found (7.7 → 8.9 % of sarcomere-beats). The previous
+  model stays available as `detect_z_bands_fast_movie(model_path='legacy')`; trajectories differ between the two,
+  so pick one per study. `params.detect_z_bands_fast_movie.model_path` now stores the alias. Numbers in
+  `sarcasm/models/README.md`.
 - `import sarcasm` resolves its public names on first access, so it no longer imports torch, numba and matplotlib
   up front (`sarcasm --help` 5.8 s → 0.1 s). `from sarcasm import *` is unchanged.
 - Picking channel 0 of a multi-channel image by default logs a warning instead of info.
