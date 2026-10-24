@@ -36,6 +36,9 @@ from sarcasm.utils import Utils
 # package and the feature dictionary: SL = sarcomere length, ΔSL = its change).
 _LABEL_TIME = 'Time [s]'
 _LABEL_SL = 'Sarcomere length SL [µm]'
+# grouping kind -> row label used with readable_labels
+_KIND_NAMES = {'pool': 'Pool', 'mband': 'M-band', 'myofibril': 'Myofibril', 'domain': 'Domain',
+               'loi': 'LOI', 'custom': 'Group'}
 _LABEL_DELTA_SL = r'$\Delta$SL [µm]'
 
 
@@ -1667,6 +1670,14 @@ class Plots:
         """
         yticks = [-0.2, 0, 0.2]
         delta_slen = motion_obj.loi_data['delta_slen']
+        # a short fibre has fewer sarcomeres than rows: draw the ones it has
+        n_sarc = len(delta_slen)
+        if n_start >= n_sarc:
+            n_start = 0
+        n_rows = min(n_rows, n_sarc - n_start)
+        if n_rows <= 0:
+            ax.text(0.5, 0.5, 'No sarcomeres', ha='center', va='center', transform=ax.transAxes)
+            return
         list_y = np.linspace(0, 1, num=n_rows, endpoint=False)
         for i, y in enumerate(list_y):
             ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
@@ -2510,14 +2521,16 @@ class Plots:
 
     @staticmethod
     def _plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, ylabel,
-                            t_lim, y_lim, n_rows, show_contr, hline='equ', label_offset=0):
+                            t_lim, y_lim, n_rows, show_contr, hline='equ', label_offset=0,
+                            readable_labels=False):
         """Stacked per-group time-series (shared by plot_slen_mean / plot_delta_slen_mean).
 
         ``hline`` controls the dotted reference line per row: ``'equ'`` = the
         equilibrium length (median over the non-contracting frames), ``'zero'`` =
         the ΔSL=0 line (which *is* the equilibrium in delta space), ``None`` = no line.
         ``label_offset`` shifts the row labels (1 gives the 1-based numbering the
-        domain masks use).
+        domain masks use). ``readable_labels`` names the rows by grouping
+        ('Myofibril 3', not 'M3') and keeps y tick labels on the bottom row only.
         """
         matrix = np.asarray(matrix, dtype=float)
         n_groups, n_frames = matrix.shape
@@ -2555,9 +2568,17 @@ class Plots:
             else:
                 PlotUtils.polish_xticks(ax_i)
                 ax_i.tick_params(axis='x', labelsize='x-small')
-            ax_i.set_yticks(yticks)
-            ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
-            ax_i.text(0.02, 0.85, f'{kind[0].upper()}{g + label_offset}', transform=ax_i.transAxes,
+            if readable_labels:
+                # one scale for all rows: lowest and highest tick on the bottom row only
+                ax_i.set_yticks([yticks[0], yticks[-1]])
+                ax_i.set_yticklabels([f'{yt:.2f}' for yt in (yticks[0], yticks[-1])] if i == 0 else [],
+                                     fontsize='x-small')
+            else:
+                ax_i.set_yticks(yticks)
+                ax_i.set_yticklabels([f'{yt:.2f}' for yt in yticks], fontsize='x-small')
+            row_label = (f'{_KIND_NAMES.get(kind, kind)} {g + label_offset}' if readable_labels
+                         else f'{kind[0].upper()}{g + label_offset}')
+            ax_i.text(0.02, 0.85, row_label, transform=ax_i.transAxes,
                       fontsize='x-small', fontweight='bold', color=cm[g])
         ax.set_xlabel(_LABEL_TIME)
         ax.set_ylabel(ylabel)
@@ -2583,7 +2604,7 @@ class Plots:
     def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
                        t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (1.3, 2.0),
                        n_rows: Optional[int] = None, show_contr: bool = True,
-                       use_median: bool = False):
+                       use_median: bool = False, readable_labels: bool = False):
         """
         Plot stacked per-group MEAN sarcomere-length time-series from :meth:`SarcAsM.analyze_track_motion`.
 
@@ -2612,19 +2633,22 @@ class Plots:
             Whether to shade contraction periods. Default is True.
         use_median : bool, optional
             If True, use median sarcomere length instead of mean. Default is False.
+        readable_labels : bool, optional
+            Label rows with the grouping name ('Myofibril 3' instead of 'M3') and put
+            y tick labels only on the bottom row, for many rows. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
         key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen'
         matrix = np.asarray(sarc_obj.data[key])
         group_contr = sarc_obj.data.get(f'motion.{kind}.contr', None)
         Plots._plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, _LABEL_SL,
-                                  t_lim, y_lim, n_rows, show_contr)
+                                  t_lim, y_lim, n_rows, show_contr, readable_labels=readable_labels)
 
     @staticmethod
     def plot_delta_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
                              t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (-0.4, 0.4),
                              n_rows: Optional[int] = None, show_contr: bool = True,
-                             use_median: bool = False):
+                             use_median: bool = False, readable_labels: bool = False):
         """
         Plot stacked per-group MEAN sarcomere-length *change* (ΔSL) time-series.
 
@@ -2653,6 +2677,8 @@ class Plots:
             Whether to shade contraction periods. Default is True.
         use_median : bool, optional
             If True, use median sarcomere length instead of mean. Default is False.
+        readable_labels : bool, optional
+            See :meth:`plot_slen_mean`. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
         key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen'
@@ -2663,7 +2689,8 @@ class Plots:
             c = contr[g] if contr is not None else np.zeros(slen_ts.shape[1], dtype=bool)
             delta[g] = slen_ts[g] - grouped_motion.equilibrium_over_quiet(slen_ts[g], c)
         Plots._plot_group_stacked(ax, sarc_obj, kind, delta, contr, _LABEL_DELTA_SL,
-                                  t_lim, y_lim, n_rows, show_contr, hline='zero')
+                                  t_lim, y_lim, n_rows, show_contr, hline='zero',
+                                  readable_labels=readable_labels)
 
     @staticmethod
     def _track_group_overlay(ax, sarc_obj, *, mode, group=0, kind=None,

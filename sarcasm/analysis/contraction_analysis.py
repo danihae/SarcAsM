@@ -168,6 +168,8 @@ def detect_contractions(
     structure_closing = np.ones(max(1, int(merge_time_max / frametime)))
     structure_opening = np.ones(max(1, int(contr_time_min / frametime)))
     
+    few_cycles = []                  # (group id, n cycles) of groups without a beating rate
+
     # Process each domain
     for domain_idx in range(n_domains):
         slen_timeseries = group_slen[domain_idx]
@@ -215,8 +217,17 @@ def detect_contractions(
                 domain_beating_rate[domain_idx] = 1 / np.mean(inter_beat_intervals)
                 domain_beating_rate_var[domain_idx] = np.std(inter_beat_intervals)
         else:
-            logger.warning(f"{group_label} {domain_idx + id_offset}: Only {n_contr} contraction cycle(s) detected. "
-                          f"Cannot compute beating rate (requires >= 2 cycles).")
+            few_cycles.append((domain_idx + id_offset, n_contr))
+
+    # one line for all groups, not one per group (a movie has hundreds of myofibrils)
+    if len(few_cycles) == 1:
+        gid, n = few_cycles[0]
+        logger.warning(f"{group_label} {gid}: only {n} contraction cycle(s) detected, so no beating rate "
+                       f"(it needs at least 2 cycles).")
+    elif few_cycles:
+        ids = ', '.join(str(g) for g, _ in few_cycles[:10]) + (', …' if len(few_cycles) > 10 else '')
+        logger.warning(f"No beating rate for {len(few_cycles)} of {n_domains} groups ({group_label.lower()} "
+                       f"{ids}): fewer than 2 contraction cycles detected.")
     
     # Per-cycle completeness, NaN-padded to the widest group (like every other
     # per-cycle array). Float, so its per-group nanmean is the complete fraction.

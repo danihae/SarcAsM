@@ -25,6 +25,7 @@ import torch
 from bio_image_unet.progress import ProgressNotifier
 from scipy import stats, sparse
 
+from sarcasm._internal.gpu_watch import watch_metal_errors
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.results_store import Results, export_to_json
 from sarcasm.utils import Utils
@@ -314,23 +315,27 @@ class SarcAsM(SarcAsMBase):
         # Delegate to the detection module, which writes each block of predicted
         # masks straight into the OME-Zarr store as it is produced.
         info = {}
-        detection.detect_sarcomeres_unet(
-            info=info,
-            images=images,
-            model_path=model_path,
-            model_dir=str(self.model_dir),
-            pixelsize=self.metadata.pixelsize,
-            max_patch_size=max_patch_size,
-            normalization_mode=normalization_mode,
-            clip_thres=clip_thres,
-            rescale_factor=rescale_factor,
-            device=self.device,
-            batch_size=batch_size,
-            memory_budget_gb=memory_budget_gb,
-            prune_level=prune_level,
-            make_sink=self.store.create_mask,
-            progress_notifier=progress_notifier
-        )
+
+        def predict():
+            detection.detect_sarcomeres_unet(
+                info=info,
+                images=images,
+                model_path=model_path,
+                model_dir=str(self.model_dir),
+                pixelsize=self.metadata.pixelsize,
+                max_patch_size=max_patch_size,
+                normalization_mode=normalization_mode,
+                clip_thres=clip_thres,
+                rescale_factor=rescale_factor,
+                device=self.device,
+                batch_size=batch_size,
+                memory_budget_gb=memory_budget_gb,
+                prune_level=prune_level,
+                make_sink=self.store.create_mask,
+                progress_notifier=progress_notifier
+            )
+
+        self._predict_on_gpu(predict, 'detect_sarcomeres')
 
         _dict = {
             'params.detect_sarcomeres.frames': list_frames,
@@ -351,6 +356,22 @@ class SarcAsM(SarcAsMBase):
         # the cell mask is one of the predicted outputs: its area / intensity
         # features belong to the detection step, not to a separate call
         self.analyze_cell_mask(frames=list_frames)
+
+    def _predict_on_gpu(self, predict, step: str) -> None:
+        """Run ``predict()``; on Apple GPUs run it once more if macOS aborted GPU work during it
+        (the masks would hold garbage, see :mod:`sarcasm._internal.gpu_watch`), and raise if
+        that happens twice rather than store wrong masks."""
+        for attempt in (1, 2):
+            with watch_metal_errors(self.device) as watch:
+                predict()
+            if not watch.failed:
+                return
+            if attempt == 1:
+                logger.warning(f'{step}: macOS aborted part of the GPU computation (the display needed the '
+                               f'GPU), so the predicted masks may be wrong. Predicting again.')
+        raise RuntimeError(f"{step}: macOS aborted the GPU computation twice, so the predicted masks cannot be "
+                           f"trusted. Close GPU-heavy programs (or hide the movie in the viewer) and run it "
+                           f"again, or use device='cpu'.")
 
     def load_mask_full_stack(self, name: str) -> Optional[np.ndarray]:
         """
@@ -413,18 +434,23 @@ class SarcAsM(SarcAsMBase):
         
         # Delegate to detection module
         info = {}
-        masks = detection.detect_z_bands_fast_movie_unet(
-            info=info,
-            images=self.read_imgs(),
-            model_path=model_path,
-            model_dir=str(self.model_dir),
-            max_patch_size=max_patch_size,
-            normalization_mode=normalization_mode,
-            clip_thres=clip_thres,
-            device=self.device,
-            batch_size=batch_size,
-            progress_notifier=progress_notifier
-        )
+        masks = {}
+
+        def predict():
+            masks.update(detection.detect_z_bands_fast_movie_unet(
+                info=info,
+                images=self.read_imgs(),
+                model_path=model_path,
+                model_dir=str(self.model_dir),
+                max_patch_size=max_patch_size,
+                normalization_mode=normalization_mode,
+                clip_thres=clip_thres,
+                device=self.device,
+                batch_size=batch_size,
+                progress_notifier=progress_notifier
+            ))
+
+        self._predict_on_gpu(predict, 'detect_z_bands_fast_movie')
         for name, arr in masks.items():
             self.store.write_mask(name, np.asarray(arr))
         _dict = {'params.detect_z_bands_fast_movie.model_path': model_path,
@@ -885,16 +911,16 @@ class SarcAsM(SarcAsMBase):
             zbands_name = 'zbands'
             if use_fast_movie_zbands:
                 zbands_source = 'per_frame_2d'
-                logger.info(
-                    'analyze_sarcomere_vectors: using per-frame 2D U-Net Z-bands (zbands.tif). '
-                    'The 3D fast-movie output is not available; run detect_z_bands_fast_movie() '
-                    'to use it.'
+                # the normal case (the 3D fast-movie Z-bands are optional), so not shown by default
+                logger.debug(
+                    'analyze_sarcomere_vectors: using the per-frame 2D U-Net Z-bands; the 3D '
+                    'fast-movie Z-bands (detect_z_bands_fast_movie) were not computed.'
                 )
             else:
                 zbands_source = 'per_frame_2d_forced'
                 logger.info(
-                    'analyze_sarcomere_vectors: using per-frame 2D U-Net Z-bands '
-                    '(zbands.tif) — use_fast_movie_zbands=False.'
+                    'analyze_sarcomere_vectors: using the per-frame 2D U-Net Z-bands '
+                    '(use_fast_movie_zbands=False).'
                 )
 
         # All inputs are read by frame number: the 2D masks map it to their pages, the fast-movie Z-bands (one

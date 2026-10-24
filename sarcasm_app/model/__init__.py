@@ -35,6 +35,12 @@ def _default_contraction_threshold(fallback: float = 0.5) -> float:
         return fallback
 
 
+def default_min_coverage(group_by: str) -> float:
+    """SarcAsM.group_tracks' coverage floor for ``group_by`` when min_coverage=None: chains
+    (myofibril, loi) keep partially tracked sarcomeres, group means drop them."""
+    return SarcAsM._CHAIN_MIN_COVERAGE if group_by in SarcAsM._CHAIN_LEVELS else 0.5
+
+
 class ApplicationModel:
     """
     The ApplicationModel concentrates all necessary parameters for calling the sarcasm_old backend methods
@@ -61,9 +67,10 @@ class ApplicationModel:
     def cell(self) -> Optional[SarcAsM]:
         return self._cell
 
-    def init_cell(self, cell_file):
+    def init_cell(self, cell_file, **kwargs):
+        """Open ``cell_file``; ``kwargs`` (restart, pixelsize, frametime, axes, channel) go to SarcAsM."""
         self.__cell_file_name = cell_file
-        self._cell = SarcAsM(cell_file, use_gui=True)
+        self._cell = SarcAsM(cell_file, use_gui=True, **kwargs)
 
     def is_initialized(self):
         # check if file is loaded, check if viewer is active(not closed)
@@ -122,8 +129,8 @@ class ApplicationModel:
 
 
         self.__parameters.get_parameter(name='structure.vectors.radius').set_value(0.25)
-        self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.2)
-        self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(0)
+        self.__parameters.get_parameter(name='structure.vectors.line_width').set_value(0.3)
+        self.__parameters.get_parameter(name='structure.vectors.interpolation_factor').set_value(4)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_lower').set_value(1.0)
         self.__parameters.get_parameter(name='structure.vectors.length_limit_upper').set_value(3.0)
         self.__parameters.get_parameter(name='structure.vectors.smooth_orientation_sigma').set_value(0.0)
@@ -163,7 +170,9 @@ class ApplicationModel:
         # Group tracks
         self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
         self.__parameters.get_parameter(name='motion.group.reference_frame').set_value(0)
-        self.__parameters.get_parameter(name='motion.group.min_coverage').set_value(0.5)
+        # SarcAsM.group_tracks' floor for the default grouping (myofibril): 0.1 for chains, 0.5 otherwise
+        self.__parameters.get_parameter(name='motion.group.min_coverage').set_value(
+            default_min_coverage(self.__parameters.get_parameter(name='motion.group.by').get_value()))
         self.__parameters.get_parameter(name='motion.group.min_group_size').set_value(1)
 
         # Display of the tracks in the viewer
@@ -204,7 +213,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.channel').set_value(0)
         self.__parameters.get_parameter(name='batch.axes').set_value("")
         self.__parameters.get_parameter(name='batch.force.override').set_value(False)
-        self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(3)
+        self.__parameters.get_parameter(name='batch.thread_pool_size').set_value(1)
         self.__parameters.get_parameter(name='batch.recalculate.for.motion').set_value(False)
         self.__parameters.get_parameter(name='batch.delete_intermediate_masks').set_value(True)
         self.__parameters.get_parameter(name='batch.do_zbands').set_value(True)

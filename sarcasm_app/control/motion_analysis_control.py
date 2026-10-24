@@ -20,12 +20,14 @@ detail panel via :meth:`SarcAsM.get_track_motion`.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import qtutils
 from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import Plots, SarcAsM
@@ -33,7 +35,7 @@ from sarcasm.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from .chain_execution import ChainExecution
 from .popup_export import ExportPopup
-from ..model import ApplicationModel
+from ..model import ApplicationModel, default_min_coverage
 from ..view.collapsible import make_collapsible
 from ..view.parameters_motion_analysis import Ui_Form as MotionAnalysisWidget
 from ..view.track_trace_dock import TrackTraceDock
@@ -41,6 +43,40 @@ from ..view.track_trace_dock import TrackTraceDock
 logger = logging.getLogger(__name__)
 
 _FIBRE_KINDS = ('myofibril', 'loi')
+
+
+#: width of the motion summary figure (inches)
+SUMMARY_WIDTH_IN = 12.0
+
+
+def summary_layout(aspect: float, is_fibre: bool):
+    """Panel layout and row heights (inches) of the motion summary for an image of width /
+    height ``aspect``, so the maps keep their proportions for wide, square and tall movies.
+
+    Wide images get one full-width row per map, square ones two maps side by side, tall
+    ones every map side by side in one row; a map row is as high as the image is at that
+    width, within limits that keep extreme shapes readable.
+    """
+    def height(width_in, lo, hi):
+        return float(np.clip(width_in / aspect, lo, hi))
+
+    traces = [['slen', 'dslen'], ['raster', 'raster']]
+    trace_heights = [4.2, 3.6]
+    if aspect > 2:                                   # wide: full-width maps
+        maps = [['coverage', 'coverage'], ['groups', 'groups']] + ([['fibrils', 'fibrils']] if is_fibre else [])
+        layout = maps[:2] + traces + maps[2:]
+        h = height(SUMMARY_WIDTH_IN, 1.5, 5.0)
+        heights = [h, h] + trace_heights + ([h] if is_fibre else [])
+    elif aspect >= 0.8 or not is_fibre:              # square-ish: maps side by side
+        layout = [['coverage', 'groups']] + traces + ([['fibrils', 'fibrils']] if is_fibre else [])
+        h = height(SUMMARY_WIDTH_IN / 2, 2.5, 8.0)
+        heights = [h] + trace_heights + ([height(SUMMARY_WIDTH_IN, 2.5, 8.0)] if is_fibre else [])
+    else:                                            # tall: the three maps in one row (6-column grid)
+        layout = [['coverage'] * 2 + ['groups'] * 2 + ['fibrils'] * 2,
+                  ['slen'] * 3 + ['dslen'] * 3,
+                  ['raster'] * 6]
+        heights = [height(SUMMARY_WIDTH_IN / 3, 3.0, 9.0)] + trace_heights
+    return layout, heights
 
 
 def _pv(model: ApplicationModel, name: str):
@@ -90,6 +126,16 @@ class MotionAnalysisControl:
             return False
         return True
 
+    def __chk_movie(self) -> bool:
+        """Motion analysis needs a movie; say so instead of failing deep in tracking."""
+        if self.__main_control.model.cell.metadata.n_stack < 2:
+            QMessageBox.warning(self.__motion_analysis_widget, 'Motion analysis needs a movie',
+                                'This file is a single image, so there is no motion to analyse. '
+                                'If it is a movie, check the Axes field (e.g. TYX) and press '
+                                '"Save metadata".')
+            return False
+        return True
+
     def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
 
@@ -119,7 +165,7 @@ class MotionAnalysisControl:
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
-        if not self.__chk_initialized():
+        if not self.__chk_initialized() or not self.__chk_movie():
             return
         cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         worker = self.__main_control.run_async_new(
@@ -211,7 +257,7 @@ class MotionAnalysisControl:
     # master: track -> group -> analyze
     # ------------------------------------------------------------------ #
     def on_analyze_motion(self):
-        if not self.__chk_initialized():
+        if not self.__chk_initialized() or not self.__chk_movie():
             return
         self.__main_control.raise_viewer()
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
@@ -286,9 +332,11 @@ class MotionAnalysisControl:
 
     def __render_fibre_detail(self):
         import matplotlib.pyplot as plt
+        from sarcasm_app.view.figure_window import show_new_figures
         motion = self.__fibre_motion
         if motion is None:
             return
+        before = plt.get_fignums()
         cell = self.__main_control.model.cell
         kind = cell.data.get('motion.groups.kind', '') if cell is not None else ''
         fig, axd = plt.subplot_mosaic([['zpos', 'phase'], ['dslen', 'dslen']],
@@ -305,7 +353,7 @@ class MotionAnalysisControl:
             Plots.plot_popping_events(motion)  # opens its own figure
         except Exception as e:
             logger.debug(f'plot_popping_events skipped: {e}')
-        plt.show()
+        show_new_figures(before, f'Fibre {self.__fibre_group}')
 
     # ------------------------------------------------------------------ #
     # grouped-motion summary
@@ -314,6 +362,8 @@ class MotionAnalysisControl:
         if not self.__chk_initialized():
             return
         import matplotlib.pyplot as plt
+        from sarcasm_app.view.figure_window import show_new_figures
+        before = plt.get_fignums()
         cell = self.__main_control.model.cell
         kind = cell.data.get('motion.groups.analyzed_kind') if cell is not None else None
         if kind is None:
@@ -323,11 +373,10 @@ class MotionAnalysisControl:
         # raster of every sarcomere over one averaged cycle (needs the pooled cycles),
         # else over the full recording
         cycle = 'motion.pool.labels_contr' in cell.data
-        layout = [['coverage', 'groups'], ['slen', 'dslen'], ['raster', 'raster']]
-        if is_fibre:
-            layout.append(['fibrils', 'fibrils'])
-        fig, axd = plt.subplot_mosaic(layout, figsize=(12, 13 if is_fibre else 11),
-                                      constrained_layout=True)
+        H, W = cell.metadata.shape[-2:]
+        layout, heights = summary_layout(W / H, is_fibre)
+        fig, axd = plt.subplot_mosaic(layout, figsize=(SUMMARY_WIDTH_IN, sum(heights)),
+                                      height_ratios=heights, constrained_layout=True)
         def raster(ax):
             if cycle:
                 try:
@@ -342,8 +391,8 @@ class MotionAnalysisControl:
 
         panels = (('coverage', lambda ax: Plots.plot_track_coverage_map(ax, cell)),
                   ('groups', lambda ax: Plots.plot_track_groups(ax, cell)),
-                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell, n_rows=12)),
-                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell, n_rows=12)),
+                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell, n_rows=8, readable_labels=True)),
+                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell, n_rows=8, readable_labels=True)),
                   ('raster', raster))
         for key, fn in panels:
             try:
@@ -352,11 +401,11 @@ class MotionAnalysisControl:
                 logger.warning(f'summary {key} plot failed: {e}')
         if is_fibre:
             try:
-                Plots.plot_track_myofibrils(axd['fibrils'], cell, color_by='beating_rate')
+                Plots.plot_track_myofibrils(axd['fibrils'], cell, color_by='beating_rate', colorbar=True)
             except Exception as e:
                 logger.warning(f'summary fibrils plot failed: {e}')
         fig.suptitle(f'{Path(cell.file_path).name} — {kind}')
-        plt.show()
+        show_new_figures(before, 'Motion summary')
 
     # ------------------------------------------------------------------ #
     # display of the tracks in the viewer + time-series panel + raster
@@ -404,6 +453,8 @@ class MotionAnalysisControl:
             self.__trace_dock.set_source(None, None, 1.0)
             return
         gid = cell.data.get('motion.tracks.group_id')
+        self.__trace_dock.export_dir = os.path.dirname(cell.file_path)
+        self.__trace_dock.export_stem = Path(cell.file_path).stem
         self.__trace_dock.set_source(kin, gid, cell.metadata.frametime, cell.data.get('motion.groups.kind', ''))
 
     def __on_track_selected(self, track_id: int):
@@ -500,6 +551,13 @@ class MotionAnalysisControl:
         p('motion.group.reference_frame').connect(w.sb_group_reference_frame)
         p('motion.group.min_coverage').connect(w.dsb_group_min_coverage)
         p('motion.group.min_group_size').connect(w.sb_group_min_group_size)
+        # the coverage floor follows the grouping, like SarcAsM.group_tracks(min_coverage=None)
+        w.cb_group_by.currentTextChanged.connect(
+            lambda by: w.dsb_group_min_coverage.setValue(default_min_coverage(by)) if by else None)
+        w.dsb_group_min_coverage.setToolTip(
+            'Tracks present in fewer than this fraction of frames are left out of the groups. Set to '
+            '0.1 for myofibril / LOI (a fibre chain should not get holes) and 0.5 for the other '
+            'groupings whenever "Group by" changes; you can then change it.')
         # display
         p('motion.display.color_by').connect(w.cb_display_color_by)
         p('motion.display.dsl_limit').connect(w.dsb_display_dsl_limit)

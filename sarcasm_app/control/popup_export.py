@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QCheckBox, QDialog, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
+    QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
     QLabel, QMessageBox, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
     QWidget,
 )
@@ -96,6 +96,27 @@ class ExportPopup(QDialog):
         detail_layout.addStretch(1)
         root.addWidget(detail_box)
 
+        # Motion: which grouping to export (every grouping analysed for this file)
+        self._cb_kind = None
+        if self._popup_type == 'motion':
+            data = self._model.cell.data
+            kinds = list(data.get('motion.groups.analyzed_kinds') or [])
+            last = data.get('motion.groups.analyzed_kind')
+            if last and last not in kinds:
+                kinds.append(last)
+            if kinds:
+                kind_row = QHBoxLayout()
+                kind_row.addWidget(QLabel('Grouping:'))
+                self._cb_kind = QComboBox()
+                self._cb_kind.addItems(kinds)
+                if last in kinds:
+                    self._cb_kind.setCurrentText(last)
+                self._cb_kind.setToolTip('Each grouping you analysed (pool, M-band, myofibril, ...) is '
+                                         'exported separately: one row per group.')
+                kind_row.addWidget(self._cb_kind)
+                kind_row.addStretch(1)
+                root.addLayout(kind_row)
+
         # Tiered feature groups inside a scroll area
         tiers = STRUCTURE_TIERS if self._popup_type == 'structure' else MOTION_TIERS
         scroll = QScrollArea()
@@ -162,7 +183,7 @@ class ExportPopup(QDialog):
         for section_title, keys in sections.items():
             if not keys:
                 continue
-            section_box = QGroupBox(section_title)
+            section_box = QGroupBox(section_title.replace('&', '&&'))
             grid = QGridLayout(section_box)
             grid.setHorizontalSpacing(16)
             for i, key in enumerate(keys):
@@ -206,10 +227,14 @@ class ExportPopup(QDialog):
         self._btn_xlsx.setToolTip(tooltip)
 
     def _default_save_dir(self) -> str:
+        """The folder of the analysed image (it always exists), else the home folder."""
         try:
-            return self._model.cell.data_dir
+            folder = os.path.dirname(self._model.cell.file_path)
+            if os.path.isdir(folder):
+                return folder
         except Exception:
-            return str(Path.home())
+            pass
+        return str(Path.home())
 
     # ---------------------------------------------------------- export op
 
@@ -220,7 +245,10 @@ class ExportPopup(QDialog):
                                 'Please select at least one metric to export.')
             return
 
-        default_name = f'{self._popup_type}_{self._filename_stem}.{fmt}'
+        stem = self._filename_stem
+        if self._cb_kind is not None:
+            stem = f'{stem}_{self._cb_kind.currentText()}'
+        default_name = f'{self._popup_type}_{stem}.{fmt}'
         default_path = os.path.join(self._default_save_dir(), default_name)
         filter_map = {'csv': 'CSV (*.csv)', 'xlsx': 'Excel (*.xlsx)', 'json': 'JSON (*.json)'}
         path, _ = QFileDialog.getSaveFileName(
@@ -240,23 +268,28 @@ class ExportPopup(QDialog):
         try:
             if self._popup_type == 'motion':
                 Export.write_records(path, data, fmt)
+                summary = f'{len(data)} group(s) × {len(keys)} metric(s)'
             else:
                 Export.write_dict(path, data, fmt, raw=self._rb_full.isChecked())
+                summary = f'{len(keys)} metric(s)'
+            if fmt == 'xlsx':
+                Export.append_info_sheets(path, self._model.cell, keys, registry=self._popup_type)
+                summary += '; sheets "metadata" and "metrics" list the file and each metric\'s unit'
         except Exception as exc:
             logger.exception('Failed to write export file')
             QMessageBox.critical(self, 'Export failed',
                                  f'Could not write {path}:\n{exc}')
             return
 
-        QMessageBox.information(self, 'Export complete',
-                                f'Wrote {len(data)} entries to\n{path}')
+        QMessageBox.information(self, 'Export complete', f'Exported {summary} to\n{path}')
 
     def _build_export_dict(self, keys: List[str]):
         if self._popup_type == 'structure':
             return Export.get_structure_dict(sarc_obj=self._model.cell,
                                              structure_keys=keys)
+        kind = self._cb_kind.currentText() if self._cb_kind is not None else None
         return Export.get_motion_dict_per_group(sarc_obj=self._model.cell,
-                                                motion_keys=keys)
+                                                motion_keys=keys, kind=kind)
 
     # -------------------------------------------------------- public API
 

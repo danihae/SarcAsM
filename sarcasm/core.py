@@ -448,6 +448,14 @@ class SarcAsMBase:
     # more channels than this without an explicit channel= is treated as a mislabelled T/Z axis
     _MAX_PLAUSIBLE_CHANNELS = 6
 
+    def _warn_once(self, message: str) -> None:
+        """Log a metadata warning once per object; the metadata is harvested again when
+        the pixels are first read, which would otherwise repeat it."""
+        seen = self.__dict__.setdefault('_warned', set())
+        if message not in seen:
+            seen.add(message)
+            logger.warning(message)
+
     def _check_channel_count(self, n_chan: int, axes: str) -> None:
         """Fail on an implausible channel count when no channel was chosen explicitly."""
         if self.metadata.channel is not None or n_chan <= self._MAX_PLAUSIBLE_CHANNELS:
@@ -458,11 +466,11 @@ class SarcAsMBase:
         message = (
             f"The image has {n_chan} channels according to its metadata (axes "
             f"'{axes}'), which usually means a time or Z axis was saved as channels. "
-            f"Pass axes= with the true order (e.g. axes='TYX'), or channel=<int> "
+            f"Set the true axis order (e.g. TYX; Python: axes='TYX'), or choose the channel "
             f"if these really are channels.")
         if not self.use_gui:
             raise MetaDataError(message)
-        logger.warning(message)
+        self._warn_once(message)
 
     def _read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a mask from the store, optionally selecting movie ``frames``, like ``read_imgs``.
@@ -1107,11 +1115,10 @@ class SarcAsMBase:
                 if self.metadata.channel is None:
                     self._check_channel_count(n_chan, axes)
                     if n_chan <= self._MAX_PLAUSIBLE_CHANNELS:
-                        logger.warning(
-                            f"Multi-channel image detected (n={n_chan}). "
-                            f"Using channel 0 by default. "
-                            f"Pass SarcAsM(..., channel=<int>) to override."
-                        )
+                        self._warn_once(
+                            f"Multi-channel image detected (n={n_chan}). Using channel 0 by default; "
+                            f"choose another channel if the sarcomeres are in a different one "
+                            f"(Python: channel=<int>).")
                     chan_idx = 0
                 else:
                     chan_idx = int(self.metadata.channel)
@@ -1262,11 +1269,11 @@ class SarcAsMBase:
             if not self.use_gui:
                 raise MetaDataError(message)
             else:
-                logger.warning(message)
+                self._warn_once(message)
 
         if self.metadata.frametime is None and stack_len > 1:
-            logger.warning('Frametime could not be extracted from tif file. '
-                  'Please enter manually if needed (e.g., SarcAsM(file, frametime=0.1)).')
+            self._warn_once('Frame time not found in the file metadata. Enter it before motion '
+                            'analysis (Python: frametime=<seconds per frame>).')
 
         # Update the existing metadata object with extracted values
         self.metadata.axes = axes

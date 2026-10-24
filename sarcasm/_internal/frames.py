@@ -103,8 +103,9 @@ def canonical_frame(frame, n_stack, *, name: str = 'frame') -> int:
 
 
 def parse_frames_text(text) -> Union[None, str, List[int]]:
-    """Parse a typed frame selection: ``'all'``, one frame number, or frame numbers separated by commas,
-    semicolons or spaces (frames start at 0). A trailing separator is ignored.
+    """Parse a typed frame selection: ``'all'``, one frame number, or frame numbers and ranges separated
+    by commas, semicolons or spaces (frames start at 0). A range ``a-b`` includes both ends, so
+    ``'0-2, 5'`` is ``[0, 1, 2, 5]``. A trailing separator is ignored.
 
     Returns
     -------
@@ -114,7 +115,7 @@ def parse_frames_text(text) -> Union[None, str, List[int]]:
     Raises
     ------
     ValueError
-        For anything else (negative numbers, ranges, decimals, letters), naming the offending entry.
+        For anything else (negative numbers, reversed ranges, decimals, letters), naming the offending entry.
     """
     if text is None:
         return None
@@ -126,11 +127,18 @@ def parse_frames_text(text) -> Union[None, str, List[int]]:
     tokens = [t for t in s.replace(';', ',').replace(' ', ',').split(',') if t.strip()]
     if not tokens:
         raise ValueError(f"{text!r} holds no frame number.")
+    usage = ("Use 'all', one frame number (e.g. 3), frame numbers separated by commas (e.g. 0, 4, 9) "
+             "or a range (e.g. 0-99, both ends included); frames start at 0.")
     frames = []
     for t in tokens:
         t = t.strip()
-        if not (t.isascii() and t.isdigit()):
-            raise ValueError(f"{t!r} is not a frame number. Use 'all', one frame number (e.g. 3) or "
-                             "frame numbers separated by commas (e.g. 0, 4, 9); frames start at 0.")
-        frames.append(int(t))
+        a, dash, b = t.partition('-')
+        if dash and a.isascii() and a.isdigit() and b.isascii() and b.isdigit():
+            if int(b) < int(a):
+                raise ValueError(f"{t!r}: a range must go from the lower to the higher frame. {usage}")
+            frames.extend(range(int(a), int(b) + 1))
+        elif t.isascii() and t.isdigit():
+            frames.append(int(t))
+        else:
+            raise ValueError(f"{t!r} is not a frame number or range. {usage}")
     return sorted(set(frames))

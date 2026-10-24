@@ -17,7 +17,8 @@ from typing import Optional
 
 import numpy as np
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QCheckBox, QLabel
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QCheckBox, QLabel, QPushButton,
+                             QFileDialog, QMessageBox)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 
@@ -45,6 +46,9 @@ class TrackTraceDock(QWidget):
         self._track_id: Optional[int] = None
         self._group: Optional[int] = None
         self._frame = 0
+        #: where "Export data" proposes to save (set by the motion control)
+        self.export_dir: Optional[str] = None
+        self.export_stem = 'traces'
 
         self.cb_series = QComboBox()
         self.cb_series.addItems(list(_SERIES))
@@ -61,6 +65,12 @@ class TrackTraceDock(QWidget):
         bar.addWidget(self.chk_group_mean)
         bar.addWidget(self.chk_cycles)
         bar.addStretch(1)
+        self.btn_export = QPushButton('Export data (.csv)…')
+        self.btn_export.setToolTip('Save the plotted time series as a table: time, the group mean, the '
+                                   'clicked sarcomere and every sarcomere of the group (one column each). '
+                                   'The plot itself is saved with the disk icon below.')
+        self.btn_export.clicked.connect(self._on_export)
+        bar.addWidget(self.btn_export)
 
         self.figure = Figure(figsize=(6, 2.6), constrained_layout=True)
         self.canvas = FigureCanvasQTAgg(self.figure)
@@ -223,6 +233,53 @@ class TrackTraceDock(QWidget):
                 lo, hi = min(lo, finite.min()), max(hi, finite.max())
         span = hi - lo if hi > lo else 0.1
         return (lo - 0.15 * span, hi + 0.15 * span)
+
+    def traces_table(self):
+        """The plotted series as a table (pandas DataFrame): ``time [s]``, the group mean, the
+        highlighted track and every member of the shown group, one column each."""
+        import pandas as pd
+        if self._kin is None:
+            return None
+        series_label = self.cb_series.currentText()
+        key, ylabel = _SERIES[series_label]
+        unit = ylabel[ylabel.find('['):] if '[' in ylabel else ''
+        series = np.asarray(self._kin[key], dtype=float)
+        T = series.shape[1]
+        cols = {'time [s]': np.arange(T) * self._frametime}
+        members = None
+        label = 'all tracks'
+        if self._group is not None and self._gid is not None:
+            members = np.flatnonzero(self._gid == self._group)
+            label = f'{self._kind or "group"} {self._group}'
+        if members is None or members.size == 0:
+            members = np.flatnonzero(np.isfinite(series).any(axis=1))
+        with np.errstate(all='ignore'):
+            cols[f'{label} mean {series_label} {unit}'.strip()] = np.nanmean(series[members], axis=0)
+        if self.chk_cycles.isChecked() and 'contr' in self._kin:
+            cols['contracting (group signal)'] = np.asarray(self._kin['contr'], dtype=bool)[:T]
+        ids = self._kin.get('track_ids')
+        for m in members:
+            name = int(ids[m]) if ids is not None else int(m)
+            cols[f'track {name} {series_label} {unit}'.strip()] = series[m]
+        return pd.DataFrame(cols)
+
+    def _on_export(self):
+        import os
+        table = self.traces_table()
+        if table is None:
+            QMessageBox.information(self, 'Nothing to export', 'Track sarcomeres first, then click a sarcomere '
+                                    'or a fibre path in the viewer.')
+            return
+        series = {'ΔSL': 'delta_slen', 'SL': 'slen', 'Velocity': 'velocity'}[self.cb_series.currentText()]
+        part = f'{self._kind or "group"}{self._group}' if self._group is not None else 'all'
+        default = os.path.join(self.export_dir or os.path.expanduser('~'),
+                               f'{self.export_stem}_{part}_{series}.csv')
+        path, _ = QFileDialog.getSaveFileName(self, 'Save time series', default, 'CSV (*.csv)')
+        if not path:
+            return
+        table.to_csv(path, index=False)
+        QMessageBox.information(self, 'Export complete',
+                                f'Saved {table.shape[1] - 1} time series ({table.shape[0]} frames) to\n{path}')
 
     def _draw_cursor(self):
         if self._frametime is None:

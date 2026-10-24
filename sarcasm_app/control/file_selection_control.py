@@ -16,6 +16,8 @@ import json
 import logging
 import os
 
+import numpy as np
+
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
 from sarcasm.type_utils import TypeUtils
@@ -70,8 +72,9 @@ class FileSelectionControl:
         pass
 
     def on_changed_channel(self):
-        self.__main_control.model.cell.metadata.channel = int(self.__file_selection_widget.spinbox_channel.value())
-        self.__main_control.init_image_stack()
+        if self.__main_control.model.cell is None:
+            return
+        self.apply_metadata(channel=int(self.__file_selection_widget.spinbox_channel.value()))
 
 
     def on_set_to_default(self):
@@ -184,40 +187,123 @@ class FileSelectionControl:
     def on_return_pressed_pixel_size_frame_rate(self, event=None):
         if self.__main_control.model.cell is None:
             return
-        pixel_size = self.__file_selection_widget.le_pixel_size.text()
-        if pixel_size is not None and pixel_size != '':
+        values = {}
+        for name, field, label in (('pixelsize', self.__file_selection_widget.le_pixel_size, 'pixel size'),
+                                   ('frametime', self.__file_selection_widget.le_frame_time, 'frame time')):
+            text = field.text().strip()
+            if not text:
+                continue
             try:
-                d_pixel_size = float(pixel_size)
-                if d_pixel_size != 0 and d_pixel_size is not None:
-                    self.__main_control.model.cell.metadata.pixelsize = d_pixel_size
-                    self.__file_selection_widget.le_pixel_size.setStyleSheet("")  # reset style (red background)
+                value = float(text)
             except ValueError:
-                logger.warning('The value in pixel size is not a number')
+                logger.warning(f'The {label} "{text}" is not a number.')
+                field.setStyleSheet(_INVALID_INPUT_QSS)
+                continue
+            if value <= 0:
+                logger.warning(f'The {label} must be positive.')
+                field.setStyleSheet(_INVALID_INPUT_QSS)
+                continue
+            field.setStyleSheet("")
+            values[name] = value
+        if values:
+            self.apply_metadata(**values)
 
-        frame_rate = self.__file_selection_widget.le_frame_time.text()
-        if frame_rate is not None and frame_rate != '':
-            try:
-                d_frame_rate = float(frame_rate)
-                if d_frame_rate != 0 and d_frame_rate is not None:
-                    self.__main_control.model.cell.metadata.frametime = d_frame_rate
-                    self.__file_selection_widget.le_frame_time.setStyleSheet("")  # QLineEdit{background : lightgreen;}
-            except ValueError:
-                logger.warning('The value in frame rate is not a number')
+    #: decimals of pixel size / frame time in the Metadata fields (see _init_meta_data)
+    _FIELD_DECIMALS = 5
 
-        self.__main_control.init_scale_bar()
+    @classmethod
+    def _differs(cls, new, old) -> bool:
+        """Whether a typed value changes the stored one. Numbers are compared as the fields show
+        them, so pressing Enter on an unchanged (rounded) field is not a change."""
+        if new is None:
+            return False
+        if isinstance(new, float) and old is not None:
+            return round(new, cls._FIELD_DECIMALS) != round(float(old), cls._FIELD_DECIMALS)
+        return new != old
 
-    def _init_file(self, file):
+    def apply_metadata(self, pixelsize=None, frametime=None, axes=None, channel=None) -> bool:
+        """Apply calibration / layout typed in the Metadata row to the open file.
+
+        Axes or channel change how the pixels are read, so the file is opened again from
+        scratch. A pixel size (or, with motion results, a frame time) that differs from
+        the one the results were computed with needs a re-analysis: the user confirms that
+        the results are deleted, or the fields go back to the stored values. A frame time
+        the file did not have is simply filled in. Returns True if anything changed.
+        """
+        cell = self.__main_control.model.cell
+        if cell is None:
+            return False
+        md = cell.metadata
+        if axes is not None and 'C' not in axes:
+            channel = None                       # a channel only exists with a C axis
+        layout = self._differs(axes, md.axes) or (channel is not None and self._differs(channel, md.channel))
+        px_changed = self._differs(pixelsize, md.pixelsize)
+        ft_changed = self._differs(frametime, md.frametime)
+        if not (layout or px_changed or ft_changed):
+            return False
+
+        keys = list(cell.data.keys())
+        has_results = bool(keys) or bool(cell.store.exists and cell.store.mask_names())
+        has_motion = any(k.startswith('motion.') for k in keys)
+        needs_restart = layout or (px_changed and has_results) or (ft_changed and md.frametime is not None
+                                                                    and has_motion)
+        if not needs_restart:
+            if px_changed:
+                md.pixelsize = pixelsize
+            if ft_changed:
+                md.frametime = frametime
+                if md.n_stack and md.n_stack > 1:
+                    md.time = np.arange(md.n_stack) * frametime
+            cell.save_metadata()
+            self.__main_control.init_scale_bar()
+            logger.info('Metadata saved.')
+            return True
+
+        what = ', '.join(n for n, c in (('axes/channel', layout), ('pixel size', px_changed),
+                                         ('frame time', ft_changed)) if c)
+        if has_results:
+            answer = QMessageBox.question(
+                self.__file_selection_widget.btn_store_metadata, 'Re-analyse with new metadata?',
+                f'Changing the {what} of an analysed file invalidates its results, which were computed '
+                f'with the old values.\n\nDelete the results of this file and open it again with the new '
+                f'values? (Then run the analysis again.)',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                self._init_meta_data()           # put the stored values back into the fields
+                return False
+        new_axes = axes if axes is not None else md.axes
+        # unchanged values keep their full precision (the fields show them rounded)
+        kwargs = dict(restart=True,
+                      pixelsize=pixelsize if px_changed else md.pixelsize,
+                      frametime=frametime if ft_changed else md.frametime,
+                      axes=new_axes)
+        if 'C' in (new_axes or ''):
+            kwargs['channel'] = channel if channel is not None else md.channel
+        self._init_file(cell.file_path, **kwargs)
+        return True
+
+    def _init_file(self, file, **cell_kwargs):
         # on file changed, clean up old files, napari viewer, models, etc.
+        # cell_kwargs (restart, calibration, axes, channel) are passed to SarcAsM
 
         if self.__main_control.model.currentlyProcessing.get_value():
-            logger.warning('Still processing something')
+            logger.warning('Please wait: another step is still running.')
             return
 
         self.__main_control.clean_up_on_new_image()
         self.__main_control.model.currentlyProcessing.set_value(True)
         self.__main_control.update_progress(10)
 
-        self.__main_control.model.init_cell(file)
+        try:
+            self.__main_control.model.init_cell(file, **cell_kwargs)
+        except Exception as e:
+            logger.error(f'Could not open {file}: {e}')
+            QMessageBox.warning(self.__file_selection_widget.btn_search, 'Could not open the file',
+                                f'{e}\n\nCheck the axes order (e.g. TYX for a movie, YX for an image) and '
+                                f'the channel in the Metadata row.')
+            self.__main_control.update_progress(0)
+            self.__main_control.model.currentlyProcessing.set_value(False)
+            return
         self.__main_control.init_scale_bar()
         self.__main_control.init_image_stack()
         self.__main_control.init_z_band_stack(fastmovie=True)
@@ -232,6 +318,16 @@ class FileSelectionControl:
 
         self.__main_control.init_sarcomere_dots(visible=False)
         self.__main_control.init_track_groups_layer(visible=False)
+        # like after an analysis step: the image and the most advanced result, the rest hidden
+        # (with motion results the track layers, toggled in the Motion tab, are that result)
+        layers = self.__main_control.viewer.layers
+        if 'Sarcomeres' in layers or 'Groups' in layers:
+            self.__main_control.show_only_results()
+        else:
+            latest = next((name for name in ('SarcomereDomains', 'MyofibrilLines', 'SarcomereVectors', 'ZbandMask')
+                           if name in layers), None)
+            self.__main_control.show_only_results(*((latest, 'MidlinePoints') if latest == 'SarcomereVectors'
+                                                     else (latest,) if latest else ()))
         for callback in self.__main_control.file_opened_callbacks:
             callback()
 
@@ -252,13 +348,12 @@ class FileSelectionControl:
             except ValueError:
                 return False
 
-        cell = TypeUtils.unbox(self.__main_control.model.cell)
-        if isfloat(self.__file_selection_widget.le_pixel_size.text()):
-            cell.metadata.pixelsize = float(
-                self.__file_selection_widget.le_pixel_size.text())
-        if isfloat(self.__file_selection_widget.le_frame_time.text()):
-            cell.metadata.frametime = float(
-                self.__file_selection_widget.le_frame_time.text())
+        if self.__main_control.model.cell is None:
+            return
+        pixelsize = (float(self.__file_selection_widget.le_pixel_size.text())
+                     if isfloat(self.__file_selection_widget.le_pixel_size.text()) else None)
+        frametime = (float(self.__file_selection_widget.le_frame_time.text())
+                     if isfloat(self.__file_selection_widget.le_frame_time.text()) else None)
 
         axes = self.__file_selection_widget.le_axes.text().upper()
         # check if all letters are either X, Y, T, C or Z and that not one letter appears more than once
@@ -273,14 +368,13 @@ class FileSelectionControl:
                 logger.warning(f"Duplicate character(s): {''.join(sorted(dup))}")
             return not (invalid or dup)
 
-        axes_valid = validate_letters_warn(axes)
-        if axes_valid:
-            self.__main_control.model.cell.metadata.axes = axes
-            self.__main_control.init_image_stack()
-        else:
+        if not validate_letters_warn(axes) or not axes:
             self.__file_selection_widget.le_axes.setStyleSheet(_INVALID_INPUT_QSS)
-
-        cell.save_metadata()
+            return
+        self.__file_selection_widget.le_axes.setStyleSheet("")
+        channel = (int(self.__file_selection_widget.spinbox_channel.value())
+                   if self.__file_selection_widget.spinbox_channel.isEnabled() else None)
+        self.apply_metadata(pixelsize=pixelsize, frametime=frametime, axes=axes, channel=channel)
 
     def _init_meta_data(self):
         # set metadata
@@ -312,9 +406,17 @@ class FileSelectionControl:
         self.__file_selection_widget.le_axes.setText(str(axes))
 
         # channel
-        if cell.metadata.channel is not None:
-            self.__file_selection_widget.spinbox_channel.setDisabled(False)
-            self.__file_selection_widget.spinbox_channel.setValue(cell.metadata.channel)
-            self.__file_selection_widget.spinbox_channel.setMinimum(0)
-            self.__file_selection_widget.spinbox_channel.setMaximum(cell.metadata.shape_orig[-1] - 1)
+        spin = self.__file_selection_widget.spinbox_channel
+        spin.blockSignals(True)                  # filling the field is not a user change
+        try:
+            if cell.metadata.channel is not None and axes and 'C' in axes:
+                spin.setDisabled(False)
+                spin.setMinimum(0)
+                spin.setMaximum(int(cell.metadata.shape_orig[axes.index('C')]) - 1)
+                spin.setValue(cell.metadata.channel)
+            else:
+                spin.setValue(0)
+                spin.setDisabled(True)
+        finally:
+            spin.blockSignals(False)
 

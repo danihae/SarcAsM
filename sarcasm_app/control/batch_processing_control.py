@@ -12,23 +12,52 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-import glob
 import logging
 import traceback
 from pathlib import Path
 import concurrent.futures
+import importlib
 
 import qtutils
 from PyQt5.QtWidgets import QFileDialog
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import SarcAsM, BatchExport
+from sarcasm import SarcAsM, BatchExport, Export
 from .application_control import ApplicationControl
 from .motion_analysis_control import detect_lois_kwargs
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
 from ..model import patch_size_from_parameters
 
 logger = logging.getLogger(__name__)
+
+
+def _parallel_files_safe() -> bool:
+    """Whether several files may be analysed at once in threads.
+
+    Not with GPU inference (MPS/CUDA kernels from several threads corrupt or crash), and not
+    with numba's default 'workqueue' threading layer, which aborts the process when parallel
+    functions run from several threads (the only layer on macOS without TBB/OpenMP).
+    """
+    from sarcasm import Utils
+    if Utils.get_device().type != 'cpu':
+        return False
+    for module in ('numba.np.ufunc.tbbpool', 'numba.np.ufunc.omppool'):
+        try:
+            importlib.import_module(module)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _safe_pool_size(requested: int) -> int:
+    """The requested number of parallel files, or 1 when parallel files are unsafe here."""
+    if requested > 1 and not _parallel_files_safe():
+        logger.info(f'Analysing the files one after another (thread pool size {requested} requested): '
+                    f'files in parallel are not safe with GPU inference or without a thread-safe '
+                    f'numba threading layer on this computer.')
+        return 1
+    return requested
 
 
 class BatchProcessingControl:
@@ -126,9 +155,9 @@ class BatchProcessingControl:
         """
         tif_files: list[Path] = self.__get_tiff_files(model)
 
-        n_pools = int(model.parameters
-                           .get_parameter(name='batch.thread_pool_size')
-                           .get_value()) or 1
+        n_pools = _safe_pool_size(int(model.parameters
+                                          .get_parameter(name='batch.thread_pool_size')
+                                          .get_value()) or 1)
 
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
@@ -215,6 +244,10 @@ class BatchProcessingControl:
                 msa.get_data()
 
             msa.export_data(file_export)
+            if str(file_export).lower().endswith('.xlsx'):
+                Export.append_info_sheets(str(file_export), None,
+                                          [c for c in msa.data.columns if str(c).startswith('structure.')])
+            logger.info(f'Exported {len(msa.data)} file(s) to {file_export}')
         except Exception as e:
             # marshal the error back to the GUI
             logger.error(f"Export failed: {repr(e)}")
@@ -231,8 +264,8 @@ class BatchProcessingControl:
     def __batch_process_motion_async(self, worker, model):
         progress_notifier = self.__get_progress_notifier(worker)
 
-        tif_files = glob.glob(model.parameters.get_parameter(name='batch.root').get_value() + '*/*.tif')
-        n_pools = model.parameters.get_parameter(name='batch.thread_pool_size').get_value()
+        # the same files as the structure batch: every TIFF below the root, in any subfolder
+        tif_files = [str(p) for p in self.__get_tiff_files(model)]
         frame_time = model.parameters.get_parameter(name='batch.frame.time').get_value()
         pixel_size = model.parameters.get_parameter(name='batch.pixel.size').get_value()
         channel = model.parameters.get_parameter(name='batch.channel').get_value()
