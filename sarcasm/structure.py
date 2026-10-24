@@ -251,8 +251,8 @@ class SarcAsM(SarcAsMBase):
         model_path : str or None, optional
             ``'auto'`` (or None) picks the bundled checkpoint by pixel size: ``'legacy'``
             below 0.08 µm/px (high-magnification, e.g. high-speed single-cell movies),
-            ``'generalist'`` (v1) otherwise. Either alias forces that model; any other
-            string is a path to custom U-Net weights. The resolved model is stored as
+            ``'generalist'`` (v2) otherwise. An alias (``'generalist'``, ``'generalist_v1'``,
+            ``'legacy'``) forces that model; any other string is a path to custom U-Net weights. The resolved model is stored as
             ``params.detect_sarcomeres.model_path``. Default is None.
         max_patch_size : tuple of int or 'auto', optional
             Maximal patch dimensions ``(n_x, n_y)`` for the CNN. 'auto' derives

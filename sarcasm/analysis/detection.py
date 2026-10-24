@@ -32,10 +32,11 @@ logger = logging.getLogger(__name__)
 # The two are not interchangeable within one study (different cell-mask bias);
 # see sarcasm/models/README.md.
 GENERALIST_MODELS = {
-    'generalist': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
-    'legacy':     ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
+    'generalist':    ('model_sarcomeres_generalist_v2.pt', (0.08, 0.45)),
+    'generalist_v1': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
+    'legacy':        ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
 }
-#: Below this pixel size (µm) 'auto' picks 'legacy': v1's scale augmentation only ever
+#: Below this pixel size (µm) 'auto' picks 'legacy': the generalists' scale augmentation only ever
 #: downscales into 0.08-0.45 µm/px, so it has never seen high-magnification frames at
 #: native resolution and fragments their Z-/M-band lines, while 'legacy' was trained on them.
 AUTO_LEGACY_BELOW_UM = 0.08

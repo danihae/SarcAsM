@@ -684,7 +684,7 @@ def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
 @pytest.mark.parametrize('model_path, pixelsize, expected', [
     (None, 0.061, 'legacy'), ('auto', 0.061, 'legacy'), (None, 0.079, 'legacy'),
     (None, 0.08, 'generalist'), ('auto', 0.11, 'generalist'), (None, None, 'generalist'),
-    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'),
+    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'), ('generalist_v1', 0.3, 'generalist_v1'),
 ])
 def test_bundled_model_is_chosen_by_pixel_size(model_path, pixelsize, expected):
     from sarcasm.analysis.detection import resolve_generalist_model, GENERALIST_MODELS

@@ -25,6 +25,13 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- New default 2D sarcomere model, `generalist` = `model_sarcomeres_generalist_v2.pt` (v1 fine-tuned on simulated
+  myofibrils with exact labels and on orientation labels along the myofibril axis). On the detection benchmark of
+  Supplementary Note 2, F1 0.80 → 0.83 (10 of 10 images better) and length error vs manual 68 → 64 nm; thin
+  simulated myofibrils found 18 % → 48 %; orientation on sheared myofibrils follows the myofibril, not the Z-band
+  normal (9.1° → 7.5° from the known axis on held-out micropatterns). Its sarcomere mask is ~10 % larger and its
+  length spread wider, so do not mix it with v1 within one study: `model_path='generalist_v1'` reproduces the
+  v1.0.0 betas. `'auto'` still picks `legacy` below 0.08 µm/px. Numbers in `sarcasm/models/README.md`.
 - `import sarcasm` resolves its public names on first access, so it no longer imports torch, numba and matplotlib
   up front (`sarcasm --help` 5.8 s → 0.1 s). `from sarcasm import *` is unchanged.
 - Picking channel 0 of a multi-channel image by default logs a warning instead of info.
