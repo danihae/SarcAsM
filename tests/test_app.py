@@ -806,3 +806,45 @@ class TestGuiInputFixes2026_10_24:
         with pytest.raises(ValueError) as err:
             canonical_frames(list(range(1_000_000)), 10)
         assert len(str(err.value)) < 300
+
+
+class TestGuiOutputFixes2026_10_24:
+    """Regression tests for the 2026-10-24 review of steps run out of order, empty results and failing exports."""
+
+    def test_batch_failures_are_raised_with_a_count(self):
+        from sarcasm_app.control.batch_processing_control import _raise_batch_failures
+        _raise_batch_failures([], 3)                                  # nothing failed: no error
+        with pytest.raises(RuntimeError, match='1 of 3 files failed') as err:
+            _raise_batch_failures([('/data/broken movie.tif', ValueError('not a TIFF'))], 3)
+        assert 'broken movie.tif: not a TIFF' in str(err.value)
+
+    def test_zero_tracks_give_a_reason_instead_of_a_reshape_error(self):
+        from sarcasm.structure import SarcAsM
+        sarc = SarcAsM.__new__(SarcAsM)
+        sarc.data = {'motion.tracks.slen': np.empty((0, 10)), 'motion.tracks.n': 0}
+        with pytest.raises(ValueError, match='found no tracks'):
+            sarc._require_tracks()
+        sarc.data = {}
+        with pytest.raises(ValueError, match='No tracks found'):
+            sarc._require_tracks()
+
+    def test_groups_layer_tolerates_zero_tracks(self):
+        from types import SimpleNamespace
+        from sarcasm_app.control.application_control import ApplicationControl
+        cell = SimpleNamespace(data={'motion.tracks.group_id': np.empty(0), 'motion.groups.kind': 'myofibril',
+                                     'motion.tracks.positions_px': np.empty((0,))})
+        ctl = SimpleNamespace(model=SimpleNamespace(cell=cell), viewer=MagicMock())
+        ctl.viewer.layers = []
+        ApplicationControl.init_track_groups_layer(ctl)              # used to fail to unpack the shape
+        ctl.viewer.add_shapes.assert_not_called()
+
+    @pytest.mark.parametrize('message, expected', [
+        ('The tracking found no tracks: no sarcomere was followed', 'Min. track duration'),
+        ('No tracks found. Run track_sarcomere_vectors first.', '1. Track sarcomere vectors'),
+        ('No track grouping found. Run group_tracks(...) first', '2. Group tracks'),
+        ('reference_frame 99 was not tracked.', 'reference frame that was tracked'),
+    ])
+    def test_error_hints_match_the_backend_messages(self, message, expected):
+        from sarcasm_app.control.application_control import ApplicationControl
+        hint = next((h for key, h in ApplicationControl.ERROR_HINTS if key in message), '')
+        assert expected in hint

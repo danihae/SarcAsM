@@ -277,7 +277,12 @@ class TrackTraceDock(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, 'Save time series', default, 'CSV (*.csv)')
         if not path:
             return
-        table.to_csv(path, index=False)
+        try:
+            table.to_csv(path, index=False)
+        except OSError as e:
+            QMessageBox.warning(self, 'Not saved', f'Could not write\n{path}\n\n{e.strerror or e}. Choose a '
+                                f'folder you can write to, and close the file if it is open elsewhere.')
+            return
         QMessageBox.information(self, 'Export complete',
                                 f'Saved {table.shape[1] - 1} time series ({table.shape[0]} frames) to\n{path}')
 

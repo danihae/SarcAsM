@@ -245,6 +245,23 @@ class ExportPopup(QDialog):
                                 'Please select at least one metric to export.')
             return
 
+        if self._popup_type == 'structure':
+            data_keys = self._model.cell.data.keys() if self._model.cell is not None else ()
+            missing = [k for k in keys if k not in data_keys]
+            if len(missing) == len(keys):
+                QMessageBox.warning(self, 'Nothing to export',
+                                    'None of the selected metrics has been analysed for this file. Run the '
+                                    'structure analysis first.')
+                return
+            if missing:
+                listed = '\n'.join(missing[:8]) + (f'\n... and {len(missing) - 8} more' if len(missing) > 8 else '')
+                answer = QMessageBox.question(
+                    self, 'Some metrics not analysed',
+                    f'{len(missing)} of the {len(keys)} selected metrics were not analysed and will be empty:\n\n'
+                    f'{listed}\n\nExport anyway?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if answer != QMessageBox.Yes:
+                    return
+
         stem = self._filename_stem
         if self._cb_kind is not None:
             stem = f'{stem}_{self._cb_kind.currentText()}'

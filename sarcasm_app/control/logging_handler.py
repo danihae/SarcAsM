@@ -133,8 +133,9 @@ class QTextEditHandler(logging.Handler):
         # Insert prefix (if any) and message with color, on a line of its own: the
         # progress timer (ApplicationControl.debug_replace) leaves no trailing newline
         cursor.setCharFormat(text_format)
-        text = self.text_edit.toPlainText()
-        lead = '\n' if text and not text.endswith('\n') else ''
+        # a non-empty last line means the previous text did not end with a newline
+        # (checking the last block, not the whole text, keeps a long log fast)
+        lead = '\n' if self.text_edit.document().lastBlock().text() else ''
         cursor.insertText(lead + prefix + message + '\n')
         
         # Scroll to bottom to show latest message

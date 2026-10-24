@@ -13,13 +13,14 @@
 
 
 import logging
+import os
 import traceback
 from pathlib import Path
 import concurrent.futures
 import importlib
 
 import qtutils
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import SarcAsM, BatchExport, Export
@@ -48,6 +49,17 @@ def _parallel_files_safe() -> bool:
         except Exception:
             continue
     return False
+
+
+def _raise_batch_failures(failures, n_files: int):
+    """End a batch that had failing files with an error naming them (the worker shows it in a dialog);
+    the other files were analysed and saved."""
+    if not failures:
+        return
+    listed = '\n'.join(f'{os.path.basename(str(f))}: {e}' for f, e in failures[:10])
+    more = f'\n... and {len(failures) - 10} more (see the log)' if len(failures) > 10 else ''
+    raise RuntimeError(f'{len(failures)} of {n_files} files failed; the other {n_files - len(failures)} were '
+                       f'analysed and saved.\n\n{listed}{more}')
 
 
 def _safe_pool_size(requested: int) -> int:
@@ -109,8 +121,23 @@ class BatchProcessingControl:
                     hh_current, mm_current, ss_current, hh_eta, mm_eta, ss_eta)))
         return progress_notifier
 
-    def on_btn_batch_processing_structure(self):
+    def __batch_files_or_explain(self) -> bool:
+        """Whether the batch folder holds .tif files; otherwise say so in a dialog (the log is easy to miss)."""
+        root = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
+        if not root or str(root) == 'None':
+            QMessageBox.information(self.__batch_processing_widget.btn_batch_processing_structure,
+                                    'No folder chosen', 'Choose the folder with your .tif files first.')
+            return False
+        if not self.__get_tiff_files(self.__main_control.model):
+            QMessageBox.information(self.__batch_processing_widget.btn_batch_processing_structure,
+                                    'No .tif files', f'No .tif / .tiff files were found in\n{root}\n'
+                                    f'or its subfolders.')
+            return False
+        return True
 
+    def on_btn_batch_processing_structure(self):
+        if not self.__batch_files_or_explain():
+            return
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_structure_async,
                                                    start_message='Start batch processing structure ',
@@ -120,7 +147,12 @@ class BatchProcessingControl:
         pass
 
     def __get_tiff_files(self, model):
-        root = Path(model.parameters.get_parameter(name='batch.root').get_value())
+        root = model.parameters.get_parameter(name='batch.root').get_value()
+        if not root or str(root) == 'None' or not Path(root).is_dir():
+            logger.warning(f'The batch folder {root!r} does not exist.' if root and str(root) != 'None'
+                           else 'Choose the batch folder first.')
+            return []
+        root = Path(root)
 
         excluded_names = {
             'zbands.tif',
@@ -176,6 +208,7 @@ class BatchProcessingControl:
             except Exception as exc:          # capture exception -> propagate
                 return (file_, exc)
 
+        failures = []
         # Kick off the pool and iterate over completed futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_pools) as pool:
             future_map = {pool.submit(_run_single, f): f for f in tif_files}
@@ -193,12 +226,14 @@ class BatchProcessingControl:
 
                 file_, err = fut.result()     # unpack tuple returned above
                 if err is not None:
+                    failures.append((file_, err))
                     # Marshal logging back to the Qt main thread
                     qtutils.inmain(
                         self.__main_control.debug,
                         message=f'Exception while processing {file_}: {err!r}'
                     )
                     traceback.print_exception(err)
+        _raise_batch_failures(failures, len(tif_files))
 
 
     def on_btn_batch_export_structure(self):
@@ -207,8 +242,7 @@ class BatchProcessingControl:
         tif_files = self.__get_tiff_files(model)
         folder = self.__main_control.model.parameters.get_parameter(name='batch.root').get_value()
 
-        if not tif_files:                                              # nothing to do
-            logger.warning("No processable TIFF files were found in the selected directory.")
+        if not self.__batch_files_or_explain():                        # nothing to do
             return
 
         # let the user pick / create the Excel workbook
@@ -216,10 +250,12 @@ class BatchProcessingControl:
         file_export, _ = QFileDialog.getSaveFileName(
             caption="Save structure measurements",
             directory=str(default),
-            filter="Excel Workbook (*.xlsx);;All Files (*)"
+            filter="Excel Workbook (*.xlsx)"
         )
         if not file_export:                                            # user pressed Cancel
             return
+        if not file_export.lower().endswith('.xlsx'):                  # the content is always a workbook
+            file_export = str(Path(file_export).with_suffix('.xlsx'))
 
         # store arguments for the worker and launch it asynchronously
         self.__export_args = (tif_files, Path(file_export))
@@ -248,12 +284,16 @@ class BatchProcessingControl:
                 Export.append_info_sheets(str(file_export), None,
                                           [c for c in msa.data.columns if str(c).startswith('structure.')])
             logger.info(f'Exported {len(msa.data)} file(s) to {file_export}')
-        except Exception as e:
-            # marshal the error back to the GUI
-            logger.error(f"Export failed: {repr(e)}")
-            traceback.print_exception(e)
+        except PermissionError as e:
+            # re-raised: the worker reports it in a dialog and no "Finished" follows
+            raise PermissionError(f'Could not write {file_export}: {e.strerror or e}. Choose a folder you can '
+                                  f'write to, and close the file if it is open in Excel.') from e
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f'Could not write {file_export}: the folder does not exist.') from e
 
     def on_btn_batch_processing_motion(self):
+        if not self.__batch_files_or_explain():
+            return
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_motion_async,
                                                    start_message='Start batch processing motion ',
@@ -272,17 +312,18 @@ class BatchProcessingControl:
         axes = model.parameters.get_parameter(name='batch.axes').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
 
+        failures = []
         for i, file in enumerate(progress_notifier.iterator(tif_files)):
             try:
                 self.__single_motion_analysis(file, frame_time, pixel_size, channel, axes, force_override, model)
             except Exception as e:
+                failures.append((file, e))
                 # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
                                message='Exception happened during processing of file:' + file)
                 qtutils.inmain(self.__main_control.debug, message=f'Error: {repr(e)}')
                 qtutils.inmain(self.__main_control.debug, message='')
-            pass
-        pass
+        _raise_batch_failures(failures, len(tif_files))
 
     @staticmethod
     def __get_sarc_object(file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
@@ -452,7 +493,9 @@ class BatchProcessingControl:
 
         sarc_obj.store_structure_data()
         if model.parameters.get_parameter('batch.delete_intermediate_masks').get_value():
-            sarc_obj.remove_intermediate_masks()
+            # tracking re-measures lengths on the Z-band masks: a movie keeps them for the motion analysis
+            keep = ('zbands', 'zbands_fast_movie') if (sarc_obj.metadata.n_stack or 1) > 1 else ()
+            sarc_obj.remove_intermediate_masks([m for m in sarc_obj._STORE_MASKS if m not in keep])
 
         pass
 

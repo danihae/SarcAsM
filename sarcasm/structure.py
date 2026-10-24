@@ -1651,6 +1651,8 @@ class SarcAsM(SarcAsMBase):
         # re-tracking changes track identities: drop any prior grouping
         self._invalidate_groupings()
         logger.info(f'Tracked {out["motion.tracks.n"]} sarcomere query points over {len(list_frames)} frames.')
+        if out['motion.tracks.n'] == 0:
+            logger.warning(self._NO_TRACKS_MESSAGE)
         if self.auto_save:
             self.store_structure_data()
 
@@ -1799,7 +1801,7 @@ class SarcAsM(SarcAsMBase):
             unordered levels pool/m-band/domain/custom; it carries the within-fibre
             rank only for the myofibril level).
         """
-        if 'motion.tracks.slen' not in self.data:
+        if 'motion.tracks.slen' not in self.data:   # zero tracks give an empty table
             raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
 
         n_tracks = int(self.data.get('motion.tracks.n', 0))
@@ -1884,8 +1886,7 @@ class SarcAsM(SarcAsMBase):
             equilibrium was taken against (all False without a pooled analysis);
             ``'coverage'`` ``(n_tracks,)``.
         """
-        if 'motion.tracks.slen' not in self.data:
-            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+        self._require_tracks()
         n_tracks = int(self.data.get('motion.tracks.n', 0))
         slen = np.asarray(self.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)
         T = slen.shape[1]
@@ -2109,8 +2110,7 @@ class SarcAsM(SarcAsMBase):
         or the recipe change; a stale :meth:`analyze_track_motion` result is then
         detected on read.
         """
-        if 'motion.tracks.slen' not in self.data:
-            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+        self._require_tracks()
         if by not in self._GROUPING_LEVELS:
             raise ValueError(f"Unknown grouping '{by}'. Valid: {self._GROUPING_LEVELS}.")
         reference_frame = self._canonical_frame(reference_frame, name='reference_frame')
@@ -2373,6 +2373,17 @@ class SarcAsM(SarcAsMBase):
         if pv is not None:
             return int(sum(len(np.asarray(p)) for p in pv if p is not None))
         return 0
+
+    _NO_TRACKS_MESSAGE = ('The tracking found no tracks: no sarcomere was followed for at least '
+                          'min_track_duration_s. Check that it is shorter than the movie and that the sarcomere '
+                          'vectors were analyzed on every frame.')
+
+    def _require_tracks(self):
+        """Raise a ValueError naming the reason when there are no tracks to work with."""
+        if 'motion.tracks.slen' not in self.data:
+            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+        if int(self.data.get('motion.tracks.n', 0)) == 0:
+            raise ValueError(self._NO_TRACKS_MESSAGE)
 
     def _tracked_frame_index(self, reference_frame: int) -> int:
         """Window index (into the tracks_* time axis) of an absolute movie frame."""

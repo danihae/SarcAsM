@@ -61,6 +61,26 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Fixed
 
+- GUI, careless input: a file that failed to display (wrong axes, not an image) left the app busy until
+  restart; only .tif/.tiff and .ome.zarr are opened (no stray store next to other files); pixel size and
+  frame time refuse 0, negative, nan, inf and text in both Enter and "Store metadata" (a decimal comma is
+  accepted, pixel size 0.01–0.5 µm); axes that do not match the image are refused before they are saved;
+  the previous file's frame time is no longer saved into the next file; the re-analyse question comes once
+  per Enter; metadata cannot change while a step runs; a parameter file with wrong values leaves the
+  current ones and names the rejected keys.
+- GUI, results: a file with zero tracks or without lateral Z-band links could no longer be opened; zero
+  tracks now give "the tracking found no tracks" with a hint (lower the minimum track duration) instead of
+  reshape errors. Tracking after a structure analysis of only some frames asks first. "Plot summary" after
+  re-grouping asks to analyse the new grouping instead of mixing both. Structure export of metrics that
+  were not analysed asks first (or refuses when none were). Cancelling "Search network" keeps the network.
+- GUI batch: a missing folder or one without .tif files is said in a dialog; files that fail are listed in
+  a dialog at the end ("2 of 5 files failed") instead of only in the log; export errors (read-only or
+  missing folder) are shown and the batch export always writes .xlsx; "Delete intermediate masks" keeps
+  the Z-band masks of movies, which the motion analysis needs.
+- GUI: the log panel no longer slows down as it grows; the motion export's default file name no longer
+  repeats the grouping; the batch folder field no longer shows "None".
+- Out-of-range frame errors list at most a few frame numbers (a selection like 0-999999 produced a
+  7 MB message).
 - GUI: the structure analysis of a single image (one frame) ended with "Vectors dimensions (3) must be
   equal to ndim (2)" and showed no sarcomere arrows; the domain layer got a needless frame slider. Motion
   analysis on a single image now says it needs a movie instead of failing inside tracking.

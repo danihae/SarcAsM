@@ -349,12 +349,12 @@ class StructureAnalysisControl:
     def on_btn_search_network(self):
         # f_name is a tuple
         f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
-        if f_name is not None:
+        if f_name is not None and f_name[0]:     # Cancel returns ('', ''): keep the current network
             self.__structure_parameters_widget.le_network.setText(f_name[0])
 
     def on_btn_fast_movie_search_network(self):
         f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
-        if f_name is not None:
+        if f_name is not None and f_name[0]:
             self.__structure_parameters_widget.le_fast_movie_network_model.setText(f_name[0])
         pass
 

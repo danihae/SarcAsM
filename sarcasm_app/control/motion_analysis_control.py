@@ -136,6 +136,21 @@ class MotionAnalysisControl:
             return False
         return True
 
+    def __chk_all_frames(self) -> bool:
+        """Tracking follows only the frames with sarcomere vectors: ask before tracking a part of the movie."""
+        cell = self.__main_control.model.cell
+        frames = cell.data.get('params.analyze_sarcomere_vectors.frames')
+        n_stack = int(cell.metadata.n_stack or 1)
+        if frames is None or len(frames) >= n_stack:
+            return True
+        answer = QMessageBox.question(
+            self.__motion_analysis_widget, 'Track only part of the movie?',
+            f'The structure analysis covered {len(frames)} of {n_stack} frames, so the tracking can follow the '
+            f'sarcomeres only in those frames.\n\nTo analyse the whole movie, click No, select "All frames" in '
+            f'the Structure tab and run the structure analysis again.\n\nTrack the {len(frames)} frames anyway?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return answer == QMessageBox.Yes
+
     def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
 
@@ -165,7 +180,7 @@ class MotionAnalysisControl:
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
-        if not self.__chk_initialized() or not self.__chk_movie():
+        if not self.__chk_initialized() or not self.__chk_movie() or not self.__chk_all_frames():
             return
         cell: SarcAsM = TypeUtils.unbox(self.__main_control.model.cell)
         worker = self.__main_control.run_async_new(
@@ -257,7 +272,7 @@ class MotionAnalysisControl:
     # master: track -> group -> analyze
     # ------------------------------------------------------------------ #
     def on_analyze_motion(self):
-        if not self.__chk_initialized() or not self.__chk_movie():
+        if not self.__chk_initialized() or not self.__chk_movie() or not self.__chk_all_frames():
             return
         self.__main_control.raise_viewer()
         chain = ChainExecution(self.__main_control.model.currentlyProcessing, self.__main_control.debug)
@@ -368,6 +383,15 @@ class MotionAnalysisControl:
         kind = cell.data.get('motion.groups.analyzed_kind') if cell is not None else None
         if kind is None:
             logger.warning('No track motion analyzed yet — run "Analyze track motion" first.')
+            return
+        current = cell.data.get('motion.groups.kind')
+        if current != kind or (cell.data.get('params.analyze_track_motion.grouping_hash')
+                               != cell.data.get('motion.groups.hash')):
+            # the tracks were grouped again after the analysis: the summary would mix both groupings
+            QMessageBox.information(self.__motion_analysis_widget, 'Analyze the new grouping first',
+                                    f'The tracks were grouped again ({current}) after the last motion analysis '
+                                    f'({kind}). Click "3. Analyze track motion" (or "Track → Group → Analyze"), '
+                                    f'then plot the summary.')
             return
         is_fibre = kind in _FIBRE_KINDS
         # raster of every sarcomere over one averaged cycle (needs the pooled cycles),
@@ -503,8 +527,7 @@ class MotionAnalysisControl:
         if not self.__chk_initialized():
             return
         cell = self.__main_control.model.cell
-        kind = cell.data.get('motion.groups.analyzed_kind', '') if cell is not None else ''
-        stem = f'{Path(cell.file_path).stem}_{kind}'
+        stem = Path(cell.file_path).stem         # the popup appends the chosen grouping
         self.__export_popup = ExportPopup(self.__main_control.model, self.__main_control,
                                           popup_type='motion', filename_stem=stem)
         self.__export_popup.show_popup()

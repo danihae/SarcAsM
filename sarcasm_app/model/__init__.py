@@ -331,7 +331,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.force.override')
         self.__parameters.set_parameter(name='batch.thread_pool_size')
         self.__parameters.set_parameter(name='batch.delete_intermediate_masks')
-        self.__parameters.set_parameter(name='batch.root')
+        self.__parameters.set_parameter(name='batch.root', value='')   # not None: the field showed 'None'
         self.__parameters.set_parameter(name='batch.recalculate.for.motion')
         self.__parameters.set_parameter(name='batch.do_zbands')
         self.__parameters.set_parameter(name='batch.do_vectors')

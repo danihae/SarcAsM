@@ -140,8 +140,7 @@ class ApplicationControl:
             cursor.insertText(message)
         else:
             cursor.movePosition(QTextCursor.End)
-            text = te.toPlainText()
-            cursor.insertText(('' if not text or text.endswith('\n') else '\n') + message)
+            cursor.insertText(('\n' if te.document().lastBlock().text() else '') + message)
         TypeUtils.if_present(te.verticalScrollBar(), lambda sc: sc.setValue(sc.maximum()))
 
     def set_debug_action(self, debug_action):
@@ -312,7 +311,7 @@ class ApplicationControl:
         """``SarcAsM.get_track_kinematics()`` of the current cell, cached until the
         tracks, the grouping or the pooled contraction state change. None without tracks."""
         cell = self.model.cell
-        if cell is None or 'motion.tracks.slen' not in cell.data:
+        if cell is None or 'motion.tracks.slen' not in cell.data or not int(cell.data.get('motion.tracks.n', 0)):
             return None
         key = (id(cell.data.get('motion.tracks.slen')), cell.data.get('motion.groups.hash'),
                id(cell.data.get('motion.pool.contr')))
@@ -472,8 +471,12 @@ class ApplicationControl:
         if kind not in ('myofibril', 'loi'):
             return
         pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)
+        if pos.ndim < 3 or pos.shape[0] == 0:
+            return                               # no tracks
         n_tracks, T = pos.shape[:2]
         gid = np.asarray(cell.data['motion.tracks.group_id']).reshape(-1)
+        if gid.size == 0:
+            return
         order = np.asarray(cell.data.get('motion.tracks.group_order', np.zeros(n_tracks))).reshape(-1)
         if gid.shape[0] != n_tracks:
             return
@@ -804,8 +807,9 @@ class ApplicationControl:
 
             z_ends_frame = np.asarray(cell.data['structure.zbands.ends'][frame], dtype=float) / pixelsize
             z_links_frame = cell.data['structure.zbands.lat_links'][frame]
-            if z_links_frame is None or z_links_frame.size == 0:
+            if z_links_frame is None or np.size(z_links_frame) == 0:
                 continue
+            z_links_frame = np.asarray(z_links_frame)
             for (i, k, j, l) in z_links_frame.T:
                 p0 = z_ends_frame[i, k]
                 p1 = z_ends_frame[j, l]
@@ -1049,6 +1053,8 @@ class ApplicationControl:
         self.__worker_thread.finished.connect(self.__worker_thread.deleteLater)
 
         step = start_message.strip()
+        if step.startswith('Start '):          # 'Start batch processing structure' -> 'Batch processing structure'
+            step = step[6:7].upper() + step[7:]
         worker.exception.connect(lambda text: self.report_error(step, text))
         worker.progress.connect(self.update_progress)
         worker.progress_details.connect(self.debug_replace)
@@ -1069,7 +1075,14 @@ class ApplicationControl:
          'sarcomeres of every frame.'),
         ('Required analysis mask',
          'Run "1. Detect sarcomeres" (or "Run full structure analysis") first.'),
-        ('not tracked', 'Run "1. Track sarcomere vectors" (or "Track → Group → Analyze") first.'),
+        ('found no tracks', 'Lower "Min. track duration" in the Motion tab (it must be shorter than the movie) '
+                            'and run the structure analysis with "All frames" selected.'),
+        ('No tracks found', 'Run "1. Track sarcomere vectors" (or "Track → Group → Analyze") first.'),
+        ('No track grouping found', 'Run "2. Group tracks" (or "Track → Group → Analyze") first.'),
+        ('not tracked', 'Choose a reference frame that was tracked (the tracking covers only the frames '
+                        'of the structure analysis).'),
+        ('invalid numeric entries', 'Check the tracking parameters: the maximum displacements must be larger '
+                                    'than 0.'),
         ('No track motion', 'Run the motion analysis ("Track → Group → Analyze") first.'),
         ('MetaDataError', 'Check frame time, pixel size, axes and channel in the Metadata row.'),
         ('frametime', 'Enter the frame time (seconds per frame) in the Metadata row.'),
