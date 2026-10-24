@@ -214,6 +214,82 @@ def orientation_at_points(
     return filtered / 2
 
 
+def extend_midline_ends(
+        midline: np.ndarray,
+        mbands: np.ndarray,
+        orientation_field: np.ndarray,
+        radius: int,
+        stop_level: float = 0.5,
+) -> np.ndarray:
+    """Extend each end of a skeletonized M-band along the M-band to its true end.
+
+    Thinning erodes an M-band at both ends by about half its thickness, so a short
+    M-band (thin myofibril) collapses to one or two pixels. From every line end
+    (and every isolated pixel, in both directions) this marches in 1-px steps along
+    the M-band direction, perpendicular to the local sarcomere axis, and adds pixels
+    while the M-band map stays at or above ``stop_level``. With the U-Net's
+    probability map that is its 0.5 decision boundary, where a blurred band of
+    known length reaches its true end.
+
+    Parameters
+    ----------
+    midline : np.ndarray
+        2D boolean skeleton of the M-band mask.
+    mbands : np.ndarray
+        2D M-band map; probabilities, or a boolean mask (then the march stops at
+        the mask edge).
+    orientation_field : np.ndarray
+        ``(2, H, W)`` sarcomere orientation field.
+    radius : int
+        Disk radius in pixels for the orientation median at the line ends.
+    stop_level : float, optional
+        Lowest M-band value the extension may enter. Default is 0.5.
+
+    Returns
+    -------
+    np.ndarray
+        Boolean midline with extended ends.
+    """
+    midline = midline.astype(bool)
+    out = midline.copy()
+    height, width = midline.shape
+    inside = mbands >= stop_level
+
+    n_neighbors = ndimage.convolve(midline.astype(np.uint8), np.ones((3, 3), np.uint8), mode='constant') - 1
+    rows, cols = np.nonzero(midline & (n_neighbors <= 1))
+    if rows.size == 0:
+        return out
+    theta = orientation_at_points(orientation_field, rows, cols, radius)
+    # M-band direction in (row, col), perpendicular to the sarcomere axis (sin θ, cos θ)
+    direction = np.stack((np.cos(theta), -np.sin(theta)), axis=1)
+
+    # point outwards: away from the mean offset of the line pixels within 2 px
+    offsets = np.arange(-2, 3)
+    count = ndimage.correlate(midline.astype(np.float64), np.ones((5, 5)), mode='constant')[rows, cols]
+    back_row = ndimage.correlate(midline.astype(np.float64), np.repeat(offsets, 5).reshape(5, 5),
+                                 mode='constant')[rows, cols] / count
+    back_col = ndimage.correlate(midline.astype(np.float64), np.tile(offsets, 5).reshape(5, 5),
+                                 mode='constant')[rows, cols] / count
+    dot = back_row * direction[:, 0] + back_col * direction[:, 1]
+    isolated = np.isclose(dot, 0) & (n_neighbors[rows, cols] == 0)
+    sign = np.where(dot > 0, -1.0, 1.0)
+    # isolated pixels have no inward side: march both ways
+    starts = np.concatenate((np.stack((rows, cols), 1), np.stack((rows[isolated], cols[isolated]), 1)))
+    steps = np.concatenate((direction * sign[:, None], -direction[isolated]))
+
+    pos = starts.astype(np.float64)
+    active = np.ones(len(pos), dtype=bool)
+    while active.any():
+        pos[active] += steps[active]
+        r = np.rint(pos[:, 0]).astype(np.int64)
+        c = np.rint(pos[:, 1]).astype(np.int64)
+        in_image = (r >= 0) & (r < height) & (c >= 0) & (c < width)
+        active &= in_image
+        active[active] &= inside[r[active], c[active]]
+        out[r[active], c[active]] = True
+    return out
+
+
 def get_sarcomere_vectors(
         zbands: np.ndarray,
         mbands: np.ndarray,
@@ -225,6 +301,7 @@ def get_sarcomere_vectors(
         linewidth: float = 0.3,
         interpolation_method: str = 'linear',
         peak_prominence: float = 0.4,
+        threshold_mbands: float = 0.25,
 ) -> Tuple[Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List],
 Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List]]:
     """Extract sarcomere orientation and length vectors.
@@ -234,7 +311,10 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     zbands : np.ndarray
         2D semantic segmentation map of Z-bands.
     mbands : np.ndarray
-        2D semantic segmentation map of M-bands.
+        2D M-band probability map. The mask is ``mbands > threshold_mbands``; its
+        skeleton is extended at both ends to the 0.5 level of the map (see
+        :func:`extend_midline_ends`). A boolean mask is also accepted; the ends
+        then extend to the mask edge.
     orientation_field : np.ndarray
         Sarcomere orientation field.
     pixelsize : float
@@ -255,6 +335,9 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         ``scipy.signal.find_peaks`` prominence threshold used inside
         :func:`Utils.process_profiles_batch`, applied to the per-profile
         min-max normalised profile. Default is 0.4.
+    threshold_mbands : float, optional
+        Threshold that binarizes the M-band map before skeletonization. Default
+        is 0.25.
 
     Returns
     -------
@@ -276,8 +359,9 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     radius_pixels = max(int(round(median_filter_radius / pixelsize, 0)), 1)
     linewidth_pixels = max(int(round(linewidth / pixelsize, 0)), 1)
 
-    # skeletonize mbands
-    mbands_skel = skeletonize(mbands, method='lee')
+    # skeletonize mbands, then restore the ends that thinning erodes
+    mbands_skel = skeletonize(mbands > threshold_mbands, method='lee') > 0
+    mbands_skel = extend_midline_ends(mbands_skel, mbands, orientation_field, radius_pixels)
 
     # label mbands
     midline_labels, n_mbands = ndimage.label(mbands_skel,

@@ -309,7 +309,7 @@ def test_fast_movie_z_bands_are_paired_with_their_own_frame(crop_copy):
     sarc.detect_sarcomeres(frames=1, **DETECT)
     sarc.analyze_sarcomere_vectors(frames='all')
     z = sarc._read_mask('zbands_fast_movie', frames=1)
-    m = sarc._read_mask('mbands', frames=1) > 0.25
+    m = sarc._read_mask('mbands', frames=1)
     o = sarc._read_mask('orientation', frames=1)
     out = sv.get_sarcomere_vectors(z, m, o, pixelsize=sarc.metadata.pixelsize, interpolation_method='akima')
     keep = sv.filter_vectors_by_neighbors(out[1], out[5], neighbor_radius=1.0, max_neighbor_deviation=30.0)
