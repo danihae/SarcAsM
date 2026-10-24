@@ -339,6 +339,64 @@ def test_get_sarcomere_vectors_recovers_known_slen():
     np.testing.assert_allclose(np.nanmedian(slen), 16 * pixelsize, atol=0.05)
 
 
+def _blurred_mband(length_um, pixelsize, angle, size_um=8.0, thickness_um=0.3):
+    """Probability map of one M-band of known length, blurred like a U-Net output.
+
+    The sarcomere axis is (sin angle, cos angle) in (row, col), so the band runs
+    along (cos angle, -sin angle).
+    """
+    from scipy import ndimage
+    n = int(size_um / pixelsize)
+    center = n / 2 + 0.3
+    rows, cols = np.mgrid[0:n, 0:n].astype(float)
+    along = (rows - center) * np.cos(angle) - (cols - center) * np.sin(angle)
+    across = (rows - center) * np.sin(angle) + (cols - center) * np.cos(angle)
+    band = (np.abs(along) <= length_um / 2 / pixelsize) & (np.abs(across) <= thickness_um / 2 / pixelsize)
+    prob = ndimage.gaussian_filter(band.astype(float), 0.1 / pixelsize)
+    field = np.stack((np.full((n, n), np.cos(angle)), np.full((n, n), np.sin(angle))))
+    return prob / prob.max(), field.astype(np.float32)
+
+
+@pytest.mark.parametrize('pixelsize', [0.06, 0.1])
+@pytest.mark.parametrize('length_um', [0.5, 1.0, 2.0])
+@pytest.mark.parametrize('angle', [0.0, 0.7, np.pi / 2])
+def test_midline_ends_reach_the_true_mband_length(pixelsize, length_um, angle):
+    """Thinning alone cuts ~0.3 µm off a 0.3-µm-thick band; the extension restores the length."""
+    from skimage.morphology import skeletonize
+    prob, field = _blurred_mband(length_um, pixelsize, angle)
+    skeleton = skeletonize(prob > 0.25, method='lee') > 0
+    midline = sv.extend_midline_ends(skeleton, prob, field, radius=2)
+
+    def extent(mask):
+        rows, cols = np.nonzero(mask)
+        return (np.ptp(rows * np.cos(angle) - cols * np.sin(angle)) + 1) * pixelsize
+
+    assert extent(skeleton) < length_um - 0.2
+    assert abs(extent(midline) - length_um) <= 0.1
+    assert midline[skeleton].all()
+
+
+def test_midline_extension_grows_an_isolated_pixel_both_ways():
+    """A skeleton collapsed to one pixel is extended in both directions."""
+    mask = np.zeros((21, 21), bool)
+    mask[10, 5:16] = True
+    skeleton = np.zeros_like(mask)
+    skeleton[10, 10] = True
+    field = np.zeros((2, 21, 21), np.float32)
+    field[1] = 1.0  # sarcomere axis along rows, M-band along columns
+    midline = sv.extend_midline_ends(skeleton, mask, field, radius=1)
+    np.testing.assert_array_equal(midline, mask)
+
+
+def test_midline_extension_stays_inside_the_half_probability_contour():
+    prob, field = _blurred_mband(1.0, 0.1, 0.3)
+    from skimage.morphology import skeletonize
+    midline = sv.extend_midline_ends(skeletonize(prob > 0.25, method='lee') > 0, prob, field, radius=2)
+    added = midline & ~(skeletonize(prob > 0.25, method='lee') > 0)
+    assert added.any()
+    assert (prob[added] >= 0.5).all()
+
+
 def test_smooth_orientation_single_frame_noop():
     """A single-frame stack (T=1) has nothing to smooth; return unchanged."""
     one = _field_from_angle(0.5)[np.newaxis]  # (1, 2, H, W)

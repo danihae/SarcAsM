@@ -932,9 +932,6 @@ class SarcAsM(SarcAsMBase):
                 orientation_field, sigma=smooth_orientation_sigma,
             )
 
-        # binarize M-bands
-        mbands = mbands > threshold_mbands
-
         n_frames = len(list_frames)
         pixelsize = self.metadata.pixelsize
 
@@ -975,7 +972,8 @@ class SarcAsM(SarcAsMBase):
                                                          interp_factor=interp_factor,
                                                          linewidth=linewidth,
                                                          interpolation_method=interpolation_method,
-                                                         peak_prominence=peak_prominence)
+                                                         peak_prominence=peak_prominence,
+                                                         threshold_mbands=threshold_mbands)
 
             # drop vectors that point across their neighbours (false positives at crossings)
             n_extracted_i = len(sarcomere_length_vectors_i)

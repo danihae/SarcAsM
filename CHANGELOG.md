@@ -28,6 +28,12 @@ All notable changes to SarcAsM are documented here. The format follows
 - `import sarcasm` resolves its public names on first access, so it no longer imports torch, numba and matplotlib
   up front (`sarcasm --help` 5.8 s → 0.1 s). `from sarcasm import *` is unchanged.
 - Picking channel 0 of a multi-channel image by default logs a warning instead of info.
+- M-band midlines reach the ends of the M-bands. Skeletonization shortened every M-band by about half its
+  thickness at each end, so short M-bands of thin myofibrils collapsed to one or two vectors and midline lengths
+  were ~0.3 µm short. Each skeleton end is now extended along the M-band while the M-band probability is ≥ 0.5
+  (`sarcomere_vectors.extend_midline_ends`): +2 to +19 % vectors on thin-myofibril data, sarcomere lengths
+  unchanged, `structure.sarcomere.midline_length` longer. `get_sarcomere_vectors` now takes the M-band
+  probability map and `threshold_mbands`. Rerun `analyze_sarcomere_vectors` (and tracking) on existing stores.
 
 ### Fixed
 
