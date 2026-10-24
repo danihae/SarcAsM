@@ -54,14 +54,19 @@ class Parameter:
         old_value = self.__value
         self.__value = value
         if self.__lambda_set_value is not None:
-            if self.__ui_element_type == 'OneParameter':
-                self.__lambda_set_value(value)
-            elif self.__ui_element_type == 'NotSpecified':
-                sig = signature(self.__lambda_set_value)
-                if len(sig.parameters) == 1:
+            try:
+                if self.__ui_element_type == 'OneParameter':
                     self.__lambda_set_value(value)
-                elif len(sig.parameters) >= 2:
-                    self.__lambda_set_value(value, old_value)
+                elif self.__ui_element_type == 'NotSpecified':
+                    sig = signature(self.__lambda_set_value)
+                    if len(sig.parameters) == 1:
+                        self.__lambda_set_value(value)
+                    elif len(sig.parameters) >= 2:
+                        self.__lambda_set_value(value, old_value)
+            except Exception:
+                # the UI element refused the value (wrong type): keep the value it still shows
+                self.__value = old_value
+                raise
             pass
         pass
 

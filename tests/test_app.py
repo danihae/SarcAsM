@@ -733,3 +733,76 @@ class TestGuiFixes2026_10:
         assert list(table['track 1 SL [µm]']) == [5, 6, 7, 8, 9]
         dock.deleteLater()
         assert app is not None
+
+
+class TestGuiInputFixes2026_10_24:
+    """Regression tests for the 2026-10-24 review of what careless input does to the GUI."""
+
+    @pytest.mark.parametrize('text, expected', [('0.1', 0.1), ('0,1', 0.1), (' 0.065 ', 0.065), ('', None)])
+    def test_calibration_numbers_are_parsed(self, text, expected):
+        from sarcasm_app.control.file_selection_control import _parse_positive
+        value, error = _parse_positive(text)
+        assert error is None and value == expected
+
+    @pytest.mark.parametrize('text', ['abc', '0', '-0.1', 'nan', 'inf', '0.1 µm', '1,000.5'])
+    def test_calibration_nonsense_is_refused(self, text):
+        from sarcasm_app.control.file_selection_control import _parse_positive
+        value, error = _parse_positive(text)
+        assert value is None and error
+
+    def test_failed_display_releases_the_busy_flag(self):
+        """An error after the file was opened (e.g. wrong axes) left the app refusing every later step."""
+        from types import SimpleNamespace
+        from sarcasm_app.model.parameter import Parameter
+        from sarcasm_app.control import file_selection_control as fsc
+        model = SimpleNamespace(currentlyProcessing=Parameter('currentlyProcessing', False),
+                                init_cell=lambda file, **kwargs: None, cell=None)
+        main = MagicMock()
+        main.model = model
+        main.init_image_stack.side_effect = ValueError('Permutation mismatch')
+        ctl = fsc.FileSelectionControl(MagicMock(), main)
+        with patch.object(fsc.QMessageBox, 'warning') as warning:
+            ctl._init_file('movie.tif')
+        assert warning.called
+        assert model.currentlyProcessing.get_value() is False
+        assert main.clean_up_on_new_image.call_count == 2          # before opening, and after the failure
+
+    def test_metadata_is_not_changed_while_a_step_runs(self):
+        from types import SimpleNamespace
+        from sarcasm_app.model.parameter import Parameter
+        from sarcasm_app.control import file_selection_control as fsc
+        cell = MagicMock()
+        main = MagicMock()
+        main.model = SimpleNamespace(currentlyProcessing=Parameter('currentlyProcessing', True), cell=cell)
+        ctl = fsc.FileSelectionControl(MagicMock(), main)
+        with patch.object(fsc.FileSelectionControl, '_init_meta_data') as refill:
+            assert ctl.apply_metadata(pixelsize=0.2) is False
+        assert refill.called
+        cell.save_metadata.assert_not_called()
+
+    def test_parameter_with_a_wrong_type_keeps_its_value(self):
+        from PyQt5.QtWidgets import QApplication, QDoubleSpinBox
+        app = QApplication.instance() or QApplication([])
+        from sarcasm_app.model.parameters import Parameters
+        params = Parameters()
+        params.set_parameter('structure.predict.rescale_factor', 1.0)
+        spin = QDoubleSpinBox()
+        params.get_parameter('structure.predict.rescale_factor').connect(spin)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'p.json')
+            with open(path, 'w') as f:
+                json.dump({'structure.predict.rescale_factor': 'abc'}, f)
+            with pytest.raises(ValueError, match='rescale_factor'):
+                params.load(path)
+            with open(path, 'w') as f:
+                json.dump([1, 2], f)
+            with pytest.raises(ValueError, match='object'):
+                params.load(path)
+        assert params.get_parameter('structure.predict.rescale_factor').get_value() == 1.0
+        assert app is not None
+
+    def test_out_of_range_frames_message_stays_short(self):
+        from sarcasm._internal.frames import canonical_frames
+        with pytest.raises(ValueError) as err:
+            canonical_frames(list(range(1_000_000)), 10)
+        assert len(str(err.value)) < 300

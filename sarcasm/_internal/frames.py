@@ -80,7 +80,8 @@ def canonical_frames(frames, n_stack, *, name: str = 'frames') -> Union[str, Lis
     bad = sorted({f for f in ints if f < 0 or f >= n})
     if bad:
         what = 'a single image (frame 0 only)' if n == 1 else f'a movie of {n} frames, numbered 0..{n - 1}'
-        raise ValueError(f"{name}: frame(s) {bad} out of range for {what}.")
+        shown = bad if len(bad) <= 10 else f'{bad[:5]} ... {bad[-1]} ({len(bad)} frames)'
+        raise ValueError(f"{name}: frame(s) {shown} out of range for {what}.")
     return sorted(set(ints))
 
 

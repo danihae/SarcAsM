@@ -71,12 +71,23 @@ class Parameters:
     def load(self, file_path_json_file):
         # load the parameters and set the values of all parameters accordingly
 
-        simple_dict = IOUtils.json_deserialize(file_path_json_file)
+        try:
+            simple_dict = IOUtils.json_deserialize(file_path_json_file)
+        except ValueError as e:
+            raise ValueError(f'{file_path_json_file} is not a valid JSON file ({e}).') from e
+        if not isinstance(simple_dict, dict):
+            raise ValueError(f'{file_path_json_file} must hold an object of parameter names and values, '
+                             f'not a {type(simple_dict).__name__}.')
+        # load every valid value, then name the rejected ones
+        rejected = []
         for key, value in simple_dict.items():
             if self.__parameters_dict.keys().__contains__(key):
-                self.__parameters_dict[key].set_value(value)
-
-        pass
+                try:
+                    self.__parameters_dict[key].set_value(value)
+                except Exception:
+                    rejected.append(f'{key} = {value!r}')
+        if rejected:
+            raise ValueError('These values have the wrong type and were not imported:\n' + '\n'.join(rejected))
 
     def store(self, file_path_json_file):
         simple_dict = dict()

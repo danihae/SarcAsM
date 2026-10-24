@@ -14,12 +14,14 @@
 
 import json
 import logging
+import math
 import os
 
 import numpy as np
 
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
+from sarcasm.core import _is_ome_zarr
 from sarcasm.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
@@ -33,6 +35,29 @@ _INVALID_INPUT_QSS = (
     "background-color: rgba(224,96,96,0.18); }"
 )
 
+#: pixel sizes outside this range (µm) are refused, as when a file is opened
+_PIXELSIZE_RANGE = (0.01, 0.5)
+
+
+def _parse_positive(text: str):
+    """A positive, finite number typed by the user, or an error message.
+
+    A decimal comma ("0,1") is read as a decimal point. Returns ``(value, None)``,
+    ``(None, None)`` for an empty field, or ``(None, message)``.
+    """
+    text = text.strip()
+    if not text:
+        return None, None
+    if ',' in text and '.' not in text and text.count(',') == 1:
+        text = text.replace(',', '.')
+    try:
+        value = float(text)
+    except ValueError:
+        return None, f'"{text}" is not a number.'
+    if not math.isfinite(value) or value <= 0:
+        return None, f'{text} is not a positive number.'
+    return value, None
+
 
 class FileSelectionControl:
     """
@@ -42,6 +67,7 @@ class FileSelectionControl:
     def __init__(self, file_selection_widget: FileSelectionWidget, main_control: ApplicationControl):
         self.__file_selection_widget = file_selection_widget
         self.__main_control = main_control
+        self.__applying_metadata = False         # the re-analyse question takes the focus: no second call
 
     @property
     def __cell(self):
@@ -58,11 +84,9 @@ class FileSelectionControl:
         self.__file_selection_widget.btn_store_metadata.clicked.connect(self.on_store_meta_data)
         self.__file_selection_widget.le_cell_file.returnPressed.connect(self.on_return_pressed_cell_file)
 
-        # call the method on editFinished and returnPressed
+        # editingFinished also fires on Return; connecting returnPressed too asked every question twice
         self.__file_selection_widget.le_pixel_size.editingFinished.connect(self.on_return_pressed_pixel_size_frame_rate)
         self.__file_selection_widget.le_frame_time.editingFinished.connect(self.on_return_pressed_pixel_size_frame_rate)
-        self.__file_selection_widget.le_frame_time.returnPressed.connect(self.on_return_pressed_pixel_size_frame_rate)
-        self.__file_selection_widget.le_pixel_size.returnPressed.connect(self.on_return_pressed_pixel_size_frame_rate)
 
         self.__file_selection_widget.spinbox_channel.valueChanged.connect(self.on_changed_channel)
 
@@ -131,7 +155,13 @@ class FileSelectionControl:
             file_path = self.__file_selection_widget.le_parameters_path.text()
 
             if os.path.exists(file_path) and os.path.isfile(file_path):
-                self.__main_control.model.parameters.load(file_path)
+                try:
+                    self.__main_control.model.parameters.load(file_path)
+                except Exception as e:
+                    logger.error(f'Parameters from {file_path} not (all) imported: {e}')
+                    QMessageBox.warning(self.__file_selection_widget.btn_import_parameters,
+                                        'Parameters not imported', f'{e}')
+                    return
                 logger.info('Parameters imported')
             else:
                 logger.warning('Parameters not imported, file does not exist')
@@ -141,7 +171,14 @@ class FileSelectionControl:
         if self.__file_selection_widget.le_parameters_path.text() != '':
             file_path = self.__file_selection_widget.le_parameters_path.text()
             if not os.path.isdir(file_path):
-                self.__main_control.model.parameters.store(file_path)
+                try:
+                    self.__main_control.model.parameters.store(file_path)
+                except OSError as e:
+                    logger.error(f'Parameters not exported: {e}')
+                    QMessageBox.warning(self.__file_selection_widget.btn_export_parameters,
+                                        'Parameters not exported',
+                                        f'Could not write {file_path}:\n{e.strerror or e}')
+                    return
                 logger.info(f'Parameters exported to: {file_path}')
             else:
                 logger.warning('Parameters NOT exported.')
@@ -176,37 +213,52 @@ class FileSelectionControl:
         self.on_return_pressed_cell_file()
 
     def on_return_pressed_cell_file(self, event=None):
-        if len(self.__file_selection_widget.le_cell_file.text()) == 0:
+        # a path pasted from a file manager may carry spaces or quotes around it
+        path = self.__file_selection_widget.le_cell_file.text().strip().strip('"\'').strip()
+        if path != self.__file_selection_widget.le_cell_file.text():
+            self.__file_selection_widget.le_cell_file.setText(path)
+        if len(path) == 0:
             logger.warning('Empty File-Path')
             return
-        if not os.path.exists(self.__file_selection_widget.le_cell_file.text()):
-            logger.warning("The file doesn't exist")
+        if not os.path.exists(path):
+            logger.warning(f"The file doesn't exist: {path}")
             return
-        self._init_file(self.__file_selection_widget.le_cell_file.text())
+        if not (path.lower().endswith(('.tif', '.tiff')) and os.path.isfile(path)) and not _is_ome_zarr(path):
+            logger.warning(f'Not opened: {path}')
+            QMessageBox.warning(self.__file_selection_widget.btn_search, 'Could not open the file',
+                                f'{path}\n\nSarcAsM opens .tif / .tiff images and movies, or .ome.zarr stores.')
+            return
+        self._init_file(path)
 
     def on_return_pressed_pixel_size_frame_rate(self, event=None):
         if self.__main_control.model.cell is None:
             return
-        values = {}
-        for name, field, label in (('pixelsize', self.__file_selection_widget.le_pixel_size, 'pixel size'),
-                                   ('frametime', self.__file_selection_widget.le_frame_time, 'frame time')):
-            text = field.text().strip()
-            if not text:
-                continue
-            try:
-                value = float(text)
-            except ValueError:
-                logger.warning(f'The {label} "{text}" is not a number.')
-                field.setStyleSheet(_INVALID_INPUT_QSS)
-                continue
-            if value <= 0:
-                logger.warning(f'The {label} must be positive.')
-                field.setStyleSheet(_INVALID_INPUT_QSS)
-                continue
-            field.setStyleSheet("")
-            values[name] = value
+        values, valid = self._read_calibration_fields()
         if values:
             self.apply_metadata(**values)
+
+    def _read_calibration_fields(self):
+        """Pixel size and frame time typed in the Metadata row: ``(values, all_valid)``.
+
+        Invalid entries are marked red and named in the log; empty fields are left out.
+        """
+        values, valid = {}, True
+        for name, field, label in (('pixelsize', self.__file_selection_widget.le_pixel_size, 'pixel size'),
+                                   ('frametime', self.__file_selection_widget.le_frame_time, 'frame time')):
+            value, error = _parse_positive(field.text())
+            if error is None and name == 'pixelsize' and value is not None \
+                    and not _PIXELSIZE_RANGE[0] <= value <= _PIXELSIZE_RANGE[1]:
+                error = (f'{value} µm is outside the plausible range {_PIXELSIZE_RANGE[0]}–'
+                         f'{_PIXELSIZE_RANGE[1]} µm.')
+            if error is not None:
+                logger.warning(f'The {label} was not applied: {error}')
+                field.setStyleSheet(_INVALID_INPUT_QSS)
+                valid = False
+                continue
+            field.setStyleSheet("")
+            if value is not None:
+                values[name] = value
+        return values, valid
 
     #: decimals of pixel size / frame time in the Metadata fields (see _init_meta_data)
     _FIELD_DECIMALS = 5
@@ -231,8 +283,19 @@ class FileSelectionControl:
         the file did not have is simply filled in. Returns True if anything changed.
         """
         cell = self.__main_control.model.cell
-        if cell is None:
+        if cell is None or self.__applying_metadata:
             return False
+        if self.__main_control.model.currentlyProcessing.get_value():
+            logger.warning('Metadata not changed: wait until the running step has finished.')
+            self._init_meta_data()               # show the values in effect again
+            return False
+        self.__applying_metadata = True
+        try:
+            return self.__apply_metadata(cell, pixelsize, frametime, axes, channel)
+        finally:
+            self.__applying_metadata = False
+
+    def __apply_metadata(self, cell, pixelsize, frametime, axes, channel) -> bool:
         md = cell.metadata
         if axes is not None and 'C' not in axes:
             channel = None                       # a channel only exists with a C axis
@@ -304,6 +367,20 @@ class FileSelectionControl:
             self.__main_control.update_progress(0)
             self.__main_control.model.currentlyProcessing.set_value(False)
             return
+        try:
+            self.__show_file(file)
+        except Exception as e:
+            logger.exception(f'Could not open {file}')
+            QMessageBox.warning(self.__file_selection_widget.btn_search, 'Could not open the file',
+                                f'{e}\n\nCheck that the file is an image or movie, and the axes order (e.g. TYX '
+                                f'for a movie, YX for an image) and channel in the Metadata row.')
+            self.__main_control.clean_up_on_new_image()
+            self.__main_control.update_progress(0)
+        finally:
+            self.__main_control.model.currentlyProcessing.set_value(False)
+
+    def __show_file(self, file):
+        """Load the image and the stored results of the opened file into the viewer."""
         self.__main_control.init_scale_bar()
         self.__main_control.init_image_stack()
         self.__main_control.init_z_band_stack(fastmovie=True)
@@ -336,24 +413,15 @@ class FileSelectionControl:
         self.__main_control.raise_viewer()
         logger.info(f'Initialized: {file}')
         self.__main_control.update_progress(100)
-        self.__main_control.model.currentlyProcessing.set_value(False)
 
 
     def on_store_meta_data(self):
-        # get values from entries and check if float
-        def isfloat(num):
-            try:
-                float(num)
-                return True
-            except ValueError:
-                return False
-
-        if self.__main_control.model.cell is None:
+        cell = self.__main_control.model.cell
+        if cell is None:
             return
-        pixelsize = (float(self.__file_selection_widget.le_pixel_size.text())
-                     if isfloat(self.__file_selection_widget.le_pixel_size.text()) else None)
-        frametime = (float(self.__file_selection_widget.le_frame_time.text())
-                     if isfloat(self.__file_selection_widget.le_frame_time.text()) else None)
+        values, valid = self._read_calibration_fields()
+        if not valid:
+            return
 
         axes = self.__file_selection_widget.le_axes.text().upper()
         # check if all letters are either X, Y, T, C or Z and that not one letter appears more than once
@@ -368,17 +436,31 @@ class FileSelectionControl:
                 logger.warning(f"Duplicate character(s): {''.join(sorted(dup))}")
             return not (invalid or dup)
 
-        if not validate_letters_warn(axes) or not axes:
+        valid_axes = validate_letters_warn(axes) and bool(axes)
+        shape = getattr(cell.metadata, 'shape_orig', None)
+        if valid_axes and shape and len(axes) != len(shape):
+            logger.warning(f'Axes "{axes}" name {len(axes)} dimensions, but the image has {len(shape)} '
+                           f'(shape {tuple(shape)}).')
+            valid_axes = False
+        if not valid_axes:
             self.__file_selection_widget.le_axes.setStyleSheet(_INVALID_INPUT_QSS)
             return
         self.__file_selection_widget.le_axes.setStyleSheet("")
         channel = (int(self.__file_selection_widget.spinbox_channel.value())
                    if self.__file_selection_widget.spinbox_channel.isEnabled() else None)
-        self.apply_metadata(pixelsize=pixelsize, frametime=frametime, axes=axes, channel=channel)
+        self.apply_metadata(pixelsize=values.get('pixelsize'), frametime=values.get('frametime'), axes=axes,
+                            channel=channel)
 
     def _init_meta_data(self):
         # set metadata
         cell = TypeUtils.unbox(self.__main_control.model.cell)
+        # nothing of the previous file may stay in the fields (its frame time would be saved into this one)
+        for field in (self.__file_selection_widget.le_pixel_size, self.__file_selection_widget.le_frame_time,
+                      self.__file_selection_widget.le_axes):
+            field.blockSignals(True)
+            field.setText('')
+            field.setStyleSheet('')
+            field.blockSignals(False)
 
         # pixel size
         if cell.metadata.pixelsize is not None:
