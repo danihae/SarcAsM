@@ -1474,8 +1474,8 @@ class SarcAsM(SarcAsMBase):
             seconds. Falls back to 5 real observations when frametime is unknown.
             Default is 0.08.
         progress_notifier : ProgressNotifier, optional
-            Reports per-frame progress, for GUI integration. Default is None
-            (no reporting).
+            Reports per-frame progress, for GUI integration: once for the tracking and once
+            more for the length refinement. Default is None (no reporting).
         max_gap_interpolation_s : float, optional
             Longest gap, in seconds, whose sarcomere length and orientation are
             filled by interpolating between the real observations on either side,
@@ -1610,7 +1610,7 @@ class SarcAsM(SarcAsMBase):
             predictor=predictor,
         )
         refined = refine_lengths and self._refine_track_lengths(
-            out, list_frames, orientation_window_s, max_gap_interpolation_s)
+            out, list_frames, orientation_window_s, max_gap_interpolation_s, progress_notifier)
 
         tracking_data = {
             'motion.tracks.n': out['motion.tracks.n'],
@@ -1676,7 +1676,8 @@ class SarcAsM(SarcAsMBase):
         return window_frames
 
     def _refine_track_lengths(self, out: dict, list_frames: Sequence[int], orientation_window_s: Optional[float],
-                              max_gap_interpolation_s: float) -> bool:
+                              max_gap_interpolation_s: float,
+                              progress_notifier: Optional[ProgressNotifier] = None) -> bool:
         """Replace the tracks' detection lengths/orientations in ``out`` by lengths re-measured along each
         track's sarcomere axis and move the tracked positions to the Z-band midpoints (see ``refine_lengths``);
         the detection lengths and orientations go to the ``*_raw`` keys. Returns True."""
@@ -1700,7 +1701,8 @@ class SarcAsM(SarcAsMBase):
         slen, ori, pos_px = sarcomere_tracking.refine_track_lengths(
             out['motion.tracks.positions_px'], raw_ori, observed,
             lambda k: self._read_mask(zbands_name, frames=int(list_frames[k])),
-            pixelsize=self.metadata.pixelsize, window_frames=window_frames, **settings)
+            pixelsize=self.metadata.pixelsize, window_frames=window_frames, progress_notifier=progress_notifier,
+            **settings)
         # a frame whose axis finds no pair of Z-bands keeps its detection measurement
         keep = observed & ~np.isfinite(slen) & np.isfinite(raw_slen)
         slen[keep], ori[keep] = raw_slen[keep], raw_ori[keep]
