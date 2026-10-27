@@ -129,7 +129,7 @@ class MotionAnalysisControl:
     def __chk_movie(self) -> bool:
         """Motion analysis needs a movie; say so instead of failing deep in tracking."""
         if self.__main_control.model.cell.metadata.n_stack < 2:
-            QMessageBox.warning(self.__motion_analysis_widget, 'Motion analysis needs a movie',
+            QMessageBox.warning(self.__motion_analysis_widget.btn_track_vectors, 'Motion analysis needs a movie',
                                 'This file is a single image, so there is no motion to analyse. '
                                 'If it is a movie, check the Axes field (e.g. TYX) and press '
                                 '"Save metadata".')
@@ -144,7 +144,7 @@ class MotionAnalysisControl:
         if frames is None or len(frames) >= n_stack:
             return True
         answer = QMessageBox.question(
-            self.__motion_analysis_widget, 'Track only part of the movie?',
+            self.__motion_analysis_widget.btn_track_vectors, 'Track only part of the movie?',
             f'The structure analysis covered {len(frames)} of {n_stack} frames, so the tracking can follow the '
             f'sarcomeres only in those frames.\n\nTo analyse the whole movie, click No, select "All frames" in '
             f'the Structure tab and run the structure analysis again.\n\nTrack the {len(frames)} frames anyway?',
@@ -388,7 +388,7 @@ class MotionAnalysisControl:
         if current != kind or (cell.data.get('params.analyze_track_motion.grouping_hash')
                                != cell.data.get('motion.groups.hash')):
             # the tracks were grouped again after the analysis: the summary would mix both groupings
-            QMessageBox.information(self.__motion_analysis_widget, 'Analyze the new grouping first',
+            QMessageBox.information(self.__motion_analysis_widget.btn_analyze_track_motion, 'Analyze the new grouping first',
                                     f'The tracks were grouped again ({current}) after the last motion analysis '
                                     f'({kind}). Click "3. Analyze track motion" (or "Track → Group → Analyze"), '
                                     f'then plot the summary.')

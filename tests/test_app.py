@@ -767,6 +767,28 @@ class TestGuiInputFixes2026_10_24:
         assert model.currentlyProcessing.get_value() is False
         assert main.clean_up_on_new_image.call_count == 2          # before opening, and after the failure
 
+    def test_motion_on_a_single_image_shows_a_message(self):
+        """Tracking a single image raised 'argument 1 has unexpected type Ui_Form' instead of the message:
+        the dialog parent was the pyuic form object, not a widget."""
+        from types import SimpleNamespace
+        from PyQt5.QtWidgets import QApplication, QWidget
+        app = QApplication.instance() or QApplication([])
+        from sarcasm_app.view.parameters_motion_analysis import Ui_Form
+        from sarcasm_app.control import motion_analysis_control as mac
+        host, form = QWidget(), Ui_Form()
+        form.setupUi(host)
+        main = MagicMock()
+        main.model.cell.metadata = SimpleNamespace(n_stack=1)
+        ctl = mac.MotionAnalysisControl(form, main)
+
+        def warning(parent, title, text, *args):
+            assert isinstance(parent, QWidget)
+        with patch.object(mac.QMessageBox, 'warning', side_effect=warning) as shown:
+            ctl.on_btn_track_vectors()
+        assert shown.called
+        host.deleteLater()
+        assert app is not None
+
     def test_metadata_is_not_changed_while_a_step_runs(self):
         from types import SimpleNamespace
         from sarcasm_app.model.parameter import Parameter

@@ -106,7 +106,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_min').set_value(0.)
         self.__parameters.get_parameter(name='structure.predict.clip_thresh_max').set_value(99.98)
 
-        self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('default')
+        self.__parameters.get_parameter(name='structure.predict_fast_movie.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict_fast_movie.auto_patch_size').set_value(True)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.n_frames').set_value(32)
         self.__parameters.get_parameter(name='structure.predict_fast_movie.size_width').set_value(256)

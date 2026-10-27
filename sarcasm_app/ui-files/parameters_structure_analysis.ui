@@ -67,7 +67,7 @@
         <item>
          <widget class="QLineEdit" name="le_network">
           <property name="toolTip">
-           <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (reproduces results of the v1.0.0 betas) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+           <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (the previous generalist model) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>auto</string>
@@ -307,7 +307,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_29">
             <property name="toolTip">
-             <string>&lt;p&gt;3D U-Net used for high-speed movies. 'default' is the bundled model (v2, trained on synthetic movies and on recordings from several microscopes). Type 'legacy' for the 3D model shipped before v1.0.0, or use Browse… for a 3D U-Net you trained yourself (.pt). The two bundled models give slightly different trajectories, so use one per study.&lt;/p&gt;</string>
+             <string>&lt;p&gt;3D U-Net used for high-speed movies. 'generalist' (default) is the bundled model, trained on simulated movies and on recordings from several microscopes. Type 'legacy' for the older bundled 3D model, or use Browse… for a 3D U-Net you trained yourself (.pt). The two bundled models give slightly different trajectories, so use one per study.&lt;/p&gt;</string>
             </property>
             <property name="text">
              <string>Network model</string>
@@ -319,17 +319,17 @@
             <item>
              <widget class="QLineEdit" name="le_fast_movie_network_model">
               <property name="toolTip">
-               <string>&lt;p&gt;3D U-Net used for high-speed movies. 'default' is the bundled model (v2, trained on synthetic movies and on recordings from several microscopes). Type 'legacy' for the 3D model shipped before v1.0.0, or use Browse… for a 3D U-Net you trained yourself (.pt). The two bundled models give slightly different trajectories, so use one per study.&lt;/p&gt;</string>
+               <string>&lt;p&gt;3D U-Net used for high-speed movies. 'generalist' (default) is the bundled model, trained on simulated movies and on recordings from several microscopes. Type 'legacy' for the older bundled 3D model, or use Browse… for a 3D U-Net you trained yourself (.pt). The two bundled models give slightly different trajectories, so use one per study.&lt;/p&gt;</string>
               </property>
               <property name="text">
-               <string>default</string>
+               <string>generalist</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="btn_fast_movie_search">
               <property name="toolTip">
-               <string>&lt;p&gt;Choose the .pt file of a 3D U-Net you trained yourself; its path is written into the field. Type 'default' to go back to the bundled model.&lt;/p&gt;</string>
+               <string>&lt;p&gt;Choose the .pt file of a 3D U-Net you trained yourself; its path is written into the field. Type 'generalist' to go back to the bundled model.&lt;/p&gt;</string>
               </property>
               <property name="text">
                <string>Browse…</string>
@@ -495,7 +495,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (reproduces results of the v1.0.0 betas) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+         <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (the previous generalist model) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Network model</string>
