@@ -364,11 +364,6 @@ class BatchProcessingControl:
             max_neighbor_deviation=(
                 model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
                 if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
-            registry_lateral_band=(
-                model.parameters.get_parameter('structure.vectors.registry_lateral_band_min').get_value(),
-                model.parameters.get_parameter('structure.vectors.registry_lateral_band_max').get_value()),
-            registry_axial_range=model.parameters.get_parameter('structure.vectors.registry_axial_range').get_value(),
-            registry_max_angle=model.parameters.get_parameter('structure.vectors.registry_max_angle').get_value()
         )
         pass
 
@@ -463,11 +458,6 @@ class BatchProcessingControl:
                 max_neighbor_deviation=(
                     model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
                     if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
-                registry_lateral_band=(
-                    model.parameters.get_parameter('structure.vectors.registry_lateral_band_min').get_value(),
-                    model.parameters.get_parameter('structure.vectors.registry_lateral_band_max').get_value()),
-                registry_axial_range=model.parameters.get_parameter('structure.vectors.registry_axial_range').get_value(),
-                registry_max_angle=model.parameters.get_parameter('structure.vectors.registry_max_angle').get_value()
             )
 
         if model.parameters.get_parameter('batch.do_myofibrils').get_value():

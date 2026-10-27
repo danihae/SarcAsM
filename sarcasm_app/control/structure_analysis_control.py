@@ -256,11 +256,6 @@ class StructureAnalysisControl:
                 max_neighbor_deviation=(
                     m.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
                     if m.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
-                registry_lateral_band=(
-                    m.parameters.get_parameter('structure.vectors.registry_lateral_band_min').get_value(),
-                    m.parameters.get_parameter('structure.vectors.registry_lateral_band_max').get_value()),
-                registry_axial_range=m.parameters.get_parameter('structure.vectors.registry_axial_range').get_value(),
-                registry_max_angle=m.parameters.get_parameter('structure.vectors.registry_max_angle').get_value(),
                 progress_notifier=progress_notifier
             )
             pass
@@ -492,14 +487,6 @@ class StructureAnalysisControl:
             widget.dsb_vectors_neighbor_radius)
         parameters.get_parameter(name='structure.vectors.max_neighbor_deviation').connect(
             widget.dsb_vectors_max_neighbor_deviation)
-        parameters.get_parameter(name='structure.vectors.registry_lateral_band_min').connect(
-            widget.dsb_vectors_registry_lateral_band_min)
-        parameters.get_parameter(name='structure.vectors.registry_lateral_band_max').connect(
-            widget.dsb_vectors_registry_lateral_band_max)
-        parameters.get_parameter(name='structure.vectors.registry_axial_range').connect(
-            widget.sb_vectors_registry_axial_range)
-        parameters.get_parameter(name='structure.vectors.registry_max_angle').connect(
-            widget.dsb_vectors_registry_max_angle)
 
         parameters.get_parameter(name='structure.myofibril.ratio_seeds').connect(widget.dsb_myofibril_ratio_seeds)
         parameters.get_parameter(name='structure.myofibril.persistence').connect(widget.sb_myofibril_persistence)
