@@ -332,11 +332,6 @@ class Application:
         place (hidden) so existing parameter bindings keep working."""
         chk = self.__batch_processing.chk_force_override
         host = chk.parentWidget()
-        if host is None:
-            return
-        host_layout = host.layout()
-        if host_layout is None:
-            return
 
         radio_use_meta = QRadioButton("Use file metadata")
         radio_use_meta.setToolTip('<p>Each image keeps its own pixel size, frame time, axes order and channel: the values saved in '
@@ -362,7 +357,8 @@ class Application:
         chk.toggled.connect(lambda checked: (radio_override.setChecked(checked)
                                              if checked else radio_use_meta.setChecked(True)))
 
-        # Insert the radio group in place of the hidden checkbox.
+        # The choice goes on its own row above the fields it controls; they are greyed out while
+        # each file keeps its own metadata.
         container = QWidget()
         hl = QHBoxLayout(container)
         hl.setContentsMargins(0, 0, 0, 0)
@@ -370,13 +366,18 @@ class Application:
         hl.addWidget(radio_use_meta)
         hl.addWidget(radio_override)
         hl.addStretch(1)
-
-        idx = host_layout.indexOf(chk)
-        if idx >= 0:
-            host_layout.insertWidget(idx, container)
-        else:
-            host_layout.addWidget(container)
+        w = self.__batch_processing
+        w.formLayout.insertRow(w.formLayout.getWidgetPosition(w.label_2)[0], 'Metadata', container)
         chk.setVisible(False)
+
+        fields = (w.label_2, w.dsb_pixel_size, w.label_3, w.dsb_frame_time,
+                  w.label_8, w.sb_batch_channel, w.label_9, w.le_batch_axes)
+
+        def _enable_fields(override: bool) -> None:
+            for field in fields:
+                field.setEnabled(override)
+        radio_override.toggled.connect(_enable_fields)
+        _enable_fields(radio_override.isChecked())
         # Keep a reference so it isn't garbage-collected.
         self.__override_button_group = group
         self.__override_radio_container = container
