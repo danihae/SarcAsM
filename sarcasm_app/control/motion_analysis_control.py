@@ -577,10 +577,6 @@ class MotionAnalysisControl:
         # the coverage floor follows the grouping, like SarcAsM.group_tracks(min_coverage=None)
         w.cb_group_by.currentTextChanged.connect(
             lambda by: w.dsb_group_min_coverage.setValue(default_min_coverage(by)) if by else None)
-        w.dsb_group_min_coverage.setToolTip(
-            'Tracks present in fewer than this fraction of frames are left out of the groups. Set to '
-            '0.1 for myofibril / LOI (a fibre chain should not get holes) and 0.5 for the other '
-            'groupings whenever "Group by" changes; you can then change it.')
         # display
         p('motion.display.color_by').connect(w.cb_display_color_by)
         p('motion.display.dsl_limit').connect(w.dsb_display_dsl_limit)

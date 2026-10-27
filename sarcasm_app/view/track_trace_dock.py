@@ -52,23 +52,39 @@ class TrackTraceDock(QWidget):
 
         self.cb_series = QComboBox()
         self.cb_series.addItems(list(_SERIES))
+        self.cb_series.setToolTip("<p>Which time series to plot. SL: sarcomere length [µm]. ΔSL: length minus the sarcomere's "
+                                  'resting length [µm] (negative = shortened). Velocity: rate of length change [µm/s] (negative = '
+                                  'shortening), from the length smoothed over 13 frames (Savitzky–Golay, order 5). The resting '
+                                  "length is the median outside contractions if the motion analysis was run with 'Group by' pool, "
+                                  'otherwise over all frames. Lengths outside 1.2–3.0 µm are left out.</p>')
         self.chk_group_mean = QCheckBox('Group mean')
         self.chk_group_mean.setChecked(True)
+        self.chk_group_mean.setToolTip('<p>Draws the frame-by-frame mean of all sarcomeres of the selected group as a thick black line '
+                                       '(the legend gives their number). With no group selected, the mean of all tracked sarcomeres. '
+                                       'Untick to see only the single traces (grey) and the clicked sarcomere (red). The .csv export '
+                                       'always contains the mean. Default on.</p>')
         self.chk_cycles = QCheckBox('Contraction cycles')
         self.chk_cycles.setChecked(True)
+        self.chk_cycles.setToolTip('<p>Shades the frames in which the whole cell contracts (lavender). They come from the motion '
+                                   "analysis with 'Group by' pool; without it nothing is shaded. When ticked, the .csv export gets a"
+                                   ' column marking these frames. Default on.</p>')
         self.lbl_info = QLabel('Track sarcomeres first.')
         self.lbl_info.setWordWrap(True)
 
         bar = QHBoxLayout()
-        bar.addWidget(QLabel('Series'))
+        lbl_series = QLabel('Series')
+        lbl_series.setToolTip(self.cb_series.toolTip())
+        bar.addWidget(lbl_series)
         bar.addWidget(self.cb_series)
         bar.addWidget(self.chk_group_mean)
         bar.addWidget(self.chk_cycles)
         bar.addStretch(1)
         self.btn_export = QPushButton('Export data (.csv)…')
-        self.btn_export.setToolTip('Save the plotted time series as a table: time, the group mean, the '
-                                   'clicked sarcomere and every sarcomere of the group (one column each). '
-                                   'The plot itself is saved with the disk icon below.')
+        self.btn_export.setToolTip('<p>Saves the chosen series (SL, ΔSL or velocity) as a table: time [s], the group mean, and one '
+                                   'column per sarcomere of the shown group, including those not drawn (the plot shows at most 300).'
+                                   " With 'Contraction cycles' ticked, a column marks the contracting frames. Suggested name: "
+                                   '&lt;image&gt;_&lt;group&gt;_&lt;series&gt;.csv in the image folder. Save the plot itself with '
+                                   'the disk icon of the plot toolbar.</p>')
         self.btn_export.clicked.connect(self._on_export)
         bar.addWidget(self.btn_export)
 

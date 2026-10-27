@@ -32,6 +32,9 @@
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label">
+        <property name="toolTip">
+         <string>&lt;p&gt;Folder with the images to analyse. Every .tif/.tiff file in this folder and in all its subfolders is processed; mask files named zbands.tif, mbands.tif, cell_mask.tif, orientation.tif and sarcomere_mask.tif are skipped. The results of each image are saved in a &amp;lt;name&amp;gt;.ome.zarr folder next to that image. Type the path or use Browse…. The same folder is used by 'Export structure data to .xlsx'.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Root directory</string>
         </property>
@@ -41,6 +44,9 @@
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
          <widget class="QLineEdit" name="le_root_directory">
+          <property name="toolTip">
+           <string>&lt;p&gt;Folder with the images to analyse. Every .tif/.tiff file in this folder and in all its subfolders is processed; mask files named zbands.tif, mbands.tif, cell_mask.tif, orientation.tif and sarcomere_mask.tif are skipped. The results of each image are saved in a &amp;lt;name&amp;gt;.ome.zarr folder next to that image. Type the path or use Browse…. The same folder is used by 'Export structure data to .xlsx'.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string/>
           </property>
@@ -51,6 +57,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="btn_search">
+          <property name="toolTip">
+           <string>&lt;p&gt;Choose the root folder in a folder dialog. Its path is written into the field on the left; nothing is analysed until you press 'Run batch structure analysis'.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string>Browse…</string>
           </property>
@@ -60,6 +69,9 @@
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>&lt;p&gt;Number of files analysed at the same time. 1 analyses the files one after another. Higher values only take effect on a computer that runs the analysis on the CPU (no GPU in use) and has a thread-safe numba layer (TBB or OpenMP); with an Apple-silicon (MPS) or NVIDIA (CUDA) GPU the files always run one after another, and the log says so. Each parallel file needs its own memory, so keep it low for large movies. Default 1.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Thread Pool Size</string>
         </property>
@@ -67,6 +79,9 @@
       </item>
       <item row="2" column="1">
        <widget class="QSpinBox" name="sb_thread_pool_size">
+        <property name="toolTip">
+         <string>&lt;p&gt;Number of files analysed at the same time. 1 analyses the files one after another. Higher values only take effect on a computer that runs the analysis on the CPU (no GPU in use) and has a thread-safe numba layer (TBB or OpenMP); with an Apple-silicon (MPS) or NVIDIA (CUDA) GPU the files always run one after another, and the log says so. Each parallel file needs its own memory, so keep it low for large movies. Default 1.&lt;/p&gt;</string>
+        </property>
         <property name="minimum">
          <number>1</number>
         </property>
@@ -78,7 +93,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>pixel size in [µm], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths and the 'auto' network choice (legacy model below 0.08 µm/px) depend on it. Default 0.1 µm.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Pixel size [µm]</string>
@@ -88,7 +103,7 @@
       <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="dsb_pixel_size">
         <property name="toolTip">
-         <string>pixel size in [µm], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths and the 'auto' network choice (legacy model below 0.08 µm/px) depend on it. Default 0.1 µm.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>6</number>
@@ -107,7 +122,7 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_3">
         <property name="toolTip">
-         <string>frame time in [s], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+         <string>&lt;p&gt;Time between two frames of a movie, in seconds per frame (1 / frame rate; 0.01 s at 100 frames/s). Used only with 'Override for all files': it then replaces the frame time of every image in the batch and is saved with it. With 'Use file metadata' it is ignored. The structure analysis does not need it; it sets the time scale of any later motion analysis (velocities, beating rate, contraction times). Default 0.1 s.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Frame time [s]</string>
@@ -117,7 +132,7 @@
       <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="dsb_frame_time">
         <property name="toolTip">
-         <string>frame time in [s], this is used either if the image-to-process doesn't have this value set or force override is activated</string>
+         <string>&lt;p&gt;Time between two frames of a movie, in seconds per frame (1 / frame rate; 0.01 s at 100 frames/s). Used only with 'Override for all files': it then replaces the frame time of every image in the batch and is saved with it. With 'Use file metadata' it is ignored. The structure analysis does not need it; it sets the time scale of any later motion analysis (velocities, beating rate, contraction times). Default 0.1 s.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>6</number>
@@ -135,30 +150,44 @@
       </item>
       <item row="5" column="0">
        <widget class="QLabel" name="label_8">
+        <property name="toolTip">
+         <string>&lt;p&gt;Number of the colour channel with the sarcomere stain (Z-bands, e.g. α-actinin), counted from 0. Used only with 'Override for all files', and then for every file, so all files need the stain in the same channel. With 'Use file metadata' each file keeps its saved channel, or channel 0 with a warning. No effect on single-channel images. It is applied when a file is read for the first time; files opened or analysed before keep the channel they were read with. Default 0.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Channel</string>
         </property>
        </widget>
       </item>
       <item row="5" column="1">
-       <widget class="QSpinBox" name="sb_batch_channel"/>
+       <widget class="QSpinBox" name="sb_batch_channel">
+        <property name="toolTip">
+         <string>&lt;p&gt;Number of the colour channel with the sarcomere stain (Z-bands, e.g. α-actinin), counted from 0. Used only with 'Override for all files', and then for every file, so all files need the stain in the same channel. With 'Use file metadata' each file keeps its saved channel, or channel 0 with a warning. No effect on single-channel images. It is applied when a file is read for the first time; files opened or analysed before keep the channel they were read with. Default 0.&lt;/p&gt;</string>
+        </property>
+       </widget>
       </item>
       <item row="6" column="0">
        <widget class="QLabel" name="label_9">
+        <property name="toolTip">
+         <string>&lt;p&gt;Order of the image dimensions, one letter each: T time, Z depth, C channel, Y rows, X columns (e.g. TYX for a movie, YX for a single image, TCYX for a multi-channel movie). Used only with 'Override for all files'. Leave it empty to read the order from each file (OME or ImageJ metadata), which is usually right; fill it in only when files are read wrongly, e.g. movie frames taken as channels. Like the channel, it only affects files read for the first time. Default empty (automatic).&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Axes</string>
         </property>
        </widget>
       </item>
       <item row="6" column="1">
-       <widget class="QLineEdit" name="le_batch_axes"/>
+       <widget class="QLineEdit" name="le_batch_axes">
+        <property name="toolTip">
+         <string>&lt;p&gt;Order of the image dimensions, one letter each: T time, Z depth, C channel, Y rows, X columns (e.g. TYX for a movie, YX for a single image, TCYX for a multi-channel movie). Used only with 'Override for all files'. Leave it empty to read the order from each file (OME or ImageJ metadata), which is usually right; fill it in only when files are read wrongly, e.g. movie frames taken as channels. Like the channel, it only affects files read for the first time. Default empty (automatic).&lt;/p&gt;</string>
+        </property>
+       </widget>
       </item>
       <item row="7" column="1">
        <layout class="QVBoxLayout" name="verticalLayout">
         <item>
          <widget class="QCheckBox" name="chk_force_override">
           <property name="toolTip">
-           <string>if set the values in pixel size and frame time will be forced upon all images which are processed during this batch</string>
+           <string>&lt;p&gt;When ticked, the pixel size, frame time, channel and axes entered above replace those of every image in the batch and are saved in each image's .ome.zarr store. When not ticked, each image keeps its own values and these fields are ignored. Default off.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>Force overwrite metadata</string>
@@ -168,7 +197,7 @@
         <item>
          <widget class="QCheckBox" name="chk_delete_intermediate_masks">
           <property name="toolTip">
-           <string>After each file, delete the derived masks (Z-bands, M-bands, sarcomere/cell masks, ...) from its .ome.zarr store to save disk space; the analysis results are kept</string>
+           <string>&lt;p&gt;After each file is analysed, deletes the predicted masks (Z-bands, M-bands, orientation map, cell mask, sarcomere mask) from its .ome.zarr store to save disk space. The image and all measured results are kept, so the export is unaffected. For movies the Z-band masks are kept, because the motion analysis re-measures lengths on them. Without the masks the viewer cannot show them, and re-running Z-band or vector analysis needs the detection again. Default on.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>Delete intermediate masks from the store</string>
@@ -178,7 +207,7 @@
         <item>
          <widget class="QCheckBox" name="chk_recalculate_for_motion">
           <property name="toolTip">
-           <string>Run the structure steps the motion analysis needs first (Z-band prediction, sarcomere vectors, and myofibrils or domains for those groupings). Leave off if the batch was already structure-analyzed.</string>
+           <string>&lt;p&gt;Only used by 'Batch motion analysis', which is not available in the GUI yet, so this box currently has no effect. When on, the batch motion analysis would first run the sarcomere detection and the sarcomere vectors on each file (plus myofibrils or domains when grouping by them). Leave it off if the files were already analysed with 'Run batch structure analysis'. Default off.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>Run structure prerequisites before motion analysis</string>
@@ -198,6 +227,9 @@
         <layout class="QFormLayout" name="formLayout_2">
          <item row="1" column="0">
           <widget class="QCheckBox" name="chk_do_zbands">
+           <property name="toolTip">
+            <string>&lt;p&gt;For each file, cuts the predicted Z-band mask into single Z-bands and measures their number, length, intensity, contrast, orientation order and lateral alignment with neighbouring Z-bands. Uses the threshold, minimum length and maximum axial offset of the Structure tab; the other Z-band settings there are not passed to the batch, which uses their defaults. Untick to save time when you do not need Z-band metrics. Default on.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Analyze Z-Bands</string>
            </property>
@@ -205,6 +237,9 @@
          </item>
          <item row="2" column="0">
           <widget class="QCheckBox" name="chk_do_vectors">
+           <property name="toolTip">
+            <string>&lt;p&gt;For each file, finds the sarcomere vectors (one per M-band midline pixel, pointing from Z-band to Z-band) and measures sarcomere length, orientation and orientation order. Uses the vector settings of the Structure tab (length limits, line width, outlier check). Needed for the myofibril and domain analyses. Afterwards the log warns if the pixel size looks about 2x too small. Default on.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Analyze Vectors</string>
            </property>
@@ -212,6 +247,9 @@
          </item>
          <item row="3" column="0">
           <widget class="QCheckBox" name="chk_do_myofibrils">
+           <property name="toolTip">
+            <string>&lt;p&gt;For each file, traces myofibrils by linking sarcomere vectors that line up head to tail, and measures myofibril length (mean, maximum, spread) and bending. Uses the myofibril settings of the Structure tab. Needs sarcomere vectors, so keep 'Analyse Vectors' on unless the files already have them. Default on.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Analyze Myofibrils</string>
            </property>
@@ -219,6 +257,9 @@
          </item>
          <item row="4" column="0">
           <widget class="QCheckBox" name="chk_do_domains">
+           <property name="toolTip">
+            <string>&lt;p&gt;For each file, groups nearby sarcomere vectors with similar orientation into domains (regions of aligned sarcomeres) and measures their number, area, orientation order and mean sarcomere length. Uses the domain settings of the Structure tab. Needs sarcomere vectors, so keep 'Analyse Vectors' on unless the files already have them. Default on.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Analyze Domains</string>
            </property>
@@ -230,7 +271,7 @@
       <item row="11" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_structure">
         <property name="toolTip">
-         <string>Start batch processing structure</string>
+         <string>&lt;p&gt;Analyses every .tif/.tiff file below the root folder. For each file it runs the sarcomere detection with the Structure tab settings (network, frames, patch size, contrast clipping, rescale factor), then the steps ticked under Structure, and saves the results in &amp;lt;name&amp;gt;.ome.zarr next to the image, replacing earlier results of those steps. Files that fail are listed at the end; the others are saved. Check the settings on one representative file first.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Run batch structure analysis</string>
@@ -239,6 +280,9 @@
       </item>
       <item row="13" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_motion">
+        <property name="toolTip">
+         <string>&lt;p&gt;Not available in the GUI yet; the button stays disabled. To analyse many movies, use the Python API: track_sarcomere_vectors, group_tracks and analyze_track_motion for each file.&lt;/p&gt;</string>
+        </property>
         <property name="enabled">
          <bool>false</bool>
         </property>
@@ -252,6 +296,9 @@
       </item>
       <item row="12" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_export_structure">
+        <property name="toolTip">
+         <string>&lt;p&gt;Collects the structure results of every .tif/.tiff file below the root folder into one Excel table, one row per file: its metadata and 43 standard structure metrics (cell mask, Z-bands, sarcomeres, myofibrils, domains). Run the batch structure analysis first; metrics not analysed stay empty. For movies a cell holds the mean over the analysed frames, and a 'per_frame' sheet lists each frame. A 'metrics' sheet gives units and descriptions. You pick the file name.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Export structure data to .xlsx</string>
         </property>

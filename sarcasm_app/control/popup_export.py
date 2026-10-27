@@ -79,17 +79,15 @@ class ExportPopup(QDialog):
         detail_box = QGroupBox('Detail level')
         detail_layout = QHBoxLayout(detail_box)
         self._rb_summary = QRadioButton('Summary — per-frame stats')
-        self._rb_summary.setToolTip(
-            'One value per metric per frame. For multi-frame data, one column '
-            'per frame; for single-frame data, a single value column. Ragged '
-            'per-object distributions are collapsed to per-frame mean. '
-            'Works with csv, xlsx, and json.'
-        )
+        self._rb_summary.setToolTip('<p>Structure export: one value per metric and frame (columns frame_0, frame_1, …; a single image'
+                                    " gives one 'value' column). Metrics that hold one value per object, such as every Z-band length,"
+                                    ' are reduced to their mean per frame. Works with .csv, .xlsx and .json. The motion export is '
+                                    'always one row per group, whichever option you choose.</p>')
         self._rb_full = QRadioButton('Full — raw per-object distributions (JSON only)')
-        self._rb_full.setToolTip(
-            'Full nested structure including per-object arrays (often thousands '
-            'of values per frame). JSON only — does not fit a single table.'
-        )
+        self._rb_full.setToolTip('<p>Structure export: keeps every single value, e.g. the length of each sarcomere vector in each '
+                                 'frame, in a nested .json file (often thousands of values per frame). Use it to make your own '
+                                 'histograms or statistics. The .csv and .xlsx buttons are disabled, because such lists do not fit'
+                                 ' a table. For the motion export it gives the same per-group table as Summary, only as .json.</p>')
         self._rb_summary.setChecked(True)
         detail_layout.addWidget(self._rb_summary)
         detail_layout.addWidget(self._rb_full)
@@ -111,8 +109,10 @@ class ExportPopup(QDialog):
                 self._cb_kind.addItems(kinds)
                 if last in kinds:
                     self._cb_kind.setCurrentText(last)
-                self._cb_kind.setToolTip('Each grouping you analysed (pool, M-band, myofibril, ...) is '
-                                         'exported separately: one row per group.')
+                self._cb_kind.setToolTip('<p>Which grouping of the tracked sarcomeres to export: pool (whole cell), mband, myofibril, '
+                                         'domain or loi. Each grouping you analysed is kept separately; the export writes one row per '
+                                         'group of the chosen one, with per-cycle values averaged per group. Export once per grouping if '
+                                         'you need several. Preselected: the grouping analysed last.</p>')
                 kind_row.addWidget(self._cb_kind)
                 kind_row.addStretch(1)
                 root.addLayout(kind_row)
@@ -141,10 +141,13 @@ class ExportPopup(QDialog):
         # Bulk actions
         bulk = QHBoxLayout()
         btn_check_primary = QPushButton('Check all Primary')
+        btn_check_primary.setToolTip('Ticks every Primary metric (the common ones); Advanced metrics stay as they are.')
         btn_check_primary.clicked.connect(lambda: self._set_all_checked(tiers['Primary'], True))
         btn_check_all = QPushButton('Check all')
+        btn_check_all.setToolTip('Ticks every metric, Primary and Advanced, including the per-object ones.')
         btn_check_all.clicked.connect(lambda: self._set_checked(list(self._checkboxes), True))
         btn_uncheck_all = QPushButton('Uncheck all')
+        btn_uncheck_all.setToolTip('Unticks every metric, so you can pick a few by hand.')
         btn_uncheck_all.clicked.connect(lambda: self._set_checked(list(self._checkboxes), False))
         bulk.addWidget(btn_check_primary)
         bulk.addWidget(btn_check_all)
@@ -161,6 +164,9 @@ class ExportPopup(QDialog):
         self._btn_xlsx.clicked.connect(lambda: self._on_export('xlsx'))
         self._btn_json = QPushButton('Export as .json')
         self._btn_json.clicked.connect(lambda: self._on_export('json'))
+        self._btn_json.setToolTip("<p>Saves the ticked metrics as a .json text file, e.g. for Python or R. With 'Summary' it holds "
+                                  "the same values as the table; with 'Full' (structure only) it also keeps every per-object "
+                                  'value.</p>')
         fmt_row.addWidget(self._btn_csv)
         fmt_row.addWidget(self._btn_xlsx)
         fmt_row.addWidget(self._btn_json)
@@ -221,10 +227,18 @@ class ExportPopup(QDialog):
         tabular_enabled = not full_checked
         self._btn_csv.setEnabled(tabular_enabled)
         self._btn_xlsx.setEnabled(tabular_enabled)
-        tooltip = ('Disabled in Full mode — per-object distributions do not '
-                   'fit a table. Use JSON.') if full_checked else ''
-        self._btn_csv.setToolTip(tooltip)
-        self._btn_xlsx.setToolTip(tooltip)
+        if full_checked:
+            self._btn_csv.setToolTip("<p>Not available with 'Full': lists of single values per object do not fit a table. Choose "
+                                     "'Summary' for .csv, or export .json.</p>")
+            self._btn_xlsx.setToolTip("<p>Not available with 'Full': lists of single values per object do not fit a table. Choose "
+                                      "'Summary' for .xlsx, or export .json.</p>")
+        else:
+            self._btn_csv.setToolTip('<p>Saves the ticked metrics as a comma-separated table that any spreadsheet or statistics '
+                                     'program can read. Structure: one row per metric, one column per frame. Motion: one row per '
+                                     'group, one column per metric. You choose the name; the image folder is suggested.</p>')
+            self._btn_xlsx.setToolTip('<p>Saves the ticked metrics as an Excel workbook. Structure: one row per metric, one column per '
+                                      'frame. Motion: one row per group. Two extra sheets list the image and its calibration '
+                                      "('metadata') and the unit and description of every metric ('metrics').</p>")
 
     def _default_save_dir(self) -> str:
         """The folder of the analysed image (it always exists), else the home folder."""

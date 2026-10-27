@@ -14,6 +14,7 @@ pre-curated list of metrics, and falls back to ``sarcasm.features`` for
 per-key descriptions (shown as tooltips).
 """
 
+import html
 from typing import Dict, List
 
 from sarcasm.features import describe_key
@@ -131,7 +132,9 @@ def describe(key: str, kind: str) -> str:
         return key
     name = entry.get('name', key)
     desc = entry.get('description', '').strip()
-    return f'{name}\n\n{desc}\n\n(key: {key})' if desc else f'{name}\n(key: {key})'
+    name, desc = html.escape(name, quote=False), html.escape(desc, quote=False)
+    body = f'<p>{desc}</p>' if desc else ''
+    return f'<p><b>{name}</b></p>{body}<p>Name in the exported file: {key}</p>'
 
 
 def pretty_name(key: str, kind: str) -> str:

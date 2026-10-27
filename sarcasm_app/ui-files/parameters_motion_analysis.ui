@@ -23,7 +23,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_track_along">
         <property name="toolTip">
-         <string>Maximum along-sarcomere displacement between frames (µm)</string>
+         <string>&lt;p&gt;How far a sarcomere vector may move along the sarcomere axis (the myofibril direction, in which sarcomeres shorten during a beat) between two consecutive frames and still continue the same track. Larger values follow faster motion or lower frame rates but risk wrong links; smaller values leave gaps in the tracks during fast contractions. Default 1 µm per frame.&lt;/p&gt;&lt;p&gt;The value is capped at 60 % of the median sarcomere length (about 1.1 µm for 1.8 µm sarcomeres), so a track can never jump to the next sarcomere; higher entries change nothing.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Max disp. along [µm]</string>
@@ -33,7 +33,7 @@
       <item row="0" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_max_disp_along">
         <property name="toolTip">
-         <string>Maximum along-sarcomere displacement between frames (µm)</string>
+         <string>&lt;p&gt;How far a sarcomere vector may move along the sarcomere axis (the myofibril direction, in which sarcomeres shorten during a beat) between two consecutive frames and still continue the same track. Larger values follow faster motion or lower frame rates but risk wrong links; smaller values leave gaps in the tracks during fast contractions. Default 1 µm per frame.&lt;/p&gt;&lt;p&gt;The value is capped at 60 % of the median sarcomere length (about 1.1 µm for 1.8 µm sarcomeres), so a track can never jump to the next sarcomere; higher entries change nothing.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -52,7 +52,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="label_track_perp">
         <property name="toolTip">
-         <string>Maximum perpendicular-to-sarcomere displacement between frames (µm)</string>
+         <string>&lt;p&gt;How far a sarcomere vector may move sideways (perpendicular to the sarcomere axis, i.e. along its Z- and M-bands) between two consecutive frames and still continue the same track. Real sideways motion is small, so this is kept much tighter than the 'along' limit: a large sideways step usually means a jump onto a neighbouring myofibril. Raise it slightly if the cell drifts sideways and tracks keep breaking; lower it if tracks swap between neighbouring myofibrils. Default 0.2 µm per frame, capped at 25 % of the median sarcomere length.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Max disp. perp [µm]</string>
@@ -62,7 +62,7 @@
       <item row="1" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_max_disp_perp">
         <property name="toolTip">
-         <string>Maximum perpendicular-to-sarcomere displacement between frames (µm)</string>
+         <string>&lt;p&gt;How far a sarcomere vector may move sideways (perpendicular to the sarcomere axis, i.e. along its Z- and M-bands) between two consecutive frames and still continue the same track. Real sideways motion is small, so this is kept much tighter than the 'along' limit: a large sideways step usually means a jump onto a neighbouring myofibril. Raise it slightly if the cell drifts sideways and tracks keep breaking; lower it if tracks swap between neighbouring myofibrils. Default 0.2 µm per frame, capped at 25 % of the median sarcomere length.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -81,7 +81,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_track_ori">
         <property name="toolTip">
-         <string>Orientation tolerance for matching (degrees)</string>
+         <string>&lt;p&gt;Largest change in sarcomere orientation allowed between two frames for a detection to continue a track. Orientations are compared as axes, so 170° and 10° differ by 20°. A smaller tolerance prevents links to structures running at a different angle but can break tracks in disordered or bending regions, where the measured orientation is noisy; a larger one links more freely. Default 45°. 90° switches the check off.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Orient. tol. [deg]</string>
@@ -91,7 +91,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_ori_tol">
         <property name="toolTip">
-         <string>Orientation tolerance for matching (degrees)</string>
+         <string>&lt;p&gt;Largest change in sarcomere orientation allowed between two frames for a detection to continue a track. Orientations are compared as axes, so 170° and 10° differ by 20°. A smaller tolerance prevents links to structures running at a different angle but can break tracks in disordered or bending regions, where the measured orientation is noisy; a larger one links more freely. Default 45°. 90° switches the check off.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>1</number>
@@ -107,7 +107,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_track_min_duration">
         <property name="toolTip">
-         <string>Minimum accumulated real observation time for a track to be kept</string>
+         <string>&lt;p&gt;Tracks whose sarcomere was actually detected for less than this total time are deleted after tracking. Only frames with a real detection count, not gaps or filled-in frames, and they need not be consecutive. A higher value removes short-lived fragments (noise, sarcomeres flickering in and out) but also drops sarcomeres that are only briefly detected; a lower value keeps more of them. Default 0.08 s. It is converted to a number of frames (at least 1), so below about 19 frames/s a single detection is enough.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. track duration [s]</string>
@@ -117,7 +117,7 @@
       <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_min_duration_s">
         <property name="toolTip">
-         <string>Minimum accumulated real observation time for a track to be kept</string>
+         <string>&lt;p&gt;Tracks whose sarcomere was actually detected for less than this total time are deleted after tracking. Only frames with a real detection count, not gaps or filled-in frames, and they need not be consecutive. A higher value removes short-lived fragments (noise, sarcomeres flickering in and out) but also drops sarcomeres that are only briefly detected; a lower value keeps more of them. Default 0.08 s. It is converted to a number of frames (at least 1), so below about 19 frames/s a single detection is enough.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -136,7 +136,7 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_track_gap">
         <property name="toolTip">
-         <string>Longest gap (seconds) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
+         <string>&lt;p&gt;When a sarcomere is missed in a few frames inside its track, its length and orientation there are filled in by a straight line between the frames on either side, so brief detection flicker does not punch holes in its length trace. Longer gaps stay empty. Filled frames still count as undetected for coverage and track duration, but their lengths enter the group traces. Longer values fill more holes but can draw a straight line across part of a contraction. Default 0.05 s (at least 1 frame); 0 switches filling off.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Max gap interp. [s]</string>
@@ -146,7 +146,7 @@
       <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="dsb_track_max_gap_interp_s">
         <property name="toolTip">
-         <string>Longest gap (seconds) whose sarcomere length is interpolated; 0 = leave gaps empty</string>
+         <string>&lt;p&gt;When a sarcomere is missed in a few frames inside its track, its length and orientation there are filled in by a straight line between the frames on either side, so brief detection flicker does not punch holes in its length trace. Longer gaps stay empty. Filled frames still count as undetected for coverage and track duration, but their lengths enter the group traces. Longer values fill more holes but can draw a straight line across part of a contraction. Default 0.05 s (at least 1 frame); 0 switches filling off.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -165,7 +165,7 @@
       <item row="5" column="0" colspan="2">
        <widget class="QCheckBox" name="chk_track_flow_predictor">
         <property name="toolTip">
-         <string>Predict each sarcomere's step from the optical flow of the raw image before matching. Use when the frame rate is coarse relative to the motion, i.e. a contraction moves sarcomeres a good part of their length between consecutive frames; at high frame rates it changes nothing. Adds computation proportional to the image size.</string>
+         <string>&lt;p&gt;Before linking, moves every sarcomere to where the optical flow of the raw image says it went, instead of assuming it stayed in place. Turn it on when the frame rate is low compared with the motion, i.e. a contraction moves sarcomeres a good part of their length between two frames, and tracks break up or have low coverage. At high frame rates (about 30 frames/s and more) it gives practically the same tracks as off. Extra cost grows with image size and number of frames. Default off.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Predict motion from image flow (coarse frame rates)</string>
@@ -175,7 +175,7 @@
       <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="btn_track_vectors">
         <property name="toolTip">
-         <string>Track sarcomere vectors across all frames (requires sarcomere vectors)</string>
+         <string>&lt;p&gt;Step 1. Links the sarcomere vectors from the Structure tab from frame to frame, so each tracked point gets its position, length and orientation over time. Needs a movie and sarcomere vectors in consecutive frames; if the structure analysis covered only part of the movie, you are asked whether to track just those frames. Replaces earlier tracks, so steps 2 and 3 must be run again. Shows the tracked sarcomeres as dots in the viewer. Takes seconds to minutes, depending on movie length and image size.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>1. Track sarcomere vectors</string>
@@ -194,7 +194,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_display_color">
         <property name="toolTip">
-         <string>Feature that colours the trajectories and the per-frame sarcomere markers in the viewer</string>
+         <string>&lt;p&gt;What the sarcomere dots in the viewer are coloured by. ΔSL: change of the sarcomere's length from its resting length (blue shorter, red longer). SL: sarcomere length. Velocity: rate of length change in µm/s, negative while shortening. Group: its group from step 2 (grey = in no group). Coverage: fraction of the tracked frames in which it was detected. Track id: one arbitrary colour per track, to check that identities hold. Grey means no value in that frame. Display only.&lt;/p&gt;&lt;p&gt;The resting length is the median over the frames in which the cell is not contracting once the 'pool' grouping has been analysed, otherwise the median over all frames.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Colour by</string>
@@ -204,14 +204,14 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_display_color_by">
         <property name="toolTip">
-         <string>ΔSL = length change from the resting length; velocity = dSL/dt; group = current grouping; coverage = fraction of frames the track was observed</string>
+         <string>&lt;p&gt;What the sarcomere dots in the viewer are coloured by. ΔSL: change of the sarcomere's length from its resting length (blue shorter, red longer). SL: sarcomere length. Velocity: rate of length change in µm/s, negative while shortening. Group: its group from step 2 (grey = in no group). Coverage: fraction of the tracked frames in which it was detected. Track id: one arbitrary colour per track, to check that identities hold. Grey means no value in that frame. Display only.&lt;/p&gt;&lt;p&gt;The resting length is the median over the frames in which the cell is not contracting once the 'pool' grouping has been analysed, otherwise the median over all frames.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label_display_limit">
         <property name="toolTip">
-         <string>Symmetric colour range for ΔSL; 0 = automatic (99th percentile of |ΔSL|)</string>
+         <string>&lt;p&gt;Sets the ΔSL colour scale to run from minus this value (full blue) to plus this value (full red); larger changes get the end colour. Lower it to bring out small length changes; raise it if most sarcomeres look saturated. Default 0 µm, which means automatic: the 99th percentile of |ΔSL| over all sarcomeres and frames. Display only; only used when 'Colour by' is ΔSL.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>ΔSL colour limit [µm]</string>
@@ -221,7 +221,7 @@
       <item row="1" column="1">
        <widget class="QDoubleSpinBox" name="dsb_display_dsl_limit">
         <property name="toolTip">
-         <string>Symmetric colour range for ΔSL; 0 = automatic (99th percentile of |ΔSL|)</string>
+         <string>&lt;p&gt;Sets the ΔSL colour scale to run from minus this value (full blue) to plus this value (full red); larger changes get the end colour. Lower it to bring out small length changes; raise it if most sarcomeres look saturated. Default 0 µm, which means automatic: the 99th percentile of |ΔSL| over all sarcomeres and frames. Display only; only used when 'Colour by' is ΔSL.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -240,7 +240,7 @@
       <item row="3" column="0">
        <widget class="QCheckBox" name="chk_display_sarcomeres">
         <property name="toolTip">
-         <string>Every tracked sarcomere as a coloured dot at its position in the current frame</string>
+         <string>&lt;p&gt;Shows or hides the 'Sarcomeres' layer: every tracked sarcomere as a dot at its position in the current frame, coloured as set in 'Colour by'. A dot appears only in frames in which the sarcomere was actually detected. Click a dot to select it: the members of its group are ringed in yellow and its length traces open in a panel below the viewer. Default on.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Sarcomeres</string>
@@ -253,7 +253,7 @@
       <item row="4" column="0">
        <widget class="QCheckBox" name="chk_display_groups">
         <property name="toolTip">
-         <string>Fibre paths of a myofibril / LOI grouping, labelled with the group id; click a path to select the group</string>
+         <string>&lt;p&gt;Shows or hides the 'Groups' layer. For the myofibril and LOI groupings it draws one line per fibre through its sarcomeres at the reference frame, coloured and numbered by group (numbers only up to 30 groups). Click a line to select that group: its sarcomeres are ringed in yellow and the group's traces open in a panel below the viewer. Other groupings draw no lines; set 'Colour by' to Group to see them. Default on.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Groups (fibre paths)</string>
@@ -285,7 +285,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_group_by">
         <property name="toolTip">
-         <string>How to partition tracks into groups for motion analysis</string>
+         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi enable the fibre detail and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Group by</string>
@@ -295,14 +295,14 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_group_by">
         <property name="toolTip">
-         <string>pool = whole cell; mband = per M-band; myofibril = per fibre; domain = per domain; loi = per detected LOI line</string>
+         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi enable the fibre detail and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label_group_ref">
         <property name="toolTip">
-         <string>Frame whose topology (M-bands / fibres / domains) defines the grouping</string>
+         <string>&lt;p&gt;The frame whose structure decides which group each sarcomere belongs to: the M-band, myofibril line, domain or LOI it lies on in that frame. Automatic LOI detection also runs on this frame, and drawn LOIs are matched to the sarcomere positions in it. Not used for 'pool'. Choose a frame with the cell at rest and the structure well detected; it must be a tracked frame and, for myofibril or domain, analysed in the Structure tab. Default 0 (the first frame).&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Reference frame</string>
@@ -312,7 +312,7 @@
       <item row="1" column="1">
        <widget class="QSpinBox" name="sb_group_reference_frame">
         <property name="toolTip">
-         <string>Frame whose topology (M-bands / fibres / domains) defines the grouping</string>
+         <string>&lt;p&gt;The frame whose structure decides which group each sarcomere belongs to: the M-band, myofibril line, domain or LOI it lies on in that frame. Automatic LOI detection also runs on this frame, and drawn LOIs are matched to the sarcomere positions in it. Not used for 'pool'. Choose a frame with the cell at rest and the structure well detected; it must be a tracked frame and, for myofibril or domain, analysed in the Structure tab. Default 0 (the first frame).&lt;/p&gt;</string>
         </property>
         <property name="maximum">
          <number>1000000</number>
@@ -325,7 +325,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_group_cov">
         <property name="toolTip">
-         <string>Minimum fraction of frames a track must be present to count as long</string>
+         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a fibre chain should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. coverage</string>
@@ -335,7 +335,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_group_min_coverage">
         <property name="toolTip">
-         <string>Minimum fraction of frames a track must be present to count as long</string>
+         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a fibre chain should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -354,7 +354,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_group_min_size">
         <property name="toolTip">
-         <string>Groups with fewer member tracks are dropped (their tracks become unassigned)</string>
+         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the fibre, so e.g. 6 removes fibre fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. group size</string>
@@ -364,7 +364,7 @@
       <item row="3" column="1">
        <widget class="QSpinBox" name="sb_group_min_group_size">
         <property name="toolTip">
-         <string>Groups with fewer member tracks are dropped (their tracks become unassigned)</string>
+         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the fibre, so e.g. 6 removes fibre fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
         </property>
         <property name="minimum">
          <number>1</number>
@@ -380,7 +380,7 @@
       <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="btn_group_tracks">
         <property name="toolTip">
-         <string>Partition tracks into groups (cheap, re-runnable)</string>
+         <string>&lt;p&gt;Step 2. Sorts the tracked sarcomeres into groups as set in 'Group by', using the reference frame. With 'Group by = loi' it uses the lines you drew or, if there are none, detects LOIs automatically first. Needs step 1 and, for myofibril or domain, the matching Structure-tab analysis. Takes seconds and does not change the tracks, so you can regroup freely; run step 3 again afterwards. Updates the group colours and fibre lines in the viewer.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>2. Group tracks</string>
@@ -390,7 +390,7 @@
       <item row="5" column="0" colspan="2">
        <widget class="QPushButton" name="btn_draw_lois">
         <property name="toolTip">
-         <string>Draw line(s) on the movie. With 'Group by = loi', Group tracks will use the drawn lines; clear them to auto-detect instead.</string>
+         <string>&lt;p&gt;Adds a drawing layer ('DrawnLOIs') to the viewer for your own lines of interest. Click points along a myofibril and double-click to finish a line; draw as many as you like. With 'Group by = loi', step 2 then groups the sarcomeres along your lines: at the reference frame, the tracked points within half a sarcomere length of a line, one per sarcomere along it. Delete the lines (or the layer) to go back to automatic detection. Only shown when 'Group by' is loi.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Draw LOIs on movie…</string>
@@ -400,7 +400,7 @@
       <item row="6" column="0" colspan="2">
        <widget class="QGroupBox" name="groupBox_loi_detect">
         <property name="toolTip">
-         <string>Auto-detection settings used when Group by = loi and no LOIs were drawn.</string>
+         <string>&lt;p&gt;Settings for finding lines of interest (LOIs) automatically in the reference frame: candidate lines are grown along the myofibrils from random start points, filtered, clustered into near-duplicates, and one line per cluster is kept. Used only when 'Group by' is loi and no lines were drawn. Tick the title to show the settings; ticking does not switch detection on or off. Because the start points are random, the LOIs can differ slightly between runs.&lt;/p&gt;</string>
         </property>
         <property name="title">
          <string>LOI auto-detection (advanced)</string>
@@ -414,6 +414,9 @@
         <layout class="QFormLayout" name="formLayout_loi_detect">
          <item row="0" column="0">
           <widget class="QLabel" name="label_loi_n">
+           <property name="toolTip">
+            <string>&lt;p&gt;How many lines of interest are selected; each becomes one group. In the two cluster modes one line is taken from each of the largest clusters (most candidate lines); 'fit_straight_line' keeps the longest fitted lines; 'random_line' picks lines at random. Fewer LOIs result if fewer clusters or lines pass the filters. More LOIs sample more of the cell. Default 4.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Number of LOIs</string>
            </property>
@@ -421,6 +424,9 @@
          </item>
          <item row="0" column="1">
           <widget class="QSpinBox" name="sb_loi_n_lois">
+           <property name="toolTip">
+            <string>&lt;p&gt;How many lines of interest are selected; each becomes one group. In the two cluster modes one line is taken from each of the largest clusters (most candidate lines); 'fit_straight_line' keeps the longest fitted lines; 'random_line' picks lines at random. Fewer LOIs result if fewer clusters or lines pass the filters. More LOIs sample more of the cell. Default 4.&lt;/p&gt;</string>
+           </property>
            <property name="minimum"><number>1</number></property>
            <property name="maximum"><number>1000</number></property>
            <property name="value"><number>4</number></property>
@@ -428,6 +434,9 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="label_loi_ratio">
+           <property name="toolTip">
+            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated fibres. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Seed ratio</string>
            </property>
@@ -435,6 +444,9 @@
          </item>
          <item row="1" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_ratio_seeds">
+           <property name="toolTip">
+            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated fibres. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
+           </property>
            <property name="decimals"><number>3</number></property>
            <property name="maximum"><double>1.000000000000000</double></property>
            <property name="singleStep"><double>0.050000000000000</double></property>
@@ -443,6 +455,9 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="label_loi_persistence">
+           <property name="toolTip">
+            <string>&lt;p&gt;Number of preceding points on a growing line whose average sarcomere length and orientation predict where the next sarcomere lies. Larger values give straighter lines that ignore local orientation noise but cannot follow strongly bending myofibrils; smaller values follow curves but wander more easily. Each point is one sarcomere. Default 8.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Persistence</string>
            </property>
@@ -450,6 +465,9 @@
          </item>
          <item row="2" column="1">
           <widget class="QSpinBox" name="sb_loi_persistence">
+           <property name="toolTip">
+            <string>&lt;p&gt;Number of preceding points on a growing line whose average sarcomere length and orientation predict where the next sarcomere lies. Larger values give straighter lines that ignore local orientation noise but cannot follow strongly bending myofibrils; smaller values follow curves but wander more easily. Each point is one sarcomere. Default 8.&lt;/p&gt;</string>
+           </property>
            <property name="minimum">
             <number>1</number>
            </property>
@@ -459,6 +477,9 @@
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="label_loi_thrdist">
+           <property name="toolTip">
+            <string>&lt;p&gt;Search radius around the predicted position of the next sarcomere while a line grows; the line stops when no sarcomere vector lies within it. A larger radius lets lines bridge small defects and grow longer, but because sarcomere vectors are dense points along each M-band, steps can slip sideways, making lines wavy or jumping to a neighbouring myofibril. A smaller radius gives straighter, shorter lines. Default 0.3 µm.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Growth dist. [µm]</string>
            </property>
@@ -466,6 +487,9 @@
          </item>
          <item row="3" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_threshold_distance">
+           <property name="toolTip">
+            <string>&lt;p&gt;Search radius around the predicted position of the next sarcomere while a line grows; the line stops when no sarcomere vector lies within it. A larger radius lets lines bridge small defects and grow longer, but because sarcomere vectors are dense points along each M-band, steps can slip sideways, making lines wavy or jumping to a neighbouring myofibril. A smaller radius gives straighter, shorter lines. Default 0.3 µm.&lt;/p&gt;</string>
+           </property>
            <property name="decimals"><number>3</number></property>
            <property name="maximum"><double>1000.000000000000000</double></property>
            <property name="value"><double>0.300000000000000</double></property>
@@ -473,16 +497,26 @@
          </item>
          <item row="4" column="0">
           <widget class="QLabel" name="label_loi_mode">
+           <property name="toolTip">
+            <string>&lt;p&gt;How the LOIs are picked from the candidate lines. longest_in_cluster (default): the longest line of each of the largest clusters. fit_straight_line: a straight line fitted through all points of each cluster, extended by 2 µm at both ends. random_from_cluster: a random line from each of the largest clusters. random_line: random lines that pass the filters, without clustering. Lines from the cluster modes follow the actual chain of sarcomeres; fitted lines are matched to the sarcomeres by distance.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Mode</string>
            </property>
           </widget>
          </item>
          <item row="4" column="1">
-          <widget class="QComboBox" name="cb_loi_mode"/>
+          <widget class="QComboBox" name="cb_loi_mode">
+           <property name="toolTip">
+            <string>&lt;p&gt;How the LOIs are picked from the candidate lines. longest_in_cluster (default): the longest line of each of the largest clusters. fit_straight_line: a straight line fitted through all points of each cluster, extended by 2 µm at both ends. random_from_cluster: a random line from each of the largest clusters. random_line: random lines that pass the filters, without clustering. Lines from the cluster modes follow the actual chain of sarcomeres; fitted lines are matched to the sarcomeres by distance.&lt;/p&gt;</string>
+           </property>
+          </widget>
          </item>
          <item row="5" column="0">
           <widget class="QLabel" name="label_loi_number">
+           <property name="toolTip">
+            <string>&lt;p&gt;Minimum and maximum number of sarcomeres a candidate line may have (left and right box); lines outside are discarded before clustering. The minimum is included, the maximum excluded. Raise the minimum to keep only long, well-ordered fibres; raise the maximum for large cells with very long myofibrils. Lines with fewer than 5 sarcomeres are always discarded. Default 10–50.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Sarcomere # limits</string>
            </property>
@@ -500,6 +534,9 @@
          </item>
          <item row="6" column="0">
           <widget class="QLabel" name="label_loi_length">
+           <property name="toolTip">
+            <string>&lt;p&gt;Minimum and maximum length of a candidate line (left and right box), measured as the sum of its sarcomere lengths; lines outside are discarded before clustering (the maximum itself is excluded). Works like the sarcomere-number limits, but in µm. Default 0–200 µm, which in practice filters nothing.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Length limits [µm]</string>
            </property>
@@ -517,6 +554,9 @@
          </item>
          <item row="7" column="0">
           <widget class="QLabel" name="label_loi_cluster">
+           <property name="toolTip">
+            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same fibre, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same fibre. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Cluster threshold [µm]</string>
            </property>
@@ -524,6 +564,9 @@
          </item>
          <item row="7" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_cluster_threshold">
+           <property name="toolTip">
+            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same fibre, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same fibre. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
+           </property>
            <property name="decimals"><number>2</number></property>
            <property name="maximum"><double>100000.000000000000000</double></property>
            <property name="value"><double>2.500000000000000</double></property>
@@ -531,13 +574,20 @@
          </item>
          <item row="8" column="0">
           <widget class="QLabel" name="label_loi_linkage">
+           <property name="toolTip">
+            <string>&lt;p&gt;How the distance between two clusters of lines is measured when deciding whether to merge them (see 'Cluster threshold'). single (default): the closest pair of lines, so clusters can grow along chains of lines; complete: the most distant pair, giving compact clusters; average: the mean over all pairs. Not used by random_line.&lt;/p&gt;</string>
+           </property>
            <property name="text">
             <string>Linkage</string>
            </property>
           </widget>
          </item>
          <item row="8" column="1">
-          <widget class="QComboBox" name="cb_loi_linkage"/>
+          <widget class="QComboBox" name="cb_loi_linkage">
+           <property name="toolTip">
+            <string>&lt;p&gt;How the distance between two clusters of lines is measured when deciding whether to merge them (see 'Cluster threshold'). single (default): the closest pair of lines, so clusters can grow along chains of lines; complete: the most distant pair, giving compact clusters; average: the mean over all pairs. Not used by random_line.&lt;/p&gt;</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
@@ -554,7 +604,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_motion_agg">
         <property name="toolTip">
-         <string>How the member sarcomeres' lengths are combined into the group's SL(t) for the contraction analysis: mean (default) or median over the members present in each frame. The per-frame spread (std, quartiles) is stored either way.</string>
+         <string>&lt;p&gt;How the lengths of a group's sarcomeres are combined, frame by frame, into one length trace SL(t), which the contraction analysis then uses. mean (default): the average of the members measured in that frame. median: the middle value, less affected by a few mis-measured tracks. Only lengths within the sarcomere-length range count. The spread between members (standard deviation, quartiles) is stored either way.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Group signal</string>
@@ -564,14 +614,14 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_motion_aggregate">
         <property name="toolTip">
-         <string>mean: average of the member lengths in each frame (default); median: robust to a few mis-measured tracks</string>
+         <string>&lt;p&gt;How the lengths of a group's sarcomeres are combined, frame by frame, into one length trace SL(t), which the contraction analysis then uses. mean (default): the average of the members measured in that frame. median: the middle value, less affected by a few mis-measured tracks. Only lengths within the sarcomere-length range count. The spread between members (standard deviation, quartiles) is stored either way.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label_motion_thr">
         <property name="toolTip">
-         <string>Binary threshold for the contraction state after ContractionNet prediction</string>
+         <string>&lt;p&gt;ContractionNet, a neural network, reads each group's length trace and gives every frame a probability (0–1) that the group is contracting; frames above this threshold count as contracting. Raise it if noise or drift is detected as contractions; lower it if weak beats are missed. Default 0.45, the value the bundled model was tuned for (read from the model file); leave it unless the detected contractions look wrong.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Contr. threshold</string>
@@ -581,7 +631,7 @@
       <item row="1" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_threshold">
         <property name="toolTip">
-         <string>Binary threshold for the contraction state after ContractionNet prediction</string>
+         <string>&lt;p&gt;ContractionNet, a neural network, reads each group's length trace and gives every frame a probability (0–1) that the group is contracting; frames above this threshold count as contracting. Raise it if noise or drift is detected as contractions; lower it if weak beats are missed. Default 0.45, the value the bundled model was tuned for (read from the model file); leave it unless the detected contractions look wrong.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -597,7 +647,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_motion_ctmin">
         <property name="toolTip">
-         <string>Minimum contraction duration (s); shorter cycles are removed</string>
+         <string>&lt;p&gt;Contractions shorter than this are discarded as noise. A higher value removes brief false detections but can delete real short contractions, for example in fast-paced cells; a lower value keeps them. Default 0.2 s. It is converted to whole frames, rounding down, and acts only when that gives at least 2 frames (with the default, from 10 frames/s up).&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. contr. time [s]</string>
@@ -607,7 +657,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_contr_time_min">
         <property name="toolTip">
-         <string>Minimum contraction duration (s); shorter cycles are removed</string>
+         <string>&lt;p&gt;Contractions shorter than this are discarded as noise. A higher value removes brief false detections but can delete real short contractions, for example in fast-paced cells; a lower value keeps them. Default 0.2 s. It is converted to whole frames, rounding down, and acts only when that gives at least 2 frames (with the default, from 10 frames/s up).&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -623,7 +673,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_motion_merge">
         <property name="toolTip">
-         <string>Maximum gap (s) between two contractions before they are merged</string>
+         <string>&lt;p&gt;Two contractions separated by a pause shorter than this are joined into one, so a beat that the detection briefly interrupts is not counted twice. A higher value joins more; too high a value can fuse two real beats at fast beating rates. Default 0.05 s. It is converted to whole frames, rounding down, and acts only when that gives at least 2 frames (with the default, from 40 frames/s up). Applied before the minimum contraction time.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Merge threshold [s]</string>
@@ -633,7 +683,7 @@
       <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_merge_time_max">
         <property name="toolTip">
-         <string>Maximum gap (s) between two contractions before they are merged</string>
+         <string>&lt;p&gt;Two contractions separated by a pause shorter than this are joined into one, so a beat that the detection briefly interrupts is not counted twice. A higher value joins more; too high a value can fuse two real beats at fast beating rates. Default 0.05 s. It is converted to whole frames, rounding down, and acts only when that gives at least 2 frames (with the default, from 40 frames/s up). Applied before the minimum contraction time.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>3</number>
@@ -649,7 +699,7 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_motion_buffer">
         <property name="toolTip">
-         <string>Drop contraction cycles within this many frames of the start/end</string>
+         <string>&lt;p&gt;A contraction that starts within this many frames of the beginning of the recording, or ends within this many frames of its end, counts as incomplete, because part of it may lie outside the recording. It is kept as a contraction and for the beating rate, but measures that need its full course (contraction time, time to peak, relaxation times, or a peak at the cut edge) are left empty. Default 3 frames.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Buffer [frames]</string>
@@ -659,7 +709,7 @@
       <item row="4" column="1">
        <widget class="QSpinBox" name="sb_motion_buffer_frames">
         <property name="toolTip">
-         <string>Drop contraction cycles within this many frames of the start/end</string>
+         <string>&lt;p&gt;A contraction that starts within this many frames of the beginning of the recording, or ends within this many frames of its end, counts as incomplete, because part of it may lie outside the recording. It is kept as a contraction and for the beating rate, but measures that need its full course (contraction time, time to peak, relaxation times, or a peak at the cut edge) are left empty. Default 3 frames.&lt;/p&gt;</string>
         </property>
         <property name="maximum">
          <number>10000</number>
@@ -672,7 +722,7 @@
       <item row="5" column="0">
        <widget class="QLabel" name="label_motion_minvalid">
         <property name="toolTip">
-         <string>Minimum fraction of finite frames required to analyze a group</string>
+         <string>&lt;p&gt;Groups whose length trace has a value in fewer than this fraction of the frames are not analysed: no contractions are detected and all their results stay empty. A frame has no value when none of the group's sarcomeres was measured in it within the sarcomere-length range. Lower it to analyse sparsely tracked groups, at the cost of less reliable results. Default 0.5 (50 % of frames).&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. valid frames</string>
@@ -682,7 +732,7 @@
       <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="dsb_motion_min_valid_frames">
         <property name="toolTip">
-         <string>Minimum fraction of finite frames required to analyze a group</string>
+         <string>&lt;p&gt;Groups whose length trace has a value in fewer than this fraction of the frames are not analysed: no contractions are detected and all their results stay empty. A frame has no value when none of the group's sarcomeres was measured in it within the sarcomere-length range. Lower it to analyse sparsely tracked groups, at the cost of less reliable results. Default 0.5 (50 % of frames).&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -701,7 +751,7 @@
       <item row="6" column="0">
        <widget class="QLabel" name="label_motion_filter">
         <property name="toolTip">
-         <string>Savitzky-Golay window length and polyorder for velocity smoothing</string>
+         <string>&lt;p&gt;Savitzky-Golay filter used to compute velocities from the length traces: it fits a polynomial in a sliding window of frames. It sets the peak shortening and lengthening velocities of each group and the velocities used to compare the sarcomeres within a group; contraction detection and length changes are not affected. 'window' sets how many frames are smoothed, 'polyorder' how flexibly the fit follows the trace. Defaults 13 frames and order 5.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Smoothing filter</string>
@@ -712,6 +762,9 @@
        <layout class="QHBoxLayout" name="hbox_motion_filter">
         <item>
          <widget class="QLabel" name="label_motion_filter_wl">
+          <property name="toolTip">
+           <string>&lt;p&gt;Number of frames in the sliding window of the velocity filter. A longer window gives smoother velocities but flattens fast peaks, so peak velocities come out lower; a shorter one keeps the peaks but is noisier. It is counted in frames, not seconds: 13 frames span 0.13 s at 100 frames/s but 0.65 s at 20 frames/s, so lower it for slow recordings. 'Polyorder' is kept below it. Default 13.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string>window</string>
           </property>
@@ -720,7 +773,7 @@
         <item>
          <widget class="QSpinBox" name="sb_motion_filter_wl">
           <property name="toolTip">
-           <string>Savitzky-Golay window length</string>
+           <string>&lt;p&gt;Number of frames in the sliding window of the velocity filter. A longer window gives smoother velocities but flattens fast peaks, so peak velocities come out lower; a shorter one keeps the peaks but is noisier. It is counted in frames, not seconds: 13 frames span 0.13 s at 100 frames/s but 0.65 s at 20 frames/s, so lower it for slow recordings. 'Polyorder' is kept below it. Default 13.&lt;/p&gt;</string>
           </property>
           <property name="minimum">
            <number>3</number>
@@ -735,6 +788,9 @@
         </item>
         <item>
          <widget class="QLabel" name="label_motion_filter_po">
+          <property name="toolTip">
+           <string>&lt;p&gt;Order of the polynomial fitted in each window of the velocity filter. A higher order follows sharp velocity peaks more closely but lets more noise through; a lower order smooths more. Always kept below 'window'. Default 5.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string>polyorder</string>
           </property>
@@ -743,7 +799,7 @@
         <item>
          <widget class="QSpinBox" name="sb_motion_filter_po">
           <property name="toolTip">
-           <string>Savitzky-Golay polyorder</string>
+           <string>&lt;p&gt;Order of the polynomial fitted in each window of the velocity filter. A higher order follows sharp velocity peaks more closely but lets more noise through; a lower order smooths more. Always kept below 'window'. Default 5.&lt;/p&gt;</string>
           </property>
           <property name="minimum">
            <number>1</number>
@@ -761,7 +817,7 @@
       <item row="7" column="0">
        <widget class="QLabel" name="label_motion_slen">
         <property name="toolTip">
-         <string>Sarcomere-length range used during aggregation</string>
+         <string>&lt;p&gt;Only sarcomere lengths within this range enter a group's length trace; lengths outside are treated as missing in that frame, as they are usually mis-measurements. The same range applies to the per-sarcomere velocities used to compare sarcomeres within a group. Narrow it if implausible lengths distort the group traces; widen it for strongly stretched or contracted preparations. Default 1–3 µm.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Sarc. length [µm]</string>
@@ -772,6 +828,9 @@
        <layout class="QHBoxLayout" name="hbox_motion_slen">
         <item>
          <widget class="QLabel" name="label_motion_slen_min">
+          <property name="toolTip">
+           <string>&lt;p&gt;Only sarcomere lengths within this range enter a group's length trace; lengths outside are treated as missing in that frame, as they are usually mis-measurements. The same range applies to the per-sarcomere velocities used to compare sarcomeres within a group. Narrow it if implausible lengths distort the group traces; widen it for strongly stretched or contracted preparations. Default 1–3 µm.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string>Min:</string>
           </property>
@@ -779,6 +838,9 @@
         </item>
         <item>
          <widget class="QDoubleSpinBox" name="dsb_motion_slen_lower">
+          <property name="toolTip">
+           <string>&lt;p&gt;Only sarcomere lengths within this range enter a group's length trace; lengths outside are treated as missing in that frame, as they are usually mis-measurements. The same range applies to the per-sarcomere velocities used to compare sarcomeres within a group. Narrow it if implausible lengths distort the group traces; widen it for strongly stretched or contracted preparations. Default 1–3 µm.&lt;/p&gt;</string>
+          </property>
           <property name="decimals">
            <number>2</number>
           </property>
@@ -792,6 +854,9 @@
         </item>
         <item>
          <widget class="QLabel" name="label_motion_slen_max">
+          <property name="toolTip">
+           <string>&lt;p&gt;Only sarcomere lengths within this range enter a group's length trace; lengths outside are treated as missing in that frame, as they are usually mis-measurements. The same range applies to the per-sarcomere velocities used to compare sarcomeres within a group. Narrow it if implausible lengths distort the group traces; widen it for strongly stretched or contracted preparations. Default 1–3 µm.&lt;/p&gt;</string>
+          </property>
           <property name="text">
            <string>Max:</string>
           </property>
@@ -799,6 +864,9 @@
         </item>
         <item>
          <widget class="QDoubleSpinBox" name="dsb_motion_slen_upper">
+          <property name="toolTip">
+           <string>&lt;p&gt;Only sarcomere lengths within this range enter a group's length trace; lengths outside are treated as missing in that frame, as they are usually mis-measurements. The same range applies to the per-sarcomere velocities used to compare sarcomeres within a group. Narrow it if implausible lengths distort the group traces; widen it for strongly stretched or contracted preparations. Default 1–3 µm.&lt;/p&gt;</string>
+          </property>
           <property name="decimals">
            <number>2</number>
           </property>
@@ -815,7 +883,7 @@
       <item row="8" column="0" colspan="2">
        <widget class="QPushButton" name="btn_analyze_track_motion">
         <property name="toolTip">
-         <string>Aggregate member lengths per group and run the contraction engine</string>
+         <string>&lt;p&gt;Step 3. For each group from step 2, combines its sarcomeres' lengths into one trace, detects the contractions with ContractionNet and measures them: beating rate, resting length, contraction amplitude, shortening and lengthening velocity, contraction and relaxation times, and how synchronously the sarcomeres in the group move. Needs step 2 and the frame time. Results are kept per grouping, so pool, myofibril and others can be analysed one after another and exported separately. Usually takes seconds.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>3. Analyze track motion</string>
@@ -828,7 +896,7 @@
    <item row="4" column="0" colspan="2">
     <widget class="QPushButton" name="btn_analyze_motion">
      <property name="toolTip">
-      <string>Run track → group → analyze in one go (check the parameters first)</string>
+      <string>&lt;p&gt;Runs steps 1, 2 and 3 one after another with the current settings: track sarcomere vectors, group tracks, analyse track motion. Check the settings of all three steps first. Needs sarcomere vectors from the Structure tab and, depending on 'Group by', myofibrils or domains. Takes as long as the three steps together, mostly the tracking.&lt;/p&gt;</string>
      </property>
      <property name="text">
       <string>Track → Group → Analyze (all)</string>
@@ -844,7 +912,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_fibre_group">
         <property name="toolTip">
-         <string>Fibre group to inspect in detail (myofibril / loi grouping only)</string>
+         <string>&lt;p&gt;Which fibre to show with 'Show fibre detail'. The numbers are the group numbers on the fibre lines in the viewer; clicking a fibre line or a sarcomere in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Fibre group</string>
@@ -854,14 +922,14 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_fibre_group">
         <property name="toolTip">
-         <string>Fibre group to inspect in detail (myofibril / loi grouping only)</string>
+         <string>&lt;p&gt;Which fibre to show with 'Show fibre detail'. The numbers are the group numbers on the fibre lines in the viewer; clicking a fibre line or a sarcomere in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0" colspan="2">
        <widget class="QPushButton" name="btn_show_fibre_detail">
         <property name="toolTip">
-         <string>Show LOI-style detail (trajectories, popping, phase space) for the selected fibre</string>
+         <string>&lt;p&gt;Analyses the selected fibre like a manually placed line of interest: its sarcomeres, in order along the fibre, give Z-band positions and per-sarcomere length changes. Opens plots of the Z-band positions over time, the length change of each sarcomere, a phase-space plot (length change against velocity) and a map of popping events (a sarcomere lengthening more than 0.25 µm beyond its resting length during a contraction). Uses its own default contraction settings, not those of step 3.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Show fibre detail</string>
@@ -870,6 +938,9 @@
       </item>
       <item row="2" column="0" colspan="2">
        <widget class="QPushButton" name="btn_plot_summary">
+        <property name="toolTip">
+         <string>&lt;p&gt;Opens a summary figure of the last motion analysis (step 3): a map of where sarcomeres were tracked and how completely, a map of the groups, the groups' length and length-change traces, and a raster of every sarcomere's length change, over one averaged beat if the 'pool' grouping has been analysed, otherwise over the whole recording. Fibre groupings add a map of the fibres coloured by beating rate. If you regrouped after step 3, run step 3 again first.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Plot summary</string>
         </property>
@@ -877,6 +948,9 @@
       </item>
       <item row="3" column="0" colspan="2">
        <widget class="QPushButton" name="btn_export_motion_data">
+        <property name="toolTip">
+         <string>&lt;p&gt;Saves the results of step 3 as a table with one row per group. A dialog lets you choose the grouping (every grouping you analysed is available), the metrics, and the format: .csv, .xlsx (with extra sheets listing the file's metadata and each metric's unit) or .json. Needs step 3.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Export motion data (.csv/.xlsx)</string>
         </property>

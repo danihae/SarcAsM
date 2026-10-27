@@ -23,7 +23,7 @@
       <item>
        <widget class="QLabel" name="label">
         <property name="toolTip">
-         <string>A .tif/.tiff movie or an already-analyzed .ome.zarr store.</string>
+         <string>&lt;p&gt;Path of the image to open: a .tif/.tiff image or movie, or a .ome.zarr results folder. Paste or type the path and press Enter, use the buttons on the right, or drop the file onto the viewer. If a .tif already has a &amp;lt;name&amp;gt;.ome.zarr folder next to it, its saved results and metadata are loaded too; otherwise that folder is created, and all results of this image are saved there.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Input</string>
@@ -33,14 +33,14 @@
       <item>
        <widget class="QLineEdit" name="le_cell_file">
         <property name="toolTip">
-         <string>Path to a .tif/.tiff file or a .ome.zarr store (press Enter to open).</string>
+         <string>&lt;p&gt;Path of the image to open: a .tif/.tiff image or movie, or a .ome.zarr results folder. Paste or type the path and press Enter, use the buttons on the right, or drop the file onto the viewer. If a .tif already has a &amp;lt;name&amp;gt;.ome.zarr folder next to it, its saved results and metadata are loaded too; otherwise that folder is created, and all results of this image are saved there.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_search">
         <property name="toolTip">
-         <string>Browse for a .tif/.tiff movie.</string>
+         <string>&lt;p&gt;Choose a .tif/.tiff image or movie in a file dialog and open it straight away. Results saved earlier in the &amp;lt;name&amp;gt;.ome.zarr folder next to it are shown again.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Browse .tif…</string>
@@ -50,7 +50,7 @@
       <item>
        <widget class="QPushButton" name="btn_open_zarr">
         <property name="toolTip">
-         <string>Open an already-analyzed .ome.zarr store (select the .ome.zarr folder).</string>
+         <string>&lt;p&gt;Open the results folder (&amp;lt;name&amp;gt;.ome.zarr) of an earlier analysis: select the folder itself, not a file inside it. Useful when you only have the results, e.g. copied from another computer. If the .tif is next to it, opening the .tif loads the same results.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Open .ome.zarr…</string>
@@ -80,6 +80,9 @@
      <layout class="QHBoxLayout" name="horizontalLayout_3">
       <item>
        <widget class="QLabel" name="label_2">
+        <property name="toolTip">
+         <string>&lt;p&gt;Time between two frames of the movie, in seconds per frame (1 / frame rate; 0.01 s at 100 frames/s). Read from the file when it is stored there; otherwise enter it. Only the motion analysis uses it: velocities, beating rate and all contraction times scale with it, and it refuses to run without it. Applied on Enter or when you leave the field. If motion results exist, a change asks to delete them and re-analyse.&lt;/p&gt;</string>
+        </property>
         <property name="maximumSize">
          <size>
           <width>100</width>
@@ -92,10 +95,17 @@
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="le_frame_time"/>
+       <widget class="QLineEdit" name="le_frame_time">
+        <property name="toolTip">
+         <string>&lt;p&gt;Time between two frames of the movie, in seconds per frame (1 / frame rate; 0.01 s at 100 frames/s). Read from the file when it is stored there; otherwise enter it. Only the motion analysis uses it: velocities, beating rate and all contraction times scale with it, and it refuses to run without it. Applied on Enter or when you leave the field. If motion results exist, a change asks to delete them and re-analyse.&lt;/p&gt;</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_3">
+        <property name="toolTip">
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Read from the file (OME, ImageJ or TIFF resolution tags) when present; a red field means it is missing or implausible. Every length in µm depends on it, and the 'auto' network uses the legacy model below 0.08 µm/px. Values outside 0.01–0.5 µm are refused. Applied on Enter or when you leave the field; on an analysed file you are asked first, because the results must be deleted and recomputed.&lt;/p&gt;</string>
+        </property>
         <property name="maximumSize">
          <size>
           <width>100</width>
@@ -108,20 +118,34 @@
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="le_pixel_size"/>
+       <widget class="QLineEdit" name="le_pixel_size">
+        <property name="toolTip">
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Read from the file (OME, ImageJ or TIFF resolution tags) when present; a red field means it is missing or implausible. Every length in µm depends on it, and the 'auto' network uses the legacy model below 0.08 µm/px. Values outside 0.01–0.5 µm are refused. Applied on Enter or when you leave the field; on an analysed file you are asked first, because the results must be deleted and recomputed.&lt;/p&gt;</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_5">
+        <property name="toolTip">
+         <string>&lt;p&gt;Order of the image dimensions, one letter each: T time, Z depth, C channel, Y rows, X columns (e.g. TYX for a movie, YX for an image, TCYX for a multi-channel movie). Detected from the file; correct it if the image looks wrong, e.g. movie frames shown as channels. The number of letters must match the image dimensions. Applied with 'Save metadata', which reads the image again; if the file has results, you are asked first to delete them.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Axes</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="le_axes"/>
+       <widget class="QLineEdit" name="le_axes">
+        <property name="toolTip">
+         <string>&lt;p&gt;Order of the image dimensions, one letter each: T time, Z depth, C channel, Y rows, X columns (e.g. TYX for a movie, YX for an image, TCYX for a multi-channel movie). Detected from the file; correct it if the image looks wrong, e.g. movie frames shown as channels. The number of letters must match the image dimensions. Applied with 'Save metadata', which reads the image again; if the file has results, you are asked first to delete them.&lt;/p&gt;</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_4">
+        <property name="toolTip">
+         <string>&lt;p&gt;Which colour channel holds the sarcomere stain (Z-bands, e.g. α-actinin), counted from 0. Active only when Axes contains C; until you choose, channel 0 is used. A change re-reads the image at once with the new channel; if the file has results, you are asked first to delete them.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Channel</string>
         </property>
@@ -129,6 +153,9 @@
       </item>
       <item>
        <widget class="QSpinBox" name="spinbox_channel">
+        <property name="toolTip">
+         <string>&lt;p&gt;Which colour channel holds the sarcomere stain (Z-bands, e.g. α-actinin), counted from 0. Active only when Axes contains C; until you choose, channel 0 is used. A change re-reads the image at once with the new channel; if the file has results, you are asked first to delete them.&lt;/p&gt;</string>
+        </property>
         <property name="enabled">
          <bool>false</bool>
         </property>
@@ -136,6 +163,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_store_metadata">
+        <property name="toolTip">
+         <string>&lt;p&gt;Applies the frame time, pixel size, axes and channel of this row to the open image and saves them in its .ome.zarr store, so they are used again next time. A new axes order or channel reads the image again. A new pixel size on an analysed file, or a new frame time with motion results, makes the results invalid; you are asked before they are deleted. Invalid entries turn red and nothing is applied.&lt;/p&gt;</string>
+        </property>
         <property name="maximumSize">
          <size>
           <width>100</width>
@@ -158,6 +188,9 @@
      <layout class="QHBoxLayout" name="horizontalLayout_5">
       <item>
        <widget class="QLineEdit" name="le_parameters_path">
+        <property name="toolTip">
+         <string>&lt;p&gt;Full path of a .json file holding a set of analysis settings (all settings of the Structure, Motion and Batch tabs). Choose it with Browse… or type it. 'Import' loads the settings from this file, 'Export' saves the current ones into it. Use it to analyse other experiments with the same settings, or to keep a record of the settings with your results.&lt;/p&gt;</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>1</horstretch>
@@ -174,6 +207,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_search_parameters_file">
+        <property name="toolTip">
+         <string>&lt;p&gt;Pick a parameter file (.json) in a file dialog; its path goes into the field. To start a new file, type a new name: an empty file is created at once, ready for 'Export'. A file that is not valid JSON is refused.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Browse…</string>
         </property>
@@ -181,6 +217,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_import_parameters">
+        <property name="toolTip">
+         <string>&lt;p&gt;Loads the settings from the parameter file in the field into the Structure, Motion and Batch tabs (including the batch root folder). Settings missing from the file keep their current values; values of the wrong type are listed and skipped. The open image and its results are not changed; run the analysis again to apply the new settings.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Import</string>
         </property>
@@ -188,6 +227,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_export_parameters">
+        <property name="toolTip">
+         <string>&lt;p&gt;Saves all current settings of the Structure, Motion and Batch tabs (including the batch root folder) to the parameter file in the field, overwriting it. Load them later with 'Import', e.g. to analyse another experiment with the same settings.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Export</string>
         </property>
@@ -195,6 +237,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_set_to_default">
+        <property name="toolTip">
+         <string>&lt;p&gt;Sets every setting of the Structure, Motion and Batch tabs back to its default. The open image, its metadata (pixel size, frame time, axes, channel), its results and the batch root folder are not changed. To reset a single tab, use 'Reset tab defaults' on that tab.&lt;/p&gt;</string>
+        </property>
         <property name="text">
          <string>Reset to default</string>
         </property>

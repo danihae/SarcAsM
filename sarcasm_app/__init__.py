@@ -236,7 +236,9 @@ class Application:
         banner.setProperty("role", "tabBanner")
         header.addWidget(banner, 1)
         btn_reset = QPushButton("Reset tab defaults")
-        btn_reset.setToolTip("Restore default values for parameters on this tab")
+        btn_reset.setToolTip('<p>Sets every setting on this tab back to its default. The open image, its metadata and its '
+                             'results are not changed (on the Batch tab, neither is the root folder). To reset all tabs at '
+                             "once, use 'Reset to default' in the Parameters box.</p>")
         btn_reset.clicked.connect(reset_callback)
         header.addWidget(btn_reset, 0, Qt.AlignTop)
         layout.addLayout(header)
@@ -271,11 +273,13 @@ class Application:
 
         radio_all = QRadioButton("All frames")
         radio_sel = QRadioButton("Selected:")
-        radio_all.setToolTip("Run analysis on every frame in the file")
-        radio_sel.setToolTip(
-            "Run analysis on specific frames only: one frame (3), frames separated by commas "
-            "(0, 4, 9) or a range (0-99, both ends included). Frames start at 0."
-        )
+        radio_all.setToolTip('<p>The structure analysis steps (detection, Z-bands, vectors, myofibrils, domains) and the batch'
+                             ' structure analysis run on every frame of the movie. For long movies this can take a while; '
+                             "choose 'Selected' to analyse a few frames only. Default.</p>")
+        radio_sel.setToolTip('<p>Run the structure analysis on chosen frames only: one frame (3), frames separated by commas '
+                             '(0, 4, 9) or a range (0-99, both ends included); frames start at 0. Saves time on long movies '
+                             'when a few frames represent the cell. The batch uses the same frames for every file, so they '
+                             'must exist in all of them.</p>')
         grp = QButtonGroup(scope)
         grp.addButton(radio_all)
         grp.addButton(radio_sel)
@@ -335,9 +339,17 @@ class Application:
             return
 
         radio_use_meta = QRadioButton("Use file metadata")
-        radio_use_meta.setToolTip("Read pixel size and frame time from each image file")
+        radio_use_meta.setToolTip('<p>Each image keeps its own pixel size, frame time, axes order and channel: the values saved in '
+                                  'its .ome.zarr store if it was opened or analysed before (including values you typed in the '
+                                  'Metadata row), otherwise those read from the TIFF. The Pixel size, Frame time, Channel and Axes '
+                                  'fields of this tab are ignored. A file without a pixel size fails and is listed at the end. '
+                                  'Default.</p>')
         radio_override = QRadioButton("Override for all files")
-        radio_override.setToolTip("Apply the pixel size and frame time entered above to every image in the batch")
+        radio_override.setToolTip('<p>Writes the Pixel size, Frame time, Channel and Axes of this tab into every image of the '
+                                  "batch, replacing the files' own values, and saves them in each .ome.zarr store. Use it when the "
+                                  'files lack calibration or carry a wrong one and were all recorded the same way. Results are not '
+                                  'deleted; the steps you run are recomputed. Channel and axes only affect files read for the first'
+                                  ' time.</p>')
 
         group = QButtonGroup(host)
         group.addButton(radio_use_meta)
