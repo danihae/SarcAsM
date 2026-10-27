@@ -440,6 +440,16 @@ class BatchProcessingControl:
                                          'structure.z_band_analysis.threshold').get_value(),
                                      min_length=model.parameters.get_parameter(
                                          'structure.z_band_analysis.min_length').get_value(),
+                                     median_filter_radius=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.median_filter_radius').get_value(),
+                                     theta_phi_min=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.theta_phi_min').get_value(),
+                                     a_min=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.a_min').get_value(),
+                                     d_max=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.d_max').get_value(),
+                                     d_min=model.parameters.get_parameter(
+                                         'structure.z_band_analysis.d_min').get_value(),
                                      max_axial_offset=model.parameters.get_parameter(
                                          'structure.z_band_analysis.max_axial_offset').get_value())
 
@@ -454,6 +464,8 @@ class BatchProcessingControl:
                 median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
                 linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
                 interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
+                smooth_orientation_sigma=model.parameters.get_parameter(
+                    'structure.vectors.smooth_orientation_sigma').get_value(),
                 neighbor_radius=model.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
                 max_neighbor_deviation=(
                     model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
