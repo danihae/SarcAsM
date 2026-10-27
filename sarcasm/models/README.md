@@ -54,6 +54,14 @@ Orientation errors are taken only where both models call sarcomere, so mask size
 v2 does not replace `legacy` at high magnification: on the 0.061 µm/px benchmark image F1 is 0.89
 (`legacy`), 0.83 (v2), 0.77 (v1), so `'auto'` still picks `legacy` below 0.08 µm/px.
 
+**Known limitation: sarcomere precursors.** In immature or noisy cells v2 puts more Z-bands, sarcomere vectors
+and sarcomere area on precursors (isolated α-actinin puncta, dense speckle) than v1, which marks some of them
+too. On a 12-day hiPSC-CM time course (0.107 µm/px, frames at days 1, 7.6 and 12), vectors outside v1's
+sarcomere mask rise from 3–5 to 116–226 per frame (at most 2.3 % of all vectors) and `sarcomere_area_ratio`
+by 16–36 %, while the mean sarcomere length moves by at most 0.025 µm. Part of the extra area is real (faint
+and thin myofibrils), part is precursors and the dark gaps between adjacent myofibrils. The cause is in the
+real Z-band training labels, which were never restricted to sarcomeres.
+
 ## What changed in v1.0.0
 
 **The orientation labels were mirrored.** `training_data_generation.create_orientation_map`
