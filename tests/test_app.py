@@ -425,6 +425,51 @@ class TestBatchProcessingParameters:
         assert params.get_parameter('batch.force.override').get_value() is False
 
 
+    @pytest.mark.parametrize('vector_frames, recalc, expect_structure', [
+        ([0, 1, 2], False, False),     # analysed on every frame: tracked as it is
+        ([0], False, True),            # only part of the movie: vectors on all frames first
+        (None, False, True),           # never analysed
+        ([0, 1, 2], True, True),       # 'Run structure prerequisites' redoes them
+    ])
+    def test_batch_motion_runs_missing_structure_steps(self, model, vector_frames, recalc, expect_structure):
+        """The batch motion button was disabled, and its code ran the prerequisites only on the Structure
+        tab's frames and never saved the results."""
+        from types import SimpleNamespace
+        from sarcasm_app.control import batch_processing_control as bpc
+        data = {'structure.myofibril.lines': [None, None, None]}
+        if vector_frames is not None:
+            data['params.analyze_sarcomere_vectors.frames'] = vector_frames
+        sarc = MagicMock()
+        sarc.data = data
+        sarc.metadata = SimpleNamespace(n_stack=3, frametime=0.01)
+        model.parameters.get_parameter('batch.recalculate.for.motion').set_value(recalc)
+        model.parameters.get_parameter('motion.group.by').set_value('myofibril')
+        model.parameters.get_parameter('motion.group.reference_frame').set_value(0)
+        ctl = bpc.BatchProcessingControl(MagicMock(), MagicMock())
+        with patch.object(bpc, 'SarcAsM', return_value=sarc):
+            ctl._BatchProcessingControl__single_motion_analysis('movie.tif', 0.1, 0.1, 0, '', False, model)
+        assert sarc.detect_sarcomeres.called == expect_structure
+        assert sarc.analyze_sarcomere_vectors.called == expect_structure
+        if expect_structure:
+            assert sarc.analyze_sarcomere_vectors.call_args.kwargs['frames'] == 'all'
+        assert sarc.analyze_myofibrils.call_args.kwargs['frames'] == [0]       # no myofibrils at frame 0 yet
+        sarc.track_sarcomere_vectors.assert_called_once()
+        sarc.group_tracks.assert_called_once()
+        sarc.analyze_track_motion.assert_called_once()
+        sarc.commit.assert_called_once()
+
+    def test_batch_motion_refuses_single_images(self, model):
+        from types import SimpleNamespace
+        from sarcasm_app.control import batch_processing_control as bpc
+        sarc = MagicMock()
+        sarc.data = {}
+        sarc.metadata = SimpleNamespace(n_stack=1, frametime=None)
+        ctl = bpc.BatchProcessingControl(MagicMock(), MagicMock())
+        with patch.object(bpc, 'SarcAsM', return_value=sarc), pytest.raises(ValueError, match='single image'):
+            ctl._BatchProcessingControl__single_motion_analysis('image.tif', 0.1, 0.1, 0, '', False, model)
+        sarc.track_sarcomere_vectors.assert_not_called()
+
+
 class TestMotionParameters:
     """Test motion analysis parameter defaults."""
 

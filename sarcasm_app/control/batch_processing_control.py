@@ -72,6 +72,71 @@ def _safe_pool_size(requested: int) -> int:
     return requested
 
 
+# The structure steps with the settings of the Structure tab, shared by the structure batch (the selected
+# frames) and the motion batch (every frame, or the reference frame); `p(name)` reads a parameter.
+def _quiet(progress_notifier):
+    return progress_notifier if progress_notifier is not None else ProgressNotifier()
+
+
+def _detect_sarcomeres(sarc_obj: SarcAsM, parameters, frames, progress_notifier=None):
+    def p(name):
+        return parameters.get_parameter(name).get_value()
+    sarc_obj.detect_sarcomeres(frames=frames,
+                               model_path=p('structure.predict.network_path'),
+                               max_patch_size=patch_size_from_parameters(parameters, 'structure.predict'),
+                               rescale_factor=p('structure.predict.rescale_factor'),
+                               clip_thres=(p('structure.predict.clip_thresh_min'),
+                                           p('structure.predict.clip_thresh_max')),
+                               progress_notifier=_quiet(progress_notifier))
+
+
+def _analyze_z_bands(sarc_obj: SarcAsM, p, frames):
+    sarc_obj.analyze_z_bands(frames=frames,
+                             threshold=p('structure.z_band_analysis.threshold'),
+                             min_length=p('structure.z_band_analysis.min_length'),
+                             median_filter_radius=p('structure.z_band_analysis.median_filter_radius'),
+                             theta_phi_min=p('structure.z_band_analysis.theta_phi_min'),
+                             a_min=p('structure.z_band_analysis.a_min'),
+                             d_max=p('structure.z_band_analysis.d_max'),
+                             d_min=p('structure.z_band_analysis.d_min'),
+                             max_axial_offset=p('structure.z_band_analysis.max_axial_offset'))
+
+
+def _analyze_sarcomere_vectors(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
+    sarc_obj.analyze_sarcomere_vectors(
+        frames=frames,
+        slen_lims=(p('structure.vectors.length_limit_lower'), p('structure.vectors.length_limit_upper')),
+        median_filter_radius=p('structure.vectors.radius'),
+        linewidth=p('structure.vectors.line_width'),
+        interp_factor=p('structure.vectors.interpolation_factor'),
+        smooth_orientation_sigma=p('structure.vectors.smooth_orientation_sigma'),
+        neighbor_radius=p('structure.vectors.neighbor_radius'),
+        max_neighbor_deviation=(p('structure.vectors.max_neighbor_deviation')
+                                if p('structure.vectors.filter_neighbors') else None),
+        progress_notifier=_quiet(progress_notifier))
+
+
+def _analyze_myofibrils(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
+    sarc_obj.analyze_myofibrils(frames=frames,
+                                ratio_seeds=p('structure.myofibril.ratio_seeds'),
+                                persistence=p('structure.myofibril.persistence'),
+                                threshold_distance=p('structure.myofibril.threshold_distance'),
+                                n_min=p('structure.myofibril.n_min'),
+                                median_filter_radius=p('structure.myofibril.median_filter_radius'),
+                                progress_notifier=_quiet(progress_notifier))
+
+
+def _analyze_sarcomere_domains(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
+    sarc_obj.analyze_sarcomere_domains(frames=frames,
+                                       d_max=p('structure.domain.analysis.d_max'),
+                                       cosine_min=p('structure.domain.analysis.cosine_min'),
+                                       leiden_resolution=p('structure.domain.analysis.leiden_resolution'),
+                                       random_seed=p('structure.domain.analysis.random_seed'),
+                                       area_min=p('structure.domain.analysis.area_min'),
+                                       dilation_radius=p('structure.domain.analysis.dilation_radius'),
+                                       progress_notifier=_quiet(progress_notifier))
+
+
 class BatchProcessingControl:
 
     def __init__(self, batch_processing_widget: BatchProcessingWidget, main_control: ApplicationControl):
@@ -312,17 +377,19 @@ class BatchProcessingControl:
         axes = model.parameters.get_parameter(name='batch.axes').get_value()
         force_override = model.parameters.get_parameter(name='batch.force.override').get_value()
 
+        # one file after another: each step reports its own progress, the log says which file runs
         failures = []
-        for i, file in enumerate(progress_notifier.iterator(tif_files)):
+        for i, file in enumerate(tif_files):
+            qtutils.inmain(self.__main_control.debug,
+                           message=f'Batch motion: file {i + 1} of {len(tif_files)}, {os.path.basename(file)}')
             try:
-                self.__single_motion_analysis(file, frame_time, pixel_size, channel, axes, force_override, model)
+                self.__single_motion_analysis(file, frame_time, pixel_size, channel, axes, force_override, model,
+                                              progress_notifier)
             except Exception as e:
                 failures.append((file, e))
-                # this part has to be added to qt thread
                 qtutils.inmain(self.__main_control.debug,
-                               message='Exception happened during processing of file:' + file)
-                qtutils.inmain(self.__main_control.debug, message=f'Error: {repr(e)}')
-                qtutils.inmain(self.__main_control.debug, message='')
+                               message=f'Exception while processing {file}: {e!r}')
+                traceback.print_exception(e)
         _raise_batch_failures(failures, len(tif_files))
 
     @staticmethod
@@ -339,49 +406,40 @@ class BatchProcessingControl:
             pass
         return sarc_obj
 
-    @staticmethod
-    def __calculate_requirements_of_motion(sarc_obj: SarcAsM, model):
-        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        size = patch_size_from_parameters(model.parameters, 'structure.predict')
-
-        sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
-                                   model_path=network_model,
-                                   max_patch_size=size,
-                                   clip_thres=(
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value())
-                                   )
-        sarc_obj.analyze_sarcomere_vectors(
-            frames=model.parameters.get_parameter('structure.frames').get_value(),
-            slen_lims=(
-                model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
-                model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
-            ),
-            median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
-            linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
-            interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
-            neighbor_radius=model.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
-            max_neighbor_deviation=(
-                model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
-                if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
-        )
-        pass
-
     def __single_motion_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
-                                 force_override: bool, model):
+                                 force_override: bool, model, progress_notifier=None):
+        """Track, group and analyse one movie with the settings of the Structure and Motion tabs. The structure
+        steps the motion analysis needs run first when the file lacks them (vectors on every frame, myofibrils
+        or domains at the reference frame), or always when 'Run structure prerequisites' is ticked."""
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             channel=channel, axes=axes, force_override=force_override)
 
         def _p(name):
             return model.parameters.get_parameter(name).get_value()
 
+        n_stack = int(sarc_obj.metadata.n_stack or 1)
+        if n_stack < 2:
+            raise ValueError('a single image, so there is no motion to analyse (if it is a movie, check its axes)')
+        if not sarc_obj.metadata.frametime:
+            raise ValueError('no frame time in the file; enter it with Metadata: "Override for all files"')
+
+        done = sarc_obj.data.get('params.analyze_sarcomere_vectors.frames')
+        redo = bool(_p('batch.recalculate.for.motion')) or done is None or len(done) < n_stack
+        if redo:
+            _detect_sarcomeres(sarc_obj, model.parameters, 'all', progress_notifier)
+            _analyze_sarcomere_vectors(sarc_obj, _p, 'all', progress_notifier)
+
         by = _p('motion.group.by')
-        if _p('batch.recalculate.for.motion'):
-            self.__calculate_requirements_of_motion(sarc_obj, model)
-            if by == 'myofibril':
-                sarc_obj.analyze_myofibrils()
-            elif by == 'domain':
-                sarc_obj.analyze_sarcomere_domains()
+        ref = int(_p('motion.group.reference_frame'))
+        if not 0 <= ref < n_stack:
+            raise ValueError(f'the reference frame {ref} is outside the movie (frames 0 to {n_stack - 1})')
+        if by == 'myofibril':
+            lines = sarc_obj.data.get('structure.myofibril.lines')
+            if redo or lines is None or lines[ref] is None:
+                _analyze_myofibrils(sarc_obj, _p, [ref], progress_notifier)
+        elif by == 'domain':
+            if redo or ref not in list(sarc_obj.data.get('params.analyze_sarcomere_domains.frames', [])):
+                _analyze_sarcomere_domains(sarc_obj, _p, [ref], progress_notifier)
 
         sarc_obj.track_sarcomere_vectors(
             frames='all',
@@ -390,10 +448,10 @@ class BatchProcessingControl:
             ori_tol_deg=_p('motion.track.ori_tol'),
             min_track_duration_s=_p('motion.track.min_duration_s'),
             max_gap_interpolation_s=float(_p('motion.track.max_gap_interp_s')),
-            motion_predictor='flow' if bool(_p('motion.track.flow_predictor')) else 'none')
+            motion_predictor='flow' if bool(_p('motion.track.flow_predictor')) else 'none',
+            progress_notifier=progress_notifier)
 
-        ref = int(_p('motion.group.reference_frame'))
-        if by == 'loi' and 'motion.loi.data' not in sarc_obj.data:
+        if by == 'loi':
             sarc_obj.detect_lois(frame=ref, **detect_lois_kwargs(_p))
         sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
                               min_group_size=int(_p('motion.group.min_group_size')))
@@ -407,100 +465,41 @@ class BatchProcessingControl:
             buffer_frames=int(_p('motion.analyze.buffer_frames')),
             min_valid_frames=_p('motion.analyze.min_valid_frames'),
             filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
+        sarc_obj.commit()
 
         if _p('batch.delete_intermediate_masks'):
-            sarc_obj.remove_intermediate_masks()
+            # the Z-band masks stay: tracking the movie again re-measures the lengths on them
+            sarc_obj.remove_intermediate_masks([m for m in sarc_obj._STORE_MASKS
+                                                if m not in ('zbands', 'zbands_fast_movie')])
 
     def __single_structure_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
                                     force_override: bool, model):
         # attention: this method is not executed in qt thread! --> every information to ui needs to be done either
         # on another place or within a wrapper for QT Main thread (like the package qtutils.inmain does)
-
-        # initialize SarcAsM object
-        # check for metadata
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             channel=channel, axes=axes, force_override=force_override)
-        # predict sarcomere z-bands and cell mask
-        network_model = model.parameters.get_parameter('structure.predict.network_path').get_value()
-        size = patch_size_from_parameters(model.parameters, 'structure.predict')
 
-        sarc_obj.detect_sarcomeres(frames=model.parameters.get_parameter('structure.frames').get_value(),
-                                   model_path=network_model,
-                                   max_patch_size=size,
-                                   rescale_factor=model.parameters.get_parameter('structure.predict.rescale_factor').get_value(),
-                                   clip_thres=(
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_min').get_value(),
-                                       model.parameters.get_parameter('structure.predict.clip_thresh_max').get_value()),
-                                   )
+        def _p(name):
+            return model.parameters.get_parameter(name).get_value()
 
-        # analyze sarcomere structures (the cell-mask features come with the detection)
-        if model.parameters.get_parameter('batch.do_zbands').get_value():
-            sarc_obj.analyze_z_bands(frames=model.parameters.get_parameter('structure.frames').get_value(),
-                                     threshold=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.threshold').get_value(),
-                                     min_length=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.min_length').get_value(),
-                                     median_filter_radius=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.median_filter_radius').get_value(),
-                                     theta_phi_min=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.theta_phi_min').get_value(),
-                                     a_min=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.a_min').get_value(),
-                                     d_max=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.d_max').get_value(),
-                                     d_min=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.d_min').get_value(),
-                                     max_axial_offset=model.parameters.get_parameter(
-                                         'structure.z_band_analysis.max_axial_offset').get_value())
-
+        frames = _p('structure.frames')
+        _detect_sarcomeres(sarc_obj, model.parameters, frames)
+        # the cell-mask features come with the detection
+        if _p('batch.do_zbands'):
+            _analyze_z_bands(sarc_obj, _p, frames)
         # careful this method highly depends on pixel size setting
-        if model.parameters.get_parameter('batch.do_vectors').get_value():
-            sarc_obj.analyze_sarcomere_vectors(
-                frames=model.parameters.get_parameter('structure.frames').get_value(),
-                slen_lims=(
-                    model.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
-                    model.parameters.get_parameter('structure.vectors.length_limit_upper').get_value()
-                ),
-                median_filter_radius=model.parameters.get_parameter('structure.vectors.radius').get_value(),
-                linewidth=model.parameters.get_parameter('structure.vectors.line_width').get_value(),
-                interp_factor=model.parameters.get_parameter('structure.vectors.interpolation_factor').get_value(),
-                smooth_orientation_sigma=model.parameters.get_parameter(
-                    'structure.vectors.smooth_orientation_sigma').get_value(),
-                neighbor_radius=model.parameters.get_parameter('structure.vectors.neighbor_radius').get_value(),
-                max_neighbor_deviation=(
-                    model.parameters.get_parameter('structure.vectors.max_neighbor_deviation').get_value()
-                    if model.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
-            )
-
-        if model.parameters.get_parameter('batch.do_myofibrils').get_value():
-            sarc_obj.analyze_myofibrils(
-                frames=model.parameters.get_parameter('structure.frames').get_value(),
-                ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
-                persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
-                threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
-                n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value(),
-                median_filter_radius=model.parameters.get_parameter('structure.myofibril.median_filter_radius').get_value()
-            )
-
-        if model.parameters.get_parameter('batch.do_domains').get_value():
-            sarc_obj.analyze_sarcomere_domains(
-                frames=model.parameters.get_parameter('structure.frames').get_value(),
-                d_max=model.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
-                cosine_min=model.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),
-                leiden_resolution=model.parameters.get_parameter(
-                    'structure.domain.analysis.leiden_resolution').get_value(),
-                random_seed=model.parameters.get_parameter('structure.domain.analysis.random_seed').get_value(),
-                area_min=model.parameters.get_parameter('structure.domain.analysis.area_min').get_value(),
-                dilation_radius=model.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value()
-            )
+        if _p('batch.do_vectors'):
+            _analyze_sarcomere_vectors(sarc_obj, _p, frames)
+        if _p('batch.do_myofibrils'):
+            _analyze_myofibrils(sarc_obj, _p, frames)
+        if _p('batch.do_domains'):
+            _analyze_sarcomere_domains(sarc_obj, _p, frames)
 
         sarc_obj.store_structure_data()
-        if model.parameters.get_parameter('batch.delete_intermediate_masks').get_value():
+        if _p('batch.delete_intermediate_masks'):
             # tracking re-measures lengths on the Z-band masks: a movie keeps them for the motion analysis
             keep = ('zbands', 'zbands_fast_movie') if (sarc_obj.metadata.n_stack or 1) > 1 else ()
             sarc_obj.remove_intermediate_masks([m for m in sarc_obj._STORE_MASKS if m not in keep])
-
-        pass
 
     def on_search(self):
         # f_name is a tuple

@@ -207,7 +207,7 @@
         <item>
          <widget class="QCheckBox" name="chk_recalculate_for_motion">
           <property name="toolTip">
-           <string>&lt;p&gt;Only used by 'Batch motion analysis', which is not available in the GUI yet, so this box currently has no effect. When on, the batch motion analysis would first run the sarcomere detection and the sarcomere vectors on each file (plus myofibrils or domains when grouping by them). Leave it off if the files were already analysed with 'Run batch structure analysis'. Default off.&lt;/p&gt;</string>
+           <string>&lt;p&gt;Only for 'Batch motion analysis'. When on, every movie is analysed again from the start before tracking: sarcomere detection and sarcomere vectors on all frames, plus myofibrils or domains at the reference frame when the tracks are grouped by them, with the settings of the Structure tab. When off (default), these steps run only for movies that lack them, so movies already analysed on all frames keep their results.&lt;/p&gt;&lt;p&gt;The batch never runs the 3D U-Net; a movie that already has its Z-bands uses them for the vectors.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>Run structure prerequisites before motion analysis</string>
@@ -281,13 +281,7 @@
       <item row="13" column="0" colspan="2">
        <widget class="QPushButton" name="btn_batch_processing_motion">
         <property name="toolTip">
-         <string>&lt;p&gt;Not available in the GUI yet; the button stays disabled. To analyse many movies, use the Python API: track_sarcomere_vectors, group_tracks and analyze_track_motion for each file.&lt;/p&gt;</string>
-        </property>
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>Not yet available in the GUI — use the Python API for now.</string>
+         <string>&lt;p&gt;Runs the motion analysis on every movie in the folder and its subfolders, one after another: tracking, grouping and analysis with the settings of the Motion tab (steps 1 to 3). Movies without sarcomere vectors on all frames, or without myofibrils or domains at the reference frame when grouping by them, get these structure steps first (see 'Run structure prerequisites'). Grouping by LOI detects the LOIs automatically.&lt;/p&gt;&lt;p&gt;Each movie needs a frame time; single images are skipped with an error. Results are saved in each .ome.zarr store; open a movie to look at them. Long: several minutes per movie.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Batch motion analysis</string>
