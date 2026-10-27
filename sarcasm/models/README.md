@@ -2,12 +2,13 @@
 
 | alias | file | validated pixel size | notes |
 |---|---|---|---|
-| `generalist` | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0) |
+| `generalist` | `model_sarcomeres_generalist_v2.pt` | 0.08–0.45 µm | v1 fine-tuned on simulated myofibrils and myofibril-axis orientation labels |
+| `generalist_v1` | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0 beta releases) |
 | `legacy` | `model_sarcomeres_generalist.pt` | 0.06–0.35 µm | pre-v1.0.0; trained on high-magnification data at native resolution |
 
 The default, `model_path='auto'`, picks by pixel size: **`legacy` below 0.08 µm/px**
 (high-magnification, e.g. the high-speed single-cell movies), `generalist` otherwise.
-v1's scale augmentation only ever downscales into 0.08–0.45 µm/px, so it never saw
+The generalists' scale augmentation only ever downscales into 0.08–0.45 µm/px, so it never saw
 high-magnification frames at native resolution; on the 0.061 µm/px 20 kPa movie it
 fragments the Z- and M-band lines and returns 28 % fewer sarcomere vectors than `legacy`
 (3119 vs 4340 on frame 0), and rescaling it into its range (`rescale_factor=0.33`)
@@ -15,11 +16,51 @@ recovers only part of that (4036) at the cost of Z-band localisation precision.
 
 ```python
 sarc.detect_sarcomeres(frames=0)                          # 'auto': by pixel size
-sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v1
+sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v2
+sarc.detect_sarcomeres(frames=0, model_path='generalist_v1')  # reproduce results of the v1.0.0 betas
 sarc.detect_sarcomeres(frames=0, model_path='legacy')      # force the pre-v1.0.0 model
 ```
 
 The resolved alias is stored as `params.detect_sarcomeres.model_path`.
+
+## What changed in v2
+
+v2 is v1 fine-tuned for 20,000 steps (learning rate 3e-5, same scale augmentation), with two changes.
+
+**Simulated myofibrils.** Half of every batch is simulated images with exact labels: myofibrils from
+very thin to thick, straight or sheared, in rows of at least three Z-bands, plus what does not count as a
+sarcomere and must stay unlabelled: premyofibrils (puncta spaced below 1.4 µm), continuous stress fibres,
+isolated Z-body pairs. The real labels come from the wavelet analysis and miss most thin myofibrils.
+
+**Orientation along the myofibril.** Where Z-bands are sheared against their myofibril, the stored label
+(and v1) points along the Z-band normal. The training labels were re-derived from line continuity: the
+direction in which SarcAsM's line growth stays on its M-band chain longest. The orientation loss weight is
+4 (v1: 1).
+
+| | v1 | **v2** |
+|---|---|---|
+| detection benchmark (Supplementary Note 2), F1 median | 0.798 | **0.833** (better on 10 of 10 images) |
+| precision / recall | 0.858 / 0.785 | 0.874 / 0.818 |
+| length vs manual line ROIs, median abs. error | 68 nm | 64 nm |
+| length SD vs manual SD, mean abs. deviation | **30 nm** | 40 nm |
+| thin simulated myofibrils found (150 held-out images) | 0.18 | **0.48** |
+| simulated stress fibres detected | 0.14 | 0.10 |
+| orientation vs known myofibril axis (3 micropatterns + 1 NRVM lines image, held out) | 9.1° | **7.5°** |
+| — where Z-bands tilt > 15° | 9.2° | 7.9° |
+| sheared Z-bands on 8 real test images, orientation vs pattern axis | 13.2° | **10.4°** (better on 8 of 8) |
+| orientation vs line-continuity label, 25 validation images | 9.3° | 8.7° |
+
+Orientation errors are taken only where both models call sarcomere, so mask size does not leak into them.
+v2 does not replace `legacy` at high magnification: on the 0.061 µm/px benchmark image F1 is 0.89
+(`legacy`), 0.83 (v2), 0.77 (v1), so `'auto'` still picks `legacy` below 0.08 µm/px.
+
+**Known limitation: sarcomere precursors.** In immature or noisy cells v2 puts more Z-bands, sarcomere vectors
+and sarcomere area on precursors (isolated α-actinin puncta, dense speckle) than v1, which marks some of them
+too. On a 12-day hiPSC-CM time course (0.107 µm/px, frames at days 1, 7.6 and 12), vectors outside v1's
+sarcomere mask rise from 3–5 to 116–226 per frame (at most 2.3 % of all vectors) and `sarcomere_area_ratio`
+by 16–36 %, while the mean sarcomere length moves by at most 0.025 µm. Part of the extra area is real (faint
+and thin myofibrils), part is precursors and the dark gaps between adjacent myofibrils. The cause is in the
+real Z-band training labels, which were never restricted to sarcomeres.
 
 ## What changed in v1.0.0
 
@@ -49,9 +90,9 @@ the cell cortex.
 
 ## Not interchangeable
 
-Both models measure the same quantities, but not identically.
+The models measure the same quantities, but not identically.
 
-| | `legacy` | `generalist` (v1) |
+| | `legacy` | `generalist_v1` |
 |---|---|---|
 | length drift, 0.11→0.40 µm/px | 0.346 µm | **0.122 µm** |
 | vectors at 0.40 µm/px | 183 | 5885 |
@@ -61,3 +102,53 @@ Both models measure the same quantities, but not identically.
 The cell-mask difference shifts the denominator of `sarcomere_area_ratio`, so values are
 not comparable across the two. Pick one per study. `legacy` still has the tighter length
 spread, most likely because it detects less and what it detects is the easy subset.
+
+The same holds for v1 and v2. v2's cell mask matches v1's (area ratio 1.00, 41 images), but its sarcomere
+mask is larger — median +10 % (interquartile range +3 to +18 %) — so `sarcomere_area_ratio` comes out
+about 10 % higher, and its sarcomere-length spread is wider (table above). Results of the v1.0.0 betas
+reproduce with `model_path='generalist_v1'`.
+
+# 3D Z-band model for high-speed movies
+
+`detect_z_bands_fast_movie` predicts Z-bands from the whole movie at once, for high-speed recordings
+(about 6 or more frames per contraction). Only the Z-bands come from it; M-bands and orientation still
+come from the 2D model.
+
+| alias | file | notes |
+|---|---|---|
+| `generalist` | `model_z_bands_unet3d_v2.pt` | default |
+| `legacy` | `model_z_bands_unet3d.pt` | shipped before v1.0.0 |
+
+```python
+sarc.detect_z_bands_fast_movie()                     # 'generalist'
+sarc.detect_z_bands_fast_movie(model_path='legacy')  # the pre-v1.0.0 3D model
+```
+
+The resolved alias is stored as `params.detect_z_bands_fast_movie.model_path`.
+
+## What changed in v2
+
+`legacy` saw only one kind of movie. On movies from another microscope it recovers only 22–62 % of the
+Z-band pixels the 2D model finds, and on the Fig. 5 movie it drops Z-bands at peak contraction. v2 was trained with `scripts/retrain_unet3d/` on
+40 % synthetic movies with exact labels (stills moved by simulated contraction plus rigid and non-rigid
+jitter, including low photon counts), 30 % of our own movies and 30 % of movies from two other
+microscopes, both labelled frame by frame by the 2D model on flow-denoised frames. It was then fine-tuned
+with a temporal penalty (L1 between consecutive frames, weight 3; the checkpoint with the best validation
+score, after 2 of 12 epochs). The weight trades trajectory noise against sarcomere popping, which is fast and
+physiological. On the Fig. 5 movie, weight 0 / 2 / 3 / 5 / 10 gives a per-frame length noise of
+20.5 / 11.3 / 9.1 / 5.5 / 3.5 nm and finds popping in 10.2 / 9.5 / 8.9 / 8.3 / 6.2 % of sarcomere-beats.
+Weight 3 is the lowest that is no noisier than `legacy`.
+
+| | `legacy` | **v2** |
+|---|---|---|
+| synthetic movies, exact labels: Dice, all frames / fastest-moving quarter | 0.21 / 0.15 | **0.58 / 0.51** |
+| held-out movies from two other microscopes (2D teacher labels): Dice | 0.54 | **0.89** |
+| Fig. 5 movie (Series095, held out), tracked sarcomeres: per-frame length noise | 9.6 nm | 9.1 nm |
+| — popping: sarcomere-beats lengthening > 0.25 µm above rest | 7.7 % | **8.9 %** |
+| — length steps > 0.2 µm between frames, outside peak contraction, per 1000 | **0.39** | 0.63 |
+| — track coverage, median / fragmentation | 0.71 / 1.63 | 0.73 / 1.62 |
+| — pool contraction amplitude | 0.093 µm | 0.094 µm |
+
+Per-frame noise is 1.4826 × MAD of the second difference of each track's length, divided by √6, so rare
+real events such as popping do not enter it. Trajectories differ between the two models (noise, popping
+counts), so pick one per study; the Fig. 5 analysis of the paper used `legacy`.

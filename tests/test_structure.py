@@ -684,10 +684,23 @@ def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
 @pytest.mark.parametrize('model_path, pixelsize, expected', [
     (None, 0.061, 'legacy'), ('auto', 0.061, 'legacy'), (None, 0.079, 'legacy'),
     (None, 0.08, 'generalist'), ('auto', 0.11, 'generalist'), (None, None, 'generalist'),
-    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'),
+    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'), ('generalist_v1', 0.3, 'generalist_v1'),
 ])
 def test_bundled_model_is_chosen_by_pixel_size(model_path, pixelsize, expected):
     from sarcasm.analysis.detection import resolve_generalist_model, GENERALIST_MODELS
     key, path = resolve_generalist_model(model_path, pixelsize, '/models')
     assert key == expected and path == f'/models/{GENERALIST_MODELS[expected][0]}'
     assert resolve_generalist_model('/somewhere/custom.pt', 0.061, '/models') == (None, '/somewhere/custom.pt')
+
+
+@pytest.mark.parametrize('model_path, expected', [(None, 'generalist'), ('generalist', 'generalist'),
+                                                  ('legacy', 'legacy')])
+def test_bundled_3d_z_band_model_is_resolved(model_path, expected):
+    import os
+    import sarcasm
+    from sarcasm.analysis.detection import resolve_z_bands_3d_model, Z_BANDS_3D_MODELS
+    model_dir = os.path.join(os.path.dirname(sarcasm.__file__), 'models')
+    key, path = resolve_z_bands_3d_model(model_path, model_dir)
+    assert key == expected and path == os.path.join(model_dir, Z_BANDS_3D_MODELS[expected])
+    assert os.path.getsize(path) > 1e6                     # the checkpoint ships with the package
+    assert resolve_z_bands_3d_model('/somewhere/custom.pt', model_dir) == (None, '/somewhere/custom.pt')
