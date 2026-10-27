@@ -293,6 +293,7 @@ class StructureAnalysisControl:
                 persistence=m.parameters.get_parameter('structure.myofibril.persistence').get_value(),
                 threshold_distance=m.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
                 n_min=m.parameters.get_parameter('structure.myofibril.n_min').get_value(),
+                median_filter_radius=m.parameters.get_parameter('structure.myofibril.median_filter_radius').get_value(),
                 progress_notifier=progress_notifier
             )
             pass

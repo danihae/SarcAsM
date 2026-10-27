@@ -542,7 +542,7 @@ class MotionAnalysisControl:
         w.cb_motion_aggregate.addItems(['mean', 'median'])
         w.cb_loi_mode.addItems(['longest_in_cluster', 'fit_straight_line',
                                 'random_from_cluster', 'random_line'])
-        w.cb_loi_linkage.addItems(['single', 'complete', 'average', 'ward'])
+        w.cb_loi_linkage.addItems(['single', 'complete', 'average'])
 
         w.btn_track_vectors.clicked.connect(self.on_btn_track_vectors)
         w.btn_group_tracks.clicked.connect(self.on_btn_group_tracks)
@@ -617,5 +617,8 @@ class MotionAnalysisControl:
         p('motion.analyze.min_valid_frames').connect(w.dsb_motion_min_valid_frames)
         p('motion.analyze.filter_wl').connect(w.sb_motion_filter_wl)
         p('motion.analyze.filter_po').connect(w.sb_motion_filter_po)
+        # the Savitzky-Golay polyorder must stay below the window length
+        w.sb_motion_filter_wl.valueChanged.connect(lambda wl: w.sb_motion_filter_po.setMaximum(min(9, wl - 1)))
+        w.sb_motion_filter_po.setMaximum(min(9, w.sb_motion_filter_wl.value() - 1))
         p('motion.analyze.slen_lower').connect(w.dsb_motion_slen_lower)
         p('motion.analyze.slen_upper').connect(w.dsb_motion_slen_upper)

@@ -466,7 +466,8 @@ class BatchProcessingControl:
                 ratio_seeds=model.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
                 persistence=model.parameters.get_parameter('structure.myofibril.persistence').get_value(),
                 threshold_distance=model.parameters.get_parameter('structure.myofibril.threshold_distance').get_value(),
-                n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value()
+                n_min=model.parameters.get_parameter('structure.myofibril.n_min').get_value(),
+                median_filter_radius=model.parameters.get_parameter('structure.myofibril.median_filter_radius').get_value()
             )
 
         if model.parameters.get_parameter('batch.do_domains').get_value():

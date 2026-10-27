@@ -90,6 +90,9 @@
         </item>
         <item>
          <widget class="QDoubleSpinBox" name="dsb_predict_rescale_factor">
+          <property name="minimum">
+           <double>0.100000000000000</double>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -537,7 +540,7 @@
          <number>3</number>
         </property>
         <property name="minimum">
-         <double>-10000000000000000000.000000000000000</double>
+         <double>0.000000000000000</double>
         </property>
         <property name="maximum">
          <double>1000000000000000000000.000000000000000</double>
@@ -1013,6 +1016,9 @@
       </item>
       <item row="2" column="1">
        <widget class="QSpinBox" name="sb_myofibril_persistence">
+        <property name="minimum">
+         <number>1</number>
+        </property>
         <property name="toolTip">
          <string>Persistence of line (average length and orientation for prior estimation)</string>
         </property>
@@ -1167,7 +1173,7 @@
          <number>3</number>
         </property>
         <property name="maximum">
-         <double>99999999999.000000000000000</double>
+         <double>1.000000000000000</double>
         </property>
        </widget>
       </item>
