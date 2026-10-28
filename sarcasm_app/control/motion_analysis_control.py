@@ -265,6 +265,7 @@ class MotionAnalysisControl:
             call_lambda=self.__analyze_call,
             start_message='Analyzing track motion…',
             finished_message='Finished analyzing track motion',
+            finished_action=self.__refresh_trace_source,
             finished_successful_action=cell.commit)
         self.__worker = worker
         return worker
@@ -478,9 +479,15 @@ class MotionAnalysisControl:
             self.__trace_dock.set_source(None, None, 1.0)
             return
         gid = cell.data.get('motion.tracks.group_id')
+        kind = cell.data.get('motion.groups.kind', '')
+        # each group's own ContractionNet intervals, if the current grouping was analysed
+        group_contr = None
+        if kind and cell.data.get(f'params.analyze_track_motion.grouping_hash_{kind}') == cell.data.get('motion.groups.hash'):
+            group_contr = cell.data.get(f'motion.{kind}.contr')
+            group_contr = None if group_contr is None else np.asarray(group_contr)
         self.__trace_dock.export_dir = os.path.dirname(cell.file_path)
         self.__trace_dock.export_stem = Path(cell.file_path).stem
-        self.__trace_dock.set_source(kin, gid, cell.metadata.frametime, cell.data.get('motion.groups.kind', ''))
+        self.__trace_dock.set_source(kin, gid, cell.metadata.frametime, kind, group_contr)
 
     def __on_track_selected(self, track_id: int):
         """A sarcomere was clicked: select its group, highlight it, show its overlay."""

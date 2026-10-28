@@ -29,8 +29,9 @@ class TrackTraceDock(QWidget):
     """Overlay of the sarcomere time series (SL / ΔSL / velocity) of one group, the group
     mean, and the clicked sarcomere highlighted, with the contraction cycles shaded.
 
-    ``set_source(kinematics, group_id, frametime, kind)`` supplies the per-track
-    arrays from :meth:`sarcasm.SarcAsM.get_track_kinematics`; ``show_track(track_id)``
+    ``set_source(kinematics, group_id, frametime, kind, group_contr)`` supplies the per-track
+    arrays from :meth:`sarcasm.SarcAsM.get_track_kinematics` and, if the grouping was
+    analysed, the ContractionNet intervals of every group; ``show_track(track_id)``
     draws one; ``set_frame(t)`` moves the cursor line with the viewer.
     """
 
@@ -43,6 +44,7 @@ class TrackTraceDock(QWidget):
         self._gid = None
         self._frametime = None
         self._kind = ''
+        self._group_contr: Optional[np.ndarray] = None
         self._track_id: Optional[int] = None
         self._group: Optional[int] = None
         self._frame = 0
@@ -65,9 +67,11 @@ class TrackTraceDock(QWidget):
                                        'always contains the mean. Default on.</p>')
         self.chk_cycles = QCheckBox('Contraction cycles')
         self.chk_cycles.setChecked(True)
-        self.chk_cycles.setToolTip('<p>Shades the frames in which the whole cell contracts (lavender). They come from the motion '
-                                   "analysis with 'Group by' pool; without it nothing is shaded. When ticked, the .csv export gets a"
-                                   ' column marking these frames. Default on.</p>')
+        self.chk_cycles.setToolTip('<p>Shades the contraction intervals that ContractionNet detected (lavender). With a group '
+                                   "selected, the group's own intervals, from '3. Analyze track motion' on the current grouping; "
+                                   "otherwise, or before that analysis, the whole cell's intervals (from 'Group by' pool). The "
+                                   'legend says which. Without either analysis nothing is shaded. When ticked, the .csv export '
+                                   'gets a column marking these frames. Default on.</p>')
         self.lbl_info = QLabel('Track sarcomeres first.')
         self.lbl_info.setWordWrap(True)
 
@@ -114,9 +118,11 @@ class TrackTraceDock(QWidget):
         self.canvas.mpl_connect('draw_event', self._on_draw)
 
     # ------------------------------------------------------------------ #
-    def set_source(self, kinematics: dict, group_id: Optional[np.ndarray], frametime: float, kind: str = ''):
+    def set_source(self, kinematics: dict, group_id: Optional[np.ndarray], frametime: float, kind: str = '',
+                   group_contr: Optional[np.ndarray] = None):
         gid = None if group_id is None else np.asarray(group_id).reshape(-1)
         same = (kinematics is self._kin and self._frametime == float(frametime) and self._kind == (kind or '')
+                and group_contr is self._group_contr
                 and ((gid is None and self._gid is None)
                      or (gid is not None and self._gid is not None and gid.shape == self._gid.shape
                          and np.array_equal(gid, self._gid))))
@@ -126,6 +132,7 @@ class TrackTraceDock(QWidget):
         self._gid = None if group_id is None else np.asarray(group_id).reshape(-1)
         self._frametime = float(frametime)
         self._kind = kind or ''
+        self._group_contr = group_contr
         if self._kin is not None and self._track_id is not None and self._track_id >= self._kin['slen'].shape[0]:
             self._track_id = None
         if self._gid is None or (self._group is not None and not np.any(self._gid == self._group)):
@@ -183,11 +190,12 @@ class TrackTraceDock(QWidget):
         time = np.arange(T) * self._frametime
 
         if self.chk_cycles.isChecked():
-            contr = np.asarray(self._kin.get('contr', np.zeros(T, bool)), dtype=bool)
-            if contr.any():
+            contr, source = self._contraction_mask(T)
+            if contr is not None and contr.any():
                 edges = np.flatnonzero(np.diff(np.r_[0, contr.astype(int), 0]))
-                for a, b in zip(edges[::2], edges[1::2]):
-                    ax.axvspan(a * self._frametime, b * self._frametime, color='lavender', alpha=0.7, lw=0)
+                for n, (a, b) in enumerate(zip(edges[::2], edges[1::2])):
+                    ax.axvspan(a * self._frametime, b * self._frametime, color='lavender', alpha=0.7, lw=0,
+                               label=f'contracting ({source})' if n == 0 else None)
 
         # the set of traces to overlay: the selected group, else every track
         i = self._track_id
@@ -232,6 +240,19 @@ class TrackTraceDock(QWidget):
         self._draw_cursor()
         self.canvas.draw_idle()
 
+    def _contraction_mask(self, T):
+        """The contraction intervals to shade, ``(n_frames,)`` bool, and where they come from:
+        the selected group's own ContractionNet intervals if the grouping was analysed,
+        else the whole cell's (pool) intervals. ``(None, '')`` if there are neither."""
+        gc = self._group_contr
+        if (self._group is not None and gc is not None and gc.ndim == 2 and gc.shape[1] == T
+                and 0 <= self._group < gc.shape[0]):
+            return gc[self._group].astype(bool), f'{self._kind or "group"} {self._group}'
+        contr = self._kin.get('contr')
+        if contr is not None and np.asarray(contr).size == T and np.asarray(contr).any():
+            return np.asarray(contr, dtype=bool).reshape(-1), 'whole cell'
+        return None, ''
+
     @staticmethod
     def _ylim(series, shown, members, track):
         """Limits from the 1st-99th percentile of the drawn traces (so a single
@@ -271,8 +292,10 @@ class TrackTraceDock(QWidget):
             members = np.flatnonzero(np.isfinite(series).any(axis=1))
         with np.errstate(all='ignore'):
             cols[f'{label} mean {series_label} {unit}'.strip()] = np.nanmean(series[members], axis=0)
-        if self.chk_cycles.isChecked() and 'contr' in self._kin:
-            cols['contracting (group signal)'] = np.asarray(self._kin['contr'], dtype=bool)[:T]
+        if self.chk_cycles.isChecked():
+            contr, source = self._contraction_mask(T)
+            if contr is not None:
+                cols[f'contracting ({source})'] = contr[:T]
         ids = self._kin.get('track_ids')
         for m in members:
             name = int(ids[m]) if ids is not None else int(m)

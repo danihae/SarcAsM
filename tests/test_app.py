@@ -786,10 +786,40 @@ class TestGuiFixes2026_10:
         dock.cb_series.setCurrentText('SL')
         dock.show_group(0)
         table = dock.traces_table()
-        assert list(table.columns) == ['time [s]', 'myofibril 0 mean SL [µm]', 'contracting (group signal)',
+        assert list(table.columns) == ['time [s]', 'myofibril 0 mean SL [µm]', 'contracting (whole cell)',
                                        'track 0 SL [µm]', 'track 1 SL [µm]']
         assert table['time [s]'].iloc[-1] == pytest.approx(0.04)
         assert list(table['track 1 SL [µm]']) == [5, 6, 7, 8, 9]
+        dock.deleteLater()
+        assert app is not None
+
+    def test_trace_dock_shades_the_groups_own_contractions(self):
+        """With a group selected and its grouping analysed, the shading and the export use that
+        group's ContractionNet intervals; without a group, the whole cell's."""
+        from PyQt5.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication([])
+        from sarcasm_app.view.track_trace_dock import TrackTraceDock
+        T = 6
+        kin = {'slen': np.ones((3, T)), 'delta_slen': np.zeros((3, T)), 'vel': np.zeros((3, T)),
+               'contr': np.array([0, 1, 1, 0, 0, 0], bool)}
+        group_contr = np.array([[0, 0, 0, 1, 1, 0], [1, 0, 0, 0, 0, 1]], bool)
+        dock = TrackTraceDock()
+        dock.set_source(kin, np.array([0, 0, 1]), 0.1, 'myofibril', group_contr)
+
+        def shaded():
+            return sorted(round(p.get_x(), 6) for p in dock.ax.patches)
+
+        dock.show_group(None)
+        assert shaded() == [0.1]
+        assert 'contracting (whole cell)' in dock.ax.get_legend_handles_labels()[1]
+        dock.show_group(0)
+        assert shaded() == [0.3]
+        assert 'contracting (myofibril 0)' in dock.ax.get_legend_handles_labels()[1]
+        assert list(dock.traces_table()['contracting (myofibril 0)']) == [0, 0, 0, 1, 1, 0]
+        dock.show_track(2)                                        # track 2 belongs to group 1
+        assert shaded() == [0.0, 0.5]
+        dock.set_source(kin, np.array([0, 0, 1]), 0.1, 'myofibril', None)   # not analysed yet
+        assert shaded() == [0.1]
         dock.deleteLater()
         assert app is not None
 
