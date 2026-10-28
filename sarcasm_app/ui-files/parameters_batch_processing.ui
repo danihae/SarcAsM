@@ -204,19 +204,6 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QCheckBox" name="chk_recalculate_for_motion">
-          <property name="toolTip">
-           <string>&lt;p&gt;Only for 'Batch motion analysis'. When on, every movie is analysed again from the start before tracking: sarcomere detection and sarcomere vectors on all frames, plus myofibrils or domains at the reference frame when the tracks are grouped by them, with the settings of the Structure tab. When off (default), these steps run only for movies that lack them, so movies already analysed on all frames keep their results.&lt;/p&gt;&lt;p&gt;The batch never runs the 3D U-Net; a movie that already has its Z-bands uses them for the vectors.&lt;/p&gt;</string>
-          </property>
-          <property name="text">
-           <string>Run structure prerequisites before motion analysis</string>
-          </property>
-          <property name="checked">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
       <item row="10" column="0" colspan="2">
@@ -265,37 +252,158 @@
            </property>
           </widget>
          </item>
+         <item row="5" column="0" colspan="2">
+          <widget class="QPushButton" name="btn_batch_processing_structure">
+           <property name="toolTip">
+            <string>&lt;p&gt;Analyses every .tif/.tiff file below the root folder. For each file it runs the sarcomere detection with the Structure tab settings (network, frames, patch size, contrast clipping, rescale factor), then the steps ticked under Structure, and saves the results in &amp;lt;name&amp;gt;.ome.zarr next to the image, replacing earlier results of those steps. Files that fail are listed at the end; the others are saved. Check the settings on one representative file first.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Run batch structure analysis</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="0" colspan="2">
+          <widget class="QPushButton" name="btn_batch_export_structure">
+           <property name="toolTip">
+            <string>&lt;p&gt;Collects the structure results of every .tif/.tiff file below the root folder into one Excel table, one row per file: its metadata and 43 standard structure metrics (cell mask, Z-bands, sarcomeres, myofibrils, domains). Run the batch structure analysis first; metrics not analysed stay empty. For movies a cell holds the mean over the analysed frames, and a 'per_frame' sheet lists each frame. A 'metrics' sheet gives units and descriptions. You pick the file name.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Export structure data to .xlsx</string>
+           </property>
+          </widget>
+         </item>
         </layout>
        </widget>
       </item>
       <item row="11" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_batch_processing_structure">
-        <property name="toolTip">
-         <string>&lt;p&gt;Analyses every .tif/.tiff file below the root folder. For each file it runs the sarcomere detection with the Structure tab settings (network, frames, patch size, contrast clipping, rescale factor), then the steps ticked under Structure, and saves the results in &amp;lt;name&amp;gt;.ome.zarr next to the image, replacing earlier results of those steps. Files that fail are listed at the end; the others are saved. Check the settings on one representative file first.&lt;/p&gt;</string>
+       <widget class="QGroupBox" name="groupBox_motion">
+        <property name="title">
+         <string>Motion (movies)</string>
         </property>
-        <property name="text">
-         <string>Run batch structure analysis</string>
-        </property>
-       </widget>
-      </item>
-      <item row="13" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_batch_processing_motion">
-        <property name="toolTip">
-         <string>&lt;p&gt;Runs the motion analysis on every movie in the folder and its subfolders, one after another: tracking, grouping and analysis with the settings of the Motion tab (steps 1 to 3). Movies without sarcomere vectors on all frames, or without myofibrils or domains at the reference frame when grouping by them, get these structure steps first (see 'Run structure prerequisites'). Grouping by LOI detects the LOIs automatically.&lt;/p&gt;&lt;p&gt;Each movie needs a frame time; single images are skipped with an error. Results are saved in each .ome.zarr store; open a movie to look at them. Long: several minutes per movie.&lt;/p&gt;</string>
-        </property>
-        <property name="text">
-         <string>Batch motion analysis</string>
-        </property>
-       </widget>
-      </item>
-      <item row="12" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_batch_export_structure">
-        <property name="toolTip">
-         <string>&lt;p&gt;Collects the structure results of every .tif/.tiff file below the root folder into one Excel table, one row per file: its metadata and 43 standard structure metrics (cell mask, Z-bands, sarcomeres, myofibrils, domains). Run the batch structure analysis first; metrics not analysed stay empty. For movies a cell holds the mean over the analysed frames, and a 'per_frame' sheet lists each frame. A 'metrics' sheet gives units and descriptions. You pick the file name.&lt;/p&gt;</string>
-        </property>
-        <property name="text">
-         <string>Export structure data to .xlsx</string>
-        </property>
+        <layout class="QFormLayout" name="formLayout_motion">
+         <item row="0" column="0" colspan="2">
+          <widget class="QCheckBox" name="chk_batch_fast_movie">
+           <property name="toolTip">
+            <string>&lt;p&gt;Before the sarcomere vectors, runs the 3D U-Net on every movie, with the 3D settings of the Structure tab, and uses its Z-bands for the vectors and the tracking (as 'Detect Z-bands with the 3D U-Net' does for one movie). Recommended for high-speed movies (about 6 or more frames per contraction): lengths are less noisy from frame to frame. A movie that already has 3D Z-bands keeps them unless 'Redo the structure steps first' is ticked. When off, the vectors use the 2D Z-bands. Slow without a GPU. Default off.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Detect Z-bands with the 3D U-Net (high-speed movies)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0" colspan="2">
+          <widget class="QCheckBox" name="chk_recalculate_for_motion">
+           <property name="toolTip">
+            <string>&lt;p&gt;When on, every movie is analysed again from the start before tracking: sarcomere detection, the 3D U-Net if ticked, and sarcomere vectors on all frames, plus myofibrils or domains at the reference frame when grouping by them, with the settings of the Structure tab. When off (default), these steps run only for movies that lack them, so movies already analysed on all frames keep their results.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Redo the structure steps first</string>
+           </property>
+           <property name="checked">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="label_batch_group_by">
+           <property name="toolTip">
+            <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Group by</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <layout class="QGridLayout" name="gridLayout_group_by">
+            <item row="0" column="0">
+             <widget class="QCheckBox" name="chk_batch_group_pool">
+              <property name="toolTip">
+               <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+              </property>
+              <property name="text">
+               <string>Whole cell</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QCheckBox" name="chk_batch_group_mband">
+              <property name="toolTip">
+               <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+              </property>
+              <property name="text">
+               <string>M-bands</string>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="2">
+             <widget class="QCheckBox" name="chk_batch_group_myofibril">
+              <property name="toolTip">
+               <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+              </property>
+              <property name="text">
+               <string>Myofibrils</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QCheckBox" name="chk_batch_group_domain">
+              <property name="toolTip">
+               <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+              </property>
+              <property name="text">
+               <string>Domains</string>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QCheckBox" name="chk_batch_group_loi">
+              <property name="toolTip">
+               <string>&lt;p&gt;Groupings analysed in every movie. Each ticked grouping gets its own groups and results (steps 2 and 3 of the Motion tab, once per grouping); the export has one row per group. Whole cell: all tracks in one group. M-bands: one group per M-band at the reference frame. Myofibrils, Domains: one group per myofibril line or sarcomere domain at the reference frame (computed first if missing). LOIs: lines of interest detected automatically with the LOI settings of the Motion tab.&lt;/p&gt;&lt;p&gt;The reference frame, minimum coverage and group size, and all analysis settings come from the Motion tab. Default: whole cell and myofibrils.&lt;/p&gt;</string>
+              </property>
+              <property name="text">
+               <string>LOIs</string>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+          </layout>
+         </item>
+         <item row="3" column="0" colspan="2">
+          <widget class="QPushButton" name="btn_batch_processing_motion">
+           <property name="toolTip">
+            <string>&lt;p&gt;Runs the motion analysis on every movie in the root folder and its subfolders, one after another: tracking with the settings of the Motion tab, then grouping and analysis for each grouping ticked above. Movies without sarcomere vectors on all frames, or without myofibrils or domains at the reference frame, get these structure steps first (with the settings of the Structure tab). Each movie needs a frame time; single images are listed as failed at the end. Results are saved in each .ome.zarr store; open a movie to look at them. Several minutes per movie.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Run batch motion analysis</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0" colspan="2">
+          <widget class="QPushButton" name="btn_batch_export_motion">
+           <property name="toolTip">
+            <string>&lt;p&gt;Collects the motion results of every movie below the root folder into one Excel table, one row per group: file name and metadata, grouping, group number, number of tracks and the motion features. Every grouping analysed in a movie is included; movies without motion results are skipped. A 'metrics' sheet lists each feature with its unit and description.&lt;/p&gt;</string>
+           </property>
+           <property name="text">
+            <string>Export motion data to .xlsx</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </item>
      </layout>

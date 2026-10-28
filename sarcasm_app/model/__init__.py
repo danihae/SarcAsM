@@ -217,6 +217,12 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='batch.do_vectors').set_value(True)
         self.__parameters.get_parameter(name='batch.do_myofibrils').set_value(True)
         self.__parameters.get_parameter(name='batch.do_domains').set_value(True)
+        self.__parameters.get_parameter(name='batch.motion.fast_movie').set_value(False)
+        self.__parameters.get_parameter(name='batch.motion.group_pool').set_value(True)
+        self.__parameters.get_parameter(name='batch.motion.group_mband').set_value(False)
+        self.__parameters.get_parameter(name='batch.motion.group_myofibril').set_value(True)
+        self.__parameters.get_parameter(name='batch.motion.group_domain').set_value(False)
+        self.__parameters.get_parameter(name='batch.motion.group_loi').set_value(False)
 
     def __create_parameters(self):
         # region file-load parameters
@@ -331,4 +337,10 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='batch.do_vectors')
         self.__parameters.set_parameter(name='batch.do_myofibrils')
         self.__parameters.set_parameter(name='batch.do_domains')
+        self.__parameters.set_parameter(name='batch.motion.fast_movie')
+        self.__parameters.set_parameter(name='batch.motion.group_pool')
+        self.__parameters.set_parameter(name='batch.motion.group_mband')
+        self.__parameters.set_parameter(name='batch.motion.group_myofibril')
+        self.__parameters.set_parameter(name='batch.motion.group_domain')
+        self.__parameters.set_parameter(name='batch.motion.group_loi')
         # endregion

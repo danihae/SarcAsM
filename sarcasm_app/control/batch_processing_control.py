@@ -90,6 +90,16 @@ def _detect_sarcomeres(sarc_obj: SarcAsM, parameters, frames, progress_notifier=
                                progress_notifier=_quiet(progress_notifier))
 
 
+def _detect_z_bands_fast_movie(sarc_obj: SarcAsM, parameters, progress_notifier=None):
+    network_model = parameters.get_parameter('structure.predict_fast_movie.network_path').get_value()
+    sarc_obj.detect_z_bands_fast_movie(
+        model_path=None if network_model in ('default', 'generalist') else network_model,
+        max_patch_size=patch_size_from_parameters(parameters, 'structure.predict_fast_movie'),
+        clip_thres=(parameters.get_parameter('structure.predict_fast_movie.clip_thresh_min').get_value(),
+                    parameters.get_parameter('structure.predict_fast_movie.clip_thresh_max').get_value()),
+        progress_notifier=_quiet(progress_notifier))
+
+
 def _analyze_z_bands(sarc_obj: SarcAsM, p, frames):
     sarc_obj.analyze_z_bands(frames=frames,
                              threshold=p('structure.z_band_analysis.threshold'),
@@ -102,9 +112,10 @@ def _analyze_z_bands(sarc_obj: SarcAsM, p, frames):
                              max_axial_offset=p('structure.z_band_analysis.max_axial_offset'))
 
 
-def _analyze_sarcomere_vectors(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
+def _analyze_sarcomere_vectors(sarc_obj: SarcAsM, p, frames, progress_notifier=None, use_fast_movie_zbands=True):
     sarc_obj.analyze_sarcomere_vectors(
         frames=frames,
+        use_fast_movie_zbands=use_fast_movie_zbands,
         slen_lims=(p('structure.vectors.length_limit_lower'), p('structure.vectors.length_limit_upper')),
         median_filter_radius=p('structure.vectors.radius'),
         linewidth=p('structure.vectors.line_width'),
@@ -137,6 +148,10 @@ def _analyze_sarcomere_domains(sarc_obj: SarcAsM, p, frames, progress_notifier=N
                                        progress_notifier=_quiet(progress_notifier))
 
 
+#: Groupings the motion batch can analyse, in the order they run (the batch tab has one checkbox each).
+_BATCH_GROUPINGS = ('pool', 'mband', 'myofibril', 'domain', 'loi')
+
+
 class BatchProcessingControl:
 
     def __init__(self, batch_processing_widget: BatchProcessingWidget, main_control: ApplicationControl):
@@ -155,6 +170,7 @@ class BatchProcessingControl:
             self.on_btn_batch_processing_motion)
         self.__batch_processing_widget.btn_search.clicked.connect(self.on_search)
         self.__batch_processing_widget.btn_batch_export_structure.clicked.connect(self.on_btn_batch_export_structure)
+        self.__batch_processing_widget.btn_batch_export_motion.clicked.connect(self.on_btn_batch_export_motion)
 
         parameters.get_parameter(name='batch.pixel.size').connect(widget.dsb_pixel_size)
         parameters.get_parameter(name='batch.frame.time').connect(widget.dsb_frame_time)
@@ -169,6 +185,10 @@ class BatchProcessingControl:
         parameters.get_parameter(name='batch.do_vectors').connect(widget.chk_do_vectors)
         parameters.get_parameter(name='batch.do_myofibrils').connect(widget.chk_do_myofibrils)
         parameters.get_parameter(name='batch.do_domains').connect(widget.chk_do_domains)
+        parameters.get_parameter(name='batch.motion.fast_movie').connect(widget.chk_batch_fast_movie)
+        for kind in _BATCH_GROUPINGS:
+            parameters.get_parameter(name=f'batch.motion.group_{kind}').connect(
+                getattr(widget, f'chk_batch_group_{kind}'))
 
         pass
 
@@ -356,8 +376,45 @@ class BatchProcessingControl:
         except FileNotFoundError as e:
             raise FileNotFoundError(f'Could not write {file_export}: the folder does not exist.') from e
 
+    def on_btn_batch_export_motion(self):
+        """UI callback: *Batch → Export motion data* button."""
+        if not self.__batch_files_or_explain():
+            return
+        model = self.__main_control.model
+        folder = model.parameters.get_parameter(name='batch.root').get_value()
+        file_export, _ = QFileDialog.getSaveFileName(caption='Save motion measurements', directory=str(folder),
+                                                     filter='Excel Workbook (*.xlsx)')
+        if not file_export:
+            return
+        if not file_export.lower().endswith('.xlsx'):
+            file_export = str(Path(file_export).with_suffix('.xlsx'))
+        self.__export_args = (self.__get_tiff_files(model), Path(file_export))
+        self.__worker = self.__main_control.run_async_new(
+            parameters=model, call_lambda=self.__batch_export_motion_async,
+            start_message='Start batch export motion ', finished_message='Finished batch export motion ')
+
+    def __batch_export_motion_async(self, worker, model):
+        tif_files, file_export = self.__export_args
+        folder = model.parameters.get_parameter(name='batch.root').get_value()
+        msa = BatchExport(tif_files, folder=folder)
+        msa.get_motion_data()
+        if msa.data.empty:
+            raise ValueError('None of the movies has motion results yet: run the batch motion analysis first.')
+        try:
+            msa.export_data(file_export)
+        except PermissionError as e:
+            raise PermissionError(f'Could not write {file_export}: {e.strerror or e}. Choose a folder you can '
+                                  f'write to, and close the file if it is open in Excel.') from e
+        Export.append_info_sheets(str(file_export), None,
+                                  [c for c in msa.data.columns if c in Export.motion_keys_default], registry='motion')
+        logger.info(f'Exported {len(msa.data)} group(s) of {msa.data["tif_name"].nunique()} movie(s) to {file_export}')
+
     def on_btn_batch_processing_motion(self):
         if not self.__batch_files_or_explain():
+            return
+        if not self.__batch_groupings(self.__main_control.model):
+            QMessageBox.information(self.__batch_processing_widget.btn_batch_processing_motion, 'No grouping chosen',
+                                    'Tick at least one grouping under "Group by" (e.g. Whole cell).')
             return
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model,
                                                    call_lambda=self.__batch_process_motion_async,
@@ -406,11 +463,16 @@ class BatchProcessingControl:
             pass
         return sarc_obj
 
+    @staticmethod
+    def __batch_groupings(model) -> list:
+        return [kind for kind in _BATCH_GROUPINGS
+                if model.parameters.get_parameter(f'batch.motion.group_{kind}').get_value()]
+
     def __single_motion_analysis(self, file: str, frame_time: float, pixel_size: float, channel: int, axes: str,
                                  force_override: bool, model, progress_notifier=None):
-        """Track, group and analyse one movie with the settings of the Structure and Motion tabs. The structure
-        steps the motion analysis needs run first when the file lacks them (vectors on every frame, myofibrils
-        or domains at the reference frame), or always when 'Run structure prerequisites' is ticked."""
+        """Track one movie, then group and analyse it once per grouping ticked in the batch tab. The structure
+        steps it needs run first when the movie lacks them (or always with 'Redo the structure steps first'),
+        with the settings of the Structure tab; tracking, grouping and analysis use those of the Motion tab."""
         sarc_obj = BatchProcessingControl.__get_sarc_object(file=file, frame_time=frame_time, pixel_size=pixel_size,
                                                             channel=channel, axes=axes, force_override=force_override)
 
@@ -422,24 +484,32 @@ class BatchProcessingControl:
             raise ValueError('a single image, so there is no motion to analyse (if it is a movie, check its axes)')
         if not sarc_obj.metadata.frametime:
             raise ValueError('no frame time in the file; enter it with Metadata: "Override for all files"')
-
-        done = sarc_obj.data.get('params.analyze_sarcomere_vectors.frames')
-        redo = bool(_p('batch.recalculate.for.motion')) or done is None or len(done) < n_stack
-        if redo:
-            _detect_sarcomeres(sarc_obj, model.parameters, 'all', progress_notifier)
-            _analyze_sarcomere_vectors(sarc_obj, _p, 'all', progress_notifier)
-
-        by = _p('motion.group.by')
         ref = int(_p('motion.group.reference_frame'))
         if not 0 <= ref < n_stack:
             raise ValueError(f'the reference frame {ref} is outside the movie (frames 0 to {n_stack - 1})')
-        if by == 'myofibril':
-            lines = sarc_obj.data.get('structure.myofibril.lines')
-            if redo or lines is None or lines[ref] is None:
-                _analyze_myofibrils(sarc_obj, _p, [ref], progress_notifier)
-        elif by == 'domain':
-            if redo or ref not in list(sarc_obj.data.get('params.analyze_sarcomere_domains.frames', [])):
-                _analyze_sarcomere_domains(sarc_obj, _p, [ref], progress_notifier)
+
+        data = sarc_obj.data
+        redo = bool(_p('batch.recalculate.for.motion'))
+        fast = bool(_p('batch.motion.fast_movie'))
+
+        def _all_frames(step):
+            done = data.get(f'params.{step}.frames')
+            return done is not None and len(done) >= n_stack
+
+        source = data.get('params.analyze_sarcomere_vectors.zbands_source')
+        run_fast = fast and (redo or not sarc_obj._mask_exists('zbands_fast_movie'))
+        run_vectors = (redo or run_fast or not _all_frames('analyze_sarcomere_vectors')
+                       or fast != (source == 'fast_movie_3d'))
+        # the vectors read the detection masks, which 'Delete intermediate masks' may have removed
+        run_detect = redo or not _all_frames('detect_sarcomeres') or (run_vectors and not all(
+            sarc_obj._mask_exists(m) for m in ('zbands', 'mbands', 'orientation', 'sarcomere_mask')))
+        run_vectors = run_vectors or run_detect
+        if run_detect:
+            _detect_sarcomeres(sarc_obj, model.parameters, 'all', progress_notifier)
+        if run_fast:
+            _detect_z_bands_fast_movie(sarc_obj, model.parameters, progress_notifier)
+        if run_vectors:
+            _analyze_sarcomere_vectors(sarc_obj, _p, 'all', progress_notifier, use_fast_movie_zbands=fast)
 
         sarc_obj.track_sarcomere_vectors(
             frames='all',
@@ -452,20 +522,27 @@ class BatchProcessingControl:
             refine_lengths=bool(_p('motion.track.refine_lengths')),
             progress_notifier=progress_notifier)
 
-        if by == 'loi':
-            sarc_obj.detect_lois(frame=ref, **detect_lois_kwargs(_p))
-        sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
-                              min_group_size=int(_p('motion.group.min_group_size')))
-
-        sarc_obj.analyze_track_motion(
-            aggregate=str(_p('motion.analyze.aggregate')),
-            slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
-            threshold=_p('motion.analyze.threshold'),
-            contr_time_min=_p('motion.analyze.contr_time_min'),
-            merge_time_max=_p('motion.analyze.merge_time_max'),
-            buffer_frames=int(_p('motion.analyze.buffer_frames')),
-            min_valid_frames=_p('motion.analyze.min_valid_frames'),
-            filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
+        for by in self.__batch_groupings(model):
+            if by == 'myofibril':
+                lines = data.get('structure.myofibril.lines')
+                if run_vectors or lines is None or lines[ref] is None:
+                    _analyze_myofibrils(sarc_obj, _p, [ref], progress_notifier)
+            elif by == 'domain':
+                if run_vectors or ref not in list(data.get('params.analyze_sarcomere_domains.frames', [])):
+                    _analyze_sarcomere_domains(sarc_obj, _p, [ref], progress_notifier)
+            elif by == 'loi':
+                sarc_obj.detect_lois(frame=ref, **detect_lois_kwargs(_p))
+            sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
+                                  min_group_size=int(_p('motion.group.min_group_size')))
+            sarc_obj.analyze_track_motion(
+                aggregate=str(_p('motion.analyze.aggregate')),
+                slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
+                threshold=_p('motion.analyze.threshold'),
+                contr_time_min=_p('motion.analyze.contr_time_min'),
+                merge_time_max=_p('motion.analyze.merge_time_max'),
+                buffer_frames=int(_p('motion.analyze.buffer_frames')),
+                min_valid_frames=_p('motion.analyze.min_valid_frames'),
+                filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))
         sarc_obj.commit()
 
         if _p('batch.delete_intermediate_masks'):

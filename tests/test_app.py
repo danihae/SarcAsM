@@ -425,38 +425,51 @@ class TestBatchProcessingParameters:
         assert params.get_parameter('batch.force.override').get_value() is False
 
 
-    @pytest.mark.parametrize('vector_frames, recalc, expect_structure', [
-        ([0, 1, 2], False, False),     # analysed on every frame: tracked as it is
-        ([0], False, True),            # only part of the movie: vectors on all frames first
-        (None, False, True),           # never analysed
-        ([0, 1, 2], True, True),       # 'Run structure prerequisites' redoes them
+    @pytest.mark.parametrize('analysed_frames, recalc, fast, source, expect_structure', [
+        ([0, 1, 2], False, False, 'per_frame_2d', False),   # analysed on every frame: tracked as it is
+        ([0], False, False, 'per_frame_2d', True),          # only part of the movie: all frames first
+        (None, False, False, None, True),                   # never analysed
+        ([0, 1, 2], True, False, 'per_frame_2d', True),     # 'Redo the structure steps first'
+        ([0, 1, 2], False, True, 'per_frame_2d', True),     # 3D U-Net ticked: vectors on its Z-bands
+        ([0, 1, 2], False, True, 'fast_movie_3d', False),   # ... already done
     ])
-    def test_batch_motion_runs_missing_structure_steps(self, model, vector_frames, recalc, expect_structure):
+    @pytest.mark.parametrize('masks_kept', [True, False])
+    def test_batch_motion_runs_missing_structure_steps(self, model, analysed_frames, recalc, fast, source,
+                                                       expect_structure, masks_kept):
         """The batch motion button was disabled, and its code ran the prerequisites only on the Structure
         tab's frames and never saved the results."""
         from types import SimpleNamespace
         from sarcasm_app.control import batch_processing_control as bpc
         data = {'structure.myofibril.lines': [None, None, None]}
-        if vector_frames is not None:
-            data['params.analyze_sarcomere_vectors.frames'] = vector_frames
+        if analysed_frames is not None:
+            data['params.detect_sarcomeres.frames'] = analysed_frames
+            data['params.analyze_sarcomere_vectors.frames'] = analysed_frames
+            data['params.analyze_sarcomere_vectors.zbands_source'] = source
         sarc = MagicMock()
         sarc.data = data
         sarc.metadata = SimpleNamespace(n_stack=3, frametime=0.01)
+        # 'Delete intermediate masks' keeps only the Z-bands: the vectors then need a new detection
+        sarc._mask_exists.side_effect = lambda m: (source == 'fast_movie_3d' if m == 'zbands_fast_movie'
+                                                   else masks_kept or m == 'zbands')
         model.parameters.get_parameter('batch.recalculate.for.motion').set_value(recalc)
-        model.parameters.get_parameter('motion.group.by').set_value('myofibril')
+        model.parameters.get_parameter('batch.motion.fast_movie').set_value(fast)
         model.parameters.get_parameter('motion.group.reference_frame').set_value(0)
         ctl = bpc.BatchProcessingControl(MagicMock(), MagicMock())
         with patch.object(bpc, 'SarcAsM', return_value=sarc):
             ctl._BatchProcessingControl__single_motion_analysis('movie.tif', 0.1, 0.1, 0, '', False, model)
-        assert sarc.detect_sarcomeres.called == expect_structure
         assert sarc.analyze_sarcomere_vectors.called == expect_structure
+        assert sarc.detect_sarcomeres.called == (recalc or analysed_frames != [0, 1, 2]
+                                                 or (expect_structure and not masks_kept))
         if expect_structure:
-            assert sarc.analyze_sarcomere_vectors.call_args.kwargs['frames'] == 'all'
+            kwargs = sarc.analyze_sarcomere_vectors.call_args.kwargs
+            assert kwargs['frames'] == 'all' and kwargs['use_fast_movie_zbands'] is fast
+        assert sarc.detect_z_bands_fast_movie.called == (fast and source != 'fast_movie_3d')
         assert sarc.analyze_myofibrils.call_args.kwargs['frames'] == [0]       # no myofibrils at frame 0 yet
         sarc.track_sarcomere_vectors.assert_called_once()
         assert sarc.track_sarcomere_vectors.call_args.kwargs['refine_lengths'] is True
-        sarc.group_tracks.assert_called_once()
-        sarc.analyze_track_motion.assert_called_once()
+        # the default groupings: whole cell and myofibrils, each grouped and analysed
+        assert [c.kwargs['by'] for c in sarc.group_tracks.call_args_list] == ['pool', 'myofibril']
+        assert sarc.analyze_track_motion.call_count == 2
         sarc.commit.assert_called_once()
 
     def test_batch_motion_refuses_single_images(self, model):

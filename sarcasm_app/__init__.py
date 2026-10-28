@@ -404,6 +404,7 @@ class Application:
         widget_batch_processing = QWidget()
         self.__batch_processing.setupUi(widget_batch_processing)
         _mark_accent(self.__batch_processing.btn_batch_processing_structure)
+        _mark_accent(self.__batch_processing.btn_batch_processing_motion)
         self.__install_override_radio()
 
         # B5: unit suffixes (after setupUi so the labels exist).
