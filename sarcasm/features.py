@@ -920,6 +920,16 @@ motion_feature_dict = {
         'data type': np.ndarray,
         'function': 'SarcAsM.analyze_track_motion',
         'name': 'Group contraction labels'},
+    'polarity_score': {
+        'description': "Polarity score of the group's sarcomere length (contraction_net.polarity): positive when "
+                       'it rests at its long side. Contractions are read with rest at the long side whatever the '
+                       'score; below -0.1 the length dwells at its short side, as when a cell is contracted most '
+                       'of the time (or, by chance, in a noisy trace). NaN where the group was not read (too few '
+                       'valid frames, a flat trace, or a recording shorter than 2 s or 32 frames). np.ndarray with '
+                       'shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'SarcAsM.analyze_track_motion',
+        'name': 'Group polarity score'},
     'n_members': {
         'description': 'Time-series of number of sarcomere vectors within each group. np.ndarray with shape '
                        '(n_groups, n_frames).',

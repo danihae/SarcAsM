@@ -66,6 +66,28 @@ All notable changes to SarcAsM are documented here. The format follows
   with no gap closing, so overlapping twitches stay separate contractions. `recommended_decoding(model)` reads
   threshold and peak from the checkpoint. `contraction_net.benchmark.postprocess` no longer closes 1-frame gaps
   unless asked.
+- `analyze_track_motion` and the LOI analysis (`Motion.detect_analyze_contractions`) detect contractions with this
+  decoder, at the model's threshold and confidence peak and with `contr_time_min` converted with `round()`; cycles
+  at either end of the recording are kept and flagged incomplete as before. Gaps between contractions are no longer
+  closed (`merge_time_max` is deprecated, below): the closing erased the split between two overlapping twitches, a
+  single frame at 61 fps, so twitches less than 0.05 s apart now count as separate cycles. Sarcomere length is read
+  with rest at its long side (`polarity=1`), since a sarcomere shortens when it contracts; a group with contractions
+  whose length dwells at its short side, as when a cell is contracted most of the time, is still read so and is
+  named in a warning. Z-band positions, whose sign depends on the direction of the line, are oriented by the polarity rule
+  trace by trace, so negating any of them changes nothing. The frame time of the recording reaches the rule, and a
+  recording shorter than 2 s or 32 frames gets no contractions, with a warning. New results:
+  `motion.<kind>.polarity_score` per group, and the LOI's `polarity_*` entries (score and sign of every Z-band and
+  length trace, the traces left out, the length traces that dwell at their short side). `Motion.predict_contractions`
+  returns the contraction state with these polarity decisions and takes `frametime`, `peak`, `contr_time_min` and
+  `exclude`.
+- LOI contraction detection (`Motion.predict_contractions`) still decodes the larger of the Z-band and the
+  sarcomere-length channel means (1.0.0b3). Traces without data and traces whose polarity the rule leaves undecided
+  are left out of their channel mean; an all-NaN trace used to be read as a flat trace of zeros. The larger is kept,
+  rather than the mean of the two, because in a weak contraction the length of a single sarcomere is buried in
+  noise, while a Z-band position adds up the shortening of the sarcomeres in between: on 50 hand-annotated LOIs the
+  larger finds 903 of 1017 contractions and the mean 610. Its cost is that the false contractions of both channels
+  add up (18 in 3 of 7 quiescent drug-panel cells, where the mean has none). Known limitation: a contraction that
+  stays below the 0.85 confidence peak in both channels is not detected, as in some cells under 1 µM Mavacamten.
 - New default 2D sarcomere model, `generalist` = `model_sarcomeres_generalist_v2.pt` (v1 fine-tuned on simulated
   myofibrils with exact labels and on orientation labels along the myofibril axis). On the detection benchmark of
   Supplementary Note 2, F1 0.80 → 0.83 (10 of 10 images better) and length error vs manual 68 → 64 nm; thin
@@ -107,6 +129,13 @@ All notable changes to SarcAsM are documented here. The format follows
   summary layout follows the image aspect ratio (wide, square and tall movies).
 - One summary line for groups without a beating rate instead of one warning per group; metadata warnings are
   shown once and name the GUI field as well as the Python argument.
+
+### Deprecated
+
+- `merge_time_max` of `analyze_track_motion`, `Motion.detect_analyze_contractions`, `grouped_motion.run_cycle_engine`
+  and `contraction_analysis.detect_contractions` is ignored, with a `DeprecationWarning` and a log message, and its
+  `params.*` entry is stored as `None`: no gap between contractions is closed. The GUI's "Merge threshold" field is
+  disabled; it stays so that saved parameter files still load.
 
 ### Removed
 

@@ -28,12 +28,36 @@ import warnings
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from scipy.ndimage import binary_closing, binary_opening, label
+import torch
+from scipy.ndimage import label
 from scipy.signal import savgol_filter
 
-from contraction_net.prediction import predict_contractions, recommended_threshold
+from contraction_net.decoding import decode_contractions, intervals_to_mask, recommended_decoding
+from contraction_net.prediction import polarity_rule, predict_contractions
 
 logger = logging.getLogger(__name__)
+
+
+def _warn_merge_time_max(merge_time_max: Optional[float]) -> None:
+    """Warn the caller of a public function that its ``merge_time_max`` is ignored.
+
+    Also logged, since importing sarcasm silences warnings."""
+    if merge_time_max is not None:
+        message = ('merge_time_max is deprecated and ignored: gaps between contractions are no '
+                   'longer closed, because closing erases the split between two overlapping '
+                   'twitches, which can be a single frame at 61 fps.')
+        logger.warning(message)
+        warnings.warn(message, DeprecationWarning, stacklevel=3)
+
+
+def _length_polarity(model_path: str) -> dict:
+    """Keyword arguments of ``predict_contractions`` for a sarcomere length.
+
+    A sarcomere shortens when it contracts, so its length rests at the long side
+    (``polarity=1``). Only checkpoints that read after the polarity rule (``'q90'``) take a
+    declared polarity; a ``'symmetric'`` one reads both signs itself and gets none."""
+    state = torch.load(model_path, map_location='cpu', weights_only=True)
+    return {'polarity': 1} if state.get('input_convention', 'q90') == 'q90' else {}
 
 
 def cycle_truncation_flags(labels: np.ndarray, n_cycles: int, buffer_frames: int
@@ -85,7 +109,7 @@ def detect_contractions(
     model_path: str,
     threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
-    merge_time_max: float = 0.05,
+    merge_time_max: Optional[float] = None,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
     group_label: str = "Domain",
@@ -94,12 +118,21 @@ def detect_contractions(
     """
     Detect contraction cycles from per-group sarcomere length time-series via ContractionNet.
 
-    Predicts contraction states with the ContractionNet network for each row's
-    mean sarcomere length signal, then cleans the predictions with morphological
-    operations. ``group_label`` and ``id_offset`` affect only log messages: each
-    row ``i`` is named ``f"{group_label} {i + id_offset}"`` so the shared engine
-    matches the caller's numbering (0-based group id for most kinds; 1-based mask
-    label for domains, where group id = mask label - 1).
+    ContractionNet reads each row's mean sarcomere length with rest declared at the long
+    side, since a sarcomere shortens when it contracts (``polarity=1`` in
+    :func:`contraction_net.prediction.predict_contractions`; a ``'symmetric'`` checkpoint
+    reads both signs itself and takes no declaration), and
+    :func:`contraction_net.decoding.decode_contractions` turns the probability into
+    contraction cycles: runs of frames above the threshold that reach the model's confidence
+    peak and last at least ``contr_time_min``. Gaps between cycles are not closed, so
+    overlapping twitches stay separate cycles. A row whose length dwells at its short side
+    with brief lengthenings, as in a cell that is contracted most of the time (or, by chance,
+    in a noisy trace), is still read with rest at the long side; its polarity score is
+    negative, and the rows of this kind with contractions are named in a warning.
+    ``group_label`` and ``id_offset`` affect only log messages: each row ``i`` is named
+    ``f"{group_label} {i + id_offset}"`` so the shared engine matches the caller's numbering
+    (0-based group id for most kinds; 1-based mask label for domains, where group id = mask
+    label - 1).
 
     Parameters
     ----------
@@ -110,14 +143,17 @@ def detect_contractions(
     model_path : str
         Path to the ContractionNet model weights (.pt file).
     threshold : float or None, optional
-        Binary threshold for contraction state prediction. None (the default) uses the
+        Probability a frame must exceed to be contracting. None (the default) uses the
         operating point the model was tuned for, read from its checkpoint. The right value
         is a property of the model; a threshold carried over from a different one is not
-        meaningful.
+        meaningful. The confidence peak is always the model's own
+        (:func:`contraction_net.decoding.recommended_decoding`).
     contr_time_min : float, optional
-        Minimal contraction duration in s; shorter contractions are removed. Default is 0.2.
-    merge_time_max : float, optional
-        Maximal gap in s between two contractions; closer ones are merged. Default is 0.05.
+        Minimal contraction duration in s, converted to frames with ``round()``; shorter
+        contractions are removed. Default is 0.2.
+    merge_time_max : None, optional
+        Deprecated and ignored, with a ``DeprecationWarning``: gaps between contractions are
+        not closed. Default is None.
     buffer_frames : int, optional
         Frames from either end within which a contraction cycle counts as
         **incomplete**: its onset (or offset) lies outside the recorded window.
@@ -149,9 +185,15 @@ def detect_contractions(
         - 'labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
         - 'beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
         - 'beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
+        - 'polarity_score' : np.ndarray ``(n_domains,)``, polarity score of the group's sarcomere
+          length (:func:`contraction_net.polarity.polarity_score`), positive when it rests at its
+          long side; below -0.1, the rule's margin, it dwells at its short side. NaN where the row
+          was not read (too few valid frames, a flat trace, or a recording too short for the rule)
     """
-    if threshold is None:
-        threshold = recommended_threshold(model_path)
+    _warn_merge_time_max(merge_time_max)
+    decoding = recommended_decoding(model_path)
+    if threshold is not None:
+        decoding['threshold'] = float(threshold)
 
     n_domains, n_frames = group_slen.shape
     
@@ -162,13 +204,13 @@ def detect_contractions(
     domain_n_contr_complete = np.zeros(n_domains, dtype=np.int32)
     domain_beating_rate = np.full(n_domains, np.nan)
     domain_beating_rate_var = np.full(n_domains, np.nan)
+    domain_polarity_score = np.full(n_domains, np.nan)
     complete_per_domain: List[Optional[np.ndarray]] = [None] * n_domains
 
-    # Morphological structuring elements
-    structure_closing = np.ones(max(1, int(merge_time_max / frametime)))
-    structure_opening = np.ones(max(1, int(contr_time_min / frametime)))
-    
+    declared = _length_polarity(model_path)
     few_cycles = []                  # (group id, n cycles) of groups without a beating rate
+    rests_short = []                 # ids of groups with contractions whose length dwells at its short side
+    too_short = False                # the recording is too short for the polarity rule
 
     # Process each domain
     for domain_idx in range(n_domains):
@@ -186,19 +228,23 @@ def detect_contractions(
         if np.all(np.isnan(slen_interp)):
             continue
         
-        # Predict contractions using ContractionNet
+        # Predict contractions using ContractionNet; a sarcomere shortens when it contracts, so its
+        # length rests at the long side
         try:
-            contr_pred = predict_contractions(slen_interp, model_path)
-            contr = contr_pred[0] > threshold
+            contr_pred, decision = predict_contractions(slen_interp, model_path, frametime=frametime,
+                                                        return_decision=True, **declared)
         except Exception as e:
             logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {domain_idx + id_offset}: {e}")
             continue
-        
-        # Apply morphological operations to clean up predictions
-        contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
-        
+        domain_polarity_score[domain_idx] = decision.score
+        too_short = too_short or decision.reason == 'too_short'
+
         # cycles at the recording edges are kept and flagged incomplete below
+        contr = intervals_to_mask(decode_contractions(contr_pred[0], frametime, min_duration_s=contr_time_min,
+                                                      border_frames=0, **decoding), n_frames)
         domain_contr[domain_idx] = contr
+        if decision.reason == 'declared, data disagree' and contr.any():
+            rests_short.append(domain_idx + id_offset)
 
         # Label contraction cycles and flag the incomplete ones
         labels, n_contr = label(contr)
@@ -228,6 +274,17 @@ def detect_contractions(
         ids = ', '.join(str(g) for g, _ in few_cycles[:10]) + (', …' if len(few_cycles) > 10 else '')
         logger.warning(f"No beating rate for {len(few_cycles)} of {n_domains} groups ({group_label.lower()} "
                        f"{ids}): fewer than 2 contraction cycles detected.")
+    if too_short:
+        rule = polarity_rule(model_path)
+        logger.warning(f"The recording is too short to detect contractions ({n_frames} frames, "
+                       f"{n_frames * frametime:.2f} s): ContractionNet needs at least {rule.min_frames} frames "
+                       f"and {rule.min_seconds:g} s.")
+    if rests_short:
+        ids = ', '.join(str(g) for g in rests_short[:10]) + (', …' if len(rests_short) > 10 else '')
+        logger.warning(f"{len(rests_short)} of {n_domains} groups ({group_label.lower()} {ids}): the sarcomere "
+                       f"length dwells at its short side, as when it is contracted most of the time or noisy. The "
+                       f"contractions are read with rest at the long side, as for every sarcomere length; check "
+                       f"these groups.")
     
     # Per-cycle completeness, NaN-padded to the widest group (like every other
     # per-cycle array). Float, so its per-group nanmean is the complete fraction.
@@ -252,6 +309,7 @@ def detect_contractions(
         'labels_contr': group_labels_contr,
         'beating_rate': domain_beating_rate,
         'beating_rate_variability': domain_beating_rate_var,
+        'polarity_score': domain_polarity_score,
     }
 
 

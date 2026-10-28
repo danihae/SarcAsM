@@ -44,6 +44,7 @@ from sarcasm.analysis import (
     detection,
     loi_detection,
     sarcomere_tracking,
+    contraction_analysis,
     grouped_motion,
     heterogeneity,
 )
@@ -2443,7 +2444,7 @@ class SarcAsM(SarcAsMBase):
         model: Optional[str] = None,
         threshold: Optional[float] = None,
         contr_time_min: float = 0.2,
-        merge_time_max: float = 0.05,
+        merge_time_max: Optional[float] = None,
         buffer_frames: int = 3,
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
@@ -2464,7 +2465,8 @@ class SarcAsM(SarcAsMBase):
         every grouping, so one set of plotting/export code serves them all:
         the aggregated ``slen`` statistics, the ContractionNet cycle metrics
         (including the percentile times ``time_to_50``, ``time_contr_10_90``,
-        ``time_relax_50`` and ``time_relax_90``), the per-group heterogeneity of
+        ``time_relax_50`` and ``time_relax_90``) with the polarity score of each
+        group's sarcomere length (``polarity_score``), the per-group heterogeneity of
         the member tracks — serial/mutual correlation of ΔSL and velocity across
         cycles (``corr_*`` / ``ratio_*_mutual_serial``) and the wavelet oscillation
         spectra (``oscill_*``), see :mod:`sarcasm.analysis.heterogeneity`.
@@ -2488,6 +2490,8 @@ class SarcAsM(SarcAsMBase):
             Default is (1.0, 3.0).
         model, threshold, contr_time_min, merge_time_max, buffer_frames, min_valid_frames, filter_params
             ContractionNet engine knobs (see :func:`grouped_motion.run_cycle_engine`).
+            ``merge_time_max`` is deprecated and ignored: gaps between contractions are
+            not closed.
         reference_frame, min_coverage, min_group_size, max_drift_slen
             Forwarded to :meth:`group_tracks` when ``by`` is given. Defaults are
             0, None (0.1 for chain kinds / 0.5 otherwise), 1 and 1.0.
@@ -2497,6 +2501,7 @@ class SarcAsM(SarcAsMBase):
             ``max_drift_slen`` drops identity-drifting tracks from the chain
             groupings (myofibril/loi) only.
         """
+        contraction_analysis._warn_merge_time_max(merge_time_max)
         if by is not None:
             if by == 'custom':
                 raise ValueError(
@@ -2538,7 +2543,7 @@ class SarcAsM(SarcAsMBase):
         logger.info(f"analyze_track_motion: {n_groups} '{kind}' groups...")
         engine = grouped_motion.run_cycle_engine(
             agg['slen'], frametime=self.metadata.frametime, model_path=model,
-            threshold=threshold, contr_time_min=contr_time_min, merge_time_max=merge_time_max,
+            threshold=threshold, contr_time_min=contr_time_min,
             buffer_frames=buffer_frames, min_valid_frames=min_valid_frames,
             filter_params=filter_params,
             group_label={'loi': 'LOI', 'mband': 'M-band'}.get(kind, str(kind).capitalize()),
@@ -2567,7 +2572,7 @@ class SarcAsM(SarcAsMBase):
             'params.analyze_track_motion.model': model,
             'params.analyze_track_motion.threshold': threshold,
             'params.analyze_track_motion.contr_time_min': contr_time_min,
-            'params.analyze_track_motion.merge_time_max': merge_time_max,
+            'params.analyze_track_motion.merge_time_max': None,   # no gap is closed
             'params.analyze_track_motion.buffer_frames': buffer_frames,
             'params.analyze_track_motion.min_valid_frames': min_valid_frames,
             'params.analyze_track_motion.filter_params': filter_params,

@@ -19,12 +19,13 @@ import warnings
 from typing import List, Tuple, Union
 
 import numpy as np
-from scipy.ndimage import binary_closing, binary_opening, label, binary_dilation
+from scipy.ndimage import label, binary_dilation
 from scipy.stats import kstest, geom
 
-from contraction_net.prediction import predict_contractions, recommended_threshold
+from contraction_net.decoding import decode_contractions, intervals_to_mask, recommended_decoding
+from contraction_net.prediction import polarity_rule, predict_contractions
 from sarcasm.analysis import contraction_analysis, heterogeneity
-from sarcasm.analysis.contraction_analysis import cycle_truncation_flags
+from sarcasm.analysis.contraction_analysis import _length_polarity, _warn_merge_time_max, cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
 from sarcasm.utils import Utils
@@ -276,14 +277,18 @@ class Motion(SarcAsMBase):
     def detect_analyze_contractions(self, model: Union[str, None] = None,
                                     threshold: Union[float, None] = None,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
-                                    buffer_frames: int = 3, contr_time_min: float = 0.2, merge_time_max: float = 0.05):
+                                    buffer_frames: int = 3, contr_time_min: float = 0.2,
+                                    merge_time_max: Union[float, None] = None):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
 
-        1. Predict contractions / contraction state (0 = quiescent, 1 = contracting) from sarcomere lengths (average or percentile)
-        2. Optimize state by morphological closing and opening (minimal time of contraction cycle=contr_time_min,
-            merge contractions closer than merge_time_max). Remove cycles at very beginning or end (buffer_frames).
-        3. Characterize state: obtain start times of contr. cycles (start_contractions_frame in frames, start_contr in s),
+        1. Predict contractions / contraction state (0 = quiescent, 1 = contracting) from the Z-band positions and
+            sarcomere lengths (:meth:`predict_contractions`): runs of frames above the threshold that reach the
+            model's confidence peak and last at least contr_time_min. Frames with fewer than n_sarcomeres_min
+            sarcomeres are quiescent. Gaps between contractions are not closed, so overlapping twitches stay
+            separate cycles; cycles at the very beginning or end are kept and flagged incomplete (buffer_frames).
+            The polarity decisions of the traces are stored with the results (see :meth:`predict_contractions`).
+        2. Characterize state: obtain start times of contr. cycles (start_contractions_frame in frames, start_contr in s),
             number of cycles (n_contr), label contraction cycles (1 to n_contr), duration of contr. cycles (time_contractions)
 
         Parameters
@@ -294,13 +299,13 @@ class Motion(SarcAsMBase):
         threshold : float or None, optional
             Binary threshold for contraction state (0, 1) after prediction. None (the
             default) uses the operating point the model was tuned for, read from its
-            checkpoint.
+            checkpoint, as is its confidence peak.
         slen_lims : tuple of float, optional
             Minimal and maximal sarcomere lengths (µm); values outside the
             interval are set to NaN. Default is (1.2, 3).
         n_sarcomeres_min : int, optional
-            Minimal number of sarcomeres; if fewer, contraction state is set
-            to 0. Default is 4.
+            Minimal number of sarcomeres; in frames with fewer, contraction state
+            is set to 0 before the contractions are decoded. Default is 4.
         buffer_frames : int, optional
             Frames from either end of the time-series within which a contraction
             cycle (or quiescent period) counts as **incomplete**: its onset or
@@ -310,30 +315,31 @@ class Motion(SarcAsMBase):
             are NaN, and ``contr_complete`` / ``quiet_complete`` flag them.
             Default is 3.
         contr_time_min : float, optional
-            Minimal contraction time in seconds; shorter contractions are
-            removed. Default is 0.2.
-        merge_time_max : float, optional
-            Maximal time between two contractions in seconds; closer
-            contractions are merged. Default is 0.05.
+            Minimal contraction time in seconds, converted to frames with
+            ``round()``; shorter contractions are removed. Default is 0.2.
+        merge_time_max : None, optional
+            Deprecated and ignored, with a ``DeprecationWarning``: gaps between
+            contractions are not closed. Default is None.
         """
+        _warn_merge_time_max(merge_time_max)
 
         # select weights for convolutional neural network
         if model == None or model == 'default':
             model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
-        # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
-        contr = self.predict_contractions(self.loi_data['z_pos'], self.loi_data['slen'], model,
-                                          threshold=threshold)
-
-        # edit contractions
-        # filter sarcomeres by sarcomere lengths and set to 0 if less sarcomeres than n_sarcomere_min
+        # filter sarcomeres by sarcomere lengths; frames with less sarcomeres than n_sarcomeres_min are quiescent
         slen = self._member_slen()
         slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
         n_sarcomeres_time = np.count_nonzero(~np.isnan(slen), axis=0)
-        contr[n_sarcomeres_time < n_sarcomeres_min] = 0
-        # merge very close contractions and remove short contractions
-        structure_closing = np.ones(max(1, int(merge_time_max / self.metadata.frametime)))
-        structure_opening = np.ones(max(1, int(contr_time_min / self.metadata.frametime)))
-        contr = binary_opening(binary_closing(contr, structure=structure_closing), structure=structure_opening)
+        # detect contractions with convolutional neural network (0 = quiescence, 1 = contraction)
+        contr, polarity = self.predict_contractions(
+            self.loi_data['z_pos'], self.loi_data['slen'], model, threshold=threshold,
+            frametime=self.metadata.frametime, contr_time_min=contr_time_min,
+            exclude=n_sarcomeres_time < n_sarcomeres_min)
+        if polarity['polarity_no_decided_rows']:
+            rule = polarity_rule(model)
+            logger.warning(f'No contractions detected: no Z-band or sarcomere length trace of this LOI could be '
+                           f'read, as each is all NaN, flat or of undecided polarity, or the recording is shorter '
+                           f'than ContractionNet needs ({rule.min_frames} frames and {rule.min_seconds:g} s).')
 
         # cycles at the recording edges are kept and flagged incomplete (duration NaN)
         start_contr_frame = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
@@ -374,7 +380,8 @@ class Motion(SarcAsMBase):
                      'params.detect_analyze_contractions.n_sarcomeres_min': n_sarcomeres_min,
                      'params.detect_analyze_contractions.buffer_frames': buffer_frames,
                      'params.detect_analyze_contractions.contr_time_min': contr_time_min,
-                     'params.detect_analyze_contractions.merge_time_max': merge_time_max,
+                     'params.detect_analyze_contractions.merge_time_max': None,  # no gap is closed
+                     **polarity,
                      'contr': contr, 'start_contr_frame': start_contr_frame, 'start_contr': start_contr,
                      'quiet': quiet, 'start_quiet_frame': start_quiet_frame, 'start_quiet': start_quiet,
                      'labels_contr': labels_contr, 'labels_quiet': labels_quiet,
@@ -708,56 +715,130 @@ class Motion(SarcAsMBase):
 
     @staticmethod
     def predict_contractions(z_pos: np.ndarray, slen: np.ndarray, weights: str,
-                             threshold: Union[float, None] = None):
+                             threshold: Union[float, None] = None, frametime: Union[float, None] = None,
+                             peak: Union[float, None] = None, contr_time_min: float = 0.2,
+                             exclude: Union[np.ndarray, None] = None) -> Tuple[np.ndarray, dict]:
         """
         Predict contractions from Z-band motion and sarcomere lengths.
 
-        Predicts the per-trace contraction probability, averages it separately over
-        the Z-band position traces and over the sarcomere length traces, and
-        thresholds the larger of the two means. Taking the more confident channel
-        matters for weak contractions: the Z-band displacement accumulates the
-        shortening along the line, so it can carry a clear signal while every single
-        sarcomere length is dominated by noise, and averaging both channels together
-        would dilute it below the threshold.
+        ContractionNet reads every trace after a polarity decision of its own
+        (:func:`contraction_net.prediction.predict_contractions`). Sarcomere lengths are
+        declared to rest at their long side, since a sarcomere shortens when it contracts (a
+        ``'symmetric'`` checkpoint reads both signs itself and takes no declaration).
+        Whether a Z-band position rests high or low depends on the direction of the line, so
+        the polarity rule decides each Z-band trace, at margin 0, and negating any of them
+        leaves the result unchanged. Traces without a finite value and traces left undecided
+        (flat, too short, or a polarity score of exactly 0) are dropped. The probability is
+        averaged over the remaining traces of each channel, and the cell probability is the
+        larger of the two channel means at each frame, so a channel of noise cannot dilute a
+        clear one. :func:`contraction_net.decoding.decode_contractions` turns it into
+        contractions: runs of frames above ``threshold`` that reach ``peak`` and last at least
+        ``contr_time_min``. No gap is closed, and runs at either end are kept.
+
+        The larger channel mean is taken rather than the mean of the two because in a weak
+        contraction a single sarcomere shortens by a few nanometres, which its noise hides,
+        while a Z-band moves by the summed shortening of the sarcomeres between it and the
+        still point of the line. The length channel then stays near 0.5 while the Z-band
+        channel reaches 1, and their mean never reaches ``peak``. On 50 hand-annotated LOIs
+        (1017 contractions) the larger finds 903 contractions and the mean 610, with 1 and 0
+        false ones. The cost is that the false contractions of both channels add up: on 6
+        quiescent cells of drug-panel wells held out from training, the larger finds 7 false
+        contractions, all in one cell, and the mean none. A contraction whose Z-band channel
+        never reaches ``peak``, as in some cells under 1 µM Mavacamten, is not detected.
 
         Parameters
         ----------
         z_pos : np.ndarray
-            Time-series of Z-band positions.
+            Time-series of Z-band positions, shape ``(n_z_bands, T)``.
         slen : np.ndarray
-            Time-series of sarcomere lengths.
+            Time-series of sarcomere lengths, shape ``(n_sarcomeres, T)``.
         weights : str
             Path to the neural network weights (.pt file).
         threshold : float or None, optional
             Binary threshold for contraction state (0, 1). None uses the model's own
             operating point from the checkpoint.
+        frametime : float or None, optional
+            Time between frames in s, for the polarity rule and the minimum duration.
+            None assumes 1/30 s and warns.
+        peak : float or None, optional
+            Probability a contraction must reach at least once. None uses the model's
+            own confidence peak from the checkpoint.
+        contr_time_min : float, optional
+            Minimal contraction time in s, converted to frames with ``round()``.
+            Default is 0.2.
+        exclude : np.ndarray or None, optional
+            Boolean per frame: frames that are quiescent whatever the traces show. The
+            cell probability is set to 0 there before decoding. Default is None.
 
         Returns
         -------
         np.ndarray
             Boolean contraction state per frame (True where contracting).
+        dict
+            The polarity decisions: ``'polarity_score_z_pos'`` and ``'polarity_sign_z_pos'``
+            per Z-band trace, ``'polarity_score_slen'`` and ``'polarity_sign_slen'`` per
+            sarcomere length trace (the score is positive when the trace rests at its high
+            side, NaN where not computed; the sign is the one the trace was read with, 0 for
+            a dropped trace), ``'polarity_n_dropped'``, the number of dropped traces,
+            ``'polarity_n_slen_disagree'``, the number of sarcomere length traces whose score
+            says they dwell at their short side, as when a cell is contracted most of the
+            time, and ``'polarity_no_decided_rows'``, True when no trace was read, so that no
+            contraction is found.
         """
-        if threshold is None:
-            threshold = recommended_threshold(weights)
-        # gap-fill transiently for the prediction only; stored traces keep their NaNs
-        channel_means = [np.nanmean([predict_contractions(Motion._fill_trace_nans(d), weights)[0] for d in data],
-                                    axis=0)
-                         for data in (z_pos, slen) if len(data)]
-        return np.max(channel_means, axis=0) > threshold
+        if frametime is None:
+            warnings.warn('Motion.predict_contractions was given no frametime; 1/30 s is assumed. '
+                          'Pass the frametime of the recording.', stacklevel=2)
+            frametime = 1 / 30
+        if threshold is None or peak is None:
+            stored = recommended_decoding(weights)
+            threshold = stored['threshold'] if threshold is None else threshold
+            peak = stored['peak'] if peak is None else peak
+
+        polarity, channel_means, n_disagree = {}, [], 0
+        # sarcomere length rests at its long side; the polarity rule decides each Z-band trace, at margin 0
+        for name, traces, orient in (('z_pos', z_pos, {'margin': 0.0}),
+                                     ('slen', slen, _length_polarity(weights))):
+            score = np.full(len(traces), np.nan)
+            sign = np.zeros(len(traces), dtype=int)
+            probs = []
+            for i, trace in enumerate(np.asarray(traces, dtype=float)):
+                if np.isnan(trace).all():
+                    continue  # dropped, not read as zeros
+                # gap-fill transiently for the prediction only; stored traces keep their NaNs
+                prob, decision = predict_contractions(Motion._fill_trace_nans(trace), weights, frametime=frametime,
+                                                      return_decision=True, **orient)
+                score[i], sign[i] = decision.score, decision.sign
+                n_disagree += decision.reason == 'declared, data disagree'
+                if decision.sign:
+                    probs.append(prob[0])
+            polarity[f'polarity_score_{name}'], polarity[f'polarity_sign_{name}'] = score, sign
+            if probs:
+                channel_means.append(np.mean(probs, axis=0))
+        polarity['polarity_n_dropped'] = int(np.count_nonzero(polarity['polarity_sign_z_pos'] == 0)
+                                             + np.count_nonzero(polarity['polarity_sign_slen'] == 0))
+        polarity['polarity_n_slen_disagree'] = int(n_disagree)
+        polarity['polarity_no_decided_rows'] = not channel_means
+
+        prob = (np.max(channel_means, axis=0) if channel_means
+                else np.zeros(np.shape(z_pos)[-1], dtype=np.float32))
+        if exclude is not None:
+            prob = np.where(exclude, 0, prob)
+        contr = intervals_to_mask(decode_contractions(prob, frametime, threshold=threshold, peak=peak,
+                                                      min_duration_s=contr_time_min, border_frames=0), prob.size)
+        return contr, polarity
 
     @staticmethod
     def _fill_trace_nans(trace: np.ndarray) -> np.ndarray:
-        """Make a 1D trace finite for the contraction network.
+        """Make a 1D trace with at least one finite value finite for the contraction network.
 
         Interior NaNs are linearly interpolated and leading/trailing NaNs are
         held at the nearest finite sample (acceptable here because the result is
-        transient model input, never stored). An all-NaN trace becomes zeros."""
+        transient model input, never stored). All-NaN traces are not read at all
+        (see :meth:`predict_contractions`)."""
         trace = np.asarray(trace, dtype=float)
         mask = np.isnan(trace)
         if not mask.any():
             return trace
-        if mask.all():
-            return np.zeros_like(trace)
         idx = np.arange(trace.shape[0])
         out = trace.copy()
         out[mask] = np.interp(idx[mask], idx[~mask], trace[~mask])

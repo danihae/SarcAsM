@@ -539,7 +539,6 @@ class BatchProcessingControl:
                 slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
                 threshold=_p('motion.analyze.threshold'),
                 contr_time_min=_p('motion.analyze.contr_time_min'),
-                merge_time_max=_p('motion.analyze.merge_time_max'),
                 buffer_frames=int(_p('motion.analyze.buffer_frames')),
                 min_valid_frames=_p('motion.analyze.min_valid_frames'),
                 filter_params=(int(_p('motion.analyze.filter_wl')), int(_p('motion.analyze.filter_po'))))

@@ -126,7 +126,7 @@ def run_cycle_engine(
     model_path: str,
     threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
-    merge_time_max: float = 0.05,
+    merge_time_max: Optional[float] = None,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
     filter_params: Tuple[int, int] = (13, 5),
@@ -154,9 +154,11 @@ def run_cycle_engine(
         model was tuned for, read from its checkpoint. The right value is a property of the
         model; a threshold carried over from a different one is not meaningful.
     contr_time_min : float, optional
-        Minimum contraction duration in seconds. Default is 0.2.
-    merge_time_max : float, optional
-        Maximum gap in seconds between contractions that are merged. Default is 0.05.
+        Minimum contraction duration in seconds, converted to frames with ``round()``.
+        Default is 0.2.
+    merge_time_max : None, optional
+        Deprecated and ignored, with a ``DeprecationWarning``: gaps between contractions are
+        not closed. Default is None.
     buffer_frames : int, optional
         Frames from either end within which a cycle counts as incomplete. Incomplete
         cycles stay in the contraction mask but their duration-dependent metrics are
@@ -178,6 +180,7 @@ def run_cycle_engine(
         Combined ContractionNet output (keys prefixed ``domain_*``). Empty
         ``(0, T)`` / ``(0,)`` arrays when ``n_groups == 0``.
     """
+    contraction_analysis._warn_merge_time_max(merge_time_max)
     group_slen = np.asarray(group_slen, dtype=float)
     n_groups, T = group_slen.shape
     if n_groups == 0:
@@ -189,6 +192,7 @@ def run_cycle_engine(
             'labels_contr': np.zeros((0, T), dtype=np.int32),
             'beating_rate': np.zeros(0),
             'beating_rate_variability': np.zeros(0),
+            'polarity_score': np.zeros(0),
             'equ': np.zeros(0),
             'contr_max': np.zeros((0, 1)),
             'elong_max': np.zeros((0, 1)),
@@ -209,7 +213,6 @@ def run_cycle_engine(
         model_path=model_path,
         threshold=threshold,
         contr_time_min=contr_time_min,
-        merge_time_max=merge_time_max,
         buffer_frames=buffer_frames,
         min_valid_frames=min_valid_frames,
         group_label=group_label,

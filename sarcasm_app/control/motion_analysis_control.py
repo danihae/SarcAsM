@@ -250,7 +250,6 @@ class MotionAnalysisControl:
             slen_lims=(_pv(m, 'motion.analyze.slen_lower'), _pv(m, 'motion.analyze.slen_upper')),
             threshold=_pv(m, 'motion.analyze.threshold'),
             contr_time_min=_pv(m, 'motion.analyze.contr_time_min'),
-            merge_time_max=_pv(m, 'motion.analyze.merge_time_max'),
             buffer_frames=int(_pv(m, 'motion.analyze.buffer_frames')),
             min_valid_frames=_pv(m, 'motion.analyze.min_valid_frames'),
             filter_params=(int(_pv(m, 'motion.analyze.filter_wl')),

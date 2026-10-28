@@ -1,5 +1,6 @@
-"""Tests for the ContractionNet input conventions, architecture dispatch and dataset RNG, and
-for the inference path that orients 'q90' traces by the polarity rule.
+"""Tests for the ContractionNet input conventions, architecture dispatch and dataset RNG, for
+the inference path that orients 'q90' traces by the polarity rule, and for how SarcAsM reads
+its LOI and group traces through it.
 
 The golden fixture ``tests/data/contraction_net_golden.npz`` pins the bundled checkpoint's
 output so that changes to the conditioning cannot silently alter shipped results. The goldens
@@ -13,6 +14,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import os
+import types
 import warnings
 
 import numpy as np
@@ -817,27 +819,282 @@ class TestLegacyConventions:
 
 class TestLoiChannelCombination:
     """``Motion.predict_contractions`` averages the Z-band and the length traces separately and
-    thresholds the more confident channel mean, so a channel of pure noise cannot dilute a clear one."""
+    decodes the larger of the two channel means, so a channel of pure noise cannot dilute a clear
+    one. Traces without data and traces left undecided are dropped, not read as zeros."""
+
+    T = 60
+    STATE = np.r_[np.zeros(20), np.ones(20), np.zeros(20)]
 
     @staticmethod
-    def _fake_net(monkeypatch, prob_of):
+    def _fake_net(monkeypatch, prob_of, sign_of=lambda d: 1, calls=None):
+        """Stand-in for ``predict_contractions``: ``prob_of(trace)`` is the reading and
+        ``sign_of(trace)`` the rule's decision (0: undecided, which reads zeros); a declared
+        polarity is taken as it is. Z-band traces are told from lengths by their value."""
         import sarcasm.motion as motion
-        monkeypatch.setattr(motion, 'predict_contractions', lambda d, w: np.asarray([prob_of(d)]))
+        from contraction_net.polarity import PolarityDecision
+
+        def fake(d, weights, *, frametime, polarity=None, margin=None, return_decision):
+            if calls is not None:
+                calls.append((np.array(d), polarity, margin))
+            sign = polarity or sign_of(d)
+            prob = np.asarray(prob_of(d), np.float32) if sign else np.zeros(d.size, np.float32)
+            return prob[None], PolarityDecision(sign, 0.5 * sign, 0.1, 'decided' if sign else 'ambiguous',
+                                                polarity)
+
+        monkeypatch.setattr(motion, 'predict_contractions', fake)
+        monkeypatch.setattr(motion, '_length_polarity', lambda weights: {'polarity': 1})
+
+    @staticmethod
+    def _predict(z_pos, slen, threshold, peak=0.5, **kwargs):
+        from sarcasm.motion import Motion
+        return Motion.predict_contractions(z_pos, slen, 'unused.pt', threshold=threshold, peak=peak,
+                                           frametime=0.05, **kwargs)
 
     def test_weak_length_channel_does_not_dilute_zband_channel(self, monkeypatch):
-        from sarcasm.motion import Motion
-        state = np.r_[np.zeros(20), np.ones(20), np.zeros(20)]
-        # Z-band traces carry the contraction (probability 0.7), length traces only noise (0.1);
-        # the mean over all traces (0.4) would fall below the threshold
-        self._fake_net(monkeypatch, lambda d: 0.7 * state if d[0] > 5 else np.full(state.size, 0.1))
-        z_pos = np.full((3, state.size), 10.0)
-        slen = np.full((3, state.size), 1.8)
-        got = Motion.predict_contractions(z_pos, slen, 'unused.pt', threshold=0.45)
-        np.testing.assert_array_equal(got, state.astype(bool))
+        # Z-band traces carry the contraction (0.875), length traces only noise (0.1): the mean of
+        # the two channel means (0.49) would never reach the peak
+        self._fake_net(monkeypatch, lambda d: 0.875 * self.STATE if d[0] > 5 else np.full(d.size, 0.1))
+        contr, _ = self._predict(np.full((3, self.T), 10.0), np.full((3, self.T), 1.8), threshold=0.45,
+                                 peak=0.85)
+        np.testing.assert_array_equal(contr, self.STATE.astype(bool))
+
+    def test_either_channel_alone_makes_the_cell_contract(self, monkeypatch):
+        # the larger channel mean is a per-frame union, so the cost is that a false contraction of
+        # one channel reaches the cell: here the length traces fire while the Z-band traces are quiet
+        self._fake_net(monkeypatch, lambda d: np.full(d.size, 0.125) if d[0] > 5 else 0.875 * self.STATE)
+        contr, _ = self._predict(np.full((3, self.T), 10.0), np.full((3, self.T), 1.8), threshold=0.6,
+                                 peak=0.85)
+        np.testing.assert_array_equal(contr, self.STATE.astype(bool))
 
     def test_quiescent_channels_stay_quiescent(self, monkeypatch):
-        from sarcasm.motion import Motion
         self._fake_net(monkeypatch, lambda d: np.full(d.size, 0.2))
-        got = Motion.predict_contractions(np.full((2, 50), 10.0), np.full((2, 50), 1.8), 'unused.pt',
-                                          threshold=0.45)
-        assert not got.any()
+        contr, info = self._predict(np.full((2, 50), 10.0), np.full((2, 50), 1.8), threshold=0.45)
+        assert not contr.any() and not info['polarity_no_decided_rows']
+
+    def test_undecided_and_all_nan_traces_are_dropped(self, monkeypatch):
+        calls = []
+        # the third Z-band trace is undecided: its zeros would pull the Z-band mean down to 0.58,
+        # below the threshold of 0.75 and the length channel's 0.5; the second length trace has
+        # no data and is never read
+        self._fake_net(monkeypatch, lambda d: (0.875 if d[0] > 5 else 0.5) * self.STATE,
+                       sign_of=lambda d: 0 if d[0] > 15 else 1, calls=calls)
+        z_pos = np.r_[np.full((2, self.T), 10.0), np.full((1, self.T), 20.0)]
+        slen = np.r_[np.full((1, self.T), 1.8), np.full((1, self.T), np.nan)]
+        contr, info = self._predict(z_pos, slen, threshold=0.75, peak=0.85)
+        np.testing.assert_array_equal(contr, self.STATE.astype(bool))
+        # lengths are declared rest-high, the Z-band traces decided at margin 0
+        assert len(calls) == 4 and not any(np.isnan(d).any() for d, _, _ in calls)
+        assert all((p, m) == ((1, None) if d[0] < 5 else (None, 0.0)) for d, p, m in calls)
+        assert info['polarity_sign_z_pos'].tolist() == [1, 1, 0]
+        assert info['polarity_sign_slen'].tolist() == [1, 0] and np.isnan(info['polarity_score_slen'][1])
+        assert info['polarity_n_dropped'] == 2 and not info['polarity_no_decided_rows']
+
+    def test_no_trace_left_gives_no_contraction(self, monkeypatch):
+        self._fake_net(monkeypatch, lambda d: 0.875 * self.STATE, sign_of=lambda d: 0)
+        contr, info = self._predict(np.full((2, self.T), 10.0), np.full((1, self.T), np.nan), threshold=0.45)
+        assert contr.shape == (self.T,) and not contr.any()
+        assert info['polarity_no_decided_rows'] and info['polarity_n_dropped'] == 3
+
+    def test_excluded_frames_are_quiescent_before_decoding(self, monkeypatch):
+        # excluding frame 29 cuts the contraction into runs of 9 and 10 frames, and only the
+        # second lasts the minimum of 0.5 s
+        self._fake_net(monkeypatch, lambda d: 0.875 * self.STATE)
+        exclude = np.zeros(self.T, bool)
+        exclude[29] = True
+        contr, _ = self._predict(np.full((2, self.T), 10.0), np.full((1, self.T), 1.8), threshold=0.45,
+                                 peak=0.85, contr_time_min=0.5, exclude=exclude)
+        assert np.flatnonzero(contr).tolist() == list(range(30, 40))
+
+
+def _beating_loi(n_sarcomeres=12, n_frames=600, frametime=1 / 30, seed=0):
+    """Z-band positions (from 5 µm) and lengths of a line of sarcomeres that shorten by 0.12 µm
+    once a second, with 10 nm of noise, and the frames more than a quarter into a twitch."""
+    rng = np.random.default_rng(seed)
+    phase = np.arange(n_frames) * frametime % 1.0
+    twitch = np.where(phase < 0.35, np.sin(np.pi * phase / 0.35), 0.0)
+    slen = 1.9 - 0.12 * twitch + 0.01 * rng.standard_normal((n_sarcomeres, n_frames))
+    z_pos = 5.0 + np.r_[np.zeros((1, n_frames)), np.cumsum(slen, axis=0)]
+    return z_pos, slen, twitch > 0.25
+
+
+def _weak_loi(n_sarcomeres=12, n_frames=600, frametime=1 / 30, seed=0):
+    """A line of sarcomeres that shorten by 30 nm once a second, with 20 nm of noise on every
+    Z-band position: each length is buried in noise (28 nm), while a Z-band far along the line
+    moves by the summed shortening. Also the frames more than a quarter into a twitch."""
+    rng = np.random.default_rng(seed)
+    phase = np.arange(n_frames) * frametime % 1.0
+    twitch = np.where(phase < 0.35, np.sin(np.pi * phase / 0.35), 0.0)
+    clean = np.tile(1.9 - 0.03 * twitch, (n_sarcomeres, 1))
+    z_pos = 5.0 + np.r_[np.zeros((1, n_frames)), np.cumsum(clean, axis=0)]
+    z_pos = z_pos + 0.02 * rng.standard_normal(z_pos.shape)
+    return z_pos, np.diff(z_pos, axis=0), twitch > 0.25
+
+
+def _symmetric_checkpoint(path):
+    """A small checkpoint of the 1.0 betas' kind, which reads both signs itself."""
+    net = SymmetrizedContractionNet(n_filter=8)
+    torch.save({'arch': 'SymmetrizedContractionNet', 'n_filter': 8, 'in_channels': 2,
+                'out_channels': 3, 'input_convention': 'symmetric',
+                'state_dict': net.state_dict()}, path)
+    return str(path)
+
+
+def _plateau_trace(duty, n_frames=900, frametime=1 / 30, seed=0):
+    """A sarcomere length contracted by 0.15 µm for ``duty`` of each 1-s cycle (0.08-s ramps,
+    5 nm of noise), and the frames it is more than half contracted."""
+    phase = np.arange(n_frames) * frametime % 1.0
+    level = np.minimum(np.clip(phase / 0.08, 0, 1), np.clip((duty - phase) / 0.08, 0, 1))
+    noise = 0.005 * np.random.default_rng(seed).standard_normal(n_frames)
+    return 1.9 - 0.15 * level + noise, level > 0.5
+
+
+class TestLoiReading:
+    """The LOI path behind the bundled checkpoint."""
+
+    @staticmethod
+    def _motion(z_pos, slen, frametime=1 / 30):
+        from sarcasm.motion import Motion
+        m = Motion.__new__(Motion)
+        m.metadata = types.SimpleNamespace(frametime=frametime)
+        m.loi_data = {'z_pos': z_pos, 'slen': slen}
+        m.auto_save = False
+        return m
+
+    def test_negating_z_band_traces_leaves_the_result_unchanged(self):
+        # the sign of a Z-band position depends on the direction of the line, and each Z-band
+        # trace is oriented by its own polarity decision
+        from sarcasm.motion import Motion
+        z_pos, slen, contracted = _beating_loi()
+        contr, info = Motion.predict_contractions(z_pos, slen, SHIPPED_MODEL, frametime=1 / 30)
+        assert np.mean(contr == contracted) > 0.85
+        rng = np.random.default_rng(3)
+        for _ in range(3):
+            flip = np.where(rng.random(len(z_pos)) < 0.5, -1, 1)
+            got, got_info = Motion.predict_contractions(flip[:, None] * z_pos, slen, SHIPPED_MODEL,
+                                                        frametime=1 / 30)
+            assert np.array_equal(got, contr)
+            assert np.array_equal(got_info['polarity_sign_z_pos'], flip * info['polarity_sign_z_pos'])
+            assert np.array_equal(got_info['polarity_sign_slen'], info['polarity_sign_slen'])
+
+    def test_a_contraction_only_the_z_bands_show(self):
+        # the length traces alone find nothing here; the larger channel mean takes the Z-band one
+        from scipy.ndimage import label
+        from sarcasm.motion import Motion
+        z_pos, slen, contracted = _weak_loi()
+        contr, _ = Motion.predict_contractions(z_pos, slen, SHIPPED_MODEL, frametime=1 / 30)
+        lengths, _ = Motion.predict_contractions(z_pos[:0], slen, SHIPPED_MODEL, frametime=1 / 30)
+        assert label(contr)[1] == 20 and np.mean(contr == contracted) > 0.85
+        assert not lengths.any()
+
+    def test_a_symmetric_checkpoint_is_read_without_a_declared_polarity(self, tmp_path):
+        # such a checkpoint refuses a declared polarity; it must still be read, by path
+        from sarcasm.motion import Motion
+        z_pos, slen, _ = _beating_loi()
+        contr, info = Motion.predict_contractions(z_pos, slen, _symmetric_checkpoint(tmp_path / 's.pt'),
+                                                  frametime=1 / 30)
+        assert contr.shape == (z_pos.shape[1],) and not info['polarity_no_decided_rows']
+
+    def test_lengths_that_dwell_short_are_read_rest_high(self):
+        # contracted 75 % of the time, a length trace looks to the rule as if it rested at its
+        # short side, and would be read upside down; declared, the plateaus are the contractions
+        from sarcasm.motion import Motion
+        x, contracted = _plateau_trace(0.75)
+        slen = np.stack([x, _plateau_trace(0.75, seed=1)[0]])
+        contr, info = Motion.predict_contractions(slen[:0], slen, SHIPPED_MODEL, frametime=1 / 30)
+        assert np.mean(contr == contracted) > 0.85
+        assert info['polarity_sign_slen'].tolist() == [1, 1] and info['polarity_n_slen_disagree'] == 2
+        assert (info['polarity_score_slen'] < -0.1).all()
+
+    def test_detect_analyze_contractions_stores_the_polarity_decisions(self):
+        z_pos, slen, contracted = _beating_loi()
+        m = self._motion(z_pos, slen)
+        with pytest.warns(DeprecationWarning, match='merge_time_max'):
+            m.detect_analyze_contractions(model=SHIPPED_MODEL, merge_time_max=0.05)
+        ld = m.loi_data
+        assert np.mean(ld['contr'] == contracted) > 0.85 and ld['n_contr'] == 20
+        assert ld['params.detect_analyze_contractions.merge_time_max'] is None
+        assert ld['polarity_score_z_pos'].shape == (13,) and ld['polarity_sign_slen'].shape == (12,)
+        assert ld['polarity_n_dropped'] == 1                 # the first Z-band, at 5 µm throughout, is flat
+        assert ld['polarity_n_slen_disagree'] == 0 and not ld['polarity_no_decided_rows']
+
+    def test_frames_with_too_few_sarcomeres_are_quiescent(self):
+        z_pos, slen, _ = _beating_loi(n_sarcomeres=3)
+        m = self._motion(z_pos, slen)
+        m.detect_analyze_contractions(model=SHIPPED_MODEL)
+        assert m.loi_data['n_contr'] == 0
+        m.detect_analyze_contractions(model=SHIPPED_MODEL, n_sarcomeres_min=3)
+        assert m.loi_data['n_contr'] == 20
+
+
+class TestGroupContractions:
+    """``contraction_analysis.detect_contractions``, the engine of ``analyze_track_motion``."""
+
+    @staticmethod
+    def _detect(*args, **kwargs):
+        from sarcasm.analysis import contraction_analysis
+        return contraction_analysis.detect_contractions(*args, **kwargs)
+
+    @staticmethod
+    def _fake_net(monkeypatch, prob, calls):
+        from contraction_net.polarity import PolarityDecision
+        from sarcasm.analysis import contraction_analysis
+
+        def fake(d, model, **kwargs):
+            calls.append(kwargs)
+            return np.asarray(prob, np.float32)[None], PolarityDecision(1, 0.5, 0.1, 'declared', 1)
+
+        monkeypatch.setattr(contraction_analysis, 'predict_contractions', fake)
+
+    def test_lengths_are_declared_rest_high_and_no_gap_is_closed(self, monkeypatch):
+        # two twitches split by one frame at 61 fps, which the 0.05-s closing applied before
+        # would have merged, and a run of 5 frames, shorter than 0.2 s
+        prob = np.zeros(200)
+        prob[20:60], prob[61:100], prob[150:155] = 0.9, 0.9, 0.9
+        calls = []
+        self._fake_net(monkeypatch, prob, calls)
+        res = self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL)
+        assert calls == [{'frametime': 0.0164, 'polarity': 1, 'return_decision': True}]
+        assert res['n_contr'].tolist() == [2]
+        assert np.flatnonzero(np.diff(res['contr'][0])).tolist() == [19, 59, 60, 99]
+        assert res['polarity_score'].tolist() == [0.5]
+
+    def test_merge_time_max_is_ignored_with_a_deprecation_warning(self, monkeypatch):
+        prob = np.zeros(200)
+        prob[20:60], prob[61:100] = 0.9, 0.9
+        self._fake_net(monkeypatch, prob, [])
+        with pytest.warns(DeprecationWarning, match='merge_time_max'):
+            res = self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL, merge_time_max=0.05)
+        assert res['n_contr'].tolist() == [2]
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error', message='merge_time_max')
+            self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL)
+
+    def test_lengths_that_dwell_short_are_named_in_a_warning(self, monkeypatch, caplog):
+        import logging
+        # caplog listens on the root logger; SarcAsM turns the package logger's propagation off
+        monkeypatch.setattr(logging.getLogger('sarcasm'), 'propagate', True)
+        high_duty, contracted = _plateau_trace(0.75)
+        group_slen = np.stack([_plateau_trace(0.35)[0], high_duty])
+        with caplog.at_level(logging.WARNING, logger='sarcasm'):
+            res = self._detect(group_slen, 1 / 30, SHIPPED_MODEL, group_label='Myofibril')
+        assert res['polarity_score'][0] > 0.1 and res['polarity_score'][1] < -0.1
+        assert res['n_contr'].tolist() == [30, 30]
+        assert np.mean(res['contr'][1] == contracted) > 0.85
+        assert '1 of 2 groups (myofibril 1): the sarcomere length dwells at its short side' in caplog.text
+
+    def test_a_symmetric_checkpoint_is_read_without_a_declared_polarity(self, monkeypatch, caplog, tmp_path):
+        import logging
+        monkeypatch.setattr(logging.getLogger('sarcasm'), 'propagate', True)
+        with caplog.at_level(logging.WARNING, logger='sarcasm'):
+            res = self._detect(_plateau_trace(0.35)[0][None], 1 / 30, _symmetric_checkpoint(tmp_path / 's.pt'))
+        assert 'prediction failed' not in caplog.text
+        assert res['contr'].shape == (1, 900) and np.isnan(res['polarity_score'][0])
+
+    def test_a_recording_shorter_than_2_s_has_no_contractions(self, monkeypatch, caplog):
+        import logging
+        monkeypatch.setattr(logging.getLogger('sarcasm'), 'propagate', True)
+        x = _plateau_trace(0.35, n_frames=100, frametime=0.0164)[0]
+        with caplog.at_level(logging.WARNING, logger='sarcasm'):
+            res = self._detect(x[None], 0.0164, SHIPPED_MODEL)
+        assert res['n_contr'].tolist() == [0] and np.isnan(res['polarity_score'][0])
+        assert 'too short to detect contractions (100 frames, 1.64 s)' in caplog.text
