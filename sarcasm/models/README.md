@@ -152,3 +152,91 @@ Weight 3 is the lowest that is no noisier than `legacy`.
 Per-frame noise is 1.4826 × MAD of the second difference of each track's length, divided by √6, so rare
 real events such as popping do not enter it. Trajectories differ between the two models (noise, popping
 counts), so pick one per study; the Fig. 5 analysis of the paper used `legacy`.
+
+# Contraction detection model (ContractionNet)
+
+`model_ContractionNet.pt` reads one trace at a time -- a sarcomere length, a Z-band position, a
+pole distance -- and gives every frame a probability of being in a contraction, plus the
+probabilities of a contraction onset and offset. It is the only ContractionNet bundled.
+
+**Network.** A dilated temporal CNN (`ContractionNet`, `norm='group'`, no attention): 64
+filters, a stem and 7 residual blocks with dilations 1–64, 513 frames of context and 175,747
+parameters. GroupNorm (8 groups) normalises every frame by statistics pooled over the whole
+trace.
+
+**Input: one polarity decision per trace.** The network reads traces whose rest is the high
+side. A rule stored in the checkpoint (`polarity_rule`, version 1, `contraction_net.polarity`)
+decides which side that is: the Bowley skewness (10/50/90) of the trace minus its 2-s running
+median, after a 0.1-s boxcar, taken as `(g(x) - g(-x)) / 2` so that it is exactly odd. The trace
+is multiplied by the sign of that score and conditioned by the `q90` rule (the 90th percentile
+at 0, the 10–90 % spread as the unit, plus its slope). `x` and `-x` therefore reach the network
+as the same array and get the same output, bit for bit on the CPU, where inference runs. A
+trace whose score lies within ±0.10, a flat trace and one shorter than 2 s or 32 frames get no
+contractions, never the reading of the wrong side; `predict_contractions(...,
+return_decision=True)` says why. A caller that knows the rest side can declare it instead
+(`polarity=+1` for rest high, as for sarcomere length, which shortens in a contraction).
+
+**Decoding.** Stored in the checkpoint: threshold 0.45 and confidence peak 0.85. A contraction is
+a run of frames above 0.45 that reaches 0.85 somewhere; no gap between runs is closed, so
+overlapping twitches stay separate contractions. `contraction_net.decoding.decode_contractions`
+is the same rule in SarcAsM and CardioTrace; only the minimum duration and what happens to a
+contraction cut off by the start or end of the recording differ.
+
+```python
+from contraction_net.decoding import decode_contractions, recommended_decoding
+from contraction_net.prediction import predict_contractions
+
+model = 'sarcasm/models/model_ContractionNet.pt'
+probs, decision = predict_contractions(trace, model, frametime=ft, return_decision=True)
+events = decode_contractions(probs[0], ft, **recommended_decoding(model),
+                             min_duration_s=0.2)  # [(start, stop), ...] in frames
+```
+
+**Training.** 8,000 simulated traces, traces distilled from analysed recordings of an
+acute-drug panel, and hand-annotated EHT recordings (each drawn 20 times per epoch). Every
+beating trace is presented rest-high; quiet traces come in both signs, as the polarity rule
+hands them over. A quarter of the simulated traces are quiet and carry the drift, steps,
+outliers and quantisation of beating ones. Overlapping twitches are labelled as separate
+contractions, cut at the trough between them over 10 % of the shorter twitch. The loss is BCE
+without a Dice term, the weights are those of the last of 60 epochs, and the threshold is the
+one whose called duty matches the labelled duty on the development data. Of eight runs that
+differ only in the seed, this one has the highest mean event F1 on the development data.
+
+On test recordings that played no part in training or selection, against the
+`SymmetrizedContractionNet` of the 1.0.0 betas, both read at their own threshold with a
+confidence peak of 0.85 and CardioTrace's decoder settings (contractions of 0.1 s or more, none
+within 5 frames of either end) unless noted:
+
+| | 1.0.0 betas | **this model** |
+|---|---|---|
+| simulated plates (96 wells, 30 fps): beat count within ±1 | 0.76 | **0.94** |
+| — high-duty wells (B5, B6, row G; 16 wells) | 0.19 | **1.00** |
+| — beats found / called contractions that are beats | 0.66 / 0.99 | **0.98 / 1.00** |
+| simulated plates at 15 / 30 / 60 fps (2 plates each): beating wells within ±1 | 0.60–0.62 / 0.64–0.71 / 0.67–0.73 | **0.73–0.80 / 0.93 / 0.98–1.00** |
+| real pole-distance plate, 36 clear wells: beat-count deviations from a consensus of 1116 beats, summed | 67.5 | **9.5** |
+| real non-beating wells of pole-distance plates (76): false contractions | 0 | 0 (7 with rest declared high) |
+| synthetic quiet traces (920, read at both signs): false contractions per reading, rest declared high / polarity rule | 0.91 / 0.91 | **0.37 / 0.07** |
+| drug-panel cells, quiescent (7): false contractions | 15 (in 4 cells) | 18 (in 3 cells) |
+| — beating (87): contraction IoU / beats found | 0.885 / 0.994 | 0.885 / 0.999 |
+
+The cells were read as `Motion.predict_contractions` reads an LOI, with SarcAsM's decoder
+settings (contractions of 0.2 s or more, those at the ends kept): Z-band rows oriented by the
+polarity rule at margin 0, sarcomere-length rows declared rest-high, and the larger of the two
+channel means as the cell's probability. The mean of the two makes no false contraction in these
+quiescent cells but misses contractions that only the Z-band rows show, because the lengths of
+single sarcomeres are buried in noise in a weak contraction. On 50 hand-annotated LOIs, most from
+wells used in training, the larger finds 903 of 1017 contractions with 1 false one, the mean 610
+with none (the 1.0.0 betas as released: 957 with 8). A contraction that stays below the 0.85 peak
+in both channels is missed, as in some cells under 1 µM Mavacamten.
+
+**Known limitation: quiet stretches next to beats.** Because GroupNorm pools over the whole
+trace, a long quiet stretch is read differently next to beats than on its own. On 36 quiet
+segments (correlated noise or drift) followed by beats of three times the noise level, the model
+calls 148 contractions in frames 300–1200 of the quiet segments, against 7 when the same
+segments stand alone (1.0.0 betas: 149 against 26).
+
+**Earlier models.** The model of the 1.0.0 betas is no longer bundled.
+`git show v1.0.0b3:sarcasm/models/model_ContractionNet.pt > model_ContractionNet_b3.pt` restores
+it, and `predict_contractions(trace, 'model_ContractionNet_b3.pt')` reads it by path with the
+`'symmetric'` conditioning it was trained with; the polarity rule applies only to `'q90'`
+checkpoints. Checkpoints older than 1.0, which record no architecture, are rejected.

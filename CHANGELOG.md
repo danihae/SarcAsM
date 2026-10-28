@@ -43,6 +43,15 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- New ContractionNet, `model_ContractionNet.pt`: one rest-high network for sarcomere-length, Z-band and
+  pole-distance traces (a dilated temporal CNN with GroupNorm, `q90` input), read after the polarity decision below,
+  at its stored threshold of 0.45 and confidence peak of 0.85. On held-out simulated pole-distance plates the beat
+  count is within ±1 in 94 % of wells (was 76 %), including 16 of 16 high-duty wells (was 3); synthetic quiet traces
+  get 0.07 false contractions per trace (was 0.91); non-beating wells stay at 0; on cells of held-out drug-panel
+  wells 1658 of 1660 beats are found (was 1650) at a contraction IoU of 0.885 (unchanged), and 3 of 7 quiescent
+  cells get false contractions (was 4). Known limitation: GroupNorm pools
+  over the whole trace, so a long quiet stretch next to beats can get false contractions. Numbers in
+  `sarcasm/models/README.md`.
 - `predict_contractions` reads a rest-high (`'q90'`) checkpoint after one polarity decision per trace: a rule stored
   in the checkpoint (`contraction_net.polarity`, the Bowley skewness of the trace minus its 2-s running median)
   decides which side of the trace is rest, and the trace is turned rest-high by that sign before the network reads
@@ -98,6 +107,12 @@ All notable changes to SarcAsM are documented here. The format follows
   summary layout follows the image aspect ratio (wide, square and tall movies).
 - One summary line for groups without a beating rate instead of one warning per group; metadata warnings are
   shown once and name the GUI field as well as the Python argument.
+
+### Removed
+
+- The ContractionNet weights of the 1.0.0 betas (`SymmetrizedContractionNet`) are no longer bundled.
+  `git show v1.0.0b3:sarcasm/models/model_ContractionNet.pt` restores them, and `predict_contractions` still reads
+  them by path, with the `'symmetric'` conditioning they were trained with.
 
 ### Fixed
 

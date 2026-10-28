@@ -1,34 +1,55 @@
-"""Tests for the ContractionNet input conventions, architecture dispatch and training path.
+"""Tests for the ContractionNet input conventions, architecture dispatch and dataset RNG, and
+for the inference path that orients 'q90' traces by the polarity rule.
 
 The golden fixture ``tests/data/contraction_net_golden.npz`` pins the bundled checkpoint's
-output so that changes to the conditioning cannot silently alter shipped results.
+output so that changes to the conditioning cannot silently alter shipped results. The goldens
+are CPU readings, the inference default, of the traces of :func:`_traces` at 1/30 s per
+frame with rest declared high (``polarity=1``), as SarcAsM reads sarcomere length: left to
+the polarity rule, four of the five traces are undecided, and their zeros would pin nothing.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import math
 import os
+import warnings
 
 import numpy as np
 import pytest
 import torch
 
+from contraction_net import prediction
 from contraction_net.augment import AugmentConfig, augment, time_warp, twitch_scale
 from contraction_net.contraction_net import ContractionNet, SymmetrizedContractionNet
-from contraction_net.benchmark import (boundary_report, polarity_cost_probe,
-                                       polarity_invariance_report)
+from contraction_net.benchmark import (boundary_report, model_predictor, model_predictor_full,
+                                       polarity_cost_probe, polarity_invariance_report)
 from contraction_net.data import ContractionDataset
+from contraction_net.decoding import decode_contractions, recommended_decoding
 from contraction_net.losses import MaskBoundaryLoss, iou_at_thresholds
+from contraction_net.polarity import PolarityRule
 from contraction_net.training import Trainer
-from contraction_net.prediction import (INPUT_CONVENTIONS, _load_model, predict_contractions,
-                                        prepare_robust_input, recommended_threshold)
+from contraction_net.prediction import (INPUT_CONVENTIONS, _load_model, polarity_rule,
+                                        predict_contractions, prepare_robust_input,
+                                        recommended_threshold)
 from contraction_net.simulation import (SNR_RANGE, _ar1, make_stress_set, renoise,
                                         simulate_dataset,
                                         simulate_trace)
+from tests.test_polarity import edge_cases, regression_set, twitch_trains
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: The bundled checkpoint: a rest-high 'q90' ContractionNet with GroupNorm, which stores its
+#: polarity rule and decoding. The inference tests below run behind it.
 SHIPPED_MODEL = os.path.join(REPO, 'sarcasm', 'models', 'model_ContractionNet.pt')
-GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data',
-                      'contraction_net_golden.npz')
+#: Device the mirror tests run on. CPU unless set: a device is enabled for inference only
+#: once these tests pass on it.
+TEST_DEVICE = os.environ.get('CONTRACTION_NET_DEVICE', 'cpu')
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+GOLDEN = os.path.join(DATA, 'contraction_net_golden.npz')
+#: On the CPU the goldens move by 5e-7 with the thread count and by 1.2e-6 against the same
+#: network run in float64; on CUDA the previous model differed by up to 8e-4, which is why
+#: they are read on the CPU.
+GOLDEN_ATOL = 1e-5
 
 #: Conventions that condition the trace; 'raw' passes it through unchanged.
 CONDITIONED = tuple(c for c in INPUT_CONVENTIONS if c != 'raw')
@@ -71,13 +92,20 @@ class TestInputConventions:
         assert np.abs(a + b).max() > 0.5
 
     def test_affine_invariance(self):
-        # 'raw' is excluded on purpose: the pre-1.0 recipe did no conditioning, so its
-        # comparison arm is scale dependent by construction
+        # 'raw' is excluded on purpose: it passes the trace through unconditioned, so it is
+        # scale dependent by construction
         x = _traces()[0]
         for convention in CONDITIONED:
             a = prepare_robust_input(x, convention=convention)
             b = prepare_robust_input(1000 * x + 7, convention=convention)
             assert np.abs(a - b).max() < 1e-4
+
+    def test_raw_convention_is_passthrough_and_not_scale_invariant(self):
+        x = _traces()[0]
+        assert np.allclose(prepare_robust_input(x, convention='raw')[0], x)
+        assert prepare_robust_input(x, convention='raw').shape == (1, x.size)
+        assert not np.allclose(prepare_robust_input(1000 * x, convention='raw'),
+                               prepare_robust_input(x, convention='raw'))
 
     def test_unknown_convention_raises(self):
         with pytest.raises(ValueError, match='convention'):
@@ -87,24 +115,32 @@ class TestInputConventions:
 class TestShippedCheckpoint:
     def test_declares_its_conventions(self):
         net = _load_model(SHIPPED_MODEL, ContractionNet)
-        assert type(net) is SymmetrizedContractionNet
-        assert net.input_convention == 'symmetric'
+        assert type(net) is ContractionNet
+        assert (net.norm_kind, net.attn_position) == ('group', False)
+        assert net.input_convention == 'q90'
         assert recommended_threshold(SHIPPED_MODEL) == pytest.approx(0.45)
+        assert recommended_decoding(SHIPPED_MODEL) == {'threshold': 0.45, 'peak': 0.85}
+        assert polarity_rule(SHIPPED_MODEL) == PolarityRule()
 
     def test_is_exactly_polarity_invariant(self):
-        # the property the shipped model exists to provide
+        # x and -x reach the network as the same array, whether the rule decides the rest
+        # side or it is declared
         for x in _traces():
-            a = predict_contractions(x, SHIPPED_MODEL)
-            b = predict_contractions(-x, SHIPPED_MODEL)
-            assert np.allclose(a, b, atol=1e-6)
+            a = predict_contractions(x, SHIPPED_MODEL, frametime=1 / 30)
+            b = predict_contractions(-x, SHIPPED_MODEL, frametime=1 / 30)
+            assert np.array_equal(a, b)
+            a = predict_contractions(x, SHIPPED_MODEL, frametime=1 / 30, polarity=1)
+            b = predict_contractions(-x, SHIPPED_MODEL, frametime=1 / 30, polarity=-1)
+            assert np.array_equal(a, b)
 
     def test_reproduces_golden_prediction(self):
-        # float32 inference differs by up to ~6e-4 between CPU, CUDA and MPS
-        # backends; a changed checkpoint or conditioning moves outputs by O(0.1)
         golden = np.load(GOLDEN)
         for i, x in enumerate(_traces()):
-            got = predict_contractions(x, SHIPPED_MODEL)
-            assert np.allclose(got, golden[f'trace_{i}'], atol=2e-3)
+            got = predict_contractions(x, SHIPPED_MODEL, frametime=1 / 30, polarity=1)
+            assert np.allclose(got, golden[f'trace_{i}'], atol=GOLDEN_ATOL)
+
+
+class TestArchDispatch:
     def test_checkpoint_without_arch_is_rejected(self, tmp_path):
         path = tmp_path / 'pre10.pt'
         torch.save({'n_filter': 64, 'in_channels': 1, 'out_channels': 2,
@@ -141,10 +177,8 @@ class TestArchitectures:
 
     def test_shipped_checkpoint_loads_into_its_declared_architecture(self):
         state = torch.load(SHIPPED_MODEL, map_location='cpu', weights_only=False)
-        net = SymmetrizedContractionNet(n_filter=state['n_filter'],
-                                        in_channels=state['in_channels'],
-                                        out_channels=state['out_channels'],
-                                        **state['arch_kwargs'])
+        net = ContractionNet(n_filter=state['n_filter'], in_channels=state['in_channels'],
+                             out_channels=state['out_channels'], **state['arch_kwargs'])
         net.load_state_dict(state['state_dict'])
 
     @pytest.mark.parametrize('reduce', ['max', 'mean'])
@@ -156,7 +190,7 @@ class TestArchitectures:
             b = net(-x)[1]
         assert torch.equal(a, b)
 
-    @pytest.mark.parametrize('norm', ['batch', 'instance', 'group', 'none'])
+    @pytest.mark.parametrize('norm', ['batch', 'layer', 'instance', 'group', 'none'])
     def test_norm_variants_run(self, norm):
         net = ContractionNet(n_filter=8, norm=norm).eval()
         with torch.no_grad():
@@ -176,6 +210,9 @@ class TestArchitectures:
         with torch.no_grad():
             probs, _ = net(torch.randn(2, in_ch, 128))
         assert probs.shape == (2, out_ch, 128)
+
+
+class TestSimulator:
     def test_polarity_mirrors_signal_and_keeps_label(self):
         down = simulate_trace('regular', duty=0.4, n_frames=512,
                               rng=np.random.default_rng(7), polarity=1)
@@ -244,6 +281,23 @@ class TestArchitectures:
         white, corr = _ar1(20000, 0.0, rng), _ar1(20000, 0.9, rng)
         assert abs(white.std() - 1) < 0.05 and abs(corr.std() - 1) < 0.1
         assert np.corrcoef(corr[:-1], corr[1:])[0, 1] > 0.8
+
+
+class TestCorpusFile:
+    def test_corpus_roundtrip(self, tmp_path):
+        sigs = [np.arange(10, dtype=np.float32), np.arange(4, dtype=np.float32)]
+        labs = [np.array([0, 0, 1, 1, 1, 1, 0, 0, 0, 0], np.uint8),
+                np.array([1, 1, 0, 0], np.uint8)]
+        path = tmp_path / 'c.npz'
+        np.savez_compressed(path, signals=np.concatenate(sigs),
+                            labels=np.concatenate(labs),
+                            offsets=np.array([0, 10, 14], np.int64),
+                            trace_type=np.asarray(['track_slen', 'group_slen'], np.str_))
+        got = ContractionDataset.load_corpus(str(path))
+        assert len(got['signals']) == 2
+        assert np.array_equal(got['signals'][1], sigs[1])
+        assert got['labels'][0].dtype == bool and got['labels'][0].sum() == 4
+        assert list(got['trace_type']) == ['track_slen', 'group_slen']
 
 
 class TestAugmentation:
@@ -365,8 +419,9 @@ class TestDatasetAndTrainer:
         trainer = Trainer(ds, num_epochs=1, n_filter=8, batch_size=8,
                           save_dir=str(tmp_path), num_workers=0)
         trainer.start(verbose=False)
+        # a trained checkpoint holds plain data only, so it loads without unpickling code
         state = torch.load(tmp_path / 'model_ContractionNet.pt', map_location='cpu',
-                           weights_only=False)
+                           weights_only=True)
         assert state['arch'] == 'ContractionNet'
         assert state['input_convention'] == 'symmetric'
         assert state['crop_len'] == 256
@@ -475,6 +530,289 @@ class TestCorpusIntegration:
             item = ds[i]
             assert torch.isfinite(item['input']).all()
             assert item['target'].shape[0] == 3
+
+
+# --------------------------------------------------------------------------------------
+# inference behind the polarity rule
+# --------------------------------------------------------------------------------------
+
+#: CardioTrace's decoder settings, at the bundled checkpoint's stored threshold and peak:
+#: contractions of 0.1 s or more, none within 5 frames of either end.
+_CARDIOTRACE_DECODING = dict(threshold=0.45, peak=0.85, min_duration_s=0.1, border_frames=5)
+
+
+def _same_score(a, b):
+    """Scores agree, counting two NaNs (a guarded trace on both sides) as equal."""
+    return a == b or (math.isnan(a) and math.isnan(b))
+
+
+def _reference_reading(net, x):
+    """One reading of ``x`` by ``net`` on the CPU, written out apart from the code under
+    test: condition by the checkpoint's convention, pad 24 frames, run, crop. This is
+    predict_contractions as it was before the polarity rule."""
+    x = np.asarray(x, dtype=np.float64).ravel()
+    prepared = prepare_robust_input(x, convention=net.input_convention)
+    prepared = prepared[:net.expected_in_channels]
+    mode = 'reflect' if 24 <= x.size - 1 else 'edge'
+    prepared = np.pad(prepared, ((0, 0), (24, 24)), mode=mode)
+    with torch.no_grad():
+        out = net(torch.from_numpy(prepared).unsqueeze(0))[0][0].numpy()
+    return out[:, 24:24 + x.size]
+
+
+@pytest.fixture
+def on_test_device(monkeypatch):
+    monkeypatch.setattr(prediction, 'device', torch.device(TEST_DEVICE))
+
+
+@pytest.mark.usefixtures('on_test_device')
+class TestMirrorInvariance:
+    """Behind the polarity rule, x and -x reach the network as the same array, so a 'q90'
+    checkpoint answers both bit for bit, on float64 and on float32 input."""
+
+    def test_mirror_is_bitwise(self):
+        for name, x, ft in regression_set():
+            for v in (x, x.astype(np.float32)):
+                a, da = predict_contractions(v, SHIPPED_MODEL, frametime=ft,
+                                             return_decision=True)
+                b, db = predict_contractions(-v, SHIPPED_MODEL, frametime=ft,
+                                             return_decision=True)
+                assert np.array_equal(a, b), name
+                assert (db.sign, db.reason) == (-da.sign, da.reason), name
+                assert _same_score(db.score, -da.score), name
+                assert (decode_contractions(a[0], ft, **_CARDIOTRACE_DECODING)
+                        == decode_contractions(b[0], ft, **_CARDIOTRACE_DECODING)), name
+
+    def test_joint_mirror_of_a_declared_polarity_is_bitwise(self):
+        for name, x, ft in regression_set():
+            for v in (x, x.astype(np.float32)):
+                for p in (1, -1):
+                    a, da = predict_contractions(v, SHIPPED_MODEL, frametime=ft, polarity=p,
+                                                 return_decision=True)
+                    b, db = predict_contractions(-v, SHIPPED_MODEL, frametime=ft, polarity=-p,
+                                                 return_decision=True)
+                    assert np.array_equal(a, b), (name, p)
+                    assert (db.sign, db.reason, db.declared) == (-da.sign, da.reason, -p)
+
+
+class TestOrientedReading:
+    """What the network reads on the 'q90' path. The mirror tests hold for any mistake made
+    the same way at both signs, such as reading the complement or padding differently, so
+    these check the output against a reading made apart from the code under test, and
+    against where the contractions are."""
+
+    def test_output_is_one_reading_of_the_oriented_trace(self):
+        # no second reading and no mixing: a decided trace gets one reading of sign * x,
+        # the same as declaring that sign; an undecided one gets zeros
+        net = _load_model(SHIPPED_MODEL, ContractionNet)
+        for name, x, ft in regression_set():
+            for v in (x, x.astype(np.float32)):
+                got, d = predict_contractions(v, SHIPPED_MODEL, frametime=ft,
+                                              return_decision=True)
+                if not d.sign:
+                    assert not got.any(), name
+                    continue
+                expected = _reference_reading(net, d.sign * v.astype(np.float64))
+                assert np.array_equal(got, expected), name
+                declared = predict_contractions(v, SHIPPED_MODEL, frametime=ft,
+                                                polarity=d.sign)
+                assert np.array_equal(declared, expected), name
+
+    def test_the_contracted_frames_are_called_at_either_sign(self):
+        # the twitch trains rest high: frames more than a quarter of the way down a twitch
+        # are the contraction, at x and at -x alike, and the reading of the complement
+        # would call the rests instead (measured on 118 decided readings of 120: median
+        # 0.88 of frames agree, lowest 0.67; read upside down, median 0.34)
+        agree = []
+        for x in twitch_trains().values():
+            contracted = x < -0.25
+            for v in (x, -x):
+                probs, d = predict_contractions(v, SHIPPED_MODEL, frametime=1 / 30,
+                                                return_decision=True)
+                if d.sign:
+                    agree.append(np.mean((probs[0] > _CARDIOTRACE_DECODING['threshold'])
+                                         == contracted))
+        assert len(agree) >= 100 and np.median(agree) >= 0.8
+
+
+class TestInferenceDevice:
+    def test_defaults_to_the_cpu(self):
+        # the mirror tests above are what any other device has to pass first
+        assert prediction.device == torch.device('cpu')
+
+
+class TestDegenerateInputs:
+    """Through predict_contractions, degenerate traces never reach the network."""
+
+    @pytest.mark.parametrize('name,reason', [
+        ('n=1', 'too_short'), ('n=5', 'too_short'), ('n=31', 'too_short'),
+        ('n=40', 'too_short'), ('n=59', 'too_short'), ('zeros', 'flat'), ('constant', 'flat'),
+        ('zeros + outlier', 'flat'), ('zeros + 2-frame blips', 'flat'),
+        ('two-level 91/9', 'flat')])
+    def test_zeros_and_a_reason(self, name, reason):
+        x = edge_cases()[name]
+        for v in (x, -x):
+            probs, d = predict_contractions(v, SHIPPED_MODEL, frametime=1 / 30,
+                                            return_decision=True)
+            assert probs.dtype == np.float32 and probs.shape == (3, x.size)
+            assert not probs.any()
+            assert (d.sign, d.reason) == (0, reason)
+            assert decode_contractions(probs[0], 1 / 30, **_CARDIOTRACE_DECODING) == []
+
+    def test_every_length_below_32_frames_is_too_short(self):
+        for n in range(1, 32):
+            x = np.random.default_rng(n).standard_normal(n)
+            probs, d = predict_contractions(x, SHIPPED_MODEL, frametime=1.0,
+                                            return_decision=True)
+            assert d.reason == 'too_short' and not probs.any() and probs.shape == (3, n)
+
+    def test_the_network_is_not_called(self, monkeypatch):
+        net = ContractionNet(n_filter=8)
+
+        def refuse(*args, **kwargs):
+            raise AssertionError('a degenerate trace reached the network')
+
+        monkeypatch.setattr(net, 'forward', refuse)
+        for name in ('n=5', 'zeros', 'zeros + outlier', 'two-level 91/9'):
+            probs = predict_contractions(edge_cases()[name], net, frametime=1 / 30)
+            assert probs.shape == (3, edge_cases()[name].size) and not probs.any()
+
+    @pytest.mark.parametrize('cls,kwargs,n_out', [
+        (ContractionNet, {}, 3), (SymmetrizedContractionNet, {}, 3),
+        (ContractionNet, {'in_channels': 1, 'out_channels': 2}, 2)])
+    def test_a_bare_module_gets_zeros_of_its_own_channel_count(self, cls, kwargs, n_out):
+        net = cls(n_filter=8, **kwargs)
+        probs = predict_contractions(np.zeros(300), net, frametime=1 / 30)
+        assert probs.shape == (n_out, 300) and not probs.any()
+
+    def test_a_module_of_unknown_output_is_refused(self):
+        with pytest.raises(ValueError, match='channels'):
+            predict_contractions(np.zeros(300), torch.nn.Identity(), frametime=1 / 30)
+
+    def test_symmetric_waves_give_zeros(self):
+        # no polarity cue, so no contraction rather than a guess
+        t = np.arange(1800) / 30
+        for y in (np.sin(2 * np.pi * 1.3 * t), np.sign(np.sin(2 * np.pi * 1.5 * t))):
+            probs, d = predict_contractions(y, SHIPPED_MODEL, frametime=1 / 30,
+                                            return_decision=True)
+            assert d.reason == 'ambiguous' and not probs.any()
+            assert decode_contractions(probs[0], 1 / 30, **_CARDIOTRACE_DECODING) == []
+
+    @pytest.mark.parametrize('bad', [np.nan, np.inf, -np.inf])
+    def test_non_finite_input_raises(self, bad):
+        with pytest.raises(ValueError, match='NaN or infinite'):
+            predict_contractions(np.r_[np.zeros(50), bad, np.ones(50)], SHIPPED_MODEL,
+                                 frametime=1 / 30)
+
+    def test_empty_input_raises(self):
+        with pytest.raises(ValueError, match='empty'):
+            predict_contractions(np.zeros(0), SHIPPED_MODEL, frametime=1 / 30)
+
+
+class TestCheckpointRule:
+    """The rule and the decoding constants travel with the checkpoint."""
+
+    @staticmethod
+    def _save(tmp_path, **extra):
+        net = ContractionNet(n_filter=8)
+        path = tmp_path / 'q90.pt'
+        torch.save({'arch': 'ContractionNet', 'n_filter': 8, 'in_channels': 2,
+                    'out_channels': 3, 'input_convention': 'q90',
+                    'state_dict': net.state_dict(), **extra}, path)
+        return str(path)
+
+    def test_the_shipped_checkpoint_stores_version_1(self):
+        stored = torch.load(SHIPPED_MODEL, map_location='cpu',
+                            weights_only=False)['polarity_rule']
+        assert stored == dataclasses.asdict(PolarityRule())
+        assert polarity_rule(_load_model(SHIPPED_MODEL, ContractionNet)) == PolarityRule()
+
+    def test_checkpoints_without_a_rule_get_version_1(self, tmp_path):
+        # as a 1.0 checkpoint, which stores neither and still loads by path
+        path = self._save(tmp_path)
+        assert polarity_rule(path) == PolarityRule()
+        assert polarity_rule(_load_model(path, ContractionNet)) == PolarityRule()
+        assert recommended_decoding(path) == {'threshold': 0.5, 'peak': 0.85}
+
+    def test_a_stored_rule_is_used(self, tmp_path):
+        path = self._save(tmp_path, polarity_rule=dataclasses.asdict(PolarityRule(margin=1.0)),
+                          decoding={'threshold': 0.55, 'peak': 0.9})
+        assert polarity_rule(path) == PolarityRule(margin=1.0)
+        assert recommended_decoding(path) == {'threshold': 0.55, 'peak': 0.9}
+        x = twitch_trains()['train a3 b6 r24']
+        probs, d = predict_contractions(x, path, frametime=1 / 30, return_decision=True)
+        assert (d.sign, d.reason, d.margin) == (0, 'ambiguous', 1.0) and not probs.any()
+        # the margin argument still overrides the stored one
+        _, d = predict_contractions(x, path, frametime=1 / 30, margin=0.1, return_decision=True)
+        assert d.sign == 1
+
+    def test_an_unknown_rule_version_is_refused(self, tmp_path):
+        path = self._save(tmp_path, polarity_rule={'version': 2})
+        with pytest.raises(ValueError, match='version'):
+            predict_contractions(np.zeros(100), path, frametime=1 / 30)
+
+    def test_missing_frametime_warns_and_assumes_30_fps(self):
+        x = twitch_trains()['train a3 b6 r24']
+        with pytest.warns(UserWarning, match='frametime'):
+            probs = predict_contractions(x, SHIPPED_MODEL)
+        assert np.array_equal(probs, predict_contractions(x, SHIPPED_MODEL, frametime=1 / 30))
+
+
+class TestBenchmarkPredictors:
+    """The benchmark's model wrappers hand the frametime they are called with, and a
+    declared polarity, on to predict_contractions."""
+
+    def test_the_frametime_reaches_the_polarity_rule(self):
+        x = twitch_trains()['train a3 b6 r24'][:300]
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error', message='.*frametime')
+            assert model_predictor(SHIPPED_MODEL)(x, 1 / 30).any()
+            # the same 300 frames last 1.5 s at 200 fps: too short to decide, so zeros
+            assert not model_predictor(SHIPPED_MODEL)(x, 1 / 200).any()
+            assert not model_predictor_full(SHIPPED_MODEL)(x, 1 / 200).any()
+
+    def test_a_declared_polarity_is_passed_on(self):
+        x = twitch_trains()['train a3 b6 r24']
+        for p in (1, -1):
+            expected = predict_contractions(x, SHIPPED_MODEL, frametime=1 / 30, polarity=p)
+            assert np.array_equal(model_predictor_full(SHIPPED_MODEL, polarity=p)(x, 1 / 30),
+                                  expected)
+            assert np.array_equal(
+                model_predictor(SHIPPED_MODEL, channel=1, polarity=p)(x, 1 / 30), expected[1])
+
+
+class TestLegacyConventions:
+    """'symmetric' and 'raw' checkpoints keep the path they had before the polarity rule."""
+
+    def _check_unchanged(self, path, convention):
+        net = _load_model(path, ContractionNet)
+        assert net.input_convention == convention
+        with warnings.catch_warnings():
+            # no frametime, and no warning about it: these checkpoints do not use one
+            warnings.filterwarnings('error', message='.*frametime')
+            for x in _traces() + [np.ones(3), np.zeros(1)]:
+                got, d = predict_contractions(x, path, return_decision=True)
+                assert np.array_equal(got, _reference_reading(net, x))
+                assert (d.sign, d.reason) == (1, f'rule not used: {convention!r} checkpoint')
+                assert math.isnan(d.score) and d.declared is None
+        with pytest.raises(ValueError, match='polarity'):
+            predict_contractions(_traces()[0], path, polarity=1)
+
+    def test_symmetric_checkpoints_are_unchanged(self, tmp_path):
+        net = SymmetrizedContractionNet(n_filter=8, norm='group')
+        path = tmp_path / 'symmetric.pt'
+        torch.save({'arch': 'SymmetrizedContractionNet', 'n_filter': 8, 'in_channels': 2,
+                    'out_channels': 3, 'arch_kwargs': {'norm': 'group'},
+                    'input_convention': 'symmetric', 'state_dict': net.state_dict()}, path)
+        self._check_unchanged(str(path), 'symmetric')
+
+    def test_raw_checkpoints_are_unchanged(self, tmp_path):
+        net = ContractionNet(n_filter=8, in_channels=1, out_channels=2)
+        path = tmp_path / 'raw.pt'
+        torch.save({'arch': 'ContractionNet', 'n_filter': 8, 'in_channels': 1,
+                    'out_channels': 2, 'input_convention': 'raw',
+                    'state_dict': net.state_dict()}, path)
+        self._check_unchanged(str(path), 'raw')
 
 
 class TestLoiChannelCombination:

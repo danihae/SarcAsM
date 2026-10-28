@@ -76,7 +76,6 @@ Haertter, D., Hauke, L., Driehorst, T., Nishi, K., Long, J., Tiburcy, M., Bereci
    :caption: Developer Guide:
 
    development
-   contraction_net_comparison
 
 .. toctree::
    :maxdepth: 2
