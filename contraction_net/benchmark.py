@@ -57,8 +57,8 @@ __all__ = [
 ]
 
 #: A predictor takes a 1D trace and its frametime and returns a per-frame contraction
-#: probability of the same length. Frametime is passed even though the legacy model ignores
-#: it, so frame-rate-aware models can be scored by the same harness.
+#: probability of the same length. The network never sees the frametime, but the polarity
+#: rule of a ``'q90'`` checkpoint measures its windows in seconds.
 PredictFn = Callable[[np.ndarray, float], np.ndarray]
 
 DEFAULT_DURATIONS = (20, 40, 80, 150, 250)
@@ -67,7 +67,8 @@ DEFAULT_DUTIES = (0.20, 0.40, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85)
 _REAL_DATA = 'test_data/high_speed_single_ACTN2-citrine_CM'
 
 
-def model_predictor(model_path: str, channel: int = 0) -> PredictFn:
+def model_predictor(model_path: str, channel: int = 0,
+                    polarity: Optional[int] = None) -> PredictFn:
     """
     Wrap a checkpoint into a :data:`PredictFn`.
 
@@ -78,26 +79,37 @@ def model_predictor(model_path: str, channel: int = 0) -> PredictFn:
     channel : int, optional
         Output channel to return. 0 is the contraction state, 1 and 2 the onset and offset
         heads. Default is 0.
+    polarity : {None, 1, -1}, optional
+        Passed on to :func:`~contraction_net.prediction.predict_contractions`. None
+        (default) lets the polarity rule of a ``'q90'`` checkpoint decide each trace; +1
+        declares rest high, as for sarcomere length, which shortens in a contraction.
 
     Returns
     -------
     PredictFn
-        Callable returning the per-frame probability of the chosen channel.
+        Callable returning the per-frame probability of the chosen channel. The frametime
+        it is called with goes to the polarity rule, whose windows are in seconds.
     """
     from .prediction import predict_contractions
 
     def _predict(signal: np.ndarray, frametime: float) -> np.ndarray:
-        return predict_contractions(np.asarray(signal, dtype=float), model_path)[channel]
+        return predict_contractions(np.asarray(signal, dtype=float), model_path,
+                                    frametime=frametime, polarity=polarity)[channel]
 
     return _predict
 
 
-def model_predictor_full(model_path: str):
-    """Wrap a checkpoint into a callable returning **all** output channels."""
+def model_predictor_full(model_path: str, polarity: Optional[int] = None):
+    """Wrap a checkpoint into a callable returning **all** output channels.
+
+    Takes the trace and its frametime, like :func:`model_predictor`, and the same
+    ``polarity``.
+    """
     from .prediction import predict_contractions
 
     def _predict(signal: np.ndarray, frametime: float) -> np.ndarray:
-        return predict_contractions(np.asarray(signal, dtype=float), model_path)
+        return predict_contractions(np.asarray(signal, dtype=float), model_path,
+                                    frametime=frametime, polarity=polarity)
 
     return _predict
 
@@ -107,15 +119,22 @@ def model_predictor_full(model_path: str):
 # --------------------------------------------------------------------------------------
 
 def postprocess(mask: np.ndarray, frametime: float = None, min_frames: int = 3,
-                merge_frames: int = 2, contr_time_min: float = None,
+                merge_frames: int = None, contr_time_min: float = None,
                 merge_time_max: float = None) -> np.ndarray:
     """
-    Apply the morphological cleanup that SarcAsM runs on every prediction.
+    Remove the short intervals of a mask, as SarcAsM does with every prediction.
 
-    :func:`sarcasm.analysis.contraction_analysis.detect_contractions` closes short gaps and
-    removes short intervals before anything downstream sees the mask. Scoring raw
-    thresholded probabilities would measure something users never get, and would exaggerate
+    :func:`sarcasm.analysis.contraction_analysis.detect_contractions` removes short
+    intervals before anything downstream sees the mask. Scoring raw thresholded
+    probabilities would measure something users never get, and would exaggerate
     fragmentation on noisy traces.
+
+    Gaps are not closed unless ``merge_frames`` or ``merge_time_max`` is given. The 1-frame
+    closing this applied by default erased the split the per-twitch label puts at the
+    trough between overlapping twitches (one frame at 61 fps), so a train of twitches was
+    scored as one contraction; :func:`~contraction_net.decoding.decode_contractions`
+    closes no gaps either. The two parameters remain only to reproduce results made with
+    a closing, such as the distilled corpus labels.
 
     The cleanup is expressed in **frames** by default rather than in seconds. SarcAsM's own
     defaults (0.2 s minimum duration) encode cardiomyocyte timescales, and applying them
@@ -133,7 +152,8 @@ def postprocess(mask: np.ndarray, frametime: float = None, min_frames: int = 3,
     min_frames : int, optional
         Minimal contraction duration in frames. Default is 3.
     merge_frames : int, optional
-        Maximal gap in frames between merged contractions. Default is 2.
+        Close gaps shorter than this many frames before the opening. Default None closes
+        none.
     contr_time_min, merge_time_max : float, optional
         Seconds-based equivalents, for mirroring a specific pipeline configuration. When
         given they override the frame-based values and require ``frametime``.
@@ -151,10 +171,11 @@ def postprocess(mask: np.ndarray, frametime: float = None, min_frames: int = 3,
             min_frames = max(1, int(contr_time_min / frametime))
         if merge_time_max is not None:
             merge_frames = max(1, int(merge_time_max / frametime))
-    closing = np.ones(max(1, int(merge_frames)))
+    mask = np.asarray(mask, dtype=bool)
+    if merge_frames is not None:
+        mask = binary_closing(mask, structure=np.ones(max(1, int(merge_frames))))
     opening = np.ones(max(1, int(min_frames)))
-    return binary_opening(binary_closing(np.asarray(mask, dtype=bool), structure=closing),
-                          structure=opening)
+    return binary_opening(mask, structure=opening)
 
 
 def oracle_amplitude_detector(signal: np.ndarray, amplitude: float,
@@ -850,10 +871,11 @@ def corpus_report(predict: PredictFn, corpus_path: str, threshold: float = 0.5,
                   wells: Optional[Sequence[str]] = None) -> Dict[str, object]:
     """Score a model against a distilled corpus, broken down by provenance.
 
-    The labels in such a corpus are the shipped model's own output on a higher-SNR
-    aggregation of the same cell, so this measures **imitation fidelity, not accuracy**. A
-    model can only look perfect here by reproducing the teacher, including its mistakes.
-    Read it alongside the synthetic scores, which carry exact labels.
+    The labels in such a corpus are ContractionNet's own output, from the model the
+    recordings were analysed with, on a higher-SNR aggregation of the same cell, so this
+    measures **imitation fidelity, not accuracy**. A model can only look perfect here by
+    reproducing the teacher, including its mistakes. Read it alongside the synthetic
+    scores, which carry exact labels.
 
     Parameters
     ----------
@@ -888,7 +910,7 @@ def corpus_report(predict: PredictFn, corpus_path: str, threshold: float = 0.5,
            'n': len(scores),
            'duty_pred': float(np.mean(duty_pred)) if duty_pred else np.nan,
            'duty_true': float(np.mean(duty_true)) if duty_true else np.nan,
-           'CIRCULAR': 'labels are the shipped model on an aggregated signal'}
+           'CIRCULAR': 'labels are ContractionNet output on an aggregated signal'}
     idx = np.flatnonzero(keep)
     for column in by:
         if column not in data:

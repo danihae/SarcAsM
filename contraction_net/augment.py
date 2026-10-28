@@ -21,6 +21,8 @@ from typing import Optional, Tuple
 import numpy as np
 from scipy.signal import savgol_filter
 
+from .simulation import MIN_EVENT_FRAMES
+
 __all__ = ['AugmentConfig', 'twitch_scale', 'time_warp', 'augment']
 
 
@@ -55,6 +57,7 @@ class AugmentConfig:
     outlier_scale: Tuple[float, float] = (0.3, 1.2)
     min_len: int = 32
     max_len: int = 8192
+    min_event_frames: int = MIN_EVENT_FRAMES
 
     @classmethod
     def for_pool(cls, pool: str, sign_flip: bool = True) -> 'AugmentConfig':
@@ -102,13 +105,31 @@ def twitch_scale(signal: np.ndarray, label: Optional[np.ndarray] = None) -> floa
     return spread
 
 
+def _shortest_event(label: np.ndarray) -> Optional[int]:
+    """Frames in the shortest labelled run that lies wholly inside the trace, or None.
+
+    A run touching either end is a contraction cut off by the recording, so its length says
+    nothing about how finely the trace resolves its events.
+    """
+    lab = np.asarray(label, bool)
+    edges = np.diff(np.r_[0, lab.astype(np.int8), 0])
+    starts, ends = np.flatnonzero(edges > 0), np.flatnonzero(edges < 0)
+    inside = (starts > 0) & (ends < lab.size)
+    return int((ends - starts)[inside].min()) if inside.any() else None
+
+
 def time_warp(signal: np.ndarray, label: np.ndarray, rng: np.random.Generator,
               lo: float = 0.4, hi: float = 3.0, nonuniform: bool = False,
-              min_len: int = 32, max_len: int = 8192):
+              min_len: int = 32, max_len: int = 8192,
+              min_event_frames: int = MIN_EVENT_FRAMES):
     """Resample a trace and its label onto a stretched or compressed time base.
 
     Covers acquisition rate directly: a contraction resolved by 400 frames becomes one
-    resolved by 130, which integer frame-dropping cannot reach.
+    resolved by 130, which integer frame-dropping cannot reach. Compression is capped per
+    trace so that no labelled event inside it drops below ``min_event_frames`` frames: the
+    step between samples stays within ``L / (min_event_frames + 1)``, ``L`` the shortest
+    such event, which puts that many samples into every event whatever their phase. A trace
+    whose shortest event is that short already is stretched instead; 0 lifts the cap.
 
     Returns
     -------
@@ -121,14 +142,20 @@ def time_warp(signal: np.ndarray, label: np.ndarray, rng: np.random.Generator,
     if n < min_len:
         return x, lab
     rate = float(np.exp(rng.uniform(np.log(lo), np.log(hi))))
+    shortest = _shortest_event(lab) if min_event_frames else None
+    # samples at most s apart put at least L / s - 1 of them into an event of L frames: the
+    # nearest-neighbour label can lose one at either end
+    cap = np.inf if shortest is None else shortest / float(min_event_frames + 1)
+    rate = min(rate, cap)
     if nonuniform:
         m = int(min(max_len, max(min_len, n / rate * 1.5)))
         u = np.linspace(0, 1, m)
         wobble = (np.sin(2 * np.pi * rng.uniform(0.5, 2.0) * u + rng.uniform(0, 2 * np.pi))
                   + 0.5 * np.sin(2 * np.pi * rng.uniform(0.5, 3.0) * u
                                  + rng.uniform(0, 2 * np.pi)))
-        steps = rate * (1 + 0.35 * wobble / 1.5)
-        pos = np.cumsum(np.clip(steps, 0.05, None))
+        steps = np.clip(rate * (1 + 0.35 * wobble / 1.5), 0.05, None)
+        # the wobble speeds the warp up locally, so the cap holds for its fastest step
+        pos = np.cumsum(steps * min(1.0, cap / steps.max()))
         pos = pos[pos < n - 1]
     else:
         pos = np.arange(0, n - 1, rate)
@@ -174,7 +201,8 @@ def augment(signal: np.ndarray, label: np.ndarray, rng: np.random.Generator,
     if rng.random() < cfg.p_time_warp:
         x, lab = time_warp(x, lab, rng, *cfg.warp_range,
                            nonuniform=rng.random() < cfg.p_nonuniform_warp,
-                           min_len=cfg.min_len, max_len=cfg.max_len)
+                           min_len=cfg.min_len, max_len=cfg.max_len,
+                           min_event_frames=cfg.min_event_frames)
 
     # reference every nuisance to the twitch measured before any of them are added
     amp = twitch_scale(x, lab)

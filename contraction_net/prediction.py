@@ -1,23 +1,32 @@
+import math
 import os
 import threading
+import warnings
 
 import numpy as np
 import torch
 from scipy.signal import savgol_filter
 
 from .contraction_net import ContractionNet, SymmetrizedContractionNet
-from .utils import get_device
+from .padding import pad_for_inference
+from .polarity import PolarityDecision, PolarityRule, decide_polarity
 
-# select device
-device = get_device()
+#: Device inference runs on. The CPU by default: ``predict_contractions(-x)`` equals
+#: ``predict_contractions(x)`` bit for bit only if two calls on the same input agree, which
+#: is verified on the CPU alone (``TestMirrorInvariance`` in tests/test_contraction_net.py).
+#: To use another device, set ``contraction_net.prediction.device`` to it, e.g.
+#: ``torch.device('cuda:0')``, and first run that test with ``CONTRACTION_NET_DEVICE`` set
+#: to the same device. Training picks its own device with
+#: :func:`contraction_net.utils.get_device`.
+device = torch.device('cpu')
 
 # Loaded models, keyed by (path, mtime, device); prediction is called once per
 # myofibril/domain, so re-reading the checkpoint each time dominated the runtime.
 _MODEL_CACHE = {}
 _CACHE_LOCK = threading.Lock()
 
-#: Frames of padding added on either side before inference.
-_RECEPTIVE_FIELD = 24
+#: Frametime assumed by the polarity rule when the caller gives none: CardioTrace's 30 fps.
+_DEFAULT_FRAMETIME = 1 / 30
 
 #: Architectures a checkpoint may name in its ``arch`` field.
 _ARCHS = {'ContractionNet': ContractionNet,
@@ -58,7 +67,7 @@ def _load_model(model, network):
         if cached is not None:
             return cached
 
-    state_dict = torch.load(model, map_location=device, weights_only=False)
+    state_dict = torch.load(model, map_location=device, weights_only=True)
     cls = _resolve_network(state_dict, model, network)
     net = cls(state_dict['n_filter'], in_channels=state_dict['in_channels'],
               out_channels=state_dict['out_channels'],
@@ -70,6 +79,9 @@ def _load_model(model, network):
     net.input_convention = state_dict.get('input_convention', 'q90')
     net.recommended_threshold = state_dict.get('recommended_threshold', 0.5)
     net.expected_in_channels = int(state_dict['in_channels'])
+    net.expected_out_channels = int(state_dict['out_channels'])
+    net.polarity_rule = PolarityRule.from_checkpoint(state_dict.get('polarity_rule'))
+    net.decoding = state_dict.get('decoding')
 
     if key is not None:
         with _CACHE_LOCK:
@@ -94,16 +106,15 @@ def prepare_robust_input(data, diff_window=5, convention='q90'):
         Smoothing window (frames) for the difference channel. Default is 5.
     convention : str, optional
         ``'q90'`` centres on the 90th percentile: rest is assumed to be the high side of
-        the trace, so a signal resting low must be inverted first. This is the
-        default.
+        the trace, so a signal resting low must be inverted first, which
+        :func:`predict_contractions` does by the polarity rule. This is the default.
         ``'symmetric'`` centres on ``(P10 + P90) / 2``, which makes the conditioning exactly
         odd -- ``x -> -x`` maps level to ``-level`` and diff to ``-diff``, since
         ``P10(-x) = -P90(x)`` -- so a polarity-invariant model can be trained with sign-flip
         augmentation. Rest is then not distinguished by sign and must be inferred from the
         waveform.
-        ``'raw'`` passes the trace through unchanged as a single channel; the pre-1.0
-        recipe did no conditioning at all, and its comparison arm has to be fed the same
-        way it was trained.
+        ``'raw'`` passes the trace through unchanged as a single channel, for a model
+        trained on unconditioned traces, as the pre-1.0 recipe trained it.
 
     Returns
     -------
@@ -114,7 +125,10 @@ def prepare_robust_input(data, diff_window=5, convention='q90'):
     Notes
     -----
     Both the reference and the scale are affine-equivariant, so the same trace in µm and in
-    nm produces bit-identical output.
+    nm produces the same output up to rounding, but not bit for bit: the subtraction and the
+    division round differently at different scales and offsets. The differences are
+    absolute, of order 1e-6 on the output's unit scale and largest where a large offset
+    meets a small spread, so a value near zero can even change sign.
     """
     if convention not in INPUT_CONVENTIONS:
         raise ValueError(f'convention must be one of {INPUT_CONVENTIONS}, got {convention!r}')
@@ -143,7 +157,8 @@ def prepare_robust_input(data, diff_window=5, convention='q90'):
     return np.stack([level, diff]).astype(np.float32)
 
 
-def predict_contractions(data, model, network=ContractionNet):
+def predict_contractions(data, model, network=ContractionNet, *, frametime=None, polarity=None,
+                         margin=None, return_decision=False):
     """Predict contraction intervals in a time-series with a neural network.
 
     Parameters
@@ -155,45 +170,93 @@ def predict_contractions(data, model, network=ContractionNet):
     network : nn.Module, optional
         Network class used to instantiate the weights. Default is
         :class:`~contraction_net.contraction_net.ContractionNet`.
+    frametime : float, optional
+        Time between frames in s. The polarity rule of ``'q90'`` checkpoints measures its
+        windows in seconds, so pass it: None assumes 1/30 s and warns. Unused by other
+        checkpoints.
+    polarity : {None, 1, -1}, optional
+        None (default) lets the polarity rule decide which side of the trace is rest. +1 or
+        -1 declares it (+1: rest high), for a quantity whose sign physics fixes; the trace
+        is then oriented by the declaration and the decision records whether the data
+        agree. Only for ``'q90'`` checkpoints.
+    margin : float, optional
+        Abstention margin on the polarity score. Default is the checkpoint's rule (0.10).
+        0 decides every trace whose score is not exactly 0.
+    return_decision : bool, optional
+        Also return the :class:`~contraction_net.polarity.PolarityDecision`. Default False.
 
     Returns
     -------
     ndarray
         Array of shape ``(out_channels, len(data))`` with per-frame probabilities. Channel
-        0 is the contraction state.
+        0 is the contraction state. float32 zeros when the polarity is undetermined.
+    PolarityDecision
+        Only with ``return_decision=True``.
 
     Raises
     ------
     ValueError
-        If the trace is empty or non-finite, or if ``model`` predates the 1.0 architecture.
+        If the trace is empty or non-finite, if ``model`` predates the 1.0 architecture, or
+        if a polarity is declared for a checkpoint that does not use the polarity rule.
 
     Notes
     -----
     The input is conditioned by :func:`prepare_robust_input` using the convention recorded
-    in the checkpoint, so it is offset- and scale-invariant. Under the ``'q90'`` convention
-    the reference is a high quantile rather than the median, which is not duty-robust; rest
-    is then assumed to be the high side, and **signals whose resting state is the low side
-    must be inverted before being passed in**. Models trained with the ``'symmetric'``
-    convention carry no such requirement.
+    in the checkpoint, so it is offset- and scale-invariant.
+
+    A ``'q90'`` checkpoint reads rest as the high side of its input, but the trace no
+    longer has to rest high: :func:`~contraction_net.polarity.decide_polarity` decides once
+    per trace, on the raw float64 trace, and the trace is multiplied by that sign before
+    conditioning. ``x`` and ``-x`` therefore reach the network as the same array, and the
+    result is identical bit for bit. A trace that is too short, flat or ambiguous to decide
+    gets zeros, never the reading of the wrong side; ``return_decision`` says why.
+
+    ``'symmetric'`` and ``'raw'`` checkpoints keep their own path unchanged: the rule is
+    not applied, ``frametime`` and ``margin`` are unused, and the decision record says so.
+
+    The network runs on :data:`device` (the CPU by default) with a batch of one, in eval
+    mode.
     """
     net = _load_model(model, network)
 
-    data = np.asarray(data, dtype=np.float64).ravel()
+    data = np.array(data, dtype=np.float64).ravel()
     len_data = data.shape[0]
     if len_data == 0:
         raise ValueError('Cannot predict contractions for an empty time-series.')
     if not np.isfinite(data).all():
         raise ValueError('Time-series contains NaN or infinite values; fill gaps first.')
 
-    prepared = prepare_robust_input(data, convention=getattr(net, 'input_convention', 'q90'))
+    convention = getattr(net, 'input_convention', 'q90')
+    if convention != 'q90':
+        if polarity is not None:
+            raise ValueError(f'polarity can only be declared for checkpoints that use the '
+                             f"polarity rule ('q90'); this one uses {convention!r}.")
+        decision = PolarityDecision(1, math.nan, math.nan,
+                                    f'rule not used: {convention!r} checkpoint')
+        probs = _network_output(net, prepare_robust_input(data, convention=convention),
+                                len_data)
+        return (probs, decision) if return_decision else probs
+
+    if frametime is None:
+        warnings.warn('predict_contractions was given no frametime; the polarity rule '
+                      'assumes 1/30 s. Pass the frametime of the recording.', stacklevel=2)
+        frametime = _DEFAULT_FRAMETIME
+    decision = decide_polarity(data, frametime, polarity=polarity, margin=margin,
+                               rule=polarity_rule(net))
+    if decision.sign == 0:
+        probs = np.zeros((_out_channels(net), len_data), dtype=np.float32)
+    else:
+        probs = _network_output(
+            net, prepare_robust_input(decision.sign * data, convention='q90'), len_data)
+    return (probs, decision) if return_decision else probs
+
+
+def _network_output(net, prepared, len_data):
+    """Run ``net`` on a conditioned trace, batch of one, and crop the padding off again."""
     # a model trained on the level alone must not be handed the difference channel
     want = int(getattr(net, 'expected_in_channels', prepared.shape[0]))
-    prepared = prepared[:want]
-
     # pad so the edge frames are inferred from context, not from a truncated window
-    pad = max(_RECEPTIVE_FIELD, 2 - len_data)
-    mode = 'reflect' if pad <= len_data - 1 else 'edge'
-    prepared = np.pad(prepared, ((0, 0), (pad, pad)), mode=mode)
+    prepared, pad = pad_for_inference(prepared[:want])
 
     tensor = torch.from_numpy(prepared).unsqueeze(0).to(device)
     with torch.no_grad():
@@ -201,6 +264,23 @@ def predict_contractions(data, model, network=ContractionNet):
     res = res.detach().cpu().numpy()
 
     return res[:, pad:pad + len_data]
+
+
+def _out_channels(net):
+    """Number of channels ``net`` outputs, found without running it.
+
+    A checkpoint records the count. A bare module is read off its output layer: the head of
+    a :class:`ContractionNet`, or of the trunk of a :class:`SymmetrizedContractionNet`.
+    """
+    recorded = getattr(net, 'expected_out_channels', None)
+    if recorded is not None:
+        return int(recorded)
+    trunk = getattr(net, 'trunk', None)
+    for layer in (getattr(net, 'head', None), getattr(trunk, 'head', None)):
+        if isinstance(layer, torch.nn.Conv1d):
+            return int(layer.out_channels)
+    raise ValueError(f'Cannot tell how many channels {type(net).__name__} outputs; load it '
+                     f'from a checkpoint, or set its expected_out_channels.')
 
 
 def recommended_threshold(model, default=0.5):
@@ -224,7 +304,31 @@ def recommended_threshold(model, default=0.5):
     if isinstance(model, torch.nn.Module):
         return float(getattr(model, 'recommended_threshold', default))
     try:
-        state = torch.load(model, map_location='cpu', weights_only=False)
+        state = torch.load(model, map_location='cpu', weights_only=True)
     except (OSError, RuntimeError):
         return float(default)
     return float(state.get('recommended_threshold', default))
+
+
+def polarity_rule(model):
+    """Polarity rule a checkpoint decides with; see :class:`~contraction_net.polarity.PolarityRule`.
+
+    Like the threshold, the rule's constants are a property of the model and stored in the
+    checkpoint as ``'polarity_rule'``. Checkpoints without the key, such as every one
+    trained before the rule existed, get the version-1 defaults. Only ``'q90'``
+    checkpoints apply it.
+
+    Parameters
+    ----------
+    model : str or torch.nn.Module
+        Checkpoint path or module.
+
+    Returns
+    -------
+    PolarityRule
+    """
+    if isinstance(model, torch.nn.Module):
+        stored = getattr(model, 'polarity_rule', None)
+    else:
+        stored = torch.load(model, map_location='cpu', weights_only=True).get('polarity_rule')
+    return stored if isinstance(stored, PolarityRule) else PolarityRule.from_checkpoint(stored)

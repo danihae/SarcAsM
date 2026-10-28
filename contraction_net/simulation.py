@@ -6,6 +6,10 @@ and **duty -- the fraction of a trace spent contracting -- is sampled directly**
 range 0.0-0.97 is reachable by construction, including single tonic contractions and fused
 beats that never return to baseline.
 
+**Every twitch is one contraction.** Where twitches overlap and the signal never returns to
+rest between them, the label is cut at the least-contracted frame between their peaks (see
+:data:`TWITCH_SPLIT_DIP`). Only a sustained (``tonic``) contraction is one long interval.
+
 Sampling duty directly is the point. Build traces from a clipped periodic waveform instead
 and duty becomes an accidental by-product of the clip threshold: the reachable range is
 narrow, long contractions never appear, and a model trained on the result inherits a duty
@@ -13,13 +17,13 @@ prior it was never asked to learn.
 
 The second axis is **sampling quality**. The detector is not only for high-speed sarcomere
 recordings: it has to work on time-series whose sampling resolves a whole contraction in
-three or four points as well as on ones that spread it over hundreds. Frames per
+a handful of points as well as on ones that spread it over hundreds. Frames per
 contraction is therefore sampled log-uniformly over :data:`FRAMES_PER_EVENT` and trace
 length over 64-4096, rather than being fixed.
 
 Sarcomere length is the modelled quantity, so rest is *high* and contraction is *low*.
-Amplitudes are in µm and ``frametime`` in seconds, but frametime only scales the velocity
-channel -- it must never change the segmentation.
+Amplitudes are in µm and ``frametime`` in seconds, but frametime only enters the
+seconds-domain metadata: the network never sees it, so it cannot change the segmentation.
 
 Examples
 --------
@@ -49,29 +53,48 @@ __all__ = [
     'FRAMES_PER_EVENT',
     'FRAMETIME_S',
     'SNR_RANGE',
+    'NEGATIVES',
+    'MIN_EVENT_FRAMES',
 ]
 
 #: Contraction regimes the generator can produce.
-REGIMES = ('regular', 'tonic', 'fused', 'arrhythmic', 'quiescent')
+REGIMES = ('regular', 'tonic', 'fused', 'summation', 'arrhythmic', 'quiescent')
 
 #: Fraction of peak amplitude below which the clean signal counts as "at rest". The label
-#: is derived from the noiseless signal crossing this level, so fused beats that never
-#: return to baseline merge into a single contraction interval automatically.
+#: is derived from the noiseless signal crossing this level.
 REST_TOL = 0.05
+
+#: Smallest relaxation between two twitches, as a fraction of amplitude, that separates
+#: them into two contractions when the signal does not return to rest in between. Every
+#: twitch is one contraction -- beating rate and per-beat timing are what the analysis
+#: reports -- so a beat that starts before the previous one has relaxed is cut off from
+#: it at the least-contracted frame between their peaks. Below this dip the two are not
+#: distinguishable in the signal and stay one interval.
+TWITCH_SPLIT_DIP = 0.10
 
 #: Plausible spontaneous beating rates (Hz) for cultured cardiomyocytes. Only used to keep
 #: the *seconds*-domain metadata physiological; the quantity that actually governs
 #: difficulty is :data:`FRAMES_PER_EVENT`.
 BEAT_RATE_HZ = (0.2, 5.0)
 
-#: Frames spanned by a single contraction, sampled log-uniformly -- the axis the
-#: network must be invariant along; 3 frames is the floor at which an excursion is
-#: still distinguishable from an outlier.
-FRAMES_PER_EVENT = (3, 600)
+#: Fewest labelled frames of any event the generator produces, and of any event after time
+#: warping (:func:`~contraction_net.augment.time_warp`). An excursion of 1-3 frames is a
+#: blip, not a contraction the network should learn to call; annotated EHT twitches have a
+#: 5th percentile of 7 frames.
+MIN_EVENT_FRAMES = 4
+
+#: Frames spanned by a single contraction, sampled log-uniformly. This -- not duration in
+#: seconds -- is the axis the model actually sees, and it is the axis the network has to be
+#: invariant along: the same detector must work on a coarsely sampled recording that
+#: resolves a contraction in a few frames and on a high-speed one that spreads it over 500.
+#: The floor is in labelled frames where a regime derives the twitch from its duty, and it
+#: keeps every event at :data:`MIN_EVENT_FRAMES` or more: the label is shorter than the
+#: twitch, whose foot and tail sit below :data:`REST_TOL`.
+FRAMES_PER_EVENT = (6, 600)
 
 #: Frame intervals (s) the generator samples, spanning slow widefield time-lapse through
-#: high-speed confocal. Frametime only scales the velocity channel and the seconds-domain
-#: metadata -- it must not change the segmentation.
+#: high-speed confocal. Frametime only scales the seconds-domain metadata; the network never
+#: sees it, so it cannot change the segmentation.
 FRAMETIME_S = (0.005, 1.0)
 
 #: How much harsher the ``extreme`` nuisance ranges are than the defaults. Tuned so the
@@ -87,6 +110,15 @@ SEPARATED_BEAT_DUTY_MAX = 0.75
 #: Contraction-amplitude-to-noise ratios sampled when ``snr`` is drawn rather than
 #: derived from ``noise_rel`` (measurement noise does not scale with the beat).
 SNR_RANGE = (1.5, 40.0)
+
+#: How quiescent traces are built. ``'legacy'`` keeps their artefacts at about half the
+#: noise level, so a quiet trace is flat, and draws the noise correlation around the
+#: real-data estimate. ``'structured'`` gives them the drift, bleach, steps, outliers and
+#: quantisation of a beating trace and draws the correlation from 0-0.95 for every trace,
+#: because a network that only ever sees structure next to beats learns that structure
+#: means beats. :func:`simulate_dataset` also samples quiescent traces more often
+#: under ``'structured'``; see :data:`STRUCTURED_REGIME_WEIGHTS`.
+NEGATIVES = ('legacy', 'structured')
 
 
 @dataclass
@@ -269,15 +301,17 @@ def velocity_channel(signal: np.ndarray, frametime: float, window_length: int = 
     return savgol_filter(signal, w, polyorder, deriv=1, delta=frametime)
 
 
-def _labelled_fraction(shape: np.ndarray) -> float:
+def _labelled_fraction(shape: np.ndarray, tol: float = REST_TOL) -> float:
     """Fraction of a twitch waveform that clears :data:`REST_TOL` and is therefore labelled.
 
     The onset and the tail of the relaxation sit below the rest tolerance, so a twitch of
     ``d`` frames yields fewer than ``d`` labelled frames. Duty is a requested parameter
     here, so the event duration has to be solved for rather than set to ``duty * period``
-    directly -- otherwise every regime silently undershoots its target.
+    directly -- otherwise every regime silently undershoots its target. ``tol`` is the
+    tolerance relative to the twitch's own peak, which is larger than :data:`REST_TOL` for a
+    twitch smaller than the trace amplitude.
     """
-    return max(float((shape > REST_TOL).mean()), 1e-3)
+    return max(float((shape > tol).mean()), 1e-3)
 
 
 def _event_frames(duty: float, period: int, shape_fracs: Tuple[float, float, float]) -> int:
@@ -302,16 +336,53 @@ def _sample_period(duty: float, n_frames: int, rng: np.random.Generator) -> int:
     return int(np.clip(period, max(4, int(np.ceil(lo / max(duty, 1e-6)))), max(8, n_frames)))
 
 
-def _label_from_clean(clean: np.ndarray, baseline: float, amplitude: float) -> np.ndarray:
-    """Contraction state derived from the noiseless signal.
+def _label_from_clean(clean: np.ndarray, baseline: float, amplitude: float,
+                      peaks: Sequence[int] = (), split_hole_frac: float = 0.0) -> np.ndarray:
+    """Contraction state derived from the noiseless signal, one interval per twitch.
 
-    Deriving the label from the clean signal rather than from the event schedule means
-    fused beats, which never return to baseline, merge into one interval automatically --
-    the label always matches what is actually visible in the trace.
+    The state comes from the clean signal crossing :data:`REST_TOL`, so it matches what is
+    visible in the trace. Twitches that overlap -- beats faster than the tissue relaxes, or
+    beats riding on a sustained pedestal -- would then merge into one interval; ``peaks``
+    (the frame of each scheduled twitch's maximum) lets them be split at the
+    least-contracted frame between consecutive peaks, as long as the signal relaxes there
+    by at least :data:`TWITCH_SPLIT_DIP` of the amplitude, and as long as the twitch before
+    the cut keeps :data:`MIN_EVENT_FRAMES` labelled frames. Below either, the two are not
+    resolvable as separate contractions and stay one interval.
+
+    The cut is one frame wide. A positive ``split_hole_frac`` widens it to
+    ``max(1, round(split_hole_frac * L))`` frames centred on that frame, ``L`` being the
+    labelled length of the shorter of the two twitches, so the gap scales with the twitches
+    -- and with the frame rate -- instead of staying one frame at any sampling.
     """
     if amplitude <= 0:
         return np.zeros(clean.size, dtype=bool)
-    return (baseline - clean) > REST_TOL * amplitude
+    depth = baseline - clean
+    label = depth > REST_TOL * amplitude
+    peaks = sorted(int(p) for p in peaks if 0 <= p < clean.size)
+    troughs = []
+    for left, right in zip(peaks[:-1], peaks[1:]):
+        if right - left < 2 or not label[left:right + 1].all():
+            continue                    # already separated by rest
+        trough = left + int(np.argmin(depth[left:right + 1]))
+        dip = min(depth[left], depth[right]) - depth[trough]
+        # the twitch before the cut keeps MIN_EVENT_FRAMES labelled frames when the frames
+        # just before the trough are all labelled, none of them an earlier cut
+        before = label[max(0, trough - MIN_EVENT_FRAMES):trough]
+        if (dip >= TWITCH_SPLIT_DIP * amplitude and left < trough < right
+                and before.size == MIN_EVENT_FRAMES and before.all()):
+            label[trough] = False
+            troughs.append(trough)
+    if split_hole_frac > 0 and troughs:
+        from scipy.ndimage import label as _runs
+        # each twitch's labelled length is its run once every one-frame cut is made
+        runs, _ = _runs(label)
+        lengths = np.bincount(runs.ravel())
+        for trough in troughs:
+            shorter = min(lengths[runs[trough - 1]], lengths[runs[trough + 1]])
+            width = max(1, int(round(split_hole_frac * shorter)))
+            start = max(0, trough - (width - 1) // 2)
+            label[start:start + width] = False
+    return label
 
 
 def _apply_nuisances(clean, rng, *, noise_rel, noise_rho, drift_rel,
@@ -379,8 +450,13 @@ def _apply_nuisances(clean, rng, *, noise_rel, noise_rho, drift_rel,
     return sig
 
 
-def _sample_nuisances(rng, *, noise_rel, noise_rho, extreme, snr=None):
-    """Draw one realisation of the artefact parameters :func:`_apply_nuisances` takes."""
+def _sample_nuisances(rng, *, noise_rel, noise_rho, extreme, snr=None, negatives='legacy'):
+    """Draw one realisation of the artefact parameters :func:`_apply_nuisances` takes.
+
+    ``negatives='structured'`` draws the noise correlation from 0-0.95 instead of around
+    ``noise_rho``: real sarcomere tracks reach 0.8-0.9, which the estimate times 0.5-1.5
+    rarely covers. See :data:`NEGATIVES`.
+    """
     harsh = HARSH_MULTIPLIER if extreme else 1.0
     # noise is capped on the noise_rel path so the ground truth stays recoverable; an
     # explicit snr bypasses the cap because it is the caller's stated difficulty
@@ -388,7 +464,8 @@ def _sample_nuisances(rng, *, noise_rel, noise_rho, extreme, snr=None):
              else min(noise_rel * rng.uniform(0.3, 2.0) * harsh, 0.35))
     return dict(
         noise_rel=float(noise),
-        noise_rho=float(np.clip(noise_rho * rng.uniform(0.5, 1.5), 0, 0.95)),
+        noise_rho=(float(rng.uniform(0.0, 0.95)) if negatives == 'structured'
+                   else float(np.clip(noise_rho * rng.uniform(0.5, 1.5), 0, 0.95))),
         drift_rel=float(rng.uniform(0, 0.3 * harsh)),
         bleach_rel=float(rng.uniform(-0.3, 0.3) * harsh),
         n_steps=int(rng.integers(0, 6 if extreme else 3)),
@@ -427,13 +504,15 @@ def renoise(trace: 'Trace', rng: np.random.Generator, *,
     if extreme is None:
         extreme = bool(meta.get('extreme', False))
     snr = meta.get('snr')
+    negatives = meta.get('negatives', 'legacy')
     params = _sample_nuisances(rng, noise_rel=meta.get('noise_rel', 0.05),
                                noise_rho=meta.get('noise_rho', 0.5),
-                               extreme=extreme, snr=snr)
+                               extreme=extreme, snr=snr, negatives=negatives)
     noise_eff = (1.0 / float(snr) if snr is not None
                  else min(meta.get('noise_rel', 0.05)
                           * (HARSH_MULTIPLIER if extreme else 1.0), 0.35))
-    artefact_amp = amplitude if trace.label.any() else amplitude * noise_eff * 0.5
+    artefact_amp = (amplitude if trace.label.any() or negatives == 'structured'
+                    else amplitude * noise_eff * 0.5)
     return _apply_nuisances(trace.clean, rng, amplitude=amplitude,
                             artefact_amp=artefact_amp, **params)
 
@@ -443,7 +522,8 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                    rng: Optional[np.random.Generator] = None,
                    noise_rel: float = 0.05, noise_rho: float = 0.5,
                    amplitude: Optional[float] = None, extreme: bool = False,
-                   polarity: Optional[int] = None, snr: Optional[float] = None) -> Trace:
+                   polarity: Optional[int] = None, snr: Optional[float] = None,
+                   negatives: str = 'legacy', split_hole_frac: float = 0.0) -> Trace:
     """
     Simulate one sarcomere-length trace with exact ground truth.
 
@@ -456,7 +536,10 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
         - ``'tonic'``: a single sustained contraction filling most of the recording -- the
           case that a duty-coupled detector fails on.
         - ``'fused'``: beats whose relaxation is truncated, so the trace never returns to
-          baseline between them (summation).
+          baseline between them, on a sustained pedestal. Each twitch is labelled as its
+          own contraction.
+        - ``'summation'``: beats faster than the tissue relaxes, so each twitch starts
+          before the previous one has returned to rest; no pedestal.
         - ``'arrhythmic'``: irregular intervals, ectopic beats, pauses and alternans.
         - ``'quiescent'``: no contraction at all.
     duty : float or None, optional
@@ -490,6 +573,12 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
         Contraction amplitude divided by noise standard deviation. None derives the noise
         from ``noise_rel`` instead, which fixes the ratio at ``1 / noise_rel`` regardless
         of amplitude. Values below ``SNR_RANGE[0]`` are refused.
+    negatives : str, optional
+        One of :data:`NEGATIVES`. Default ``'legacy'``. Kept in ``meta`` so that
+        :func:`renoise` redraws the artefacts the same way.
+    split_hole_frac : float, optional
+        Width of the label cut between overlapping twitches as a fraction of the shorter
+        twitch; see :func:`_label_from_clean`. Default 0 keeps the one-frame cut.
 
     Returns
     -------
@@ -500,10 +589,13 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
     ------
     ValueError
         If ``regime`` is unknown, ``duty`` is outside ``[0, 0.97]``, ``polarity`` is not
-        ``+1``/``-1``, or ``snr`` is below ``SNR_RANGE[0]``.
+        ``+1``/``-1``, ``snr`` is below ``SNR_RANGE[0]``, or ``negatives`` is not one of
+        :data:`NEGATIVES`.
     """
     if regime not in REGIMES:
         raise ValueError(f'Unknown regime {regime!r}; expected one of {REGIMES}.')
+    if negatives not in NEGATIVES:
+        raise ValueError(f'negatives must be one of {NEGATIVES}, got {negatives!r}.')
     if rng is None:
         rng = np.random.default_rng()
     if polarity is None:
@@ -541,11 +633,12 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
     relax_k = float(rng.uniform(0.8, 5.0))
 
     clean = np.full(n_frames, baseline)
+    peaks = []                          # frame of each twitch's maximum, for the label
     meta = {'baseline': baseline, 'amplitude': amplitude, 'rise_frac': rise,
             'plateau_frac': plateau, 'relax_k': relax_k, 'duty_target': duty,
             'polarity': polarity, 'snr': None if snr is None else float(snr),
             'noise_rel': float(noise_rel), 'noise_rho': float(noise_rho),
-            'extreme': bool(extreme)}
+            'extreme': bool(extreme), 'negatives': negatives}
 
     if regime == 'quiescent':
         pass
@@ -561,6 +654,34 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
             start = int(rng.integers(0, max(1, n_frames - d)))
             clean[start:start + d] -= amplitude * twitch_waveform(d, *fracs)
             meta['n_events_scheduled'] = 1
+
+    elif regime == 'summation':
+        # Beats faster than the tissue relaxes: each twitch starts before the previous one
+        # has returned to rest, with no sustained pedestal underneath -- an EHT paced or
+        # beating at 2-3 Hz, or one with slow relaxation. Every twitch is its own
+        # contraction; see TWITCH_SPLIT_DIP.
+        # the next beat starts during the relaxation of the previous one, never during its
+        # plateau, so the relaxation has to be a real part of the twitch
+        plateau = min(plateau, 0.3)
+        lo, hi = FRAMES_PER_EVENT
+        d = int(round(np.exp(rng.uniform(np.log(max(lo + 3, 8)), np.log(hi)))))
+        relax_frames = d * (1 - rise - plateau)
+        period = int(round(d * (rise + plateau) + rng.uniform(0.2, 0.8) * relax_frames))
+        # far enough apart that the one-frame cut between twitches leaves each of them
+        # MIN_EVENT_FRAMES labelled frames, or the twitches would stay one interval
+        period = int(np.clip(period, MIN_EVENT_FRAMES + 1, d - 1))
+        if n_frames // period < 2:
+            meta['n_events_scheduled'] = 0
+        else:
+            meta['beat_rate_hz'] = 1 / (period * frametime)
+            meta['plateau_frac'] = plateau
+            shape = twitch_waveform(d, rise_frac=rise, plateau_frac=plateau, relax_k=relax_k)
+            starts = list(range(int(rng.integers(0, period)), n_frames - 3, period))
+            for start in starts:
+                seg = shape[:min(d, n_frames - start)]
+                clean[start:start + seg.size] -= amplitude * seg
+                peaks.append(start + int(np.argmax(seg)))
+            meta.update(n_events_scheduled=len(starts), period=period, twitch_frames=d)
 
     elif regime in ('regular', 'fused'):
         fracs = (rise, plateau, relax_k)
@@ -581,6 +702,11 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                 # beats inside the run keep the sampled period, so a fused burst is
                 # resolved as coarsely or as finely as any other regime
                 d = int(np.clip(period, FRAMES_PER_EVENT[0], max(FRAMES_PER_EVENT[0], run)))
+                # where the pedestal ramps up from rest a beat rises only (1 - fusion) of
+                # the amplitude, so the floor counts the frames it labels at that size
+                lf = _labelled_fraction(twitch_waveform(256, *fracs),
+                                        REST_TOL / (1 - fusion))
+                d = max(d, int(round(FRAMES_PER_EVENT[0] / lf)))
                 starts = list(range(first, first + run - 3, d))
                 last = min(first + run, n_frames)
 
@@ -603,6 +729,7 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
             for start in starts:
                 seg = shape[:min(d, n_frames - start)]
                 clean[start:start + seg.size] -= amplitude * (1 - fusion) * seg
+                peaks.append(start + int(np.argmax(seg)))
             meta.update(n_events_scheduled=len(starts), period=period, fusion=fusion)
 
     else:  # arrhythmic
@@ -614,6 +741,7 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
         else:
             meta['beat_rate_hz'] = 1 / (mean_period * frametime)
             d_mean = _event_frames(duty, mean_period, fracs)
+            probe = twitch_waveform(256, *fracs)
             pos, scheduled = int(rng.integers(0, mean_period)), 0
             while pos < n_frames - 3:
                 # jitter is normalised to mean 1 and the pause budget is taken out of it,
@@ -627,10 +755,16 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                     amp_i = amplitude * (0.6 if scheduled % 2 else 1.0)
                 else:
                     amp_i = amplitude
+                # the floor counts labelled frames, as for regular beats: a twitch of min_d
+                # frames labels as few as half of them, and a smaller beat fewer still
+                if amp_i > 0:
+                    lf = _labelled_fraction(probe, REST_TOL * amplitude / amp_i)
+                    d = max(d, int(round(min_d / lf)))
                 shape = twitch_waveform(d, rise_frac=rise, plateau_frac=plateau,
                                         relax_k=relax_k)
                 seg = shape[:min(d, n_frames - pos)]
                 clean[pos:pos + seg.size] -= amp_i * seg
+                peaks.append(pos + int(np.argmax(seg)))
                 scheduled += 1
                 step = int(round(d / max(duty, 1e-3) * jitter))
                 if rng.random() < 0.08:      # pause
@@ -638,22 +772,24 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
                 pos += max(d, step)
             meta['n_events_scheduled'] = scheduled
 
-    label = _label_from_clean(clean, baseline, amplitude)
+    label = _label_from_clean(clean, baseline, amplitude, peaks, split_hole_frac)
 
     # mirror about the baseline: the excursion changes sign, the ground truth does not
     if polarity == -1:
         clean = 2 * baseline - clean
 
-    # a quiescent trace carries no contraction amplitude to size artefacts against, so
-    # scale them by the noise instead and keep it unambiguously flat
+    # a quiescent trace carries no contraction amplitude to size artefacts against, so the
+    # legacy negatives scale them by the noise instead and keep it unambiguously flat; the
+    # structured ones size them as on a beating trace
     noise_eff = (1.0 / float(snr) if snr is not None
                  else min(noise_rel * (HARSH_MULTIPLIER if extreme else 1.0), 0.35))
-    artefact_amp = amplitude if label.any() else amplitude * noise_eff * 0.5
+    artefact_amp = (amplitude if label.any() or negatives == 'structured'
+                    else amplitude * noise_eff * 0.5)
 
     signal = _apply_nuisances(
         clean, rng, amplitude=amplitude, artefact_amp=artefact_amp,
         **_sample_nuisances(rng, noise_rel=noise_rel, noise_rho=noise_rho,
-                            extreme=extreme, snr=snr))
+                            extreme=extreme, snr=snr, negatives=negatives))
 
     meta['duty_actual'] = float(label.mean())
     return Trace(signal=signal, label=label, clean=clean,
@@ -663,8 +799,15 @@ def simulate_trace(regime: str = 'regular', *, duty: Optional[float] = None,
 #: Sampling weights per regime. ``regular`` dominates because that is what most recordings
 #: look like; ``tonic`` and ``fused`` are over-represented relative to reality because they
 #: are the regimes a duty-coupled detector fails on, and real data cannot supply them.
-REGIME_WEIGHTS = {'regular': 0.31, 'tonic': 0.20, 'fused': 0.18,
-                  'arrhythmic': 0.16, 'quiescent': 0.15}
+REGIME_WEIGHTS = {'regular': 0.28, 'tonic': 0.16, 'fused': 0.15, 'summation': 0.15,
+                  'arrhythmic': 0.14, 'quiescent': 0.12}
+
+#: :data:`REGIME_WEIGHTS` for ``negatives='structured'``: a quarter of the traces quiescent,
+#: the other regimes scaled down in proportion, which gives about 25% all-negative crops
+#: instead of about 10%.
+STRUCTURED_REGIME_WEIGHTS = {
+    **{r: w * 0.75 / 0.88 for r, w in REGIME_WEIGHTS.items() if r != 'quiescent'},
+    'quiescent': 0.25}
 
 
 def simulate_dataset(n: int = 1000, seed: int = 0,
@@ -672,7 +815,8 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
                      noise_rel: float = 0.05, noise_rho: float = 0.5,
                      stratify_duty: bool = True, extreme: bool = False,
                      p_sampled_snr: float = 0.35,
-                     polarity: Optional[int] = None) -> List[Trace]:
+                     polarity: Optional[int] = None, negatives: str = 'legacy',
+                     split_hole_frac: float = 0.0) -> List[Trace]:
     """
     Simulate a dataset stratified over duty cycle and regime.
 
@@ -705,21 +849,33 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
     polarity : int or None, optional
         Fix the excursion direction for every trace. None (the default) mixes both signs
         50/50; ``1`` gives the downward-only set used before polarity invariance.
+    negatives : str, optional
+        One of :data:`NEGATIVES`. Default ``'legacy'``. ``'structured'`` also samples the
+        regimes with :data:`STRUCTURED_REGIME_WEIGHTS`.
+    split_hole_frac : float, optional
+        Passed to :func:`simulate_trace`. Default 0 keeps the one-frame twitch cut.
 
     Returns
     -------
     list of Trace
     """
+    if negatives not in NEGATIVES:
+        raise ValueError(f'negatives must be one of {NEGATIVES}, got {negatives!r}.')
+    weights = STRUCTURED_REGIME_WEIGHTS if negatives == 'structured' else REGIME_WEIGHTS
     rng = np.random.default_rng(seed)
-    allowed = list(REGIME_WEIGHTS) if regimes is None else list(regimes)
+    allowed = list(weights) if regimes is None else list(regimes)
 
     def pick(duty_target):
         # separated beats cannot exceed the duty cap: route to sustained / fused instead
         pool = allowed
         if duty_target is not None and duty_target > SEPARATED_BEAT_DUTY_MAX:
-            high = [r for r in allowed if r in ('tonic', 'fused')]
+            high = [r for r in allowed if r in ('tonic', 'fused', 'summation')]
             pool = high or allowed
-        w = np.array([REGIME_WEIGHTS.get(r, 1.0) for r in pool], dtype=float)
+        elif duty_target is not None and duty_target < 0.6:
+            # overlapping twitches cannot produce a low duty; asking for one would land
+            # it at high duty and skew the stratification
+            pool = [r for r in allowed if r != 'summation'] or allowed
+        w = np.array([weights.get(r, 1.0) for r in pool], dtype=float)
         return str(rng.choice(pool, p=w / w.sum()))
 
     traces = []
@@ -737,7 +893,8 @@ def simulate_dataset(n: int = 1000, seed: int = 0,
                if rng.random() < p_sampled_snr else None)
         traces.append(simulate_trace(regime, duty=duty, rng=rng, noise_rel=noise_rel,
                                      noise_rho=noise_rho, extreme=extreme, snr=snr,
-                                     polarity=polarity))
+                                     polarity=polarity, negatives=negatives,
+                                     split_hole_frac=split_hole_frac))
     return traces
 
 

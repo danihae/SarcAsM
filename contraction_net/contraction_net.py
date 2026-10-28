@@ -5,9 +5,11 @@ import torch.nn.functional as F
 __all__ = ['ContractionNet', 'SymmetrizedContractionNet', 'NORMS',
            'ATTENTION_POSITIONS']
 
-#: Normalisation variants selectable for ablation. Only ``'batch'`` is free of any
-#: statistic pooled over time; the others couple the answer to the duty cycle.
-NORMS = ('batch', 'instance', 'group', 'none')
+#: Normalisation variants. ``'batch'`` (in ``eval()`` mode) and ``'layer'``, which
+#: normalises each frame over its channels, pool no statistic over time, nor does
+#: ``'none'``; ``'instance'`` and ``'group'`` pool over the whole trace and so couple the
+#: answer to the duty cycle.
+NORMS = ('batch', 'layer', 'instance', 'group', 'none')
 
 #: Where a global attention layer may sit relative to the dilated stack. ``'pre'`` gives
 #: the stack an already-contextualised input; ``'post'`` summarises what it produced;
@@ -15,9 +17,18 @@ NORMS = ('batch', 'instance', 'group', 'none')
 ATTENTION_POSITIONS = (False, 'pre', 'mid', 'post', 'both')
 
 
+class _FrameLayerNorm(nn.LayerNorm):
+    """LayerNorm over the channels of each frame, so no statistic spans time."""
+
+    def forward(self, x):
+        return super().forward(x.transpose(1, 2)).transpose(1, 2)
+
+
 def _make_norm(kind, n_filter):
     if kind == 'batch':
         return nn.BatchNorm1d(n_filter)
+    if kind == 'layer':
+        return _FrameLayerNorm(n_filter)
     if kind == 'instance':
         return nn.InstanceNorm1d(n_filter, affine=True)
     if kind == 'group':
@@ -50,12 +61,14 @@ class ContractionNet(nn.Module):
     """
     Dilated temporal convolutional network for contraction detection.
 
-    BatchNorm keeps every normalisation independent of the trace being analysed, so the
-    answer does not depend on how much of a recording is spent contracting; amplitude
-    invariance is handled once in
-    :func:`~contraction_net.prediction.prepare_robust_input`. The dilated residual stack
-    is translation-equivariant and reaches 513 frames of context while its innermost
-    blocks still resolve a few frames.
+    The dilated residual stack is translation-equivariant and reaches 513 frames of context
+    while its innermost blocks still resolve a few frames; amplitude invariance is handled
+    once in :func:`~contraction_net.prediction.prepare_robust_input`. Whether the output at
+    a frame depends on those 513 frames alone is up to the normalisation. A local norm --
+    ``'batch'`` in ``eval()`` mode or ``'layer'`` -- pools no statistic over time, so the
+    answer does not depend on how much of a recording is spent contracting, nor on a
+    stretch far away. ``'group'`` and ``'instance'`` pool over the whole trace, so a long
+    pause shifts the statistics that every frame is normalised by.
 
     Parameters
     ----------
@@ -71,7 +84,7 @@ class ContractionNet(nn.Module):
     dilations : sequence of int, optional
         Dilation per residual block. Default is ``(1, 2, 4, 8, 16, 32, 64)``.
     norm : str, optional
-        One of :data:`NORMS`. Default is ``'batch'``. The others exist for ablation.
+        One of :data:`NORMS`. Default is ``'batch'``.
     attention : bool or str, optional
         Position of a global self-attention layer; one of :data:`ATTENTION_POSITIONS`.
         ``True`` means ``'post'``. Default is False.
@@ -110,7 +123,10 @@ class ContractionNet(nn.Module):
         layer = self.attn if layer is None else layer
         norm = self.attn_norm if norm is None else norm
         t = h.transpose(1, 2)
-        a, _ = layer(t, t, t)
+        # need_weights=False: the weights are discarded anyway, and asking for them makes
+        # PyTorch materialise a length x length matrix per head and sample instead of
+        # running the fused attention kernel -- half the training time of this model
+        a, _ = layer(t, t, t, need_weights=False)
         return norm(a + t).transpose(1, 2)
 
     @property
@@ -134,6 +150,11 @@ class ContractionNet(nn.Module):
         torch.Tensor
             The corresponding logits.
         """
+        logits = self.head(self.features(x))
+        return torch.sigmoid(logits), logits
+
+    def features(self, x):
+        """Trunk output before the head, shape ``(batch, n_filter, length)``."""
         h = F.gelu(self.stem_bn(self.stem(x)))
         pos = self.attn_position
         if pos in ('pre', 'both'):
@@ -147,8 +168,7 @@ class ContractionNet(nn.Module):
             h = self._attend(h)
         elif pos == 'both':
             h = self._attend(h, self.attn2, self.attn_norm2)
-        logits = self.head(h)
-        return torch.sigmoid(logits), logits
+        return h
 
 
 class SymmetrizedContractionNet(nn.Module):

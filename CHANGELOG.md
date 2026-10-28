@@ -34,9 +34,29 @@ All notable changes to SarcAsM are documented here. The format follows
   other Z-band, so the lengths look normal while every trajectory jumps by half a sarcomere. New result
   `structure.sarcomere.stripe_period_ratio`; `sarcomere_vectors.stripe_period`,
   `sarcomere_vectors.pixelsize_plausibility`.
+- ContractionNet training (`contraction_net`): annotated EHT traces as a pool of their own
+  (`ContractionDataset(eht_dir=)`), every beating trace presented rest-high (`rest_high=True`), quiet simulated
+  traces with the drift, steps and outliers of beating ones (`negatives='structured'`), a label cut between
+  overlapping twitches that scales with the twitch (`split_hole_frac=`), loss weights that leave the padding of
+  short traces out, a fixed split file and the final epoch (`Trainer(split=, select='last')`), BCE without Dice
+  (`dice_weight=0`) and a per-frame LayerNorm (`ContractionNet(norm='layer')`).
 
 ### Changed
 
+- `predict_contractions` reads a rest-high (`'q90'`) checkpoint after one polarity decision per trace: a rule stored
+  in the checkpoint (`contraction_net.polarity`, the Bowley skewness of the trace minus its 2-s running median)
+  decides which side of the trace is rest, and the trace is turned rest-high by that sign before the network reads
+  it, so `x` and `-x` give the same output bit for bit. A trace that is flat, shorter than 2 s or too symmetric to
+  decide gets zeros, never the reading of the wrong side, and `return_decision=True` says why; `polarity=+1`
+  declares rest high for a quantity whose sign is known. Pass `frametime=`: the rule's windows are in seconds, and
+  without it 1/30 s is assumed, with a warning. `'symmetric'` checkpoints keep their own path. Inference runs on the
+  CPU, and checkpoints are loaded with `weights_only=True`, so a model file cannot run code.
+- Contraction intervals come from one decoder shared with CardioTrace,
+  `contraction_net.decoding.decode_contractions`: runs of frames above the stored threshold (0.45) that reach the
+  stored confidence peak (0.85) somewhere and last at least a minimum duration (seconds converted with `round()`),
+  with no gap closing, so overlapping twitches stay separate contractions. `recommended_decoding(model)` reads
+  threshold and peak from the checkpoint. `contraction_net.benchmark.postprocess` no longer closes 1-frame gaps
+  unless asked.
 - New default 2D sarcomere model, `generalist` = `model_sarcomeres_generalist_v2.pt` (v1 fine-tuned on simulated
   myofibrils with exact labels and on orientation labels along the myofibril axis). On the detection benchmark of
   Supplementary Note 2, F1 0.80 → 0.83 (10 of 10 images better) and length error vs manual 68 → 64 nm; thin
