@@ -177,6 +177,7 @@ class MotionAnalysisControl:
             min_track_duration_s=_pv(m, 'motion.track.min_duration_s'),
             max_gap_interpolation_s=float(_pv(m, 'motion.track.max_gap_interp_s')),
             motion_predictor='flow' if bool(_pv(m, 'motion.track.flow_predictor')) else 'none',
+            refine_lengths=bool(_pv(m, 'motion.track.refine_lengths')),
             progress_notifier=pn)
 
     def on_btn_track_vectors(self):
@@ -569,6 +570,7 @@ class MotionAnalysisControl:
         p('motion.track.min_duration_s').connect(w.dsb_track_min_duration_s)
         p('motion.track.max_gap_interp_s').connect(w.dsb_track_max_gap_interp_s)
         p('motion.track.flow_predictor').connect(w.chk_track_flow_predictor)
+        p('motion.track.refine_lengths').connect(w.chk_track_refine_lengths)
         # group
         p('motion.group.by').connect(w.cb_group_by)
         p('motion.group.reference_frame').connect(w.sb_group_reference_frame)

@@ -162,6 +162,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='motion.track.min_duration_s').set_value(0.08)
         self.__parameters.get_parameter(name='motion.track.max_gap_interp_s').set_value(0.05)
         self.__parameters.get_parameter(name='motion.track.flow_predictor').set_value(False)
+        self.__parameters.get_parameter(name='motion.track.refine_lengths').set_value(True)
 
         # Group tracks
         self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
@@ -287,6 +288,7 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='motion.track.min_duration_s')
         self.__parameters.set_parameter(name='motion.track.max_gap_interp_s')
         self.__parameters.set_parameter(name='motion.track.flow_predictor')
+        self.__parameters.set_parameter(name='motion.track.refine_lengths')
 
         self.__parameters.set_parameter(name='motion.group.by')
         self.__parameters.set_parameter(name='motion.group.reference_frame')

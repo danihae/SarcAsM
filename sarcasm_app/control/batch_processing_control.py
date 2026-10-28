@@ -449,6 +449,7 @@ class BatchProcessingControl:
             min_track_duration_s=_p('motion.track.min_duration_s'),
             max_gap_interpolation_s=float(_p('motion.track.max_gap_interp_s')),
             motion_predictor='flow' if bool(_p('motion.track.flow_predictor')) else 'none',
+            refine_lengths=bool(_p('motion.track.refine_lengths')),
             progress_notifier=progress_notifier)
 
         if by == 'loi':

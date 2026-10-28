@@ -454,6 +454,7 @@ class TestBatchProcessingParameters:
             assert sarc.analyze_sarcomere_vectors.call_args.kwargs['frames'] == 'all'
         assert sarc.analyze_myofibrils.call_args.kwargs['frames'] == [0]       # no myofibrils at frame 0 yet
         sarc.track_sarcomere_vectors.assert_called_once()
+        assert sarc.track_sarcomere_vectors.call_args.kwargs['refine_lengths'] is True
         sarc.group_tracks.assert_called_once()
         sarc.analyze_track_motion.assert_called_once()
         sarc.commit.assert_called_once()

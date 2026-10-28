@@ -173,6 +173,19 @@
        </widget>
       </item>
       <item row="6" column="0" colspan="2">
+       <widget class="QCheckBox" name="chk_track_refine_lengths">
+        <property name="toolTip">
+         <string>&lt;p&gt;After tracking, gives each track one sarcomere axis (the median of its detected orientations) and measures its length again along that axis in every frame; the track's position moves to the midpoint between its two Z-bands. Where Z-bands tilt during a contraction (neighbouring myofibrils shortening by different amounts), the spacing normal to them is shorter than along the sarcomere, so without this step shortening is overstated (about 10 % on a 61 frames/s movie) and lengths are noisier from frame to frame. Costs about 0.1 s per frame. Turn it off only for a quick first look. Default on.&lt;/p&gt;</string>
+        </property>
+        <property name="text">
+         <string>Refine lengths along each track's sarcomere axis</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0" colspan="2">
        <widget class="QPushButton" name="btn_track_vectors">
         <property name="toolTip">
          <string>&lt;p&gt;Step 1. Links the sarcomere vectors from the Structure tab from frame to frame, so each tracked point gets its position, length and orientation over time. Needs a movie and sarcomere vectors in consecutive frames; if the structure analysis covered only part of the movie, you are asked whether to track just those frames. Replaces earlier tracks, so steps 2 and 3 must be run again. Shows the tracked sarcomeres as dots in the viewer. Takes seconds to minutes, depending on movie length and image size.&lt;/p&gt;</string>
