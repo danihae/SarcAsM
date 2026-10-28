@@ -179,6 +179,10 @@ class Application:
         self.__palette.setColor(QPalette.Link, QColor(42, 130, 218))
         self.__palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
         self.__palette.setColor(QPalette.HighlightedText, Qt.black)
+        # the colours above apply to every state: give disabled widgets grey text and a flat field
+        for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
+            self.__palette.setColor(QPalette.Disabled, role, QColor(115, 115, 115))
+        self.__palette.setColor(QPalette.Disabled, QPalette.Base, QColor(45, 45, 45))
         self.__app.setPalette(self.__palette)
         self.__app.setStyleSheet(_APP_STYLESHEET)
 
