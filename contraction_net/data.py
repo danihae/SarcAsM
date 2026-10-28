@@ -75,6 +75,8 @@ class ContractionDataset(Dataset):
     ----------
     source_dir : str or None, optional
         Directory of annotated ``.txt`` traces (``<name>.txt`` with ``<name>_contr.txt``).
+        Independent annotations of one trace are ``<name>_annotator<k>.txt``, numbered per
+        annotator, and stay in one group.
     eht_dir : str or None, optional
         Directory of annotated engineered-heart-tissue pole traces, one sub-directory per
         plate, each trace as ``<recording>_<i>.txt`` with ``<recording>_<i>_contraction.txt``
@@ -332,8 +334,8 @@ class ContractionDataset(Dataset):
         """Source recording a trace belongs to.
 
         Traces are named ``<recording>_slen_<i>`` / ``<recording>_z_pos_<i>``, so dozens of
-        near-identical rows share one recording. Prefixes marking a derived view and
-        suffixes naming the annotator are stripped too: those are different views or
+        near-identical rows share one recording. Prefixes marking a derived view and an
+        ``_annotator<k>`` suffix are stripped too: those are different views or
         independent annotations of the same cell.
         """
         name = os.path.basename(path)[:-4]
@@ -343,7 +345,7 @@ class ContractionDataset(Dataset):
         for marker in ('_slen_', '_z_pos_'):
             if marker in name:
                 return name.split(marker)[0]
-        name = re.sub(r'_(daniel|lara)$', '', name)
+        name = re.sub(r'_annotator\d+$', '', name)
         return re.sub(r'_\d+$', '', name)
 
     def __len__(self):

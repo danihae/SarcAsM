@@ -26,7 +26,7 @@ from contraction_net.augment import AugmentConfig, augment, time_warp, twitch_sc
 from contraction_net.contraction_net import ContractionNet, SymmetrizedContractionNet
 from contraction_net.benchmark import (boundary_report, model_predictor, model_predictor_full,
                                        polarity_cost_probe, polarity_invariance_report)
-from contraction_net.data import ContractionDataset
+from contraction_net.data import EHT_TEST_GROUPS, ContractionDataset
 from contraction_net.decoding import decode_contractions, recommended_decoding
 from contraction_net.losses import MaskBoundaryLoss, iou_at_thresholds
 from contraction_net.polarity import PolarityRule
@@ -37,7 +37,7 @@ from contraction_net.prediction import (INPUT_CONVENTIONS, _load_model, polarity
 from contraction_net.simulation import (SNR_RANGE, _ar1, make_stress_set, renoise,
                                         simulate_dataset,
                                         simulate_trace)
-from tests.test_polarity import edge_cases, regression_set, twitch_trains
+from tests.test_polarity import EHT_DIR, edge_cases, regression_set, twitch_trains
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The bundled checkpoint: a rest-high 'q90' ContractionNet with GroupNorm, which stores its
@@ -397,6 +397,20 @@ class TestDatasetAndTrainer:
             assert not ({groups[i] for i in a} & {groups[i] for i in b})
         # both pools must reach the held-out side, or it measures only the larger one
         assert {pools[i] for i in val} | {pools[i] for i in cal} == {'sim', 'drug'}
+
+    def test_annotations_of_one_trace_share_a_group(self):
+        group = ContractionDataset._group_of
+        assert group('d/wavelet_rec_Series052_annotator1.txt') == 'rec_Series052'
+        assert group('d/line_rec_Series052_annotator2.txt') == 'rec_Series052'
+        assert group('d/rec_3.txt') == 'rec'
+
+    def test_held_out_eht_recordings_are_on_disk(self):
+        """The default ``eht_exclude`` matches folder names: a renamed folder would put its
+        recordings back into training without a word."""
+        if not os.path.isdir(EHT_DIR):
+            pytest.skip(f'{EHT_DIR} not present')
+        groups = {g for _, _, g in ContractionDataset.load_eht(EHT_DIR)}
+        assert set(EHT_TEST_GROUPS) <= groups
 
     def test_iou_at_thresholds_is_monotone_for_a_confident_model(self):
         logits = torch.full((2, 3, 100), -5.0)
