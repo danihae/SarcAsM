@@ -32,14 +32,10 @@ logger = logging.getLogger(__name__)
 # The two are not interchangeable within one study (different cell-mask bias);
 # see sarcasm/models/README.md.
 GENERALIST_MODELS = {
-    'generalist':    ('model_sarcomeres_generalist_v2.pt', (0.08, 0.45)),
+    'generalist':    ('model_sarcomeres_generalist_v2.pt', (0.06, 0.45)),
     'generalist_v1': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
     'legacy':        ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
 }
-#: Below this pixel size (µm) 'auto' picks 'legacy': the generalists' scale augmentation only ever
-#: downscales into 0.08-0.45 µm/px, so it has never seen high-magnification frames at
-#: native resolution and fragments their Z-/M-band lines, while 'legacy' was trained on them.
-AUTO_LEGACY_BELOW_UM = 0.08
 
 # Named 3D Z-band checkpoints for high-speed movies: alias -> filename; see sarcasm/models/README.md.
 Z_BANDS_3D_MODELS = {
@@ -52,14 +48,12 @@ def resolve_generalist_model(model_path, pixelsize, model_dir):
     """Resolve ``model_path`` (None / 'auto' / an alias / a file path) to a checkpoint.
 
     Returns ``(key, path)`` with ``key`` the alias when a bundled model from
-    ``model_dir`` is used (``None`` for a custom file). ``'auto'`` (and None)
-    choose by pixel size.
+    ``model_dir`` is used (``None`` for a custom file). None and ``'auto'`` (kept for parameter files
+    of earlier versions, which picked ``'legacy'`` below 0.08 µm/px) mean ``'generalist'`` at every
+    pixel size. ``pixelsize`` is not used.
     """
     if model_path is None or model_path == 'auto':
-        if pixelsize is not None and pixelsize < AUTO_LEGACY_BELOW_UM:
-            key = 'legacy'
-        else:
-            key = 'generalist'
+        key = 'generalist'
     elif model_path in GENERALIST_MODELS:
         key = model_path
     else:

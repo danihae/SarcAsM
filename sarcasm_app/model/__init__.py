@@ -93,7 +93,7 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='file.load.correct_phase').set_value(False)
 
     def _set_defaults_structure(self):
-        self.__parameters.get_parameter(name='structure.predict.network_path').set_value('auto')
+        self.__parameters.get_parameter(name='structure.predict.network_path').set_value('generalist')
         self.__parameters.get_parameter(name='structure.predict.rescale_factor').set_value(1.0)
         # Auto: the patch size follows the device memory and the model, so an image
         # that fits into one patch is not split. The manual sizes below are the

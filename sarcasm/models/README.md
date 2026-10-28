@@ -2,23 +2,23 @@
 
 | alias | file | validated pixel size | notes |
 |---|---|---|---|
-| `generalist` | `model_sarcomeres_generalist_v2.pt` | 0.08–0.45 µm | v1 fine-tuned on simulated myofibrils and myofibril-axis orientation labels |
+| `generalist` | `model_sarcomeres_generalist_v2.pt` | 0.06–0.45 µm | v1 fine-tuned on simulated myofibrils and myofibril-axis orientation labels |
 | `generalist_v1` | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0 beta releases) |
 | `legacy` | `model_sarcomeres_generalist.pt` | 0.06–0.35 µm | pre-v1.0.0; trained on high-magnification data at native resolution |
 
-The default, `model_path='auto'`, picks by pixel size: **`legacy` below 0.08 µm/px**
-(high-magnification, e.g. the high-speed single-cell movies), `generalist` otherwise.
-The generalists' scale augmentation only ever downscales into 0.08–0.45 µm/px, so it never saw
-high-magnification frames at native resolution; on the 0.061 µm/px 20 kPa movie it
-fragments the Z- and M-band lines and returns 28 % fewer sarcomere vectors than `legacy`
-(3119 vs 4340 on frame 0), and rescaling it into its range (`rescale_factor=0.33`)
-recovers only part of that (4036) at the cost of Z-band localisation precision.
+The default is `generalist` (v2) at every pixel size (`model_path=None` or `'auto'`).
+Earlier versions, including the 1.0.0 betas, picked `legacy` below 0.08 µm/px (high magnification, e.g. the high-speed
+single-cell movies), because v1 fragmented the Z- and M-band lines there: on the 0.061 µm/px
+20 kPa movie it returns 26 % fewer sarcomere vectors than `legacy`. v2 closes most of that gap
+(frames 0 and 250: 4074 and 4160 vectors vs 4443 and 4576 for `legacy`, median length
++0.02 µm), so it is the default there too. Set `model_path='legacy'` to reproduce
+high-magnification results of earlier versions, including the paper's high-speed movies.
 
 ```python
-sarc.detect_sarcomeres(frames=0)                          # 'auto': by pixel size
+sarc.detect_sarcomeres(frames=0)                          # generalist (v2)
 sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v2
 sarc.detect_sarcomeres(frames=0, model_path='generalist_v1')  # reproduce results of the v1.0.0 betas
-sarc.detect_sarcomeres(frames=0, model_path='legacy')      # force the pre-v1.0.0 model
+sarc.detect_sarcomeres(frames=0, model_path='legacy')      # the first model (earlier default below 0.08 µm/px)
 ```
 
 The resolved alias is stored as `params.detect_sarcomeres.model_path`.
@@ -51,8 +51,8 @@ direction in which SarcAsM's line growth stays on its M-band chain longest. The 
 | orientation vs line-continuity label, 25 validation images | 9.3° | 8.7° |
 
 Orientation errors are taken only where both models call sarcomere, so mask size does not leak into them.
-v2 does not replace `legacy` at high magnification: on the 0.061 µm/px benchmark image F1 is 0.89
-(`legacy`), 0.83 (v2), 0.77 (v1), so `'auto'` still picks `legacy` below 0.08 µm/px.
+At high magnification `legacy` still scores higher on the 0.061 µm/px benchmark image (F1 0.89 vs 0.83 for v2
+and 0.77 for v1); v2 is the default there anyway, so that one model serves all data.
 
 **Known limitation: sarcomere precursors.** In immature or noisy cells v2 puts more Z-bands, sarcomere vectors
 and sarcomere area on precursors (isolated α-actinin puncta, dense speckle) than v1, which marks some of them

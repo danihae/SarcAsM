@@ -67,7 +67,7 @@
         <item>
          <widget class="QLineEdit" name="le_network">
           <property name="toolTip">
-           <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (the previous generalist model) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+           <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'generalist_v1' (the previous generalist model) or 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>auto</string>
@@ -87,7 +87,7 @@
         <item>
          <widget class="QLabel" name="label_43">
           <property name="toolTip">
-           <string>&lt;p&gt;Scales each image in x and y before the 2D U-Net and scales the predicted maps back afterwards (0.5 halves the resolution). Only meant to bring a pixel size the models were not trained for into their range (generalist 0.08–0.45 µm/px, legacy 0.06–0.35 µm/px); the log warns when the pixel size lies outside. Not a speed setting: the resampling costs Z-band localisation precision. Default 1.0 (off). Not used by the 3D U-Net.&lt;/p&gt;</string>
+           <string>&lt;p&gt;Scales each image in x and y before the 2D U-Net and scales the predicted maps back afterwards (0.5 halves the resolution). Only meant to bring a pixel size the models were not trained for into their range (generalist 0.06–0.45 µm/px, legacy 0.06–0.35 µm/px); the log warns when the pixel size lies outside. Not a speed setting: the resampling costs Z-band localisation precision. Default 1.0 (off). Not used by the 3D U-Net.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>Rescale factor</string>
@@ -97,7 +97,7 @@
         <item>
          <widget class="QDoubleSpinBox" name="dsb_predict_rescale_factor">
           <property name="toolTip">
-           <string>&lt;p&gt;Scales each image in x and y before the 2D U-Net and scales the predicted maps back afterwards (0.5 halves the resolution). Only meant to bring a pixel size the models were not trained for into their range (generalist 0.08–0.45 µm/px, legacy 0.06–0.35 µm/px); the log warns when the pixel size lies outside. Not a speed setting: the resampling costs Z-band localisation precision. Default 1.0 (off). Not used by the 3D U-Net.&lt;/p&gt;</string>
+           <string>&lt;p&gt;Scales each image in x and y before the 2D U-Net and scales the predicted maps back afterwards (0.5 halves the resolution). Only meant to bring a pixel size the models were not trained for into their range (generalist 0.06–0.45 µm/px, legacy 0.06–0.35 µm/px); the log warns when the pixel size lies outside. Not a speed setting: the resampling costs Z-band localisation precision. Default 1.0 (off). Not used by the 3D U-Net.&lt;/p&gt;</string>
           </property>
           <property name="minimum">
            <double>0.100000000000000</double>
@@ -495,7 +495,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>&lt;p&gt;2D U-Net used in step 1. 'auto' (default) picks a bundled model by pixel size: 'legacy' below 0.08 µm/px (high magnification, e.g. high-speed single-cell movies), the newer 'generalist' otherwise. Type 'generalist', 'generalist_v1' (the previous generalist model) or 'legacy' to force one, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+         <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'generalist_v1' (the previous generalist model) or 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Network model</string>

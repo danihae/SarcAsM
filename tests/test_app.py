@@ -94,7 +94,7 @@ class TestParameters:
         params = model.parameters
         
         # Check some default values from set_to_default
-        assert params.get_parameter('structure.predict.network_path').get_value() == 'auto'
+        assert params.get_parameter('structure.predict.network_path').get_value() == 'generalist'
         assert params.get_parameter('structure.predict.rescale_factor').get_value() == 1.0
         assert params.get_parameter('structure.predict.size_width').get_value() == 1024
         assert params.get_parameter('structure.predict.size_height').get_value() == 1024

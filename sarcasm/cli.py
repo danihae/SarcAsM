@@ -277,7 +277,7 @@ def _add_run_args(p: argparse.ArgumentParser) -> None:
     p.add_argument('--frames', type=parse_frames, default='all',
                    help="'all' (default), one frame '3', a list '0,4,9' or a range '0:100' (end exclusive).")
     p.add_argument('--model', default=None,
-                   help="U-Net: 'generalist', 'generalist_v1', 'legacy' or a weights path. Default: chosen by pixel size.")
+                   help="U-Net: 'generalist', 'generalist_v1', 'legacy' or a weights path. Default: generalist.")
     p.add_argument('--restart', action='store_true',
                    help='Delete previous results for this file before running.')
 

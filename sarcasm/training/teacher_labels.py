@@ -48,7 +48,8 @@ TARGET = 'zbands_fast_movie'   # folder / head name the 3D U-Net is trained on
 def zbands_2d(movie: np.ndarray, pixelsize: float, model: str = 'auto') -> np.ndarray:
     """Per-frame Z-band probability from the 2D U-Net, (T, H, W) float32.
 
-    ``model='auto'`` picks the bundled 2D model by pixel size, as ``detect_sarcomeres`` does.
+    ``model='auto'`` uses the bundled 2D ``'generalist'``, as ``detect_sarcomeres`` does; the shipped 3D v2
+    model was trained on teacher labels from ``'legacy'`` below 0.08 µm/px.
     """
     out = detect_sarcomeres_unet(movie, model_path=model, model_dir=MODEL_DIR, pixelsize=pixelsize,
                                  progress_notifier=ProgressNotifier.silent_notifier())

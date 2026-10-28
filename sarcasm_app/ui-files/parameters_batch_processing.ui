@@ -93,7 +93,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths and the 'auto' network choice (legacy model below 0.08 µm/px) depend on it. Default 0.1 µm.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths depend on it. Default 0.1 µm.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Pixel size [µm]</string>
@@ -103,7 +103,7 @@
       <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="dsb_pixel_size">
         <property name="toolTip">
-         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths and the 'auto' network choice (legacy model below 0.08 µm/px) depend on it. Default 0.1 µm.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Edge length of one image pixel, in µm per pixel. Used only with 'Override for all files': it then replaces the pixel size of every image in the batch and is saved in each image's .ome.zarr store. With 'Use file metadata' this field is ignored, and a file without its own pixel size fails (it is listed at the end). All lengths depend on it. Default 0.1 µm.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>6</number>

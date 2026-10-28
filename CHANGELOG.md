@@ -43,7 +43,9 @@ All notable changes to SarcAsM are documented here. The format follows
   simulated myofibrils found 18 % → 48 %; orientation on sheared myofibrils follows the myofibril, not the Z-band
   normal (9.1° → 7.5° from the known axis on held-out micropatterns). Its sarcomere mask is ~10 % larger and its
   length spread wider, so do not mix it with v1 within one study: `model_path='generalist_v1'` reproduces the
-  v1.0.0 betas. `'auto'` still picks `legacy` below 0.08 µm/px. Known limitation: in immature or noisy cells it
+  v1.0.0 betas. It is now the default at every pixel size: `'auto'` no longer picks `legacy` below 0.08 µm/px
+  (high-speed single-cell movies). There v2 finds 8–9 % fewer sarcomere vectors than `legacy` and a 0.02 µm longer
+  median length on the 20 kPa movie; set `model_path='legacy'` to reproduce earlier results. Known limitation: in immature or noisy cells it
   marks more sarcomere precursors than v1 (more vectors, `sarcomere_area_ratio` up to ~35 % higher on a 12-day
   time course; sarcomere length unchanged within 0.025 µm). Numbers in `sarcasm/models/README.md`.
 - New default 3D Z-band model for high-speed movies, `generalist` = `model_z_bands_unet3d_v2.pt`, trained on
