@@ -216,18 +216,16 @@ within 5 frames of either end) unless noted:
 | real pole-distance plate, 36 clear wells: beat-count deviations from a consensus of 1116 beats, summed | 67.5 | **9.5** |
 | real non-beating wells of pole-distance plates (76): false contractions | 0 | 0 (7 with rest declared high) |
 | synthetic quiet traces (920, read at both signs): false contractions per reading, rest declared high / polarity rule | 0.91 / 0.91 | **0.37 / 0.07** |
-| drug-panel cells, quiescent (7): false contractions | 15 (in 4 cells) | 18 (in 3 cells) |
-| — beating (87): contraction IoU / beats found | 0.885 / 0.994 | 0.885 / 0.999 |
+| drug-panel cells, quiescent (7): false contractions | 0 | 0 |
+| — beating (87): contraction IoU / beats found | 0.889 / 0.995 | 0.884 / 0.987 |
 
 The cells were read as `Motion.predict_contractions` reads an LOI, with SarcAsM's decoder
 settings (contractions of 0.2 s or more, those at the ends kept): Z-band rows oriented by the
-polarity rule at margin 0, sarcomere-length rows declared rest-high, and the larger of the two
-channel means as the cell's probability. The mean of the two makes no false contraction in these
-quiescent cells but misses contractions that only the Z-band rows show, because the lengths of
-single sarcomeres are buried in noise in a weak contraction. On 50 hand-annotated LOIs, most from
-wells used in training, the larger finds 903 of 1017 contractions with 1 false one, the mean 610
-with none (the 1.0.0 betas as released: 957 with 8). A contraction that stays below the 0.85 peak
-in both channels is missed, as in some cells under 1 µM Mavacamten.
+polarity rule at margin 0, sarcomere-length rows declared rest-high, and the mean of the two
+channel means as the cell's probability. The larger of the two would find 1658 beats with this
+model (betas: 1650) but 18 false contractions in 3 quiescent cells (betas: 15 in 4). A weak
+contraction can be missed, because the lengths of single sarcomeres are buried in noise and can
+dilute a clear Z-band channel below the 0.85 peak, as in some cells under 1 µM Mavacamten.
 
 **Known limitation: quiet stretches next to beats.** Because GroupNorm pools over the whole
 trace, a long quiet stretch is read differently next to beats than on its own. On 36 quiet

@@ -833,8 +833,8 @@ class TestLegacyConventions:
 
 class TestLoiChannelCombination:
     """``Motion.predict_contractions`` averages the Z-band and the length traces separately and
-    decodes the larger of the two channel means, so a channel of pure noise cannot dilute a clear
-    one. Traces without data and traces left undecided are dropped, not read as zeros."""
+    decodes the mean of the two channel means. Traces without data and traces left undecided are
+    dropped, not read as zeros."""
 
     T = 60
     STATE = np.r_[np.zeros(20), np.ones(20), np.zeros(20)]
@@ -864,21 +864,20 @@ class TestLoiChannelCombination:
         return Motion.predict_contractions(z_pos, slen, 'unused.pt', threshold=threshold, peak=peak,
                                            frametime=0.05, **kwargs)
 
-    def test_weak_length_channel_does_not_dilute_zband_channel(self, monkeypatch):
-        # Z-band traces carry the contraction (0.875), length traces only noise (0.1): the mean of
-        # the two channel means (0.49) would never reach the peak
-        self._fake_net(monkeypatch, lambda d: 0.875 * self.STATE if d[0] > 5 else np.full(d.size, 0.1))
+    def test_both_channels_contracting_make_the_cell_contract(self, monkeypatch):
+        # Z-band channel 0.875, length channel 0.625: their mean of 0.75 passes threshold and peak
+        self._fake_net(monkeypatch, lambda d: (0.875 if d[0] > 5 else 0.625) * self.STATE)
         contr, _ = self._predict(np.full((3, self.T), 10.0), np.full((3, self.T), 1.8), threshold=0.45,
-                                 peak=0.85)
+                                 peak=0.7)
         np.testing.assert_array_equal(contr, self.STATE.astype(bool))
 
-    def test_either_channel_alone_makes_the_cell_contract(self, monkeypatch):
-        # the larger channel mean is a per-frame union, so the cost is that a false contraction of
-        # one channel reaches the cell: here the length traces fire while the Z-band traces are quiet
+    def test_one_channel_alone_does_not_make_the_cell_contract(self, monkeypatch):
+        # the length traces fire (0.875) while the Z-band traces are quiet (0.125): their mean of
+        # 0.5 never reaches the peak, so a false contraction of one channel does not reach the cell
         self._fake_net(monkeypatch, lambda d: np.full(d.size, 0.125) if d[0] > 5 else 0.875 * self.STATE)
-        contr, _ = self._predict(np.full((3, self.T), 10.0), np.full((3, self.T), 1.8), threshold=0.6,
+        contr, _ = self._predict(np.full((3, self.T), 10.0), np.full((3, self.T), 1.8), threshold=0.45,
                                  peak=0.85)
-        np.testing.assert_array_equal(contr, self.STATE.astype(bool))
+        assert not contr.any()
 
     def test_quiescent_channels_stay_quiescent(self, monkeypatch):
         self._fake_net(monkeypatch, lambda d: np.full(d.size, 0.2))
@@ -887,14 +886,13 @@ class TestLoiChannelCombination:
 
     def test_undecided_and_all_nan_traces_are_dropped(self, monkeypatch):
         calls = []
-        # the third Z-band trace is undecided: its zeros would pull the Z-band mean down to 0.58,
-        # below the threshold of 0.75 and the length channel's 0.5; the second length trace has
-        # no data and is never read
+        # the third Z-band trace is undecided and the second length trace has no data: dropped,
+        # the cell reads (0.875 + 0.5) / 2 = 0.69; read as zeros, they would pull it below 0.6
         self._fake_net(monkeypatch, lambda d: (0.875 if d[0] > 5 else 0.5) * self.STATE,
                        sign_of=lambda d: 0 if d[0] > 15 else 1, calls=calls)
         z_pos = np.r_[np.full((2, self.T), 10.0), np.full((1, self.T), 20.0)]
         slen = np.r_[np.full((1, self.T), 1.8), np.full((1, self.T), np.nan)]
-        contr, info = self._predict(z_pos, slen, threshold=0.75, peak=0.85)
+        contr, info = self._predict(z_pos, slen, threshold=0.6, peak=0.65)
         np.testing.assert_array_equal(contr, self.STATE.astype(bool))
         # lengths are declared rest-high, the Z-band traces decided at margin 0
         assert len(calls) == 4 and not any(np.isnan(d).any() for d, _, _ in calls)
@@ -990,15 +988,16 @@ class TestLoiReading:
             assert np.array_equal(got_info['polarity_sign_z_pos'], flip * info['polarity_sign_z_pos'])
             assert np.array_equal(got_info['polarity_sign_slen'], info['polarity_sign_slen'])
 
-    def test_a_contraction_only_the_z_bands_show(self):
-        # the length traces alone find nothing here; the larger channel mean takes the Z-band one
+    def test_a_contraction_only_the_z_bands_show_is_missed(self):
+        # the known cost of the mean: the Z-band traces alone find every twitch, the length
+        # traces nothing, and the length channel dilutes the cell below the peak
         from scipy.ndimage import label
         from sarcasm.motion import Motion
         z_pos, slen, contracted = _weak_loi()
+        z_bands, _ = Motion.predict_contractions(z_pos, slen[:0], SHIPPED_MODEL, frametime=1 / 30)
         contr, _ = Motion.predict_contractions(z_pos, slen, SHIPPED_MODEL, frametime=1 / 30)
-        lengths, _ = Motion.predict_contractions(z_pos[:0], slen, SHIPPED_MODEL, frametime=1 / 30)
-        assert label(contr)[1] == 20 and np.mean(contr == contracted) > 0.85
-        assert not lengths.any()
+        assert label(z_bands)[1] == 20 and np.mean(z_bands == contracted) > 0.85
+        assert not contr.any()
 
     def test_a_symmetric_checkpoint_is_read_without_a_declared_polarity(self, tmp_path):
         # such a checkpoint refuses a declared polarity; it must still be read, by path

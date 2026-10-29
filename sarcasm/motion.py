@@ -730,21 +730,20 @@ class Motion(SarcAsMBase):
         leaves the result unchanged. Traces without a finite value and traces left undecided
         (flat, too short, or a polarity score of exactly 0) are dropped. The probability is
         averaged over the remaining traces of each channel, and the cell probability is the
-        larger of the two channel means at each frame, so a channel of noise cannot dilute a
-        clear one. :func:`contraction_net.decoding.decode_contractions` turns it into
-        contractions: runs of frames above ``threshold`` that reach ``peak`` and last at least
-        ``contr_time_min``. No gap is closed, and runs at either end are kept.
+        mean of the two channel means at each frame.
+        :func:`contraction_net.decoding.decode_contractions` turns it into contractions: runs
+        of frames above ``threshold`` that reach ``peak`` and last at least ``contr_time_min``.
+        No gap is closed, and runs at either end are kept.
 
-        The larger channel mean is taken rather than the mean of the two because in a weak
-        contraction a single sarcomere shortens by a few nanometres, which its noise hides,
-        while a Z-band moves by the summed shortening of the sarcomeres between it and the
-        still point of the line. The length channel then stays near 0.5 while the Z-band
-        channel reaches 1, and their mean never reaches ``peak``. On 50 hand-annotated LOIs
-        (1017 contractions) the larger finds 903 contractions and the mean 610, with 1 and 0
-        false ones. The cost is that the false contractions of both channels add up: on 6
-        quiescent cells of drug-panel wells held out from training, the larger finds 7 false
-        contractions, all in one cell, and the mean none. A contraction whose Z-band channel
-        never reaches ``peak``, as in some cells under 1 µM Mavacamten, is not detected.
+        The mean is taken rather than the larger of the two channel means because the larger
+        adds up the false contractions of both channels. On track chains of held-out drug-panel
+        cells, read as :meth:`~sarcasm.structure.SarcAsM.get_track_motion` reads them, the
+        mean finds 1639 of 1660 beats and no false contraction in 7 quiescent cells; the larger
+        finds 1658 beats and 18 false contractions in 3 of the quiescent cells. The cost is that
+        a weak contraction can be missed: a single sarcomere shortens by a few nanometres,
+        which its noise hides, while a Z-band moves by the summed shortening of the sarcomeres
+        between it and the still point of the line, so the length channel can dilute a clear
+        Z-band channel below ``peak``, as in some cells under 1 µM Mavacamten.
 
         Parameters
         ----------
@@ -819,7 +818,7 @@ class Motion(SarcAsMBase):
         polarity['polarity_n_slen_disagree'] = int(n_disagree)
         polarity['polarity_no_decided_rows'] = not channel_means
 
-        prob = (np.max(channel_means, axis=0) if channel_means
+        prob = (np.mean(channel_means, axis=0) if channel_means
                 else np.zeros(np.shape(z_pos)[-1], dtype=np.float32))
         if exclude is not None:
             prob = np.where(exclude, 0, prob)

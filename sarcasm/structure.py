@@ -2627,11 +2627,11 @@ class SarcAsM(SarcAsMBase):
         """Return a :class:`~sarcasm.motion.Motion` view of one myofibril (fibre).
 
         The fibre's member tracks (ordered head-to-tail by ``track_group_order``)
-        are turned into a synthesized LOI (``z_pos`` = cumulative arc-length of the
-        member sarcomere lengths) and wrapped in a ``Motion`` object, so the full
-        LOI analysis and **every LOI plot** (``plot_z_pos``, ``plot_delta_slen``,
-        ``plot_phase_space``, ``plot_popping_events``, …) apply to tracker-derived
-        fibres. Requires a ``'myofibril'`` or
+        are turned into a synthesized LOI (``z_pos`` = the edges of the member
+        sarcomeres, from their tracked positions along the fibre) and wrapped in a
+        ``Motion`` object, so the full LOI analysis and **every LOI plot**
+        (``plot_z_pos``, ``plot_delta_slen``, ``plot_phase_space``,
+        ``plot_popping_events``, …) apply to tracker-derived fibres. Requires a ``'myofibril'`` or
         ``'loi'`` grouping (:meth:`group_tracks` / :meth:`analyze_track_motion`
         with ``by='myofibril'`` or ``by='loi'``).
 

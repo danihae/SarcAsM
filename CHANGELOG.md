@@ -48,8 +48,8 @@ All notable changes to SarcAsM are documented here. The format follows
   at its stored threshold of 0.45 and confidence peak of 0.85. On held-out simulated pole-distance plates the beat
   count is within ±1 in 94 % of wells (was 76 %), including 16 of 16 high-duty wells (was 3); synthetic quiet traces
   get 0.07 false contractions per trace (was 0.91); non-beating wells stay at 0; on cells of held-out drug-panel
-  wells 1658 of 1660 beats are found (was 1650) at a contraction IoU of 0.885 (unchanged), and 3 of 7 quiescent
-  cells get false contractions (was 4). Known limitation: GroupNorm pools
+  wells, read as LOIs, 1639 of 1660 beats are found (was 1652) at a contraction IoU of 0.884 (was 0.889), and
+  none of 7 quiescent cells gets a false contraction (unchanged). Known limitation: GroupNorm pools
   over the whole trace, so a long quiet stretch next to beats can get false contractions. Numbers in
   `sarcasm/models/README.md`.
 - `predict_contractions` reads a rest-high (`'q90'`) checkpoint after one polarity decision per trace: a rule stored
@@ -80,14 +80,14 @@ All notable changes to SarcAsM are documented here. The format follows
   length trace, the traces left out, the length traces that dwell at their short side). `Motion.predict_contractions`
   returns the contraction state with these polarity decisions and takes `frametime`, `peak`, `contr_time_min` and
   `exclude`.
-- LOI contraction detection (`Motion.predict_contractions`) still decodes the larger of the Z-band and the
-  sarcomere-length channel means (1.0.0b3). Traces without data and traces whose polarity the rule leaves undecided
-  are left out of their channel mean; an all-NaN trace used to be read as a flat trace of zeros. The larger is kept,
-  rather than the mean of the two, because in a weak contraction the length of a single sarcomere is buried in
-  noise, while a Z-band position adds up the shortening of the sarcomeres in between: on 50 hand-annotated LOIs the
-  larger finds 903 of 1017 contractions and the mean 610. Its cost is that the false contractions of both channels
-  add up (18 in 3 of 7 quiescent drug-panel cells, where the mean has none). Known limitation: a contraction that
-  stays below the 0.85 confidence peak in both channels is not detected, as in some cells under 1 µM Mavacamten.
+- LOI contraction detection (`Motion.predict_contractions`, also used for track chains by `get_track_motion`)
+  decodes the mean of the Z-band and the sarcomere-length channel means, not the larger of the two (1.0.0b3).
+  Traces without data and traces whose polarity the rule leaves undecided are left out of their channel mean; an
+  all-NaN trace used to be read as a flat trace of zeros. The larger added up the false contractions of both
+  channels: on track chains of held-out drug-panel cells it found 18 false contractions in 3 of 7 quiescent cells,
+  the mean none, for 1658 against 1639 of 1660 beats. Known limitation: in a weak contraction the length of a single
+  sarcomere is buried in noise and can dilute a clear Z-band channel below the 0.85 confidence peak, as in some
+  cells under 1 µM Mavacamten.
 - New default 2D sarcomere model, `generalist` = `model_sarcomeres_generalist_v2.pt` (v1 fine-tuned on simulated
   myofibrils with exact labels and on orientation labels along the myofibril axis). On the detection benchmark of
   Supplementary Note 2, F1 0.80 → 0.83 (10 of 10 images better) and length error vs manual 68 → 64 nm; thin
