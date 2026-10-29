@@ -4,7 +4,7 @@ All notable changes to SarcAsM are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0b4] — 2026-10-29
 
 ### Added
 
