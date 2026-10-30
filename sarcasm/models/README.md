@@ -216,16 +216,20 @@ within 5 frames of either end) unless noted:
 | real pole-distance plate, 36 clear wells: beat-count deviations from a consensus of 1116 beats, summed | 67.5 | **9.5** |
 | real non-beating wells of pole-distance plates (76): false contractions | 0 | 0 (7 with rest declared high) |
 | synthetic quiet traces (920, read at both signs): false contractions per reading, rest declared high / polarity rule | 0.91 / 0.91 | **0.37 / 0.07** |
-| drug-panel cells, quiescent (7): false contractions | 0 | 0 |
-| — beating (87): contraction IoU / beats found | 0.889 / 0.995 | 0.884 / 0.987 |
+| drug-panel cells, quiescent (7): false contractions | 6 (in 2 cells) | **0** |
+| — beating (87): contraction IoU / beats found | 0.891 / 1.000 | 0.890 / 0.998 |
 
 The cells were read as `Motion.predict_contractions` reads an LOI, with SarcAsM's decoder
 settings (contractions of 0.2 s or more, those at the ends kept): Z-band rows oriented by the
 polarity rule at margin 0, sarcomere-length rows declared rest-high, and the mean of the two
-channel means as the cell's probability. The larger of the two would find 1658 beats with this
-model (betas: 1650) but 18 false contractions in 3 quiescent cells (betas: 15 in 4). A weak
-contraction can be missed, because the lengths of single sarcomeres are buried in noise and can
-dilute a clear Z-band channel below the 0.85 peak, as in some cells under 1 µM Mavacamten.
+channel medians (the median over the rows of each channel at each frame) as the cell's
+probability. With this model, the mean of the two channel means would find 1639 beats and no
+false contraction; the larger of the two channel means 1658 beats and 18 false contractions in 3
+quiescent cells (betas: 1652 and none; 1650 and 15 in 4). The mean misses beats because the rows
+whose noise hides a beat (often single sarcomere lengths) pull it below the 0.85 peak. On 50
+hand-annotated LOIs, most from wells used in training, the median finds 890 of 1017
+contractions, the mean 610 and the larger 906. A contraction that most rows of both channels
+miss is not detected, as in some cells under 1 µM Mavacamten.
 
 **Known limitation: quiet stretches next to beats.** Because GroupNorm pools over the whole
 trace, a long quiet stretch is read differently next to beats than on its own. On 36 quiet

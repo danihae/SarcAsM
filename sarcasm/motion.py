@@ -728,22 +728,24 @@ class Motion(SarcAsMBase):
         Whether a Z-band position rests high or low depends on the direction of the line, so
         the polarity rule decides each Z-band trace, at margin 0, and negating any of them
         leaves the result unchanged. Traces without a finite value and traces left undecided
-        (flat, too short, or a polarity score of exactly 0) are dropped. The probability is
-        averaged over the remaining traces of each channel, and the cell probability is the
-        mean of the two channel means at each frame.
+        (flat, too short, or a polarity score of exactly 0) are dropped. At each frame the
+        probability of each channel is the median over its remaining traces, and the cell
+        probability is the mean of the two channel medians.
         :func:`contraction_net.decoding.decode_contractions` turns it into contractions: runs
         of frames above ``threshold`` that reach ``peak`` and last at least ``contr_time_min``.
         No gap is closed, and runs at either end are kept.
 
-        The mean is taken rather than the larger of the two channel means because the larger
-        adds up the false contractions of both channels. On track chains of held-out drug-panel
-        cells, read as :meth:`~sarcasm.structure.SarcAsM.get_track_motion` reads them, the
-        mean finds 1639 of 1660 beats and no false contraction in 7 quiescent cells; the larger
-        finds 1658 beats and 18 false contractions in 3 of the quiescent cells. The cost is that
-        a weak contraction can be missed: a single sarcomere shortens by a few nanometres,
-        which its noise hides, while a Z-band moves by the summed shortening of the sarcomeres
-        between it and the still point of the line, so the length channel can dilute a clear
-        Z-band channel below ``peak``, as in some cells under 1 µM Mavacamten.
+        The median is taken because within a beat the traces split in two: those that show it
+        read near 1, while those whose noise hides it (often single sarcomere lengths) stay
+        low. Their mean falls below ``peak`` and misses the beat; the median asks whether most
+        traces see it. A higher quantile, or the larger of the two channels, lets a few
+        moving traces call a contraction in a quiescent cell. On track chains of held-out
+        drug-panel cells, read as :meth:`~sarcasm.structure.SarcAsM.get_track_motion` reads
+        them, the median finds 1657 of 1660 beats and no false contraction in 7 quiescent
+        cells (mean of the channel means: 1639 and none; larger: 1658 and 18 in 3 cells). On 50
+        hand-annotated LOIs it finds 890 of 1017 contractions (mean: 610; larger: 906). A
+        contraction that most traces of both channels miss, as in some cells under 1 µM
+        Mavacamten, is not detected.
 
         Parameters
         ----------
@@ -793,7 +795,7 @@ class Motion(SarcAsMBase):
             threshold = stored['threshold'] if threshold is None else threshold
             peak = stored['peak'] if peak is None else peak
 
-        polarity, channel_means, n_disagree = {}, [], 0
+        polarity, channel_medians, n_disagree = {}, [], 0
         # sarcomere length rests at its long side; the polarity rule decides each Z-band trace, at margin 0
         for name, traces, orient in (('z_pos', z_pos, {'margin': 0.0}),
                                      ('slen', slen, _length_polarity(weights))):
@@ -812,13 +814,13 @@ class Motion(SarcAsMBase):
                     probs.append(prob[0])
             polarity[f'polarity_score_{name}'], polarity[f'polarity_sign_{name}'] = score, sign
             if probs:
-                channel_means.append(np.mean(probs, axis=0))
+                channel_medians.append(np.median(probs, axis=0))
         polarity['polarity_n_dropped'] = int(np.count_nonzero(polarity['polarity_sign_z_pos'] == 0)
                                              + np.count_nonzero(polarity['polarity_sign_slen'] == 0))
         polarity['polarity_n_slen_disagree'] = int(n_disagree)
-        polarity['polarity_no_decided_rows'] = not channel_means
+        polarity['polarity_no_decided_rows'] = not channel_medians
 
-        prob = (np.mean(channel_means, axis=0) if channel_means
+        prob = (np.mean(channel_medians, axis=0) if channel_medians
                 else np.zeros(np.shape(z_pos)[-1], dtype=np.float32))
         if exclude is not None:
             prob = np.where(exclude, 0, prob)
