@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 # see sarcasm/models/README.md.
 GENERALIST_MODELS = {
     'generalist':    ('model_sarcomeres_generalist_v2.pt', (0.06, 0.45)),
-    'generalist_v1': ('model_sarcomeres_generalist_v1.pt', (0.08, 0.45)),
     'legacy':        ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
 }
 
@@ -56,6 +55,10 @@ def resolve_generalist_model(model_path, pixelsize, model_dir):
         key = 'generalist'
     elif model_path in GENERALIST_MODELS:
         key = model_path
+    elif model_path == 'generalist_v1':
+        raise ValueError("model_path='generalist_v1' is no longer bundled (PyPI size limit). Restore it with "
+                         "`git show v1.0.0b3:sarcasm/models/model_sarcomeres_generalist_v1.pt > "
+                         "model_sarcomeres_generalist_v1.pt` and pass that file's path.")
     else:
         return None, model_path
     return key, os.path.join(model_dir, GENERALIST_MODELS[key][0])

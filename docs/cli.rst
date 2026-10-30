@@ -55,7 +55,7 @@ Options
     calibration of a file that was already analysed.
 
 ``--model``, ``--device``, ``--log-level``
-    U-Net checkpoint (``generalist``, ``generalist_v1``, ``legacy`` or a path), compute device, stderr
+    U-Net checkpoint (``generalist``, ``legacy`` or a path), compute device, stderr
     verbosity (default ``WARNING``).
 
 ``motion`` only: ``--by``, ``--motion-predictor flow`` (coarse frame rates only),

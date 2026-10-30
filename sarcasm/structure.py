@@ -252,9 +252,9 @@ class SarcAsM(SarcAsMBase):
             selection. Frames outside the movie raise a ValueError. Default is 'all'.
         model_path : str or None, optional
             None (or ``'generalist'``, ``'auto'``) uses the bundled ``'generalist'`` (v2) model at
-            every pixel size. ``'generalist_v1'`` and ``'legacy'`` select the earlier bundled models
-            (``'legacy'`` reproduces high-magnification results of earlier versions, which picked it
-            below 0.08 µm/px); any other string is a path to custom U-Net weights. The resolved model is stored as
+            every pixel size. ``'legacy'`` selects the first bundled model, which reproduces
+            high-magnification results of earlier versions (they picked it below 0.08 µm/px); any other
+            string is a path to custom U-Net weights, e.g. the betas' v1 model (see sarcasm/models/README.md). The resolved model is stored as
             ``params.detect_sarcomeres.model_path``. Default is None.
         max_patch_size : tuple of int or 'auto', optional
             Maximal patch dimensions ``(n_x, n_y)`` for the CNN. 'auto' derives

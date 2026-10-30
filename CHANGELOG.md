@@ -105,8 +105,7 @@ All notable changes to SarcAsM are documented here. The format follows
   Supplementary Note 2, F1 0.80 → 0.83 (10 of 10 images better) and length error vs manual 68 → 64 nm; thin
   simulated myofibrils found 18 % → 48 %; orientation on sheared myofibrils follows the myofibril, not the Z-band
   normal (9.1° → 7.5° from the known axis on held-out micropatterns). Its sarcomere mask is ~10 % larger and its
-  length spread wider, so do not mix it with v1 within one study: `model_path='generalist_v1'` reproduces the
-  v1.0.0 betas. It is now the default at every pixel size: `'auto'` no longer picks `legacy` below 0.08 µm/px
+  length spread wider, so do not mix it with v1 within one study (v1 is no longer bundled, below). It is now the default at every pixel size: `'auto'` no longer picks `legacy` below 0.08 µm/px
   (high-speed single-cell movies). There v2 finds 8–9 % fewer sarcomere vectors than `legacy` and a 0.02 µm longer
   median length on the 20 kPa movie; set `model_path='legacy'` to reproduce earlier results. Known limitation: in immature or noisy cells it
   marks more sarcomere precursors than v1 (more vectors, `sarcomere_area_ratio` up to ~35 % higher on a 12-day
@@ -151,6 +150,10 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Removed
 
+- The 2D model of the 1.0.0 betas (`model_path='generalist_v1'`, `model_sarcomeres_generalist_v1.pt`) is no
+  longer bundled, which keeps the package under PyPI's 100 MB file limit; `'generalist_v1'` raises an error that
+  says how to restore it: `git show v1.0.0b3:sarcasm/models/model_sarcomeres_generalist_v1.pt` and pass the file
+  as `model_path`.
 - The ContractionNet weights of the 1.0.0 betas (`SymmetrizedContractionNet`) are no longer bundled.
   `git show v1.0.0b3:sarcasm/models/model_ContractionNet.pt` restores them, and `predict_contractions` still reads
   them by path, with the `'symmetric'` conditioning they were trained with.

@@ -684,13 +684,19 @@ def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
 @pytest.mark.parametrize('model_path, pixelsize, expected', [
     (None, 0.061, 'generalist'), ('auto', 0.061, 'generalist'), (None, 0.08, 'generalist'),
     ('auto', 0.11, 'generalist'), (None, None, 'generalist'),
-    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'), ('generalist_v1', 0.3, 'generalist_v1'),
+    ('legacy', 0.3, 'legacy'), ('generalist', 0.05, 'generalist'),
 ])
 def test_bundled_model_is_the_generalist_unless_named(model_path, pixelsize, expected):
     from sarcasm.analysis.detection import resolve_generalist_model, GENERALIST_MODELS
     key, path = resolve_generalist_model(model_path, pixelsize, '/models')
     assert key == expected and path == f'/models/{GENERALIST_MODELS[expected][0]}'
     assert resolve_generalist_model('/somewhere/custom.pt', 0.061, '/models') == (None, '/somewhere/custom.pt')
+
+
+def test_unbundled_beta_model_says_how_to_restore_it():
+    from sarcasm.analysis.detection import resolve_generalist_model
+    with pytest.raises(ValueError, match='git show v1.0.0b3'):
+        resolve_generalist_model('generalist_v1', 0.3, '/models')
 
 
 @pytest.mark.parametrize('model_path, expected', [(None, 'generalist'), ('generalist', 'generalist'),

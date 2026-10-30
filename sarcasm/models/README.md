@@ -3,7 +3,7 @@
 | alias | file | validated pixel size | notes |
 |---|---|---|---|
 | `generalist` | `model_sarcomeres_generalist_v2.pt` | 0.06–0.45 µm | v1 fine-tuned on simulated myofibrils and myofibril-axis orientation labels |
-| `generalist_v1` | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0 beta releases) |
+| (not bundled) | `model_sarcomeres_generalist_v1.pt` | 0.08–0.45 µm | scale-augmented (v1.0.0b1–b3); see below |
 | `legacy` | `model_sarcomeres_generalist.pt` | 0.06–0.35 µm | pre-v1.0.0; trained on high-magnification data at native resolution |
 
 The default is `generalist` (v2) at every pixel size (`model_path=None` or `'auto'`).
@@ -17,7 +17,7 @@ high-magnification results of earlier versions, including the paper's high-speed
 ```python
 sarc.detect_sarcomeres(frames=0)                          # generalist (v2)
 sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v2
-sarc.detect_sarcomeres(frames=0, model_path='generalist_v1')  # reproduce results of the v1.0.0 betas
+sarc.detect_sarcomeres(frames=0, model_path='model_sarcomeres_generalist_v1.pt')  # the betas' v1, restored (below)
 sarc.detect_sarcomeres(frames=0, model_path='legacy')      # the first model (earlier default below 0.08 µm/px)
 ```
 
@@ -92,7 +92,7 @@ the cell cortex.
 
 The models measure the same quantities, but not identically.
 
-| | `legacy` | `generalist_v1` |
+| | `legacy` | v1 |
 |---|---|---|
 | length drift, 0.11→0.40 µm/px | 0.346 µm | **0.122 µm** |
 | vectors at 0.40 µm/px | 183 | 5885 |
@@ -105,8 +105,10 @@ spread, most likely because it detects less and what it detects is the easy subs
 
 The same holds for v1 and v2. v2's cell mask matches v1's (area ratio 1.00, 41 images), but its sarcomere
 mask is larger — median +10 % (interquartile range +3 to +18 %) — so `sarcomere_area_ratio` comes out
-about 10 % higher, and its sarcomere-length spread is wider (table above). Results of the v1.0.0 betas
-reproduce with `model_path='generalist_v1'`.
+about 10 % higher, and its sarcomere-length spread is wider (table above). v1 is no longer bundled
+(it kept the package under PyPI's 100 MB limit). To reproduce results of 1.0.0b1–b3, restore it with
+`git show v1.0.0b3:sarcasm/models/model_sarcomeres_generalist_v1.pt > model_sarcomeres_generalist_v1.pt`
+and pass that file as `model_path`.
 
 # 3D Z-band model for high-speed movies
 

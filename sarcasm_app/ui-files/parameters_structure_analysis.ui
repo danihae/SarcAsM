@@ -67,7 +67,7 @@
         <item>
          <widget class="QLineEdit" name="le_network">
           <property name="toolTip">
-           <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'generalist_v1' (the previous generalist model) or 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+           <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
           </property>
           <property name="text">
            <string>auto</string>
@@ -495,7 +495,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="toolTip">
-         <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'generalist_v1' (the previous generalist model) or 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
+         <string>&lt;p&gt;2D U-Net used in step 1. 'generalist' (default) is the bundled model for all pixel sizes. Type 'legacy' (the first model; earlier versions used it below 0.08 µm/px, e.g. for high-speed single-cell movies) to reproduce older results, or use Browse… for your own trained weights (.pt). The models do not give identical numbers, so use one per study; the model used is saved with the results.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Network model</string>
