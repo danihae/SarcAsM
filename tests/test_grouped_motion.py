@@ -64,6 +64,66 @@ def test_aggregate_group_slen_unassigned_excluded():
     assert np.all(out['n_members'][0] == 1)
 
 
+def _beats(T, ft, period_s, depth, rng, noise=0.01, equ=1.9):
+    """Sarcomere length with a smooth shortening of ``depth`` µm every ``period_s`` s."""
+    t = np.arange(T) * ft
+    phase = (t % period_s) / period_s
+    dip = np.where(phase < 0.3, np.sin(np.pi * phase / 0.3) ** 2, 0.0)
+    return equ - depth * dip + noise * rng.standard_normal(T)
+
+
+def _contr(slen, ft, reading):
+    model = str(Utils.get_models_dir() / 'model_ContractionNet.pt')
+    gid = np.zeros(len(slen), int)
+    agg = grouped_motion.aggregate_group_slen(slen, gid, 1)
+    gp = (grouped_motion.track_contraction_prob(slen, gid, 1, ft, model, slen_lims=(1.0, 3.0))
+          if reading == 'tracks' else None)
+    return contraction_analysis.detect_contractions(agg['slen'], ft, model, group_prob=gp), gp
+
+
+def test_track_reading_finds_the_beats_most_tracks_show():
+    rng = np.random.default_rng(0)
+    T, ft = 400, 0.05                                   # 20 s, a beat every 1.6 s
+    slen = np.stack([_beats(T, ft, 1.6, 0.15, rng) for _ in range(12)])
+    out, gp = _contr(slen, ft, 'tracks')
+    assert gp['n_tracks_read'].tolist() == [12]
+    assert out['n_contr'][0] in (12, 13)
+
+
+def test_track_reading_is_not_fooled_by_a_few_tracks_with_large_excursions():
+    """Three of 33 tracks swing by 0.4 µm while the rest are quiet: their mean shows a regular wave
+    that ContractionNet reads as beats, but most tracks read no contraction, so the median does not."""
+    rng = np.random.default_rng(1)
+    T, ft = 400, 0.05
+    quiet = [1.9 + 0.01 * rng.standard_normal(T) for _ in range(30)]
+    loud = [_beats(T, ft, 1.6, 0.4, rng) for _ in range(3)]
+    slen = np.stack(quiet + loud)
+    assert _contr(slen, ft, 'aggregate')[0]['n_contr'][0] > 0     # the old reading calls contractions
+    assert _contr(slen, ft, 'tracks')[0]['n_contr'][0] == 0
+
+
+def test_track_reading_skips_jumping_out_of_range_and_sparse_tracks():
+    rng = np.random.default_rng(2)
+    T, ft = 400, 0.05
+    good = [_beats(T, ft, 1.6, 0.15, rng) for _ in range(5)]
+    jump = _beats(T, ft, 1.6, 0.15, rng); jump[200:] += 0.5            # identity swap
+    wild = _beats(T, ft, 1.6, 0.15, rng); wild[50] = 3.5               # outside slen_lims
+    sparse = _beats(T, ft, 1.6, 0.15, rng); sparse[:300] = np.nan      # measured in 25 % of frames
+    _, gp = _contr(np.stack(good + [jump, wild, sparse]), ft, 'tracks')
+    assert gp['n_tracks_read'].tolist() == [5]
+
+
+def test_analyze_track_motion_reads_tracks_by_default_and_aggregate_on_request():
+    sarc = _fake_structure(T=400, frametime=0.05)
+    sarc.analyze_track_motion(by='pool')
+    assert sarc.data['params.analyze_track_motion.reading'] == 'tracks'
+    assert sarc.data['motion.pool.n_tracks_read'].tolist() == [6]
+    sarc.analyze_track_motion(by='pool', reading='aggregate')
+    assert sarc.data['motion.pool.n_tracks_read'].tolist() == [0]
+    with pytest.raises(ValueError, match='reading'):
+        sarc.analyze_track_motion(by='pool', reading='mean')
+
+
 def test_run_cycle_engine_empty_groups():
     out = grouped_motion.run_cycle_engine(np.zeros((0, 20)), frametime=0.01, model_path='unused')
     assert out['contr'].shape == (0, 20)

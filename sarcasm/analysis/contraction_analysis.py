@@ -114,6 +114,7 @@ def detect_contractions(
     min_valid_frames: float = 0.5,
     group_label: str = "Domain",
     id_offset: int = 0,
+    group_prob: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Detect contraction cycles from per-group sarcomere length time-series via ContractionNet.
@@ -168,6 +169,12 @@ def detect_contractions(
         Label used to name rows in log messages. Default is "Domain".
     id_offset : int, optional
         Offset added to the row index when naming rows in log messages. Default is 0.
+    group_prob : dict or None, optional
+        Precomputed contraction probabilities,
+        :func:`sarcasm.analysis.grouped_motion.track_contraction_prob` (``prob``,
+        ``polarity_score``, ``too_short``). If given, each row is decoded from ``prob`` (frames
+        without a value count as quiet) and ``group_slen`` is not read by the network; a row
+        needs ``min_valid_frames`` of frames with a value. Default is None.
 
     Returns
     -------
@@ -208,42 +215,58 @@ def detect_contractions(
     complete_per_domain: List[Optional[np.ndarray]] = [None] * n_domains
 
     declared = _length_polarity(model_path)
+    margin = polarity_rule(model_path).margin if group_prob is not None else None
     few_cycles = []                  # (group id, n cycles) of groups without a beating rate
     rests_short = []                 # ids of groups with contractions whose length dwells at its short side
-    too_short = False                # the recording is too short for the polarity rule
+    too_short = bool(group_prob['too_short']) if group_prob is not None else False
 
     # Process each domain
     for domain_idx in range(n_domains):
-        slen_timeseries = group_slen[domain_idx]
-        
-        # Check if domain has enough valid data
-        valid_fraction = np.sum(~np.isnan(slen_timeseries)) / n_frames
-        if valid_fraction < min_valid_frames:
-            logger.debug(f"{group_label} {domain_idx + id_offset} has insufficient valid data ({valid_fraction:.1%}), skipping.")
-            continue
-        
-        # Interpolate NaN values for prediction
-        slen_interp = _interpolate_nans(slen_timeseries)
-        
-        if np.all(np.isnan(slen_interp)):
-            continue
-        
-        # Predict contractions using ContractionNet; a sarcomere shortens when it contracts, so its
-        # length rests at the long side
-        try:
-            contr_pred, decision = predict_contractions(slen_interp, model_path, frametime=frametime,
-                                                        return_decision=True, **declared)
-        except Exception as e:
-            logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {domain_idx + id_offset}: {e}")
-            continue
-        domain_polarity_score[domain_idx] = decision.score
-        too_short = too_short or decision.reason == 'too_short'
+        if group_prob is not None:
+            # per-track median probability: decoded as it is, frames without a track count as quiet
+            row = np.asarray(group_prob['prob'][domain_idx], dtype=float)
+            valid_fraction = np.sum(~np.isnan(row)) / n_frames
+            if valid_fraction < min_valid_frames:
+                logger.debug(f"{group_label} {domain_idx + id_offset} has too few frames with a readable "
+                             f"track ({valid_fraction:.1%}), skipping.")
+                continue
+            prob = np.nan_to_num(row, nan=0.0)
+            score = float(group_prob['polarity_score'][domain_idx])
+            domain_polarity_score[domain_idx] = score
+            disagree = score < -margin
+        else:
+            slen_timeseries = group_slen[domain_idx]
+
+            # Check if domain has enough valid data
+            valid_fraction = np.sum(~np.isnan(slen_timeseries)) / n_frames
+            if valid_fraction < min_valid_frames:
+                logger.debug(f"{group_label} {domain_idx + id_offset} has insufficient valid data ({valid_fraction:.1%}), skipping.")
+                continue
+
+            # Interpolate NaN values for prediction
+            slen_interp = _interpolate_nans(slen_timeseries)
+
+            if np.all(np.isnan(slen_interp)):
+                continue
+
+            # Predict contractions using ContractionNet; a sarcomere shortens when it contracts, so its
+            # length rests at the long side
+            try:
+                contr_pred, decision = predict_contractions(slen_interp, model_path, frametime=frametime,
+                                                            return_decision=True, **declared)
+            except Exception as e:
+                logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {domain_idx + id_offset}: {e}")
+                continue
+            domain_polarity_score[domain_idx] = decision.score
+            too_short = too_short or decision.reason == 'too_short'
+            prob = contr_pred[0]
+            disagree = decision.reason == 'declared, data disagree'
 
         # cycles at the recording edges are kept and flagged incomplete below
-        contr = intervals_to_mask(decode_contractions(contr_pred[0], frametime, min_duration_s=contr_time_min,
+        contr = intervals_to_mask(decode_contractions(prob, frametime, min_duration_s=contr_time_min,
                                                       border_frames=0, **decoding), n_frames)
         domain_contr[domain_idx] = contr
-        if decision.reason == 'declared, data disagree' and contr.any():
+        if disagree and contr.any():
             rests_short.append(domain_idx + id_offset)
 
         # Label contraction cycles and flag the incomplete ones

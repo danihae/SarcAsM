@@ -43,6 +43,16 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- `analyze_track_motion` reads the contraction state from the member tracks (`reading='tracks'`, the new default):
+  ContractionNet reads each continuous, plausible member track (length inside `slen_lims`, measured in at least
+  `min_valid_frames` of the frames, no jump above `max_step_slen` = 0.3 µm; the `max_tracks` = 100 least noisy) and
+  the group's state is decoded from the per-frame median of their probabilities
+  (`grouped_motion.track_contraction_prob`). Up to now the network read the group's mean length once
+  (`reading='aggregate'`), so a few tracks with large excursions could make a contraction of a quiet cell. On 50
+  hand-annotated cells of the acute drug panel from wells the network never trained on (pool grouping, all tracks),
+  2 of the 22 still cells get a false contraction (was 5, 8 events instead of 52) and 387 of the 393 contractions of
+  the 28 beating cells are found (was 389). The kinematics are still measured on the aggregated length. New result
+  `motion.<kind>.n_tracks_read`; `polarity_score` is the median over the tracks read. About 0.5 s per 100 tracks.
 - New ContractionNet, `model_ContractionNet.pt`: one rest-high network for sarcomere-length, Z-band and
   pole-distance traces (a dilated temporal CNN with GroupNorm, `q90` input), read after the polarity decision below,
   at its stored threshold of 0.45 and confidence peak of 0.85. On held-out simulated pole-distance plates the beat

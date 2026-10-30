@@ -2439,8 +2439,11 @@ class SarcAsM(SarcAsMBase):
         self,
         *,
         by: Optional[str] = None,
+        reading: str = 'tracks',
         aggregate: str = 'mean',
         slen_lims: Tuple[float, float] = (1.0, 3.0),
+        max_tracks: int = 100,
+        max_step_slen: float = 0.3,
         model: Optional[str] = None,
         threshold: Optional[float] = None,
         contr_time_min: float = 0.2,
@@ -2455,8 +2458,12 @@ class SarcAsM(SarcAsMBase):
     ) -> None:
         """Per-group sarcomere-contraction analysis over the current track grouping.
 
-        Aggregates the member tracks' ``slen(t)`` into one signal per group and
-        runs the shared ContractionNet engine. Grouping-blind: it analyzes
+        Reads the contraction state of each group with ContractionNet and measures the
+        contraction cycles on the member tracks' aggregated ``slen(t)``. By default
+        (``reading='tracks'``) the network reads each member track and the group's state is
+        decoded from the per-frame median of their probabilities
+        (:func:`grouped_motion.track_contraction_prob`); ``reading='aggregate'`` reads the
+        aggregated length once, as up to 1.0.0b4. Grouping-blind: it analyzes
         whatever :meth:`group_tracks` produced. Pass ``by=`` to run grouping
         inline — the one-call front door for every level but ``'custom'``.
 
@@ -2479,6 +2486,14 @@ class SarcAsM(SarcAsMBase):
             for every grouping level except ``'custom'``, which needs its own
             :meth:`group_tracks` call to pass ``labels``. If None, use the existing
             grouping (whatever :meth:`group_tracks` produced last). Default is None.
+        reading : {'tracks', 'aggregate'}, optional
+            What ContractionNet reads. ``'tracks'``: every member track whose length stays in
+            ``slen_lims``, is measured in at least ``min_valid_frames`` of the frames and never
+            jumps by more than ``max_step_slen`` (the ``max_tracks`` least noisy of them); the
+            median of their probabilities is decoded. A beat shortens most sarcomeres at once,
+            so the median is high when most tracks read one, and a few tracks with large
+            excursions cannot make a contraction of a quiet cell. ``'aggregate'``: the group's
+            aggregated length (``aggregate``), read once. Default is 'tracks'.
         aggregate : {'mean', 'median'}, optional
             How the member sarcomeres' lengths are combined into the group's
             ``slen(t)`` for the contraction analysis, over the members present in
@@ -2486,8 +2501,14 @@ class SarcAsM(SarcAsMBase):
             ``'mean'`` matches the 0.5 domain analysis. The per-frame spread
             (``slen_std``, quartiles) is stored either way. Default is 'mean'.
         slen_lims : tuple of float, optional
-            Member lengths outside this µm range are ignored in the aggregate.
-            Default is (1.0, 3.0).
+            Member lengths outside this µm range are ignored in the aggregate, and a track
+            with such a length is not read with ``reading='tracks'``. Default is (1.0, 3.0).
+        max_tracks : int, optional
+            With ``reading='tracks'``, at most this many tracks per group are read.
+            Default is 100.
+        max_step_slen : float, optional
+            With ``reading='tracks'``, a track whose length jumps by more than this (µm)
+            between frames is not read. Default is 0.3.
         model, threshold, contr_time_min, merge_time_max, buffer_frames, min_valid_frames, filter_params
             ContractionNet engine knobs (see :func:`grouped_motion.run_cycle_engine`).
             ``merge_time_max`` is deprecated and ignored: gaps between contractions are
@@ -2502,6 +2523,8 @@ class SarcAsM(SarcAsMBase):
             groupings (myofibril/loi) only.
         """
         contraction_analysis._warn_merge_time_max(merge_time_max)
+        if reading not in ('tracks', 'aggregate'):
+            raise ValueError(f"reading must be 'tracks' or 'aggregate', got {reading!r}")
         if by is not None:
             if by == 'custom':
                 raise ValueError(
@@ -2541,6 +2564,12 @@ class SarcAsM(SarcAsMBase):
             model = os.path.join(self.model_dir, 'model_ContractionNet.pt')
 
         logger.info(f"analyze_track_motion: {n_groups} '{kind}' groups...")
+        group_prob = None
+        if reading == 'tracks':
+            group_prob = grouped_motion.track_contraction_prob(
+                tracks_slen, gid, n_groups, frametime=self.metadata.frametime, model_path=model,
+                slen_lims=slen_lims, max_tracks=max_tracks, max_step_slen=max_step_slen,
+                min_valid_frames=min_valid_frames)
         engine = grouped_motion.run_cycle_engine(
             agg['slen'], frametime=self.metadata.frametime, model_path=model,
             threshold=threshold, contr_time_min=contr_time_min,
@@ -2549,7 +2578,11 @@ class SarcAsM(SarcAsMBase):
             group_label={'loi': 'LOI', 'mband': 'M-band'}.get(kind, str(kind).capitalize()),
             # domain group id = mask label - 1, so log 1-based to match the mask;
             # all other kinds log the 0-based group id (matches track_group_id / the API).
-            id_offset=1 if kind == 'domain' else 0)
+            id_offset=1 if kind == 'domain' else 0,
+            group_prob=group_prob)
+        # tracks ContractionNet read per group (0 for every group with reading='aggregate')
+        engine['n_tracks_read'] = (group_prob['n_tracks_read'] if group_prob is not None
+                                   else np.zeros(n_groups, dtype=np.int32))
 
         # Per-group heterogeneity of the member tracks: serial/mutual correlation of
         # dSL and velocity across cycles, and the oscillation spectra.
@@ -2567,6 +2600,9 @@ class SarcAsM(SarcAsMBase):
             'motion.groups.analyzed_kind': kind,
             'params.analyze_track_motion.group_kind': kind,
             'params.analyze_track_motion.grouping_hash': self.data['motion.groups.hash'],
+            'params.analyze_track_motion.reading': reading,
+            'params.analyze_track_motion.max_tracks': max_tracks,
+            'params.analyze_track_motion.max_step_slen': max_step_slen,
             'params.analyze_track_motion.aggregate': aggregate,
             'params.analyze_track_motion.slen_lims': list(slen_lims),
             'params.analyze_track_motion.model': model,
