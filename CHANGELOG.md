@@ -53,6 +53,22 @@ All notable changes to SarcAsM are documented here. The format follows
   its parameters under `params.motion.detect_lois.*`.
 - Removed: `Plots.plot_loi_detection`, `Plots.plot_domain_timeseries` (use `plot_slen_mean(ax, sarc, 'domain')`) and
   `Plots.plot_overlay_domain_timeseries`.
+- **`restart` is keyword-only** (`SarcAsM(file, restart=True)`), so a stray second positional argument can no longer
+  delete the analysis store; the type guard that stood in for this is gone.
+- **`sarc.commit()` is the one way to save**; `store_structure_data()` is removed (it did the same).
+- **Removed, unused** (no caller in the package, the GUI, the docs or the paper scripts):
+  - `Utils`: `today_date`, `get_tif_files_in_folder`, `process_profile`, `peak_by_first_moment`, `nan_low_pass`,
+    `two_sample_t_test`, `most_freq_val`, `weighted_avg_and_std`, `weighted_quantile`, `column_weighted_quantiles`,
+    `max_orientation_change`, `find_closest`, `correct_phase_confocal`, `create_distance_map`,
+    `interpolate_distance_map`. `PlotUtils.boxplot_with_points`, `PlotUtils.plot_func_to_img`,
+    `Plots.plot_stack_overlay`, `TrainingDataGenerator.interpolate_distance_map`.
+  - `SarcAsM.export_json()` and `results_store.export_to_json` (the store is the format; `sarc.data` reads it).
+  - `merge_time_max` of `sarc.motion.analyze`, `grouped_motion.run_cycle_engine` and
+    `contraction_analysis.detect_contractions` (deprecated and ignored since 1.0.0b1), and its disabled GUI field.
+    Parameter files that still hold it load as before.
+  - Store internals used only by tests: `OmeZarrStore.create`, `.read_image`, `.results`, `write_mask(as_label=)`
+    and the OME `labels/` group nothing wrote to, `results_store.write_results` (use `update_results`),
+    `Results.set_root_attr`, `ImageMetadata.save_to_file`.
 - **Parameter keys follow the call path** of the step that wrote them: `params.structure.analyze_vectors.*`,
   `params.motion.track.*`, … (`params.detect_sarcomeres.*` is unchanged). Stores written by 1.0.0b4 or earlier are
   opened with a warning, and their analysis steps count as not run: run them again, or open the file with

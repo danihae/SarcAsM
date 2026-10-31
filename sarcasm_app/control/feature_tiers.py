@@ -143,10 +143,3 @@ def pretty_name(key: str, kind: str) -> str:
         return key
     return entry.get('name', key)
 
-
-def all_keys(tiers: TierSections) -> List[str]:
-    out: List[str] = []
-    for tier in tiers.values():
-        for section in tier.values():
-            out.extend(section)
-    return out

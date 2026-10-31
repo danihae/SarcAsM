@@ -34,7 +34,7 @@ def main():
     Error logs are written to ~/.sarcasm/logs/sarcasm_YYYY-MM-DD.log
     """
     # Set up file-based error logging (WARNING and above)
-    file_handler = setup_file_logging(level=logging.WARNING)
+    setup_file_logging(level=logging.WARNING)
     
     # Install global crash handler for unhandled exceptions
     install_crash_handler()

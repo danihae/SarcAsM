@@ -53,44 +53,6 @@ class Plots:
             return sarc_obj._canonical_frame(frame)
         return int(frame)
 
-    @staticmethod
-    def plot_stack_overlay(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frames, plot_func, offset=0.025,
-                           spine_color='w', xlim=None, ylim=None):
-        """
-        Plot a stack of overlaid subplots on a given Axes object.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            The axes on which the stack is plotted.
-        sarc_obj : SarcAsM or Motion
-            The object to plot in each subplot.
-        frames : list of int
-            The frames at which the subplots are created.
-        plot_func : callable
-            The function used to plot the data in each subplot, called as
-            ``plot_func(ax, sarc_obj, frame)``.
-        offset : float, optional
-            The offset between each subplot. Default is 0.025.
-        spine_color : str, optional
-            The color of the spines (borders) of each subplot. Default is 'w'.
-        xlim : tuple, optional
-            The x-axis limits for each subplot. Default is None.
-        ylim : tuple, optional
-            The y-axis limits for each subplot. Default is None.
-        """
-        ax.axis('off')
-        for i, t in enumerate(frames):
-            ax_t = ax.inset_axes((0.1 + offset * i, 0.1 - offset * i, 0.8, 0.8))
-
-            plot_func(ax_t, sarc_obj, t)
-            ax_t.spines['bottom'].set_color(spine_color)
-            ax_t.spines['top'].set_color(spine_color)
-            ax_t.spines['right'].set_color(spine_color)
-            ax_t.spines['left'].set_color(spine_color)
-
-            ax_t.set_xlim(xlim)
-            ax_t.set_ylim(ylim)
 
     @staticmethod
     def plot_loi_summary_motion(motion_obj: Motion, number_contr=0, t_lim=(0, None), t_lim_overlay=(-0.1, 2.9),
@@ -1625,7 +1587,7 @@ class Plots:
             ax_i.set_yticklabels(yticks, fontsize='x-small')
 
         ax.set_xlabel('Time [s]')
-        ax.set_ylabel('$\Delta$SL [µm]')
+        ax.set_ylabel(r'$\Delta$SL [µm]')
         ax.spines['bottom'].set_color('w')
         ax.spines['top'].set_color('w')
         ax.xaxis.label.set_color('k')
@@ -1683,7 +1645,7 @@ class Plots:
                     linestyle='-')
             ax.set_xlim(t_lim)
         ax.set_xlabel('Time [s]')
-        ax.set_ylabel('$\Delta$SL [µm]')
+        ax.set_ylabel(r'$\Delta$SL [µm]')
         ax.set_ylim(y_lim)
         PlotUtils.polish_yticks(ax, 0.2, 0.1)
         PlotUtils.polish_xticks(ax)
@@ -1787,7 +1749,7 @@ class Plots:
         PlotUtils.polish_xticks(ax, 5, 2.5)
         PlotUtils.polish_yticks(ax, 0.2, 0.1)
         ax.set_xlabel('Velocity $V$ [µm/s]', fontsize=PlotUtils.fontsize)
-        ax.set_ylabel('Length change $\Delta SL$ [µm]', fontsize=PlotUtils.fontsize)
+        ax.set_ylabel(r'Length change $\Delta SL$ [µm]', fontsize=PlotUtils.fontsize)
 
     @staticmethod
     def plot_popping_events(motion_obj: Motion, save_name=None):

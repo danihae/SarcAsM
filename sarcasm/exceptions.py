@@ -17,4 +17,3 @@
 
 class MetaDataError(Exception):
     """Raised when metadata extraction from a TIFF file fails."""
-    pass

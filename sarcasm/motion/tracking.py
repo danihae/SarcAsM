@@ -95,7 +95,7 @@ class TrackingMixin:
                  'params.motion.detect_z_bands_fast_movie.clip_thres': clip_thres}
         self.data.update(_dict)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def track(
         self,
@@ -339,7 +339,7 @@ class TrackingMixin:
         if out['motion.tracks.n'] == 0:
             logger.warning(self._NO_TRACKS_MESSAGE)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _orientation_window_frames(self, orientation_window_s: Optional[float]) -> Optional[int]:
         """``orientation_window_s`` in frames (odd), or None for one axis per track, with a warning when the

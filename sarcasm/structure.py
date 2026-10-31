@@ -125,7 +125,7 @@ class StructureAnalysis(_Namespace):
                  'params.structure.analyze_cell_mask.threshold': threshold}
         self.data.update(_dict)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _recording_background(self, n_frames: int = 5) -> float:
         """Background intensity of the recording: the median over up to ``n_frames`` evenly spaced detected frames of
@@ -326,7 +326,7 @@ class StructureAnalysis(_Namespace):
                        'params.structure.analyze_z_bands.d_min': d_min, 'params.structure.analyze_z_bands.max_axial_offset': max_axial_offset}
         self.data.update(z_band_data)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def analyze_vectors(self, frames: Union[str, int, Sequence[int]] = 'all', threshold_mbands: float = 0.25,
                                   median_filter_radius: float = 0.25, linewidth: float = 0.3, interp_factor: int = 4,
@@ -683,7 +683,7 @@ class StructureAnalysis(_Namespace):
                         'structure.sarcomere.stripe_period_ratio': stripe_ratio}
         self.data.update(vectors_dict)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _check_pixelsize(self, list_frames, pos_vectors_px, orientation_vectors, length_vectors,
                          min_vectors: int = 20) -> float:
@@ -843,7 +843,7 @@ class StructureAnalysis(_Namespace):
 
         self.data.update(myofibril_data)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def analyze_domains(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                                   d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
@@ -886,7 +886,6 @@ class StructureAnalysis(_Namespace):
         if 'structure.sarcomere.pos' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_vectors first.')
         list_frames = self._vector_frames(frames)
-        n_imgs = len(list_frames)
 
         pos_vectors = [np.asarray(self.data['structure.sarcomere.pos'][t]) for t in list_frames]
         sarcomere_length_vectors = [np.asarray(self.data['structure.sarcomere.slen'][t]) for t in list_frames]
@@ -994,7 +993,7 @@ class StructureAnalysis(_Namespace):
 
         self.data.update(domain_data)
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def full_analysis(self, frames='all'):
         """
@@ -1016,4 +1015,4 @@ class StructureAnalysis(_Namespace):
             self.analyze_domains(frames=frames)
         finally:
             self.auto_save = auto_save
-        self.store_structure_data()
+        self.commit()

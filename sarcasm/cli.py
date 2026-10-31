@@ -30,7 +30,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-EXIT_ERROR, EXIT_USAGE, EXIT_INPUT = 1, 2, 3
+EXIT_ERROR, EXIT_INPUT = 1, 3      # 2 (bad usage) is argparse's own
 
 
 class _WarningCollector(logging.Handler):

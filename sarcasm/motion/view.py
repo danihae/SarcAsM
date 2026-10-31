@@ -25,7 +25,7 @@ from scipy.stats import kstest, geom
 from contraction_net.decoding import decode_contractions, intervals_to_mask, recommended_decoding
 from contraction_net.prediction import polarity_rule, predict_contractions
 from sarcasm.analysis import contraction_analysis, heterogeneity
-from sarcasm.analysis.contraction_analysis import _length_polarity, _warn_merge_time_max, cycle_truncation_flags
+from sarcasm.analysis.contraction_analysis import _length_polarity, cycle_truncation_flags
 from sarcasm.core import SarcAsMBase
 from sarcasm.io.ioutils import IOUtils
 from sarcasm.utils import Utils
@@ -277,8 +277,7 @@ class Motion(SarcAsMBase):
     def detect_analyze_contractions(self, model: Union[str, None] = None,
                                     threshold: Union[float, None] = None,
                                     slen_lims: Tuple[float, float] = (1.2, 3), n_sarcomeres_min: int = 4,
-                                    buffer_frames: int = 3, contr_time_min: float = 0.2,
-                                    merge_time_max: Union[float, None] = None):
+                                    buffer_frames: int = 3, contr_time_min: float = 0.2):
         """
         Detect contractions from contraction time-series using convolutional neural network and analyze beating
 
@@ -317,11 +316,7 @@ class Motion(SarcAsMBase):
         contr_time_min : float, optional
             Minimal contraction time in seconds, converted to frames with
             ``round()``; shorter contractions are removed. Default is 0.2.
-        merge_time_max : None, optional
-            Deprecated and ignored, with a ``DeprecationWarning``: gaps between
-            contractions are not closed. Default is None.
         """
-        _warn_merge_time_max(merge_time_max)
 
         # select weights for convolutional neural network
         if model == None or model == 'default':
@@ -380,7 +375,6 @@ class Motion(SarcAsMBase):
                      'params.detect_analyze_contractions.n_sarcomeres_min': n_sarcomeres_min,
                      'params.detect_analyze_contractions.buffer_frames': buffer_frames,
                      'params.detect_analyze_contractions.contr_time_min': contr_time_min,
-                     'params.detect_analyze_contractions.merge_time_max': None,  # no gap is closed
                      **polarity,
                      'contr': contr, 'start_contr_frame': start_contr_frame, 'start_contr': start_contr,
                      'quiet': quiet, 'start_quiet_frame': start_quiet_frame, 'start_quiet': start_quiet,

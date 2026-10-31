@@ -13,28 +13,22 @@
 
 """Miscellaneous helper utilities for SarcAsM (filtering, profiles, geometry, I/O)."""
 
-import datetime
-import glob
 import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Tuple, Any, List, Union
+from typing import Tuple, List, Union
 os.environ["KMP_WARNINGS"] = "False"
 warnings.filterwarnings("ignore")
 import numpy as np
-import tifffile
 import torch
 import igraph as ig
-from numba import njit, prange, jit
-from numpy import ndarray, dtype
-from scipy.interpolate import griddata, Akima1DInterpolator
+from numba import njit, prange
+from scipy.interpolate import Akima1DInterpolator
 
 logger = logging.getLogger(__name__)
-from scipy.ndimage import label, map_coordinates
-from scipy.signal import correlate, savgol_filter, butter, filtfilt, find_peaks
-from scipy.stats import stats
-from skimage.draw import line
+from scipy.ndimage import map_coordinates
+from scipy.signal import savgol_filter, find_peaks
 from skimage.morphology import disk
 
 
@@ -249,18 +243,6 @@ class Utils:
 
         return device
 
-    @staticmethod
-    def today_date():
-        """
-        Get today's date in the format 'YYYYMMDD'.
-
-        Returns
-        -------
-        str
-            Today's date in 'YYYYMMDD' format.
-        """
-        t = datetime.datetime.today()
-        return t.strftime('%Y%m%d')
 
     @staticmethod
     def get_models_dir() -> Path:
@@ -283,24 +265,6 @@ class Utils:
             raise FileNotFoundError(f"Models directory missing: {models_dir}")
         return models_dir
 
-    @staticmethod
-    def get_tif_files_in_folder(folder: str) -> List[str]:
-        """
-        Find all .tif files in a specified folder.
-
-        Parameters
-        ----------
-        folder : str
-            Path to the folder.
-
-        Returns
-        -------
-        list
-            List of file paths to the .tif files.
-        """
-        files = glob.glob(folder + '*.tif')
-        logger.info(f'{len(files)} files found')
-        return files
 
     @staticmethod
     def check_and_round_max_patch_size(max_patch_size):
@@ -329,38 +293,6 @@ class Utils:
                 rounded_patch_size.append(dim)
         return tuple(rounded_patch_size)
 
-
-    @staticmethod
-    def two_sample_t_test(data: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Pair-wise two sample t-test of multiple conditions.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            Input data for the t-test, one entry per condition.
-        alpha : float, optional
-            Significance level. Default is 0.05.
-
-        Returns
-        -------
-        tuple of np.ndarray
-            p-values and binary significance flags for each pair of conditions.
-        """
-        p_values = np.zeros((len(data), len(data))) * np.nan
-        significance = np.zeros((len(data), len(data))) * np.nan
-        for i, d_i in enumerate(data):
-            for j, d_j in enumerate(data):
-                if i < j:
-                    t_value, p_value = stats.ttest_ind(d_i, d_j)
-                    p_values[i, j] = p_value
-
-                    if p_value < alpha:
-                        significance[i, j] = 1
-                    else:
-                        significance[i, j] = 0
-
-        return p_values, significance
 
     @staticmethod
     def nan_sav_golay(data: np.ndarray, window_length: int, polyorder: int, axis: int = 0) -> np.ndarray:
@@ -413,149 +345,6 @@ class Utils:
 
         return filtered_data
 
-    @staticmethod
-    def nan_low_pass(x: np.ndarray, N: int = 6, crit_freq: float = 0.25, min_len: int = 31) -> np.ndarray:
-        """
-        Apply a Butterworth low-pass filter to data with NaN values.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Input data.
-        N : int, optional
-            Filter order. The higher the order, the steeper the spectral cutoff.
-            Default is 6.
-        crit_freq : float, optional
-            Maximum passed frequency. Default is 0.25.
-        min_len : int, optional
-            Minimum length of data required to apply the filter. Default is 31.
-
-        Returns
-        -------
-        np.ndarray
-            Filtered data with NaN values preserved.
-        """
-        x_filt = np.zeros(x.shape) * np.nan
-        idx_no_nan = np.where(~np.isnan(x))[0]
-        if len(idx_no_nan) >= min_len:
-            b, a = butter(N, crit_freq)
-            x_filt[idx_no_nan] = filtfilt(b, a, x[idx_no_nan])
-        return x_filt
-
-    @staticmethod
-    def most_freq_val(array: np.ndarray, bins: int = 20) -> ndarray[Any, dtype[Any]]:
-        """
-        Calculate the most frequent value in an array.
-
-        Parameters
-        ----------
-        array : np.ndarray
-            Input array.
-        bins : int, optional
-            Number of bins for the histogram calculation. Default is 20.
-
-        Returns
-        -------
-        float
-            Most frequent value in the array.
-        """
-        a, b = np.histogram(array, bins=bins, range=(np.nanmin(array), np.nanmax(array)))
-        val = b[np.argmax(a)]
-        return val
-
-    @staticmethod
-    def weighted_avg_and_std(x: np.ndarray, weights: np.ndarray, axis: int = 0) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Return the weighted average and standard deviation.
-
-        Parameters
-        ----------
-        x : array-like
-            Values.
-        weights : array-like
-            Weights.
-        axis : int, optional
-            Axis along which to compute the average and standard deviation. Default is 0.
-
-        Returns
-        -------
-        tuple
-            Weighted average and weighted standard deviation.
-        """
-        average = np.nansum(x * weights, axis=axis) / ((~np.isnan(x)) * weights).sum(axis=axis)
-        variance = np.nansum((x - average) ** 2 * weights, axis=axis) / ((~np.isnan(x)) * weights).sum(axis=axis)
-        return average, np.sqrt(variance)
-
-    @staticmethod
-    def weighted_quantile(data: np.ndarray, weights: np.ndarray, quantile: float) -> Union[
-        float, ndarray[Any, dtype[Any]]]:
-        """
-        Compute the weighted quantile of a 1D numpy array.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            1-D input array.
-        weights : np.ndarray
-            Weights, same size as ``data``.
-        quantile : float
-            Desired quantile (in percent, 0-100).
-
-        Returns
-        -------
-        float
-            Weighted quantile of data, or np.nan if no value exceeds the threshold.
-        """
-        # Flatten the arrays and remove NaNs
-        data = data.flatten()
-        weights = weights.flatten()
-        mask = ~np.isnan(data)
-        data = data[mask]
-        weights = weights[mask]
-
-        # Sort the data
-        sorted_indices = np.argsort(data)
-        sorted_data = data[sorted_indices]
-        sorted_weights = weights[sorted_indices]
-
-        # Compute the cumulative sum of weights
-        Sn = np.cumsum(sorted_weights)
-
-        # Compute the threshold for the desired quantile
-        threshold = quantile / 100 * np.sum(sorted_weights)
-
-        # Check if any cumulative sum of weights exceeds the threshold
-        over_threshold = Sn >= threshold
-        if not np.any(over_threshold):
-            return np.nan
-
-        # Return the data value where the cumulative sum of weights first exceeds the threshold
-        return sorted_data[over_threshold][0]
-
-    @staticmethod
-    def column_weighted_quantiles(data: np.ndarray, weights: np.ndarray, quantiles: list) -> np.ndarray:
-        """
-        Compute the weighted quantile for each column of a 2D numpy array.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            2-D input array.
-        weights : np.ndarray
-            Weights, same size as ``data``.
-        quantiles : list of float
-            Desired quantiles (in percent, 0-100).
-
-        Returns
-        -------
-        np.ndarray
-            2-D array with weighted quantiles of each data column.
-        """
-        results = np.zeros((len(quantiles), data.shape[1]))
-        for i in range(data.shape[1]):
-            for j, q in enumerate(quantiles):
-                results[j, i] = Utils.weighted_quantile(data[:, i], weights[:, i], q)
-        return results
 
     @staticmethod
     def custom_diff(x: np.ndarray, dt: float) -> np.ndarray:
@@ -647,137 +436,6 @@ class Utils:
 
         return length_px
 
-    @staticmethod
-    def process_profile(
-            profile: np.ndarray,
-            pixelsize: float,
-            slen_lims: tuple = (1, 3),
-            thres: float = 0.25,
-            min_dist: float = 1,
-            width: float = 0.5,
-            interp_factor: int = 4,
-            interpolation_method: str = 'linear'
-    ) -> Tuple[float, float]:
-        """
-        Find peak distance in a 1D intensity profile using interpolation and center of mass (COM).
-
-        This function detects peaks in a normalized 1D intensity profile, optionally interpolates
-        the profile using linear or Akima interpolation, and refines the peak positions using the center of mass
-        within a local window.
-
-        Parameters
-        ----------
-        profile : np.ndarray
-            1-D intensity profile.
-        pixelsize : float
-            Physical size per pixel, in µm.
-        slen_lims : tuple of float, optional
-            (min, max) valid peak separation range in µm. Default is (1, 3).
-        thres : float, optional
-            Peak detection height threshold (0-1). Default is 0.25.
-        min_dist : float, optional
-            Minimum peak separation in µm. Default is 1.
-        width : float, optional
-            Half-width of COM window in µm. Default is 0.5.
-        interp_factor : int, optional
-            Interpolation upsampling factor; no interpolation if <= 1.
-            Default is 4.
-        interpolation_method : {'linear', 'akima'}, optional
-            Interpolation method ('linear' is fast, 'akima' is smooth).
-            Default is 'linear'.
-
-        Returns
-        -------
-        slen_profile : float
-            Peak separation distance in µm, or np.nan if invalid.
-        center_offsets : float
-            Offset of the profile center in µm, or np.nan if invalid.
-
-        Notes
-        -----
-        - For `interp_factor` ≤ 1, no interpolation is performed and the original profile is used.
-        - The function uses linear interpolation by default for speed, or Akima for smoother results.
-        - Center of mass calculation is performed in a window around each detected peak for sub-pixel accuracy.
-        - If less than two peaks are detected, or the separation is outside `slen_lims`, returns (np.nan, np.nan).
-        """
-        # convert parameter to pixels
-        min_dist_pixel = int(np.round(min_dist / pixelsize, 0))
-        width_pixels = int(np.round(width / pixelsize, 0))
-
-        # Normalize profile to [0,1] range
-        pmin = profile.min()
-        pmax = profile.max()
-        if pmax == pmin:
-            return np.nan, np.nan
-        profile = (profile - pmin) / (pmax - pmin)
-
-        # Create position array
-        pos_array = np.arange(len(profile)) * pixelsize
-
-        if interp_factor >= 1:
-            # Use selected interpolation method
-            x_interp = np.linspace(pos_array[0], pos_array[-1],
-                                   num=len(profile) * interp_factor)
-            if interpolation_method == 'akima':
-                # Akima interpolation for smoother profiles (slower)
-                interp_func = Akima1DInterpolator(pos_array, profile)
-                y_interp = interp_func(x_interp)
-            else:
-                # Linear interpolation (faster, default)
-                y_interp = np.interp(x_interp, pos_array, profile)
-            actual_interp_factor = interp_factor
-        else:
-            y_interp = profile
-            x_interp = pos_array
-            actual_interp_factor = 1
-
-        # Find peaks with prominence to avoid noise (ensure distance >= 1)
-        peak_distance = max(1, min_dist_pixel * actual_interp_factor)
-        peaks_idx, properties = find_peaks(y_interp,
-                                           height=thres,
-                                           distance=peak_distance,
-                                           prominence=0.2)
-
-        if len(peaks_idx) < 2:
-            return np.nan, np.nan
-
-        # Pre-compute window size
-        window_size = width_pixels * actual_interp_factor
-        
-        # Calculate refined peak positions using center of mass (vectorized where possible)
-        peaks = np.empty(len(peaks_idx), dtype=np.float64)
-        for i, idx in enumerate(peaks_idx):
-            start = max(0, idx - window_size)
-            end = min(len(x_interp), idx + window_size + 1)
-            x_window = x_interp[start:end]
-            y_window = y_interp[start:end]
-            # Subtract baseline to improve COM calculation
-            y_window = y_window - y_window.min()
-            y_sum = y_window.sum()
-            if y_sum > 0:
-                peaks[i] = np.dot(x_window, y_window) / y_sum
-            else:
-                peaks[i] = x_interp[idx]
-
-        center = (pos_array[-1] + pos_array[0]) * 0.5
-
-        # Split peaks into left and right of center
-        left_mask = peaks < center
-        right_mask = peaks >= center
-        
-        if not (left_mask.any() and right_mask.any()):
-            return np.nan, np.nan
-
-        # Take rightmost peak from left side and leftmost peak from right side
-        left_peak = peaks[left_mask][-1]
-        right_peak = peaks[right_mask][0]
-        slen_profile = right_peak - left_peak
-        center_offsets = (left_peak + right_peak) * 0.5 - center
-
-        if slen_lims[0] <= slen_profile <= slen_lims[1]:
-            return slen_profile, center_offsets
-
-        return np.nan, np.nan
 
     @staticmethod
     def process_profiles_batch(
@@ -966,24 +624,6 @@ class Utils:
 
         return sarcomere_lengths, center_offsets
 
-    @staticmethod
-    def peak_by_first_moment(x: np.ndarray, y: np.ndarray):
-        """
-        Calculate the peak of y using the first moment method.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            The x-values of the data.
-        y : np.ndarray
-            The y-values of the data.
-
-        Returns
-        -------
-        float
-            The calculated peak position.
-        """
-        return np.sum(x * y) / np.sum(y)
 
     @staticmethod
     def analyze_orientations(orientations: np.ndarray):
@@ -1008,51 +648,6 @@ class Utils:
         angle = np.angle(np.sum(np.exp(orientations * 2 * 1j))) / 2
         return oop, angle
 
-    @staticmethod
-    def correct_phase_confocal(tif_file: str, shift_max=30):
-        """
-        Correct phase shift for images of Leica confocal resonant scanner in bidirectional mode while conserving metadata.
-
-        Parameters
-        ----------
-        tif_file : str
-            Path to the input .tif file.
-        shift_max : int, optional
-            Maximum allowed shift, by default 30.
-        """
-
-        # read data
-        data = tifffile.imread(tif_file)
-        data_0 = data[0].astype('float32')
-
-        # split data in -> and <-
-        row_even = data_0[::2, :].reshape(-1)
-        row_uneven = data_0[1::2, :].reshape(-1)
-        if row_even.shape != row_uneven.shape:
-            row_even = data_0[2::2, :].reshape(-1)
-            row_uneven = data_0[1::2, :].reshape(-1)
-
-        # correlate lines of both directions and calculate phase shift
-        corr = correlate(row_even, row_uneven, mode='same')
-        corr_window = corr[int(corr.shape[0] / 2 - shift_max): int(corr.shape[0] / 2 + shift_max)]
-        x_window = np.arange(corr_window.shape[0]) - corr_window.shape[0] / 2
-        shift = int(x_window[np.argmax(corr_window)])
-        logger.info(f'Phase shift = {shift} pixel')
-
-        # correct data
-        data_correct = np.copy(data)
-        data_correct[:, ::2, :] = np.roll(data[:, ::2, :], shift=-shift, axis=2)
-
-        # get metadata from old file
-        tif = tifffile.TiffFile(tif_file)
-        ij_metadata = tif.imagej_metadata
-        tags = tif.pages[0].tags
-
-        resolution = [tags['XResolution'].value, tags['YResolution'].value]
-        metadata = {'unit': 'um', 'finterval': ij_metadata['finterval'], 'axes': 'TYX', 'info': ij_metadata['Info']}
-
-        # save tif file under previous name
-        tifffile.imwrite(tif_file, data_correct, imagej=True, metadata=metadata, resolution=resolution)
 
     @staticmethod
     def map_array(array: np.ndarray,
@@ -1113,36 +708,7 @@ class Utils:
                 d[key] = np.array(value)
         return d
 
-    @staticmethod
-    def find_closest(array, x):
-        """Return the index and value of the element in ``array`` closest to ``x``."""
-        # Calculate the absolute differences
-        differences = np.abs(array - x)
 
-        # Find the index of the minimum difference
-        index = np.argmin(differences)
-
-        # Get the value at the found index
-        closest_value = array[index]
-
-        return index, closest_value
-
-    @staticmethod
-    def max_orientation_change(angles):
-        """Return the maximum consecutive change in non-polar orientation angles, in radians."""
-        # Ensure angles are in the range [-π/2, π/2]
-        angles = np.mod(angles + np.pi / 2, np.pi) - np.pi / 2
-
-        # Calculate angle differences
-        angle_diffs = np.diff(angles)
-
-        # Adjust for non-polar nature (180-degree symmetry)
-        angle_diffs = np.minimum(np.abs(angle_diffs), np.pi - np.abs(angle_diffs))
-
-        # Find and return the maximum angle change
-        max_change = np.max(angle_diffs)
-
-        return max_change
 
     @staticmethod
     def get_orientation_angle_map(orientation_field: np.ndarray,
@@ -1246,123 +812,6 @@ class Utils:
 
         return angles.squeeze()
 
-    @staticmethod
-    def create_distance_map(sarc_obj):
-        """
-        Create a distance map for sarcomeres from a SarcAsM object.
-
-        The distance map is 0 at Z-bands and 1 at M-bands.
-
-        Parameters
-        ----------
-        sarc_obj : SarcAsM
-            A SarcAsM object.
-
-        Returns
-        -------
-        np.ndarray
-            A 2-D array with normalized distances (0 to 1) along sarcomeres.
-        """
-
-        # Validate sarc_obj data
-        structure = sarc_obj.data
-        pixelsize = sarc_obj.metadata.get('pixelsize', None)
-
-        if not all(key in structure for key in
-                   ['structure.sarcomere.pos', 'structure.sarcomere.orientation', 'structure.sarcomere.slen']):
-            raise Warning("Missing required data in sarc_obj.data.")
-
-        if pixelsize is None:
-            raise Warning("Missing 'pixelsize' in sarc_obj.metadata.")
-
-        # Extract data from sarc_obj
-        pos_vectors = structure['structure.sarcomere.pos'][0]
-        orientation_vectors = np.asarray([
-            -np.sin(structure['structure.sarcomere.orientation'][0]),
-            np.cos(structure['structure.sarcomere.orientation'][0])
-        ])
-        sarcomere_length_vectors = structure['structure.sarcomere.slen'][0] / pixelsize
-
-        # Calculate endpoints of each vector based on orientation and length
-        ends_0 = pos_vectors + orientation_vectors * sarcomere_length_vectors / 2  # End point 1
-        ends_1 = pos_vectors - orientation_vectors * sarcomere_length_vectors / 2  # End point 2
-
-        # Initialize output arrays
-        distance = np.full(sarc_obj.metadata.size, np.nan, dtype='float32')
-
-        def create_distance_array(l):
-            """Creates a normalized distance array for a line segment."""
-            if l < 2:
-                raise ValueError("Length must be at least 2.")
-            midpoint = (l + 1) // 2
-            return np.concatenate((np.linspace(0, 1, midpoint), np.linspace(1, 0, l - midpoint)))
-
-        # Populate distance and length arrays for each sarcomere
-        for e0, e1, in zip(ends_0.T.astype('int'), ends_1.T.astype('int')):
-            rr, cc = line(*e0, *e1)  # Get pixel coordinates for the line
-
-            dist = create_distance_array(len(rr))  # Create normalized distance values
-
-            # Assign values to output arrays
-            try:
-                distance[rr, cc] = dist
-            except IndexError as e:
-                logger.debug(f"Index out of bounds when assigning distance: {e}. Skipping this assignment.")
-                pass
-
-        return distance
-
-    @staticmethod
-    def interpolate_distance_map(image, N=50, method='linear'):
-        """
-        Interpolate small NaN regions in a 2-D image.
-
-        Only connected NaN regions whose size is <= ``N`` pixels are filled.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            2-D input image; NaN values represent gaps to be filled.
-        N : int, optional
-            Maximum size (in pixels) of connected NaN regions to interpolate.
-            Larger regions are left unaltered. Default is 50.
-        method : {'linear', 'nearest', 'cubic'}, optional
-            Interpolation method. Default is 'linear'.
-
-        Returns
-        -------
-        np.ndarray
-            Array with the same shape as ``image``, where small NaN regions
-            (size <= N) have been interpolated.
-        """
-
-        # Get indices and mask valid points
-        x, y = np.indices(image.shape)
-        valid_points = ~np.isnan(image)
-        valid_coords = np.array((x[valid_points], y[valid_points])).T
-        valid_values = image[valid_points]
-
-        # Label connected NaN regions
-        nan_mask = np.isnan(image)
-        labeled_nan_regions, num_features = label(nan_mask)
-
-        # Combine masks for all small regions
-        combined_small_nan_mask = np.zeros_like(image, dtype=bool)
-
-        for region_label in range(1, num_features + 1):
-            region_mask = labeled_nan_regions == region_label
-            region_size = np.sum(region_mask)
-
-            if region_size <= N:
-                combined_small_nan_mask |= region_mask
-
-        # Interpolate all small NaN regions at once
-        if np.any(combined_small_nan_mask):
-            invalid_coords = np.array((x[combined_small_nan_mask], y[combined_small_nan_mask])).T
-            interpolated_values = griddata(valid_coords, valid_values, invalid_coords, method=method)
-            image[combined_small_nan_mask] = interpolated_values
-
-        return image
 
     @staticmethod
     def fast_profile_lines(image, start_points, end_points, linewidth=3, mode='constant', cval=0.0):

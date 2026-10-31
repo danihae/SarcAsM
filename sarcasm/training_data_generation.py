@@ -25,8 +25,6 @@ import torch.nn.functional as F
 from bio_image_unet.unet import Predict
 from matplotlib import pyplot as plt
 from scipy import ndimage
-from scipy.interpolate import griddata
-from scipy.ndimage import label
 from skimage.draw import line
 from skimage.morphology import skeletonize
 
@@ -986,57 +984,6 @@ class TrainingDataGenerator:
         return (pos_vectors_px, mband_id_vectors, mband_length_vectors, sarcomere_length_vectors,
                 sarcomere_orientation_vectors, max_score_vectors, mbands, mbands_labels, score_threshold)
 
-    @staticmethod
-    def interpolate_distance_map(image, N=50, method='linear'):
-        """
-        Interpolate small NaN regions in a 2D image.
-
-        Only connected NaN regions with size <= N are filled; larger regions are
-        left unchanged.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            2D input image; NaN values mark gaps to be filled.
-        N : int, optional
-            Maximum size (in pixels) of connected NaN regions to interpolate.
-            Default is 50.
-        method : {'linear', 'nearest', 'cubic'}, optional
-            Interpolation method. Default is 'linear'.
-
-        Returns
-        -------
-        np.ndarray
-            Image with the same shape, with small NaN regions interpolated.
-        """
-
-        # Get indices and mask valid points
-        x, y = np.indices(image.shape)
-        valid_points = ~np.isnan(image)
-        valid_coords = np.array((x[valid_points], y[valid_points])).T
-        valid_values = image[valid_points]
-
-        # Label connected NaN regions
-        nan_mask = np.isnan(image)
-        labeled_nan_regions, num_features = label(nan_mask)
-
-        # Combine masks for all small regions
-        combined_small_nan_mask = np.zeros_like(image, dtype=bool)
-
-        for region_label in range(1, num_features + 1):
-            region_mask = labeled_nan_regions == region_label
-            region_size = np.sum(region_mask)
-
-            if region_size <= N:
-                combined_small_nan_mask |= region_mask
-
-        # Interpolate all small NaN regions at once
-        if np.any(combined_small_nan_mask):
-            invalid_coords = np.array((x[combined_small_nan_mask], y[combined_small_nan_mask])).T
-            interpolated_values = griddata(valid_coords, valid_values, invalid_coords, method=method)
-            image[combined_small_nan_mask] = interpolated_values
-
-        return image
 
     @staticmethod
     def get_pixel_size(file_path):

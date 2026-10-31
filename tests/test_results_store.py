@@ -12,10 +12,9 @@ from scipy import sparse
 from sarcasm.features import MOTION_KINDS
 from sarcasm.io.ioutils import IOUtils
 from sarcasm.io.results_store import (
+    update_results,
     Results,
     TOP_GROUPS,
-    export_to_json,
-    write_results,
     _route,
 )
 
@@ -68,7 +67,7 @@ def _equal(a, b):
 @pytest.fixture
 def store(tmp_path):
     p = tmp_path / "data.zarr"
-    write_results(_sample_data(), p)
+    update_results(p, _sample_data())
     return p
 
 
@@ -94,7 +93,7 @@ def test_empty_sparse_members_roundtrip(tmp_path):
         "structure.sarcomere.slen": [np.array([], dtype=np.float32)],
     }
     p = tmp_path / "empty.zarr"
-    write_results(data, p)
+    update_results(p, data)
     r = Results(p)
     for k in data:
         assert _equal(data[k], r[k]), f"mismatch for {k}"
@@ -106,13 +105,13 @@ def test_per_frame_arrays_with_an_empty_trailing_axis_roundtrip(tmp_path):
     links = [np.zeros((4, 0), dtype=np.int64), np.arange(20).reshape(4, 5), np.arange(8).reshape(4, 2)]
     for frames in (links, links[:2]):
         p = tmp_path / f"links{len(frames)}.zarr"
-        write_results({"structure.zbands.lat_links": frames}, p)
+        update_results(p, {"structure.zbands.lat_links": frames})
         back = Results(p)["structure.zbands.lat_links"]
         assert [np.shape(b) for b in back] == [f.shape for f in frames]
         assert all(np.array_equal(b, f) for b, f in zip(back, frames))
     pos = [np.random.default_rng(1).random((5, 2)), np.empty((0, 2)), np.random.default_rng(2).random((3, 2))]
     p = tmp_path / "pos.zarr"
-    write_results({"structure.sarcomere.pos": pos}, p)
+    update_results(p, {"structure.sarcomere.pos": pos})
     back = Results(p)["structure.sarcomere.pos"]
     assert [np.shape(b) for b in back] == [(5, 2), (0, 2), (3, 2)] and np.allclose(back[2], pos[2])
 
@@ -231,7 +230,7 @@ def test_attribute_type_is_storage_independent(tmp_path, n):
     """
     p = tmp_path / f"data_{n}.zarr"
     oop = np.linspace(0.5, 0.9, n)
-    write_results({"structure.sarcomere.oop": oop}, p)
+    update_results(p, {"structure.sarcomere.oop": oop})
     r = Results(p)
     for got in (r.structure.sarcomere.oop, r["structure.sarcomere.oop"]):
         assert isinstance(got, np.ndarray)
@@ -381,7 +380,7 @@ def test_repr_html_contains_keys(store):
 
 def test_repr_of_empty_store(tmp_path):
     p = tmp_path / "empty.zarr"
-    write_results({}, p)
+    update_results(p, {})
     assert "empty" in repr(Results(p))
 
 
@@ -407,7 +406,7 @@ def test_key_must_be_a_dotted_path_under_a_known_namespace(tmp_path, store, bad)
     with pytest.raises((KeyError, TypeError)):
         r[bad] = 1
     with pytest.raises((KeyError, TypeError)):
-        write_results({bad: 1}, tmp_path / "bad.zarr")
+        update_results(tmp_path / "bad.zarr", {bad: 1})
 
 
 def test_non_string_key_rejected(store):
@@ -545,22 +544,6 @@ def test_manifest_pins_the_physical_member(tmp_path):
 # --------------------------------------------------------------------------- #
 # export
 # --------------------------------------------------------------------------- #
-def test_export_json_legacy_roundtrip(store, tmp_path):
-    rd = Results(store)
-    out = tmp_path / "structure.json"
-    export_to_json(rd, out)
-    back = IOUtils.json_deserialize(out)
-    assert set(back.keys()) == set(rd.keys())
-    assert _equal(back["motion.tracks.slen"], rd["motion.tracks.slen"])
-
-
-def test_export_json_skip_arrays(store, tmp_path):
-    rd = Results(store)
-    out = tmp_path / "scalars.json"
-    export_to_json(rd, out, include_arrays=False)
-    back = IOUtils.json_deserialize(out)
-    assert "motion.tracks.slen" not in back           # large array skipped
-    assert "motion.tracks.n" in back                  # scalar kept
 
 
 # --------------------------------------------------------------------------- #
@@ -576,7 +559,7 @@ def test_big_arrays_are_one_shard_file(tmp_path):
     n, T = 1300, 30                                          # spans three 512-row chunks
     slen = np.random.default_rng(0).random((n, T)).astype(np.float32)
     pos = np.random.default_rng(1).random((n, T, 2)).astype(np.float32)
-    write_results({"motion.tracks.slen": slen, "motion.tracks.positions_um": pos}, p)
+    update_results(p, {"motion.tracks.slen": slen, "motion.tracks.positions_um": pos})
     rd = Results(p)
     h = rd.handle("motion.tracks.slen")
     assert h.chunks == (512, T)                              # one track still reads one chunk

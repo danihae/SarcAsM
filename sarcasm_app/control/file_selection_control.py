@@ -69,10 +69,6 @@ class FileSelectionControl:
         self.__main_control = main_control
         self.__applying_metadata = False         # the re-analyse question takes the focus: no second call
 
-    @property
-    def __cell(self):
-        return self.__main_control.model.cell
-
     def bind_events(self):
         # Let files dropped on the embedded napari viewer go through the same
         # import flow as the buttons (full analysis layers + metadata panel).
@@ -93,7 +89,6 @@ class FileSelectionControl:
         self.__file_selection_widget.btn_search_parameters_file.clicked.connect(self.on_search_parameters_file)
         self.__file_selection_widget.btn_import_parameters.clicked.connect(self.on_btn_import_parameters)
         self.__file_selection_widget.btn_export_parameters.clicked.connect(self.on_btn_export_parameters)
-        pass
 
     def on_changed_channel(self):
         if self.__main_control.model.cell is None:
@@ -104,7 +99,6 @@ class FileSelectionControl:
     def on_set_to_default(self):
         # set all parameters back to default values
         self.__main_control.model.set_to_default()
-        pass
 
     def on_search_parameters_file(self):
         """Handle parameter file selection with JSON validation"""
@@ -165,7 +159,6 @@ class FileSelectionControl:
                 logger.info('Parameters imported')
             else:
                 logger.warning('Parameters not imported, file does not exist')
-        pass
 
     def on_btn_export_parameters(self):
         if self.__file_selection_widget.le_parameters_path.text() != '':
@@ -182,8 +175,6 @@ class FileSelectionControl:
                 logger.info(f'Parameters exported to: {file_path}')
             else:
                 logger.warning('Parameters NOT exported.')
-            pass
-        pass
 
     def on_search(self):
         # f_name is a tuple

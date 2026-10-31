@@ -14,7 +14,7 @@
 
 import napari
 
-from .parameters import Parameters, patch_size_from_parameters
+from .parameters import Parameters, patch_size_from_parameters  # noqa: F401  (re-exported)
 from .parameter import Parameter
 from sarcasm import SarcAsM
 from sarcasm.motion import MotionAnalysis
@@ -189,7 +189,6 @@ class ApplicationModel:
         self.__parameters.get_parameter(name='motion.analyze.threshold').set_value(
             _default_contraction_threshold())
         self.__parameters.get_parameter(name='motion.analyze.contr_time_min').set_value(0.2)
-        self.__parameters.get_parameter(name='motion.analyze.merge_time_max').set_value(0.05)
         self.__parameters.get_parameter(name='motion.analyze.buffer_frames').set_value(3)
         self.__parameters.get_parameter(name='motion.analyze.min_valid_frames').set_value(0.5)
         self.__parameters.get_parameter(name='motion.analyze.filter_wl').set_value(13)
@@ -315,7 +314,6 @@ class ApplicationModel:
         self.__parameters.set_parameter(name='motion.analyze.aggregate')
         self.__parameters.set_parameter(name='motion.analyze.threshold')
         self.__parameters.set_parameter(name='motion.analyze.contr_time_min')
-        self.__parameters.set_parameter(name='motion.analyze.merge_time_max')
         self.__parameters.set_parameter(name='motion.analyze.buffer_frames')
         self.__parameters.set_parameter(name='motion.analyze.min_valid_frames')
         self.__parameters.set_parameter(name='motion.analyze.filter_wl')

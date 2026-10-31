@@ -616,7 +616,6 @@ class MotionAnalysisControl:
         p('motion.analyze.aggregate').connect(w.cb_motion_aggregate)
         p('motion.analyze.threshold').connect(w.dsb_motion_threshold)
         p('motion.analyze.contr_time_min').connect(w.dsb_motion_contr_time_min)
-        p('motion.analyze.merge_time_max').connect(w.dsb_motion_merge_time_max)
         p('motion.analyze.buffer_frames').connect(w.sb_motion_buffer_frames)
         p('motion.analyze.min_valid_frames').connect(w.dsb_motion_min_valid_frames)
         p('motion.analyze.filter_wl').connect(w.sb_motion_filter_wl)

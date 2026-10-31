@@ -71,8 +71,8 @@ class _Namespace:
     def read_imgs(self, *args, **kwargs):
         return self._sarc.read_imgs(*args, **kwargs)
 
-    def store_structure_data(self):
-        return self._sarc.store_structure_data()
+    def commit(self):
+        return self._sarc.commit()
 
     def _read_mask(self, *args, **kwargs):
         return self._sarc._read_mask(*args, **kwargs)

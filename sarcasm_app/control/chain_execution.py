@@ -30,7 +30,6 @@ class ChainExecution:
         self.__get_lambda, self.__set_lambda, self.__parser_lambda = self.__currently_processing.backup_internals()
         self.__currently_processing.disconnect()
 
-        pass
 
     def add_step(self, step):
         """
@@ -38,13 +37,11 @@ class ChainExecution:
 
         """
         self.__execution_list.append(step)
-        pass
 
     def __on_currently_processing_changed(self, new, old=None):
         if old is True and new is False and self.__current_worker is not None and self.__current_worker.succeeded is True:
             # execute next step
             self.execute()
-            pass
         elif old is True and new is False and self.__current_worker is not None and self.__current_worker.succeeded is False:
             if self.__message_display_function is not None:
                 self.__message_display_function('Stopped: a step failed (see the message above).')
@@ -52,8 +49,6 @@ class ChainExecution:
                                                                set_lambda=self.__set_lambda,
                                                                parser_lambda=self.__parser_lambda)
                 self.__currently_processing.set_value(False)
-            pass
-        pass
 
     def __finishing_step(self):
         if self.__current_step >= len(self.__execution_list):
@@ -63,7 +58,6 @@ class ChainExecution:
                                                            set_lambda=self.__set_lambda,
                                                            parser_lambda=self.__parser_lambda)
             self.__currently_processing.set_value(False)
-        pass
 
     def execute(self):
         if len(self.__execution_list) == 0:  # if there is nothing to execute, exit
@@ -82,8 +76,5 @@ class ChainExecution:
         if self.__current_step < len(self.__execution_list):
             self.__currently_processing.connect(self.__on_currently_processing_changed)
 
-            pass
 
-        pass
 
-    pass

@@ -13,11 +13,10 @@
 
 """Single ``<name>.ome.zarr`` container for a complete SarcAsM analysis.
 
-One store holds *everything*: the raw image (OME-Zarr multiscales), derived
-masks (integer → OME-Zarr ``labels/``; float prob maps → ``sarcasm/masks/``),
-the analysis/track results (the
+One store holds *everything*: the raw image (OME-Zarr multiscales), the derived
+masks (``sarcasm/masks/``), the analysis/track results (the
 :mod:`sarcasm.io.results_store` groups, re-parented under ``sarcasm/``) and the
-metadata. Bioimage tools (napari, Fiji, vizarr) read the image + labels; the
+metadata. Bioimage tools (napari, Fiji, vizarr) read the image; the
 ``sarcasm/`` namespace is an extra group they ignore.
 
 Layout::
@@ -25,9 +24,8 @@ Layout::
     movie.ome.zarr/
       zarr.json            attrs.ome.multiscales  (axes + scale from pixelsize/frametime)
       0/  (1/ 2/ …)        raw image pixels (optional pyramid)
-      labels/<name>/0      integer masks (cell_mask, sarcomere_mask) + image-label metadata
       sarcasm/
-        masks/<name>       float prob maps (zbands, mbands, orientation, distance, …)
+        masks/<name>       masks and prob maps (zbands, mbands, orientation, cell_mask, …)
         structure/ motion/ params/           ← results_store groups
         zarr.json          attrs: metadata, _manifest
 
@@ -54,7 +52,7 @@ from typing import Any, List, Optional, Sequence, Union
 import numpy as np
 import zarr
 
-from sarcasm.io.results_store import Results, _shards
+from sarcasm.io.results_store import _shards
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +60,6 @@ OME_VERSION = "0.5"
 IMAGE = "0"                 # full-resolution image array (multiscales level 0)
 SARCASM = "sarcasm"        # SarcAsM namespace group
 MASKS = f"{SARCASM}/masks"
-LABELS = "labels"
 _META = "metadata"
 
 # OME axis descriptors by SarcAsM axis letter
@@ -404,48 +401,6 @@ class OmeZarrStore:
         """
         return zarr.open_group(str(self.path), mode=mode)
 
-    @classmethod
-    def create(cls, path: Union[str, os.PathLike], image: np.ndarray, axes: str, *,
-               pixelsize: Optional[float] = None, frametime: Optional[float] = None,
-               metadata: Optional[dict] = None, overwrite: bool = False) -> "OmeZarrStore":
-        """Create the store and ingest an image as the OME-Zarr level-0 image.
-
-        Parameters
-        ----------
-        path : str or os.PathLike
-            Store path to create.
-        image : np.ndarray
-            Raw image pixels.
-        axes : str
-            Axis letters matching ``image.ndim`` (e.g. ``'tyx'``).
-        pixelsize : float or None, optional
-            Spatial pixel size. Default is None.
-        frametime : float or None, optional
-            Time step between frames. Default is None.
-        metadata : dict or None, optional
-            Extra metadata to store. Default is None.
-        overwrite : bool, optional
-            If True, replace an existing store; otherwise raise. Default is
-            False.
-
-        Returns
-        -------
-        OmeZarrStore
-            The created store.
-
-        Raises
-        ------
-        FileExistsError
-            If the store exists and ``overwrite`` is False.
-        """
-        store = cls(path)
-        if store.exists and not overwrite:
-            raise FileExistsError(f"store already exists: {store.path}")
-        if store.exists and overwrite:
-            remove_tree(store.path)
-        store.ingest_image(image, axes, pixelsize=pixelsize, frametime=frametime,
-                           metadata=metadata)
-        return store
 
     def ingest_image(self, image: np.ndarray, axes: str, *,
                      pixelsize: Optional[float] = None, frametime: Optional[float] = None,
@@ -505,21 +460,6 @@ class OmeZarrStore:
         except (KeyError, FileNotFoundError):
             return False
 
-    def read_image(self, frames=None) -> np.ndarray:
-        """Read the raw image (optionally a subset of frames).
-
-        Parameters
-        ----------
-        frames : int, slice, or array-like, optional
-            Index/slice along the leading axis. Default is None (whole image).
-
-        Returns
-        -------
-        np.ndarray
-            The (sub)image pixels.
-        """
-        arr = self._root("r")[IMAGE]
-        return arr[...] if frames is None else arr[frames]
 
     def image_handle(self) -> "zarr.Array":
         """Return a lazy zarr handle for the raw image (slice without loading).
@@ -537,8 +477,8 @@ class OmeZarrStore:
         return (self.read_metadata() or {}).get("axes")
 
     # -- masks ------------------------------------------------------------ #
-    def write_mask(self, name: str, arr: np.ndarray, *, as_label: bool = False) -> None:
-        """Store a derived mask.
+    def write_mask(self, name: str, arr: np.ndarray) -> None:
+        """Store a derived mask under ``sarcasm/masks/``.
 
         Parameters
         ----------
@@ -546,28 +486,11 @@ class OmeZarrStore:
             Mask name (e.g. ``'cell_mask'``, ``'zbands'``).
         arr : np.ndarray
             Mask pixels.
-        as_label : bool, optional
-            If True, store an integer mask under OME ``labels/`` (napari label
-            layers); otherwise store a float prob map under ``sarcasm/masks/``.
-            Default is False.
         """
-        root = self._root("a")
-        if as_label:
-            grp = _ensure_group(root, f"{LABELS}/{name}")
-            a = grp.create_array(IMAGE, shape=arr.shape, dtype=arr.dtype, overwrite=True,
-                                 **_image_layout(arr.shape, arr.dtype))
-            a[...] = arr
-            grp.attrs["image-label"] = {"version": OME_VERSION}
-            labels_grp = _ensure_group(root, LABELS)
-            listed = list(labels_grp.attrs.get("labels", []))
-            if name not in listed:
-                listed.append(name)
-            labels_grp.attrs["labels"] = listed
-        else:
-            grp = _ensure_group(root, MASKS)
-            a = grp.create_array(name, shape=arr.shape, dtype=arr.dtype, overwrite=True,
-                                 **_image_layout(arr.shape, arr.dtype))
-            a[...] = arr
+        grp = _ensure_group(self._root("a"), MASKS)
+        a = grp.create_array(name, shape=arr.shape, dtype=arr.dtype, overwrite=True,
+                             **_image_layout(arr.shape, arr.dtype))
+        a[...] = arr
 
     def create_mask(self, name: str, shape, dtype) -> Any:
         """Allocate an empty mask array and return its handle for region writes.
@@ -595,7 +518,7 @@ class OmeZarrStore:
                                 **_image_layout(shape, dtype))
 
     def read_mask(self, name: str, frames=None) -> np.ndarray:
-        """Read a derived mask by name (from ``labels/`` or ``sarcasm/masks/``).
+        """Read a derived mask by name.
 
         Parameters
         ----------
@@ -627,13 +550,10 @@ class OmeZarrStore:
         zarr.Array
             Lazy handle to the mask array.
         """
-        root = self._root("r")
-        if name in list(_ensure_group_ro(root, LABELS)):
-            return root[f"{LABELS}/{name}/{IMAGE}"]
-        return root[f"{MASKS}/{name}"]
+        return self._root("r")[f"{MASKS}/{name}"]
 
     def has_mask(self, name: str) -> bool:
-        """Return True if a mask ``name`` exists in either mask group.
+        """Return True if a mask ``name`` exists.
 
         Parameters
         ----------
@@ -647,19 +567,10 @@ class OmeZarrStore:
         """
         if not self.exists:
             return False
-        root = self._root("r")
-        # Check each group independently: a missing labels/ or masks/ group must
-        # not short-circuit the other (e.g. when only float prob maps are stored).
-        for grp, getter in ((LABELS, "group_keys"), (MASKS, "array_keys")):
-            try:
-                if name in list(getattr(root[grp], getter)()):
-                    return True
-            except KeyError:
-                continue
-        return False
+        return name in self.mask_names()
 
     def mask_names(self) -> List[str]:
-        """List all stored mask names across ``labels/`` and ``sarcasm/masks/``.
+        """List all stored mask names.
 
         Returns
         -------
@@ -668,17 +579,13 @@ class OmeZarrStore:
         """
         if not self.exists:
             return []
-        root = self._root("r")
-        out = []
-        for grp, getter in ((LABELS, "group_keys"), (MASKS, "array_keys")):
-            try:
-                out += list(getattr(root[grp], getter)())
-            except KeyError:
-                pass
-        return out
+        try:
+            return list(self._root("r")[MASKS].array_keys())
+        except KeyError:
+            return []
 
     def delete_mask(self, name: str) -> bool:
-        """Delete a stored mask (from ``labels/`` or ``sarcasm/masks/``) if present.
+        """Delete a stored mask if present.
 
         Parameters
         ----------
@@ -694,15 +601,6 @@ class OmeZarrStore:
             return False
         root = self._root("a")
         try:
-            labels_grp = root[LABELS]
-        except KeyError:
-            labels_grp = None
-        if labels_grp is not None and name in list(labels_grp.group_keys()):
-            del labels_grp[name]
-            labels_grp.attrs["labels"] = [
-                n for n in labels_grp.attrs.get("labels", []) if n != name]
-            return True
-        try:
             masks_grp = root[MASKS]
         except KeyError:
             masks_grp = None
@@ -717,17 +615,6 @@ class OmeZarrStore:
         """Path: The ``sarcasm/`` results subgroup path inside the store."""
         return self.path / SARCASM
 
-    def results(self) -> Results:
-        """Open the lazy analysis results accessor (``SarcAsM.data`` backing).
-
-        Opening never creates the store on disk.
-
-        Returns
-        -------
-        Results
-            The results mapping / namespace accessor.
-        """
-        return Results(self.results_path)
 
     # -- metadata --------------------------------------------------------- #
     def write_metadata(self, meta: dict) -> None:
@@ -758,25 +645,6 @@ class OmeZarrStore:
         return f"<OmeZarrStore {self.path.name} exists={self.exists}>"
 
 
-def _ensure_group_ro(root: "zarr.Group", path: str):
-    """List a group's subgroup keys read-only, returning ``[]`` on a miss.
-
-    Parameters
-    ----------
-    root : zarr.Group
-        Root group.
-    path : str
-        Subgroup path.
-
-    Returns
-    -------
-    list of str
-        Subgroup names, or an empty list if the group is absent.
-    """
-    try:
-        return list(root[path].group_keys())
-    except KeyError:
-        return []
 
 
 def _jsonable(v: Any) -> Any:

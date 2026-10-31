@@ -19,18 +19,6 @@ from sarcasm.analysis import sarcomere_tracking as st
 # Helpers
 # ---------------------------------------------------------------------------
 
-def test_angular_diff_wraps_modulo_pi():
-    # θ and θ+π are the same axis.
-    assert abs(st._angular_diff(0.0, np.pi)) < 1e-6
-    assert abs(st._angular_diff(0.1, np.pi + 0.1)) < 1e-6
-    # Small difference is small.
-    assert abs(st._angular_diff(0.1, 0.05) - 0.05) < 1e-6
-    # Returns at most ±π/2.
-    for a in np.linspace(-np.pi, np.pi, 37):
-        for b in np.linspace(-np.pi, np.pi, 37):
-            assert abs(st._angular_diff(a, b)) <= np.pi / 2 + 1e-6
-
-
 # ---------------------------------------------------------------------------
 # End-to-end tracker behaviour
 # ---------------------------------------------------------------------------
@@ -382,7 +370,7 @@ def test_interpolated_orientation_is_axial():
         pixelsize=0.1, frametime=0.01, min_track_duration_s=0.02,
         max_gap_interpolation_s=0.03)
     mid = float(out['motion.tracks.orientations'][0][1])
-    assert abs(st._angular_diff(mid, 0.0)) < 0.05, mid
+    assert abs((mid + np.pi / 2) % np.pi - np.pi / 2) < 0.05, mid      # axial difference to 0
 
 
 # ---------------------------------------------------------------------------

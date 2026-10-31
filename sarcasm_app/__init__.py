@@ -564,7 +564,6 @@ class Application:
         # in case of busy -> the label should display BUSY with red background
         self.__control.model.currentlyProcessing.connect(
             ui_element=lambda new_value: self.__update_busy_label(new_value))
-        pass
 
     def init_gui(self):
         self.__window.setWindowTitle(f'SarcAsM - v{version}')

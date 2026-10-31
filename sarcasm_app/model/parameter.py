@@ -30,7 +30,6 @@ class Parameter:
         self.__lambda_set_value = None
         self.__get_value_parser = None  # function to parse value before returning it (for example the parse frames)
         self.__ui_element_type = None
-        pass
 
     @property
     def name(self):
@@ -47,8 +46,6 @@ class Parameter:
     def __value_changed(self, opt_1=None, opt_2=None):
         if self.__lambda_get_value is not None:
             self.__value = self.__lambda_get_value()
-            pass
-        pass
 
     def set_value(self, value):
         old_value = self.__value
@@ -67,8 +64,6 @@ class Parameter:
                 # the UI element refused the value (wrong type): keep the value it still shows
                 self.__value = old_value
                 raise
-            pass
-        pass
 
     def set_value_parser(self, value_parser):
         self.__get_value_parser = value_parser
@@ -78,11 +73,6 @@ class Parameter:
             return self.__get_value_parser(self.__value)
         return self.__value
 
-    def get_value_as_int(self) -> int:
-        return self.get_value()
-
-    def get_value_as_float(self) -> float:
-        return self.get_value()
 
     def get_raw_value(self):
         return self.__value
@@ -102,40 +92,32 @@ class Parameter:
             self.__ui_element_type = 'OneParameter'
             ui_element.valueChanged.connect(self.__value_changed)
 
-            pass
         elif isinstance(ui_element, QSpinBox):
             self.__lambda_set_value = ui_element.setValue
             self.__lambda_get_value = ui_element.value
             self.__ui_element_type = 'OneParameter'
             ui_element.valueChanged.connect(self.__value_changed)
-            pass
         elif isinstance(ui_element, QLineEdit):
             self.__lambda_set_value = lambda v: ui_element.setText(str(v))
             self.__lambda_get_value = ui_element.text
             self.__ui_element_type = 'OneParameter'
             # ui_element.editingFinished.connect(self.__value_changed)  # is not updating on programmatically changing text field value
             ui_element.textChanged.connect(self.__value_changed)
-            pass
         elif isinstance(ui_element, QCheckBox):
             self.__lambda_set_value = ui_element.setChecked
             self.__lambda_get_value = ui_element.isChecked
             self.__ui_element_type = 'OneParameter'
             ui_element.stateChanged.connect(self.__value_changed)
-            pass
         elif isinstance(ui_element, QComboBox):
             self.__lambda_set_value = ui_element.setCurrentText
             self.__lambda_get_value = ui_element.currentText
             self.__ui_element_type = 'OneParameter'
             ui_element.currentTextChanged.connect(self.__value_changed)
-            pass
         elif callable(ui_element):
             # this part is to provide a parameter with callback on change method
             # it only needs a set_value lambda which calls the "ui_element" with old value and new value
             self.__ui_element_type = 'NotSpecified'
             self.__lambda_set_value = ui_element
-            pass
         if self.__lambda_set_value is not None and callable(self.__lambda_set_value):
             self.__lambda_set_value(self.__value)
-        pass
 
-    pass

@@ -158,7 +158,6 @@ class BatchProcessingControl:
         self.__batch_processing_widget = batch_processing_widget
         self.__main_control = main_control
         self.__worker = None
-        pass
 
     def bind_events(self):
         parameters = self.__main_control.model.parameters
@@ -190,14 +189,12 @@ class BatchProcessingControl:
             parameters.get_parameter(name=f'batch.motion.group_{kind}').connect(
                 getattr(widget, f'chk_batch_group_{kind}'))
 
-        pass
 
     def __get_progress_notifier(self, worker) -> ProgressNotifier:
         progress_notifier = ProgressNotifier()
 
         def __internal_function(p):
             qtutils.inmain(lambda: self.__main_control.update_progress(int(p * 100)))  # wrap with qt main thread
-            pass
 
         progress_notifier.set_progress_report(__internal_function)
         progress_notifier.set_progress_detail(
@@ -229,7 +226,6 @@ class BatchProcessingControl:
                                                    finished_message='Finished batch processing structure ')
         self.__worker = worker
 
-        pass
 
     def __get_tiff_files(self, model):
         root = model.parameters.get_parameter(name='batch.root').get_value()
@@ -421,7 +417,6 @@ class BatchProcessingControl:
                                                    start_message='Start batch processing motion ',
                                                    finished_message='Finished batch processing motion ')
         self.__worker = worker
-        pass
 
     def __batch_process_motion_async(self, worker, model):
         progress_notifier = self.__get_progress_notifier(worker)
@@ -460,7 +455,6 @@ class BatchProcessingControl:
             sarc_obj.metadata.channel = channel
             sarc_obj.metadata.axes = axes
             sarc_obj.save_metadata()
-            pass
         return sarc_obj
 
     @staticmethod
@@ -572,7 +566,7 @@ class BatchProcessingControl:
         if _p('batch.do_domains'):
             _analyze_sarcomere_domains(sarc_obj, _p, frames)
 
-        sarc_obj.store_structure_data()
+        sarc_obj.commit()
         if _p('batch.delete_intermediate_masks'):
             # tracking re-measures lengths on the Z-band masks: a movie keeps them for the motion analysis
             keep = ('zbands', 'zbands_fast_movie') if (sarc_obj.metadata.n_stack or 1) > 1 else ()
@@ -583,6 +577,3 @@ class BatchProcessingControl:
         file = str(QFileDialog.getExistingDirectory(caption="Select Root Directory"))
         if file is not None and file != '':
             self.__batch_processing_widget.le_root_directory.setText(file)
-        pass
-
-    pass

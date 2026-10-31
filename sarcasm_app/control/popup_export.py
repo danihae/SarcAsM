@@ -17,7 +17,6 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
     QLabel, QMessageBox, QPushButton, QRadioButton, QScrollArea, QVBoxLayout,
@@ -26,7 +25,7 @@ from PyQt5.QtWidgets import (
 
 from sarcasm.export import Export
 from sarcasm_app.control.feature_tiers import (
-    MOTION_TIERS, STRUCTURE_TIERS, TierSections, describe, pretty_name,
+    MOTION_TIERS, STRUCTURE_TIERS, describe, pretty_name,
 )
 
 logger = logging.getLogger(__name__)

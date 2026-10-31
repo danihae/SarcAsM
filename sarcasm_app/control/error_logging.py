@@ -22,7 +22,6 @@ This module provides:
 The log file location can be customized via the SARCASM_LOG_DIR environment variable.
 """
 
-import atexit
 import logging
 import os
 import platform
@@ -30,7 +29,6 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from PyQt5.QtWidgets import QMessageBox, QApplication
 
@@ -322,32 +320,3 @@ def cleanup_old_logs(days_to_keep: int = 30) -> int:
     
     return removed
 
-
-def get_recent_errors(n: int = 10) -> list[str]:
-    """
-    Get the most recent error messages from the log file.
-    
-    Parameters
-    ----------
-    n : int, optional
-        Number of recent errors to return (default: 10)
-    
-    Returns
-    -------
-    list[str]
-        List of recent error messages
-    """
-    log_file = get_log_file_path()
-    if not log_file.exists():
-        return []
-    
-    errors = []
-    try:
-        with open(log_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                if '| ERROR' in line or '| CRITICAL' in line or '| WARNING' in line:
-                    errors.append(line.strip())
-    except Exception:
-        pass
-    
-    return errors[-n:]

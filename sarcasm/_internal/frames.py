@@ -20,6 +20,7 @@ and reject everything else with an error that says what is valid, so that ``k``,
 
 Reading primitives (``read_imgs``, ``_read_mask``) keep the caller's order and do not use them.
 """
+import operator
 from typing import List, Union
 
 import numpy as np
@@ -27,13 +28,15 @@ import numpy as np
 __all__ = ['canonical_frames', 'canonical_frame', 'parse_frames_text']
 
 
-def _as_int(value, name: str) -> int:
-    """A frame number as a Python int; bools, floats and other types are refused."""
+def _as_int(value, name: str = 'frames') -> int:
+    """A frame number as a Python int from an int, numpy integer or 0-d integer array; bools,
+    floats and other types are refused."""
     if isinstance(value, (bool, np.bool_)):
         raise TypeError(f"{name}: frame numbers must be integers, got the bool {value!r}.")
-    if isinstance(value, (int, np.integer)):
-        return int(value)
-    raise TypeError(f"{name}: frame numbers must be integers, got {type(value).__name__} {value!r}.")
+    try:
+        return operator.index(value)
+    except TypeError:
+        raise TypeError(f"{name}: frame numbers must be integers, got {type(value).__name__} {value!r}.") from None
 
 
 def canonical_frames(frames, n_stack, *, name: str = 'frames') -> Union[str, List[int]]:

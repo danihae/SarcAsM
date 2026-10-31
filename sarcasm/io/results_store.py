@@ -651,30 +651,6 @@ def _read_entry(root: "zarr.Group", entry: list) -> Any:
     return _from_attr(root[group].attrs[member])
 
 
-def write_results(data: Dict[str, Any], store_path: Union[str, Path]) -> None:
-    """Serialize a results dict into a fresh native-group Zarr store.
-
-    Arrays/ragged/sparse go to Zarr; scalars/params/strings to group attributes.
-    A manifest in the root attrs records each flat key's home for exact,
-    O(1) dict-style read-back. Round-trips dtype and NaN.
-
-    Parameters
-    ----------
-    data : dict of str to Any
-        Flat results mapping to serialize.
-    store_path : str or Path
-        Destination ``data.zarr`` path; overwritten if it exists.
-    """
-    root = zarr.open_group(str(Path(store_path)), mode="w")
-    manifest: Dict[str, list] = {}
-    used: Dict[str, set] = {}
-    for key, val in data.items():
-        _write_key(root, key, val, manifest, used)
-    root.attrs[_MANIFEST] = manifest
-    root.attrs[_VERSION] = FORMAT_VERSION
-    logger.debug("wrote %d keys to %s", len(data), store_path)
-
-
 def update_results(store_path: Union[str, Path], mapping: Dict[str, Any],
                    deleted: Iterable[str] = ()) -> None:
     """Incrementally update an existing (or new) store.
@@ -706,47 +682,6 @@ def update_results(store_path: Union[str, Path], mapping: Dict[str, Any],
         _write_key(root, key, val, manifest, used, overwrite=True)
     root.attrs[_MANIFEST] = manifest
     root.attrs[_VERSION] = FORMAT_VERSION
-
-
-def export_to_json(data, path: Union[str, Path], *,
-                   keys: Optional[Iterable[str]] = None,
-                   include_arrays: bool = True) -> Path:
-    """Project a results mapping to a JSON file.
-
-    Reuses :meth:`IOUtils.json_serialize`, so the output is in the
-    ``structure.json`` format and is reloadable by :meth:`IOUtils.json_deserialize`.
-
-    Parameters
-    ----------
-    data : Mapping
-        Results mapping (e.g. a :class:`Results` accessor or a plain dict).
-    path : str or Path
-        Output JSON path.
-    keys : iterable of str or None, optional
-        Subset of keys to export (e.g. one group's keys). Default is None
-        (all keys).
-    include_arrays : bool, optional
-        If False, skip large arrays (readable params/scalars dump). Default
-        is True.
-
-    Returns
-    -------
-    Path
-        The written JSON path.
-    """
-    from sarcasm.io.ioutils import IOUtils
-    keys = list(data.keys()) if keys is None else list(keys)
-    out = {}
-    for k in keys:
-        v = data[k]
-        if not include_arrays and isinstance(v, np.ndarray) and v.size > _INLINE_MAX:
-            continue
-        out[k] = v
-    parent = Path(path).parent
-    if parent and not parent.exists():
-        parent.mkdir(parents=True, exist_ok=True)
-    IOUtils.json_serialize(out, str(path))
-    return Path(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -1430,26 +1365,7 @@ class Results(MutableMapping):
         self._deleted.clear()
         self._open()
 
-    def ensure_store(self) -> None:
-        """Make sure a (possibly empty) store exists on disk."""
-        self.flush()
-        if not self._path.exists():
-            write_results({}, self._path)
-            self._open()
 
-    def set_root_attr(self, name: str, value: Any) -> None:
-        """Write a root-level store attribute (e.g. mirrored metadata).
-
-        Parameters
-        ----------
-        name : str
-            Attribute name.
-        value : Any
-            JSON-serializable attribute value.
-        """
-        self.ensure_store()
-        root = zarr.open_group(str(self._path), mode="a")
-        root.attrs[name] = value
 
     # -- display ------------------------------------------------------------ #
     def _group_rows(self) -> List[Tuple[str, List[str]]]:

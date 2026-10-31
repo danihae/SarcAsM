@@ -223,40 +223,6 @@ class TestCleanupOldLogs:
             assert removed == 0
 
 
-class TestGetRecentErrors:
-    """Test the get_recent_errors function."""
-
-    def test_get_recent_errors_empty(self):
-        """Test get_recent_errors with no log file."""
-        from sarcasm_app.control.error_logging import get_recent_errors
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {'SARCASM_LOG_DIR': tmpdir}):
-                errors = get_recent_errors()
-                assert errors == []
-
-    def test_get_recent_errors_returns_errors(self):
-        """Test get_recent_errors returns error lines."""
-        from sarcasm_app.control.error_logging import get_recent_errors, get_log_file_path
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {'SARCASM_LOG_DIR': tmpdir}):
-                log_file = get_log_file_path()
-                log_file.parent.mkdir(parents=True, exist_ok=True)
-                
-                log_file.write_text(
-                    "2025-01-01 12:00:00 | INFO     | Normal message\n"
-                    "2025-01-01 12:00:01 | ERROR    | Error message 1\n"
-                    "2025-01-01 12:00:02 | WARNING  | Warning message\n"
-                    "2025-01-01 12:00:03 | ERROR    | Error message 2\n"
-                )
-                
-                errors = get_recent_errors(n=10)
-                assert len(errors) == 3  # 2 errors + 1 warning
-                assert any('Error message 1' in e for e in errors)
-                assert any('Error message 2' in e for e in errors)
-
-
 class TestInstallCrashHandler:
     """Test the install_crash_handler function."""
 
@@ -297,7 +263,6 @@ class TestIntegration:
         from sarcasm_app.control.error_logging import (
             FileErrorHandler,
             get_log_file_path,
-            get_recent_errors,
         )
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -336,7 +301,3 @@ class TestIntegration:
                 content = log_file.read_text()
                 assert 'Test warning' in content
                 assert 'Test error' in content
-                
-                # Verify get_recent_errors works
-                errors = get_recent_errors()
-                assert len(errors) >= 2

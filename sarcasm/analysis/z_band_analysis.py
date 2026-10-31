@@ -222,7 +222,7 @@ def analyze_z_bands(zbands: np.ndarray, labels: np.ndarray, labels_skel: np.ndar
     labels_list = np.insert(labels_list, 0, 0)
     labels_list_ = np.insert(labels_list_, 0, 0)
     labels = Utils.map_array(labels, labels_list_, labels_list)
-    labels, forward_map, inverse_map = segmentation.relabel_sequential(labels)
+    labels, _, _ = segmentation.relabel_sequential(labels)
     labels_list = labels_list[labels_list != 0]
 
     # sarcomere orientation map

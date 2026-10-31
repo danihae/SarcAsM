@@ -39,6 +39,8 @@ import numpy as np
 from pywt import cwt
 from scipy.signal import savgol_filter
 
+from sarcasm.analysis.contraction_analysis import _interp_nans, equilibrium_over_quiet
+
 #: Members used for the per-sarcomere oscillation spectra of large groups.
 #: The wavelet transform is the only O(N) cost here; a seeded subset of this
 #: size gives the same mean spectrum as a pool of thousands.
@@ -92,19 +94,6 @@ def cycle_windows(labels: np.ndarray) -> Tuple[np.ndarray, int]:
 # member kinematics
 # ---------------------------------------------------------------------------
 
-def _interp_interior_nans(row: np.ndarray) -> np.ndarray:
-    row = row.astype(float, copy=True)
-    finite = np.isfinite(row)
-    if finite.sum() < 2:
-        return row
-    first, last = np.flatnonzero(finite)[[0, -1]]
-    inner = np.arange(first, last + 1)
-    gaps = inner[~finite[first:last + 1]]
-    if gaps.size:
-        row[gaps] = np.interp(gaps, np.flatnonzero(finite), row[finite])
-    return row
-
-
 def member_kinematics(member_slen: np.ndarray, contr: np.ndarray, frametime: float,
                       filter_params: Tuple[int, int] = (13, 5),
                       slen_lims: Tuple[float, float] = (1.2, 3.0),
@@ -136,21 +125,17 @@ def member_kinematics(member_slen: np.ndarray, contr: np.ndarray, frametime: flo
     slen = np.asarray(member_slen, dtype=float).copy()
     slen[(slen < slen_lims[0]) | (slen > slen_lims[1])] = np.nan
     contr = np.asarray(contr, dtype=bool).reshape(-1)
-    quiet = ~contr
     N, T = slen.shape
-    equ = np.full(N, np.nan)
+    equ = equilibrium_over_quiet(slen, contr)
     vel = np.full((N, T), np.nan)
     window, poly = filter_params
     if window % 2 == 0:
         window += 1
     for i in range(N):
-        vals = slen[i, quiet] if np.any(np.isfinite(slen[i, quiet])) else slen[i]
-        if np.any(np.isfinite(vals)):
-            equ[i] = np.nanmedian(vals)
         finite = np.isfinite(slen[i])
         if finite.sum() < 2:
             continue
-        filled = _interp_interior_nans(slen[i])
+        filled = _interp_nans(slen[i])
         first, last = np.flatnonzero(finite)[[0, -1]]
         seg = filled[first:last + 1]
         if seg.size >= window:
@@ -182,6 +167,7 @@ def _cycle_zscores(x: np.ndarray, onsets: np.ndarray, cycle_len: int) -> np.ndar
         Z = (Z - mean) / std
     Z[~valid] = np.nan
     return Z
+
 
 
 def serial_mutual_correlation(x: np.ndarray, onsets: np.ndarray, cycle_len: int) -> Dict[str, float]:

@@ -19,7 +19,6 @@ to a QTextEdit widget via Qt signals, with color coding based on log level.
 """
 
 import logging
-from typing import Optional
 
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtGui import QColor, QTextCharFormat, QTextCursor

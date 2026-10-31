@@ -42,7 +42,6 @@ class TypeUtils:
         if optional is None and throw_exception:
             raise ValueError('Variable of type' + type(optional).__name__ + ' is None')
         return cast(TypeUtils.T, optional)
-        pass
 
     @staticmethod
     def if_present(optional: Optional[T], callback: Callable[[T], None]) -> None:
@@ -58,6 +57,4 @@ class TypeUtils:
         """
         if optional is not None:
             callback(TypeUtils.unbox(optional))
-        pass
 
-    pass

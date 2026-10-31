@@ -159,23 +159,6 @@ class ImageMetadata:
 
         return instance
 
-    @classmethod
-    def save_to_file(cls, instance, file_path: Path):
-        """Save metadata to a JSON file.
-
-        Parameters
-        ----------
-        instance : ImageMetadata
-            Metadata to serialize.
-        file_path : Path
-            Destination JSON file path.
-        """
-        # Convert numpy array to list for JSON serialization
-        data = instance.to_dict()
-        if 'time' in data and isinstance(data['time'], np.ndarray):
-            data['time'] = data['time'].tolist()
-        with open(file_path, 'w') as f:
-            json.dump(data, f, indent=2)
 
     @classmethod
     def load_from_file(cls, file_path: Path) -> 'ImageMetadata':

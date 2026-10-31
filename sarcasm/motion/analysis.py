@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 # Import structure modules
 from sarcasm.analysis import (
-    contraction_analysis,
     grouped_motion,
     heterogeneity,
 )
@@ -60,7 +59,6 @@ class AnalysisMixin:
         model: Optional[str] = None,
         threshold: Optional[float] = None,
         contr_time_min: float = 0.2,
-        merge_time_max: Optional[float] = None,
         buffer_frames: int = 3,
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
@@ -119,10 +117,8 @@ class AnalysisMixin:
         max_step_slen : float, optional
             With ``reading='tracks'``, a track whose length jumps by more than this (µm)
             between frames is not read. Default is 0.3.
-        model, threshold, contr_time_min, merge_time_max, buffer_frames, min_valid_frames, filter_params
+        model, threshold, contr_time_min, buffer_frames, min_valid_frames, filter_params
             ContractionNet engine knobs (see :func:`grouped_motion.run_cycle_engine`).
-            ``merge_time_max`` is deprecated and ignored: gaps between contractions are
-            not closed.
         reference_frame, min_coverage, min_group_size, max_drift_slen
             Grouping arguments, see :meth:`group_tracks`. Left out, the stored grouping of
             ``by`` is used; given, ``by`` is grouped again with them (the arguments left out
@@ -133,7 +129,6 @@ class AnalysisMixin:
             ``max_drift_slen`` drops identity-drifting tracks from the chain
             groupings (myofibril/loi) only.
         """
-        contraction_analysis._warn_merge_time_max(merge_time_max)
         if reading not in ('tracks', 'aggregate'):
             raise ValueError(f"reading must be 'tracks' or 'aggregate', got {reading!r}")
         if by not in self._GROUPING_LEVELS:
@@ -224,7 +219,7 @@ class AnalysisMixin:
         self.data.update(result)
         logger.info(f"analyze complete ('{kind}', {n_groups} groups).")
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _assert_track_motion_fresh(self, kind: str) -> None:
         """Raise if the analysis of the ``kind`` grouping is missing or stale.

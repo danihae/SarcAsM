@@ -479,14 +479,11 @@ def test_analyze_track_motion_pool_end_to_end():
     sarc.motion._assert_track_motion_fresh('pool')
 
 
-def test_analyze_track_motion_ignores_merge_time_max_and_stores_the_polarity_score():
-    """The gap closing of merge_time_max is gone: the value is ignored with a DeprecationWarning and
-    recorded as None. Each group's sarcomere length is read with rest at its long side, and the
-    polarity score of the trace is stored per group."""
+def test_analyze_track_motion_stores_the_polarity_score():
+    """Each group's sarcomere length is read with rest at its long side, and the polarity score of
+    the trace is stored per group."""
     sarc = _fake_structure(T=400, frametime=0.05)          # 20 s of 1.25-Hz beats
-    with pytest.warns(DeprecationWarning, match='merge_time_max'):
-        sarc.motion.analyze(by='pool', merge_time_max=0.05)
-    assert 'params.motion.analyze.pool.merge_time_max' not in sarc.data      # ignored, so not recorded
+    sarc.motion.analyze(by='pool')
     assert sarc.data['motion.pool.n_contr'].tolist() == [25]
     score = sarc.data['motion.pool.polarity_score']
     assert score.shape == (1,) and score[0] > 0.1             # the lengths rest at their long side

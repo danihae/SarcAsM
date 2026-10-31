@@ -170,10 +170,7 @@ class ApplicationControl:
         elif hasattr(torch, 'mps'):  # only for apple m1/m2/...
             if torch.backends.mps.is_available():
                 gpu_flag = True
-                pass
-            pass
         return gpu_flag
-        pass
 
     def clean_up_on_new_image(self):
         """Reset model to default state. Reuse the existing napari viewer when

@@ -1056,11 +1056,9 @@ class TestLoiReading:
     def test_detect_analyze_contractions_stores_the_polarity_decisions(self):
         z_pos, slen, contracted = _beating_loi()
         m = self._motion(z_pos, slen)
-        with pytest.warns(DeprecationWarning, match='merge_time_max'):
-            m.detect_analyze_contractions(model=SHIPPED_MODEL, merge_time_max=0.05)
+        m.detect_analyze_contractions(model=SHIPPED_MODEL)
         ld = m.loi_data
         assert np.mean(ld['contr'] == contracted) > 0.85 and ld['n_contr'] == 20
-        assert ld['params.detect_analyze_contractions.merge_time_max'] is None
         assert ld['polarity_score_z_pos'].shape == (13,) and ld['polarity_sign_slen'].shape == (12,)
         assert ld['polarity_n_dropped'] == 1                 # the first Z-band, at 5 µm throughout, is flat
         assert ld['polarity_n_slen_disagree'] == 0 and not ld['polarity_no_decided_rows']
@@ -1106,16 +1104,13 @@ class TestGroupContractions:
         assert np.flatnonzero(np.diff(res['contr'][0])).tolist() == [19, 59, 60, 99]
         assert res['polarity_score'].tolist() == [0.5]
 
-    def test_merge_time_max_is_ignored_with_a_deprecation_warning(self, monkeypatch):
+    def test_a_one_frame_gap_keeps_two_contractions_apart(self, monkeypatch):
+        """Gaps between contractions are not closed: two overlapping twitches stay two cycles."""
         prob = np.zeros(200)
         prob[20:60], prob[61:100] = 0.9, 0.9
         self._fake_net(monkeypatch, prob, [])
-        with pytest.warns(DeprecationWarning, match='merge_time_max'):
-            res = self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL, merge_time_max=0.05)
+        res = self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL)
         assert res['n_contr'].tolist() == [2]
-        with warnings.catch_warnings():
-            warnings.filterwarnings('error', message='merge_time_max')
-            self._detect(np.full((1, 200), 1.9), 0.0164, SHIPPED_MODEL)
 
     def test_lengths_that_dwell_short_are_named_in_a_warning(self, monkeypatch, caplog):
         import logging

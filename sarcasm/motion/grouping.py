@@ -99,6 +99,28 @@ class GroupingMixin:
             h.update(np.ascontiguousarray(np.asarray(labels)).astype(np.int64).tobytes())
         return h.hexdigest()
 
+    def _track_chains(self, lines, eligible: np.ndarray, rf_idx: int) -> Tuple[List[int], List[List[int]]]:
+        """Turn lines of reference-frame vector indices into chains of track indices.
+
+        Each vector maps to the first eligible track matched to it at the reference frame;
+        vectors without such a track are skipped. Returns the indices of the lines that keep at
+        least two tracks, and those chains, in the order of ``lines``.
+        """
+        n_tracks = int(self.data['motion.tracks.n'])
+        det_ref = np.asarray(self.data['motion.tracks.detection_id']).reshape(n_tracks, -1)[:, rf_idx]
+        det_to_track: Dict[int, int] = {}
+        for tr in np.flatnonzero(eligible):
+            d = int(det_ref[tr])
+            if d >= 0:
+                det_to_track.setdefault(d, int(tr))
+        line_ids, chains = [], []
+        for li, line in enumerate(lines):
+            chain = [det_to_track[int(v)] for v in np.asarray(line).ravel() if int(v) in det_to_track]
+            if len(chain) >= 2:
+                line_ids.append(li)
+                chains.append(chain)
+        return line_ids, chains
+
     @staticmethod
     def _partition_fibre_chains(fibers: List[List[int]], gid: np.ndarray,
                                 order: np.ndarray,
@@ -362,20 +384,7 @@ class GroupingMixin:
                         f'Myofibril lines not available for reference_frame {reference_frame}. '
                         'Run sarc.structure.analyze_myofibrils first.')
                 lines = myof_lines[reference_frame]  # list of ordered vector-index arrays
-                det_ref = np.asarray(self.data['motion.tracks.detection_id']).reshape(n_tracks, T)[:, rf_idx]
-                # reverse map: ref-frame detection (vector) index -> first eligible track
-                det_to_track: Dict[int, int] = {}
-                for tr in np.flatnonzero(eligible):
-                    d = int(det_ref[tr])
-                    if d >= 0:
-                        det_to_track.setdefault(d, int(tr))
-                # ordered track chains (skip vectors with no matching track)
-                fibers = []
-                for line in lines:
-                    chain = [det_to_track[int(v)] for v in np.asarray(line).ravel()
-                             if int(v) in det_to_track]
-                    if len(chain) >= 2:
-                        fibers.append(chain)
+                _, fibers = self._track_chains(lines, eligible, rf_idx)
                 self._partition_fibre_chains(fibers, gid, order)
 
             elif by == 'loi':
@@ -397,19 +406,7 @@ class GroupingMixin:
 
                 if index_lines is not None and len(index_lines) == len(lines_px):
                     # --- chain path: same construction as 'myofibril' -------------
-                    det_ref = np.asarray(self.data['motion.tracks.detection_id']).reshape(n_tracks, T)[:, rf_idx]
-                    det_to_track: Dict[int, int] = {}
-                    for tr in np.flatnonzero(eligible):
-                        d = int(det_ref[tr])
-                        if d >= 0:
-                            det_to_track.setdefault(d, int(tr))
-                    fibers, line_ids = [], []
-                    for li, chain_idx in enumerate(index_lines):
-                        chain = [det_to_track[int(v)] for v in np.asarray(chain_idx).ravel()
-                                 if int(v) in det_to_track]
-                        if len(chain) >= 2:
-                            fibers.append(chain)
-                            line_ids.append(li)
+                    line_ids, fibers = self._track_chains(index_lines, eligible, rf_idx)
                     # explicit ids keep the LOI label space (line i -> group i)
                     self._partition_fibre_chains(fibers, gid, order, group_ids=line_ids)
                 else:
@@ -507,7 +504,7 @@ class GroupingMixin:
             f"group_tracks(by='{by}'): {n_groups} groups, "
             f"{int((gid >= 0).sum())}/{n_tracks} tracks assigned.")
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _domain_mask_for(self, reference_frame: int) -> Tuple[np.ndarray, int]:
         """Integer-labelled domain mask + n_domains for a reference frame.
@@ -689,7 +686,7 @@ class GroupingMixin:
             midline_min_length_lims=midline_min_length_lims,
             distance_threshold_lois=distance_threshold_lois, linkage=linkage).items()})
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
         logger.info(f"detect_lois: selected {len(loi_lines)} LOI line(s).")
 
     def set_lois(self, lines: Sequence[np.ndarray]) -> None:
@@ -706,7 +703,7 @@ class GroupingMixin:
         self._store_lois(lines, None)
         self._drop_keys('params.motion.detect_lois.')
         if self.auto_save:
-            self.store_structure_data()
+            self.commit()
 
     def _store_lois(self, lines, index_lines) -> None:
         """Store LOI polylines (px), their lengths (µm) and, for detected lines, their sarcomere chains."""

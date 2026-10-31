@@ -683,38 +683,6 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_motion_merge">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>&lt;p&gt;Not used: gaps between contractions are no longer closed, because closing would join two overlapping twitches into one contraction. The field stays so that saved parameter files still load.&lt;/p&gt;</string>
-        </property>
-        <property name="text">
-         <string>Merge threshold [s]</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QDoubleSpinBox" name="dsb_motion_merge_time_max">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>&lt;p&gt;Not used: gaps between contractions are no longer closed, because closing would join two overlapping twitches into one contraction. The field stays so that saved parameter files still load.&lt;/p&gt;</string>
-        </property>
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="maximum">
-         <double>1000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.050000000000000</double>
-        </property>
-       </widget>
-      </item>
       <item row="4" column="0">
        <widget class="QLabel" name="label_motion_buffer">
         <property name="toolTip">

@@ -208,7 +208,7 @@ def track_contraction_prob(
         if members.size == 0:
             continue
         members = members[np.argsort(noise[members], kind='stable')][:max_tracks]
-        traces = [contraction_analysis._interpolate_nans(tracks_slen[t]) for t in members]
+        traces = [contraction_analysis._interp_nans(tracks_slen[t], edges=True) for t in members]
         p, decisions = predict_contractions_batch(traces, model_path, frametime=frametime,
                                                   **declared)
         too_short = too_short or any(d.reason == 'too_short' for d in decisions)
@@ -227,7 +227,6 @@ def run_cycle_engine(
     model_path: str,
     threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
-    merge_time_max: Optional[float] = None,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
     filter_params: Tuple[int, int] = (13, 5),
@@ -258,9 +257,6 @@ def run_cycle_engine(
     contr_time_min : float, optional
         Minimum contraction duration in seconds, converted to frames with ``round()``.
         Default is 0.2.
-    merge_time_max : None, optional
-        Deprecated and ignored, with a ``DeprecationWarning``: gaps between contractions are
-        not closed. Default is None.
     buffer_frames : int, optional
         Frames from either end within which a cycle counts as incomplete. Incomplete
         cycles stay in the contraction mask but their duration-dependent metrics are
@@ -286,7 +282,6 @@ def run_cycle_engine(
         Combined ContractionNet output (keys prefixed ``domain_*``). Empty
         ``(0, T)`` / ``(0,)`` arrays when ``n_groups == 0``.
     """
-    contraction_analysis._warn_merge_time_max(merge_time_max)
     group_slen = np.asarray(group_slen, dtype=float)
     n_groups, T = group_slen.shape
     if n_groups == 0:
@@ -336,42 +331,6 @@ def run_cycle_engine(
     return {**contr, **params}
 
 
-def _interp_nan_1d(a: np.ndarray, max_gap: Optional[int] = None) -> np.ndarray:
-    """Linear-interpolate the *interior* NaNs of a 1D array, up to ``max_gap`` long.
-
-    Interior NaNs — those anchored by a finite value on both sides — are filled
-    by linear interpolation. Leading and trailing NaNs (frames before the track
-    first appears or after it is lost) are left as NaN: a track must NEVER carry
-    a constant, fabricated length where it has no observation, as a held-constant
-    edge corrupts every downstream contraction metric (equilibrium, delta-slen,
-    velocity). An all-NaN input is returned unchanged (still all NaN).
-
-    ``max_gap`` bounds how long a run may be and still be filled. Interpolating a
-    long dropout invents a straight line across it, which at a typical beat can
-    span an entire contraction and silently smooth it away; runs longer than
-    ``max_gap`` are therefore left as NaN. ``None`` (or ``<= 0``) fills every
-    interior run regardless of length."""
-    a = np.asarray(a, dtype=float).copy()
-    mask = np.isnan(a)
-    if not mask.any() or mask.all():
-        return a
-    idx = np.arange(a.shape[0])
-    finite = ~mask
-    first, last = idx[finite][0], idx[finite][-1]
-    # Interior = NaN strictly between the first and last finite sample.
-    interior = mask & (idx > first) & (idx < last)
-    if max_gap is not None and max_gap > 0 and interior.any():
-        # Drop runs longer than max_gap from the fill set: a long dropout is a real
-        # absence of data, not flicker to be bridged.
-        edges = np.flatnonzero(np.diff(np.concatenate(([0], interior.view(np.int8), [0]))))
-        for start, stop in zip(edges[::2], edges[1::2]):
-            if stop - start > max_gap:
-                interior[start:stop] = False
-    if interior.any():
-        a[interior] = np.interp(idx[interior], idx[finite], a[finite])
-    return a
-
-
 def _chain_anchor_positions(member_pos: np.ndarray, ref_idx: int) -> np.ndarray:
     """``(K, 2)`` anchor position of each member, taken at the reference frame.
 
@@ -394,7 +353,7 @@ def _chain_anchor_positions(member_pos: np.ndarray, ref_idx: int) -> np.ndarray:
     # A member never observed at all still has no anchor; interpolate from its
     # neighbours so the chain's arc coordinate stays continuous.
     for c in range(2):
-        centre[:, c] = _interp_nan_1d(centre[:, c])
+        centre[:, c] = contraction_analysis._interp_nans(centre[:, c])
     return centre
 
 
@@ -515,7 +474,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
                else max(1, int(round(float(max_interp_seconds) / float(frametime)))))
     slen = np.empty((K, T), dtype=float)
     for k in range(K):
-        slen[k] = _interp_nan_1d(member_slen[k], max_gap=max_gap)
+        slen[k] = contraction_analysis._interp_nans(member_slen[k], max_gap=max_gap)
     time = np.arange(T) * frametime
 
     if member_pos is None or K == 0:

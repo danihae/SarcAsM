@@ -17,7 +17,6 @@ import functools
 import json
 import logging
 import math
-import operator
 import os
 import textwrap
 import xml.etree.ElementTree as ET
@@ -31,9 +30,9 @@ from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm.exceptions import MetaDataError
 from sarcasm._internal.gpu_watch import watch_metal_errors
-from sarcasm.io.results_store import Results, export_to_json
+from sarcasm.io.results_store import Results
 from sarcasm.analysis import detection
-from sarcasm._internal.frames import canonical_frame, canonical_frames
+from sarcasm._internal.frames import _as_int, canonical_frame, canonical_frames
 from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.io.ome_store import (
     OmeZarrStore,
@@ -49,16 +48,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from sarcasm.motion import MotionAnalysis
     from sarcasm.structure import StructureAnalysis
-
-
-def _frame_int(value) -> int:
-    """A frame number from an int, numpy integer or 0-d integer array; bools and floats are refused."""
-    if isinstance(value, (bool, np.bool_)):
-        raise TypeError(f"Frame numbers must be integers, got the bool {value!r}.")
-    try:
-        return operator.index(value)
-    except TypeError:
-        raise TypeError(f"Frame numbers must be integers, got {type(value).__name__} {value!r}.") from None
 
 
 def _format_bytes(n: int) -> str:
@@ -128,11 +117,10 @@ class SarcAsMBase:
     file_path : str
         Absolute path to the input TIFF file.
     base_dir : str
-        Base directory for all analysis artefacts of this TIFF.
+        The pre-1.0 analysis folder beside the movie (``<name>/``); read only to carry over the
+        calibration of a pre-1.0 analysis.
     data_dir : str
-        Sub-directory for intermediate data.
-    analysis_dir : str
-        Sub-directory for final analysis results.
+        Its ``data/`` sub-folder.
     metadata : ImageMetadata
         Image metadata.
     device : torch.device
@@ -154,6 +142,7 @@ class SarcAsMBase:
     def __init__(
             self,
             file_path: Union[str, os.PathLike],
+            *,
             restart: bool = False,
             pixelsize: Union[float, None] = None,
             frametime: Union[float, None] = None,
@@ -165,19 +154,6 @@ class SarcAsMBase:
             log_level: Union[str, int] = 'INFO',
             **info: Dict[str, Any]
     ):
-        # Guard the second positional argument before anything destructive runs.
-        # It holds `restart`, so passing a string there (e.g. an LOI name) would be
-        # truthy and silently delete the analysis store. Fail loudly instead.
-        if not isinstance(restart, (bool, int)):
-            raise TypeError(
-                f"{type(self).__name__}(...): 'restart' must be a bool, got "
-                f"{type(restart).__name__} {restart!r}. The second positional argument is "
-                f"'restart', and restart=True DELETES the existing analysis store. "
-                f"The pre-1.0 form Motion(file_path, loi_name) was removed together with the "
-                f"manual-LOI workflow — use sarc.motion.get_track_motion(group) to obtain a "
-                f"Motion object for a tracked myofibril."
-            )
-
         # Convert file_path to absolute path (as a string)
         self.file_path = os.path.abspath(str(file_path))
         if not os.path.exists(self.file_path):
@@ -212,10 +188,8 @@ class SarcAsMBase:
             base_name = os.path.splitext(self.file_path)[0]
         self.base_dir = base_name + '/'  # This is a directory path as a string.
         self.data_dir = os.path.join(self.base_dir, "data/")
-        self.analysis_dir = os.path.join(self.base_dir, "analysis/")
 
-        # base_dir/data_dir/analysis_dir are created on demand by their few consumers;
-        # everything else lives in the sibling <name>.ome.zarr store
+        # nothing is written to base_dir any more; everything lives in the sibling <name>.ome.zarr store
         self.store_path = store_path_for(self.file_path)
         # Pre-1.0 (base_dir/structure.json) analyses are not read by >=1.0. Don't fail:
         # warn and start fresh in the new .ome.zarr store (the old analysis is left in place).
@@ -500,9 +474,9 @@ class SarcAsMBase:
         if isinstance(frames, slice):
             requested = list(range(*frames.indices(int(self.metadata.n_stack or 1))))
         elif scalar:
-            requested = [_frame_int(frames)]
+            requested = [_as_int(frames)]
         else:
-            requested = [_frame_int(f) for f in np.asarray(list(frames) if isinstance(frames, range)
+            requested = [_as_int(f) for f in np.asarray(list(frames) if isinstance(frames, range)
                                                             else frames, dtype=object).ravel()]
         if not requested:
             raise ValueError(f"No frames selected for mask '{name}'.")
@@ -679,7 +653,6 @@ class SarcAsMBase:
             # Account for channel selection (removes C axis)
             if 'C' in axes:
                 c_axis = axes.index('C')
-                n_chan = shape_orig[c_axis]
                 # Shape after channel selection
                 shape_after_channel = list(shape_orig)
                 del shape_after_channel[c_axis]
@@ -923,7 +896,7 @@ class SarcAsMBase:
         if isinstance(frames, slice):
             return frames
         if not isinstance(frames, (list, tuple, range)) and np.ndim(frames) == 0:
-            return _frame_int(frames)
+            return _as_int(frames)
         return self._normalize_frames(frames)
 
     def _read_source_tif(self, axes=None):
@@ -946,9 +919,8 @@ class SarcAsMBase:
             # Process data: select channel and update axes accordingly
             raw_data, processed_axes = self._select_channel(raw_data, axes)
 
-            # Extract metadata using original axes order
-            meta = self._harvest_metadata(series, tif, original_axes)
-            self.__metadata_obj = meta  # cache for outsiders
+            # Extract metadata using original axes order (updates self.metadata)
+            self._harvest_metadata(series, tif, original_axes)
 
             # Normalize to internal format (Stack, Y, X) or (Y, X)
             data = self._permute_to_internal(raw_data, processed_axes)
@@ -1182,7 +1154,6 @@ class SarcAsMBase:
                     px = float(px) if px else None
             except Exception as e:
                 logger.debug(f"Failed to extract pixel size from OME metadata: {e}")
-                pass
 
         if px is None and tif.imagej_metadata:
             ij = tif.imagej_metadata
@@ -1191,7 +1162,6 @@ class SarcAsMBase:
                 px = float(px) if px is not None else None
             except (TypeError, ValueError) as e:
                 logger.debug(f"Failed to convert pixel size to float: {e}")
-                pass
 
         if px is None:
             # fall back to TIFF XResolution / ResolutionUnit
@@ -1211,7 +1181,6 @@ class SarcAsMBase:
                             px = 1 / dpi
                 except Exception as e:
                     logger.debug(f"Failed to extract pixel size from TIFF resolution tags: {e}")
-                    pass
 
         # frame time & timestamps
         ft, ts = None, None
@@ -1225,7 +1194,6 @@ class SarcAsMBase:
                     ft = float(np.diff(deltas).mean()) if len(deltas) > 1 else deltas[0]
             except Exception as e:
                 logger.debug(f"Failed to extract frame time from OME metadata: {e}")
-                pass
 
         if ft is None and tif.imagej_metadata:
             ij = tif.imagej_metadata
@@ -1235,7 +1203,6 @@ class SarcAsMBase:
                     ft = 1 / float(fps)
                 except (ValueError, ZeroDivisionError) as e:
                     logger.debug(f"Failed to compute frame time from fps: {e}")
-                    pass
 
             if ts is None:
                 ts = ij.get('timestamps')
@@ -1244,7 +1211,6 @@ class SarcAsMBase:
                         ts = json.loads(ts)
                     except Exception as e:
                         logger.debug(f"Failed to parse timestamps from ImageJ metadata: {e}")
-                        pass
 
         # Convert to proper types
         ft = float(ft) if ft else None
@@ -1449,6 +1415,7 @@ class SarcAsM(SarcAsMBase):
 
     def __init__(self,
                  file_path: Union[str, os.PathLike],
+                 *,
                  restart: bool = False,
                  pixelsize: Union[float, None] = None,
                  frametime: Union[float, None] = None,
@@ -1481,28 +1448,6 @@ class SarcAsM(SarcAsMBase):
         """Path to the analysis subgroup of the OME-Zarr store (``<name>.ome.zarr/sarcasm``)."""
         return str(self.store.results_path)
 
-    def __get_structure_data_file(self, is_temp_file: bool = False) -> str:
-        """
-        Returns the path to the structure data file.
-
-        Parameters
-        ----------
-        is_temp_file : bool, optional
-            If True, returns the path to a temporary file. This temporary file is used to prevent
-            creating corrupted data files due to aborted operations (e.g., exceptions or user intervention).
-            The temporary file can be committed to a final file by renaming it. Default is False.
-
-        Returns
-        -------
-        str
-            The path to the structure data file, either temporary or final.
-        """
-        file_name = "structure.temp.json" if is_temp_file else "structure.json"
-        return os.path.join(self.data_dir, file_name)
-
-    def commit(self) -> None:
-        """Persist any staged result writes to the Zarr store."""
-        self.store_structure_data()
 
     def _summary_rows(self) -> List[Tuple[str, str]]:
         """Extend the base summary with which steps ran and what they produced.
@@ -1538,47 +1483,15 @@ class SarcAsM(SarcAsMBase):
         rows.append(("results", "  ·  ".join(counts)))
         return rows
 
-    def store_structure_data(self, override: bool = True) -> None:
-        """Persist structure/track results to the Zarr store (incremental).
+    def commit(self) -> None:
+        """Persist the staged result writes to the Zarr store (incremental).
 
         Only members changed since the last call are rewritten. Image metadata
         is mirrored into the store so it is a single, self-contained artifact.
-
-        Parameters
-        ----------
-        override : bool, optional
-            If False and a store already exists, do nothing. Default is True.
+        Every analysis step commits by itself unless ``auto_save=False``.
         """
-        if not override and os.path.exists(self.__get_store_path()):
-            return
-        if not isinstance(self.data, Results):
-            # defensive: a caller replaced self.data with a plain dict
-            self.data = Results(self.__get_store_path(), initial=self.data)
         self.data.flush()
         self.save_metadata()  # mirror metadata into the OME-Zarr store root
-
-    def export_json(self, path: Optional[str] = None, *, keys=None,
-                    include_arrays: bool = True) -> str:
-        """Export results to a JSON file.
-
-        Parameters
-        ----------
-        path : str or None, optional
-            Output path. Default is None, which uses the default
-            ``structure.json`` location.
-        keys : list of str or None, optional
-            Subset of result keys to export. Default is None (all keys).
-        include_arrays : bool, optional
-            If False, skip large arrays for a readable dump. Default is True.
-
-        Returns
-        -------
-        str
-            Path to the written JSON file.
-        """
-        if path is None:
-            path = self.__get_structure_data_file(is_temp_file=False)
-        return str(export_to_json(self.data, path, keys=keys, include_arrays=include_arrays))
 
     #: Params steps of stores written by SarcAsM 1.0.0b4 or earlier, before the structure/motion namespaces.
     _OLD_PARAMS_STEPS = ('analyze_cell_mask', 'analyze_z_bands', 'analyze_sarcomere_vectors', 'analyze_myofibrils',
@@ -1719,7 +1632,7 @@ class SarcAsM(SarcAsMBase):
         if self.auto_save:
             # the masks are already on disk; store the frames they belong to with them, so that a failure in
             # the steps below cannot leave new masks next to the frame list of an earlier detection
-            self.store_structure_data()
+            self.commit()
         # the cell mask is one of the predicted outputs: its area / intensity
         # features belong to the detection step, not to a separate call
         self.structure.analyze_cell_mask(frames=list_frames)

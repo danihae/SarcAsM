@@ -38,17 +38,6 @@ from contraction_net.prediction import polarity_rule, predict_contractions
 logger = logging.getLogger(__name__)
 
 
-def _warn_merge_time_max(merge_time_max: Optional[float]) -> None:
-    """Warn the caller of a public function that its ``merge_time_max`` is ignored.
-
-    Also logged, since importing sarcasm silences warnings."""
-    if merge_time_max is not None:
-        message = ('merge_time_max is deprecated and ignored: gaps between contractions are no '
-                   'longer closed, because closing erases the split between two overlapping '
-                   'twitches, which can be a single frame at 61 fps.')
-        logger.warning(message)
-        warnings.warn(message, DeprecationWarning, stacklevel=3)
-
 
 def _length_polarity(model_path: str) -> dict:
     """Keyword arguments of ``predict_contractions`` for a sarcomere length.
@@ -109,7 +98,6 @@ def detect_contractions(
     model_path: str,
     threshold: Optional[float] = None,
     contr_time_min: float = 0.2,
-    merge_time_max: Optional[float] = None,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
     group_label: str = "Domain",
@@ -152,9 +140,6 @@ def detect_contractions(
     contr_time_min : float, optional
         Minimal contraction duration in s, converted to frames with ``round()``; shorter
         contractions are removed. Default is 0.2.
-    merge_time_max : None, optional
-        Deprecated and ignored, with a ``DeprecationWarning``: gaps between contractions are
-        not closed. Default is None.
     buffer_frames : int, optional
         Frames from either end within which a contraction cycle counts as
         **incomplete**: its onset (or offset) lies outside the recorded window.
@@ -197,7 +182,6 @@ def detect_contractions(
           long side; below -0.1, the rule's margin, it dwells at its short side. NaN where the row
           was not read (too few valid frames, a flat trace, or a recording too short for the rule)
     """
-    _warn_merge_time_max(merge_time_max)
     decoding = recommended_decoding(model_path)
     if threshold is not None:
         decoding['threshold'] = float(threshold)
@@ -244,7 +228,7 @@ def detect_contractions(
                 continue
 
             # Interpolate NaN values for prediction
-            slen_interp = _interpolate_nans(slen_timeseries)
+            slen_interp = _interp_nans(slen_timeseries, edges=True)
 
             if np.all(np.isnan(slen_interp)):
                 continue
@@ -475,7 +459,7 @@ def analyze_contraction_parameters(
             continue
         
         # Calculate velocity using Savitzky-Golay filter
-        slen_interp = _interpolate_nans(slen)
+        slen_interp = _interp_nans(slen, edges=True)
         if len(slen_interp) >= window_length:
             vel = savgol_filter(slen_interp, window_length, polyorder, deriv=1, delta=frametime)
         else:
@@ -598,28 +582,31 @@ def _first_crossing(x: np.ndarray, level: float, falling: bool) -> float:
     return (j - 1) + (x[j - 1] - level) / (x[j - 1] - x[j])
 
 
-def _interpolate_nans(arr: np.ndarray) -> np.ndarray:
-    """
-    Linearly interpolate NaN values in a 1D array.
+def _interp_nans(a: np.ndarray, *, edges: bool = False, max_gap: Optional[int] = None) -> np.ndarray:
+    """Linearly interpolate the NaNs of a 1D array.
 
-    Parameters
-    ----------
-    arr : np.ndarray
-        1D array potentially containing NaNs.
-
-    Returns
-    -------
-    np.ndarray
-        Array with interior NaNs replaced by linear interpolation.
+    Interior NaNs (finite values on both sides) are filled. Runs longer than ``max_gap``
+    frames are left NaN: interpolating a long dropout invents a straight line that can span a
+    whole contraction (``None`` or ``<= 0``: no limit). Leading and trailing NaNs stay NaN, as
+    a track must never carry a fabricated constant length where it has no observation, unless
+    ``edges=True``, which holds the first and last finite value there (for network input,
+    which takes no NaN). An all-NaN input is returned unchanged.
     """
-    arr = arr.copy()
-    nans = np.isnan(arr)
-    
-    if np.all(nans):
-        return arr
-    
-    if np.any(nans):
-        indices = np.arange(len(arr))
-        arr[nans] = np.interp(indices[nans], indices[~nans], arr[~nans])
-    
-    return arr
+    a = np.asarray(a, dtype=float).copy()
+    mask = np.isnan(a)
+    if not mask.any() or mask.all():
+        return a
+    idx = np.arange(a.shape[0])
+    finite = ~mask
+    first, last = idx[finite][0], idx[finite][-1]
+    fill = mask & (idx > first) & (idx < last)
+    if max_gap is not None and max_gap > 0 and fill.any():
+        runs = np.flatnonzero(np.diff(np.concatenate(([0], fill.view(np.int8), [0]))))
+        for start, stop in zip(runs[::2], runs[1::2]):
+            if stop - start > max_gap:
+                fill[start:stop] = False
+    if edges:
+        fill |= mask & ((idx < first) | (idx > last))
+    if fill.any():
+        a[fill] = np.interp(idx[fill], idx[finite], a[finite])
+    return a

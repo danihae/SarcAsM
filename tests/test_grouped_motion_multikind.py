@@ -196,7 +196,7 @@ def test_per_kind_keys_survive_the_store_round_trip(synthetic_movie):
     template = _fake_structure(n_tracks=6, T=T)
     sarc.data.update(template.data)
     _analyze_two_kinds(sarc)
-    sarc.store_structure_data()
+    sarc.commit()
 
     reopened = RealSarcAsM(path)
     assert reopened.motion._analyzed_kinds() == ['pool', 'mband']

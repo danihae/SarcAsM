@@ -57,7 +57,6 @@ class StructureAnalysisControl:
 
         def __internal_function(p):
             qtutils.inmain(lambda: self.__main_control.update_progress(int(p * 100)))  # wrap with qt main thread
-            pass
 
         progress_notifier.set_progress_report(__internal_function)
         progress_notifier.set_progress_detail(
@@ -99,7 +98,6 @@ class StructureAnalysisControl:
                                rescale_factor=model.parameters.get_parameter('structure.predict.rescale_factor').get_value(),
                                progress_notifier=progress_notifier)
 
-        pass
 
     def __predict_call_fast_movie(self, worker, model: ApplicationModel):
         progress_notifier = self.__get_progress_notifier(worker)
@@ -117,7 +115,6 @@ class StructureAnalysisControl:
                                            model.parameters.get_parameter(
                                                'structure.predict_fast_movie.clip_thresh_max').get_value()),
                                        progress_notifier=progress_notifier)
-        pass
 
     def __chk_prediction_network_fast_movie(self):
         if self.__main_control.model.parameters.get_parameter(
@@ -221,7 +218,6 @@ class StructureAnalysisControl:
                                  max_axial_offset=m.parameters.get_parameter(
                                      name='structure.z_band_analysis.max_axial_offset').get_value(),
                                  progress_notifier=progress_notifier)
-            pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    start_message='Start Z-band Analysis',
@@ -258,7 +254,6 @@ class StructureAnalysisControl:
                     if m.parameters.get_parameter('structure.vectors.filter_neighbors').get_value() else None),
                 progress_notifier=progress_notifier
             )
-            pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    finished_message='Finished sarcomere vectors analysis',
@@ -270,7 +265,6 @@ class StructureAnalysisControl:
         return worker
         # AND-gated double wavelet analysis of sarcomere structure to locally obtain length and angle
 
-        pass
 
     def on_btn_myofibril(self):
         """Run ``sarc.structure.analyze_myofibrils`` with the panel's parameters."""
@@ -292,7 +286,6 @@ class StructureAnalysisControl:
                 median_filter_radius=m.parameters.get_parameter('structure.myofibril.median_filter_radius').get_value(),
                 progress_notifier=progress_notifier
             )
-            pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    start_message='Start myofibril analysis',
@@ -302,7 +295,6 @@ class StructureAnalysisControl:
                                                        self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
-        pass
 
     def on_btn_domain_analysis(self):
         """
@@ -326,7 +318,6 @@ class StructureAnalysisControl:
                 dilation_radius=m.parameters.get_parameter('structure.domain.analysis.dilation_radius').get_value(),
                 progress_notifier=progress_notifier
             )
-            pass
 
         worker = self.__main_control.run_async_new(parameters=self.__main_control.model, call_lambda=__internal_call,
                                                    start_message='Start sarcomere domains analysis',
@@ -336,7 +327,6 @@ class StructureAnalysisControl:
                                                        self.__main_control.model.cell, lambda c: c.commit()))
         self.__worker = worker
         return worker
-        pass
 
     def on_btn_search_network(self):
         # f_name is a tuple
@@ -348,7 +338,6 @@ class StructureAnalysisControl:
         f_name = QFileDialog.getOpenFileName(caption='Open Network File', filter="Network Files (*.pt)")
         if f_name is not None and f_name[0]:
             self.__structure_parameters_widget.le_fast_movie_network_model.setText(f_name[0])
-        pass
 
     def __filter_input_prediction_size(self, element):
         if not (hasattr(element, 'value') and hasattr(element, 'setValue')):
@@ -358,8 +347,6 @@ class StructureAnalysisControl:
         factor = value // 16
         if factor * 16 != value:
             element.setValue(factor * 16)
-            pass
-        pass
 
     def __check_frame_syntax(self):
         text = self.__structure_parameters_widget.le_general_frames.text()
@@ -385,7 +372,6 @@ class StructureAnalysisControl:
         chain.add_step(self.on_btn_myofibril)
         chain.add_step(self.on_btn_domain_analysis)
         chain.execute()
-        pass
 
     def __open_export_popup(self):
         if not self.__chk_initialized():
@@ -502,7 +488,6 @@ class StructureAnalysisControl:
         parameters.get_parameter(name='structure.domain.analysis.dilation_radius').connect(
             widget.dsb_domains_dilation_radius)
 
-        pass
 
     def __detect_sarcomeres_finished(self):
         self.__main_control.init_z_band_stack()

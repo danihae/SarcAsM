@@ -13,7 +13,6 @@
 
 """Plotting helpers: shared figure parameters and Axes-styling utilities (:class:`PlotUtils`)."""
 
-from typing import Union
 
 import matplotlib as mpl
 import numpy as np
@@ -22,7 +21,6 @@ from matplotlib.axes import Axes
 from matplotlib.ticker import FormatStrFormatter, MultipleLocator, FuncFormatter
 from scipy.stats import gaussian_kde
 
-from sarcasm import SarcAsMBase, Motion
 
 
 class PlotUtils:
@@ -347,74 +345,3 @@ class PlotUtils:
 
         return x + np.random.uniform(-jitter_width, jitter_width, size=x.shape)
 
-    def boxplot_with_points(ax, data, labels, width=0.1, alpha=0.5, s=10, whis=(5, 95), rotation=90):
-        """
-        Create a boxplot with scattered points.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            Axes to draw the plot on.
-        data : array-like
-            Data to plot, one sequence per box.
-        labels : list of str
-            Labels for the boxplots.
-        width : float, optional
-            Width of the point jitter. Default is 0.1.
-        alpha : float, optional
-            Alpha value for the points. Default is 0.5.
-        s : int, optional
-            Size of the points. Default is 10.
-        whis : tuple of float, optional
-            Whisker range (percentiles) for the boxplots. Default is (5, 95).
-        rotation : int, optional
-            Rotation angle for the x-axis labels. Default is 90.
-        """
-        # make boxplot
-        ax.boxplot(data, showfliers=False, labels=labels, zorder=1, whis=whis)
-
-        # plot points in background
-        for i, d in enumerate(data):
-            x = PlotUtils.jitter(np.ones_like(d) * (i + 1), d, width=width)
-            ax.scatter(x, d, c='k', alpha=alpha, zorder=0, s=s)
-
-        # rotate labels
-        ax.tick_params(axis='x', labelrotation=rotation)
-
-    @staticmethod
-    def plot_func_to_img(sarc_obj: Union[SarcAsMBase, Motion], plot_func, img_file_path, figsize=(6, 6), scalebar=False,
-                         dpi=300):
-        """
-        Generates a plot using a specified plotting function and saves it as an image file.
-
-        Parameters
-        ----------
-        sarc_obj : SarcAsMBase or Motion
-            Object containing the data to be plotted.
-        plot_func : callable
-            Plotting function called as ``plot_func(ax=, sarc_obj=, scalebar=)``;
-            it draws the data onto the provided Axes object.
-        img_file_path : str
-            File path where the image will be saved.
-        figsize : tuple of int or float, optional
-            Figure size (width, height) in inches. Default is (6, 6).
-        scalebar : bool, optional
-            Whether to include a scalebar in the plot. Default is False.
-        dpi : int, optional
-            Figure resolution. Default is 300.
-        """
-
-        # create matplotlib figure
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-
-        # create plot with plot_func
-        plot_func(ax=ax, sarc_obj=sarc_obj, scalebar=scalebar)
-
-        # Remove axes
-        ax.axis('off')
-
-        # Save the figure without edges or padding
-        fig.savefig(img_file_path, bbox_inches='tight', pad_inches=0, dpi=dpi)
-
-        # Close the figure
-        plt.close(fig)

@@ -295,23 +295,6 @@ def _median_detections_per_frame(pos_vectors_px_all) -> float:
     counts = [0 if p is None else len(p) for p in pos_vectors_px_all]
     return float(np.median(counts)) if counts else 0.0
 
-def _angular_diff(a: float, b: float) -> float:
-    """Smallest signed angular difference a − b, wrapped to (−π/2, π/2].
-
-    Sarcomere orientations are undirected axes (θ and θ+π describe the same
-    line), so we wrap modulo π. Returns a value with magnitude at most π/2.
-    """
-    d = (a - b) % np.pi
-    if d > np.pi / 2:
-        d -= np.pi
-    return float(d)
-
-
-def _axial_similarity(a: float, b: float) -> float:
-    """Axial similarity `cos(2·(a − b))` — the standard scalar for comparing
-    orientations modulo π. Returns 1 for aligned, −1 for perpendicular.
-    """
-    return float(np.cos(2.0 * (a - b)))
 
 
 # ---------------------------------------------------------------------------

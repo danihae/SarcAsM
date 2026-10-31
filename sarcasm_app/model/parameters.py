@@ -56,7 +56,6 @@ class Parameters:
         # create a structure for storing all parameters, dictionary would be the easiest
         # would be nice if the parameters get updated on changing ui stuff
         self.__parameters_dict: dict[str, Parameter] = dict()
-        pass
 
     def set_parameter(self, name: str, value=None):
         self.__parameters_dict[name] = Parameter(name=name, value=value)
@@ -64,9 +63,6 @@ class Parameters:
     def get_parameter(self, name: str) -> Parameter:
         return self.__parameters_dict[name]
 
-    def disconnect_parameters(self):
-        for parameter in self.__parameters_dict.values():
-            parameter.disconnect()
 
     def load(self, file_path_json_file):
         # load the parameters and set the values of all parameters accordingly
@@ -94,9 +90,6 @@ class Parameters:
 
         for parameter in self.__parameters_dict.values():
             simple_dict[parameter.name] = parameter.get_raw_value()
-            pass
 
         IOUtils.json_serialize(simple_dict, file_path_json_file)
-        pass
 
-    pass
