@@ -868,7 +868,7 @@ class TestLoiChannelCombination:
         """Stand-in for ``predict_contractions``: ``prob_of(trace)`` is the reading and
         ``sign_of(trace)`` the rule's decision (0: undecided, which reads zeros); a declared
         polarity is taken as it is. Z-band traces are told from lengths by their value."""
-        import sarcasm.motion as motion
+        import sarcasm.motion.view as motion
         from contraction_net.polarity import PolarityDecision
 
         def fake(d, weights, *, frametime, polarity=None, margin=None, return_decision):
@@ -1075,7 +1075,7 @@ class TestLoiReading:
 
 
 class TestGroupContractions:
-    """``contraction_analysis.detect_contractions``, the engine of ``analyze_track_motion``."""
+    """``contraction_analysis.detect_contractions``, the engine of ``sarc.motion.analyze``."""
 
     @staticmethod
     def _detect(*args, **kwargs):

@@ -45,7 +45,7 @@ Access (see :class:`Results`) — one name, two spellings::
     r['motion.tracks.slen']                  # dict
     r.motion.tracks.slen                     # attribute path — the same object
     r.structure.sarcomere.oop
-    r.params.track_sarcomere_vectors.max_disp_along_um
+    r.params.motion.track.max_disp_along_um
 
 Both materialise, so a value's type never depends on whether it happened to be
 small enough to be stored inline. :meth:`Results.handle` is the explicit opt-in
@@ -872,7 +872,7 @@ def _html_escape(text: Any) -> str:
 def _display_name(key: str) -> str:
     """Registry label for ``key``, blank when it just restates the key.
 
-    ``params.group_tracks.by`` is labelled ``by``, which adds nothing next to
+    ``params.motion.group_tracks.by`` is labelled ``by``, which adds nothing next to
     the key itself — drop it rather than print the same word twice.
     """
     name = pretty_name(key)

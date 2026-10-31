@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""``SarcAsM.get_track_motion`` and the LOI plots it feeds.
+"""``MotionAnalysis.get_track_motion`` and the LOI plots it feeds.
 
-The synthetic-chain ``Motion`` returned by ``get_track_motion`` is the object behind
+The synthetic-chain ``Motion`` returned by ``sarc.motion.get_track_motion`` is the object behind
 the per-fibre panel of the GUI and every ``Plots.plot_*`` LOI view. Its bugs this
 cycle (cumulative ``z_pos`` blanking a chain, time-median anchoring, coverage holes,
 the negative-index window) were all found by hand; these tests pin the contract.
@@ -98,7 +98,7 @@ def test_plot_z_pos_has_no_kymograph_option():
 
 
 # ---------------------------------------------------------------------------
-# get_track_motion on real tracks (20 kPa reference store)
+# motion.get_track_motion on real tracks (20 kPa reference store)
 # ---------------------------------------------------------------------------
 
 class TestGetTrackMotion:
@@ -109,25 +109,25 @@ class TestGetTrackMotion:
         s = SarcAsM(motion_file_path_class, auto_save=False)
         if 'motion.tracks.slen' not in s.data:
             pytest.skip('20 kPa store has no tracks')
-        if 0 not in list(s.data.get('params.analyze_myofibrils.frames', [])):
-            s.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
-        s.group_tracks(by='myofibril', reference_frame=0)
+        if 0 not in list(s.data.get('params.structure.analyze_myofibrils.frames', [])):
+            s.structure.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
+        s.motion.group_tracks(by='myofibril', reference_frame=0)
         return s
 
     @pytest.fixture(scope='class')
     def motion(self, sarc):
-        return sarc.get_track_motion(0, analyze=True)
+        return sarc.motion.get_track_motion(0, analyze=True)
 
     @pytest.fixture(scope='class')
     def raw(self, sarc):
         """The chain before ``get_trajectories`` replaces ``slen`` by the smoothed lengths."""
-        return sarc.get_track_motion(0)
+        return sarc.motion.get_track_motion(0)
 
     def test_requires_a_chain_grouping(self, motion_file_path_class):
         s = SarcAsM(motion_file_path_class, auto_save=False)
-        s.group_tracks(by='pool')
+        s.motion.group_tracks(by='pool')
         with pytest.raises(ValueError, match='myofibril'):
-            s.get_track_motion(0)
+            s.motion.get_track_motion(0)
 
     def test_chain_geometry(self, sarc, raw):
         ld = raw.loi_data
@@ -185,14 +185,14 @@ class TestTrackKinematics:
         s = SarcAsM(motion_file_path_class, auto_save=False)
         if 'motion.tracks.slen' not in s.data:
             pytest.skip('20 kPa store has no tracks')
-        s.analyze_track_motion(by='pool')                  # pooled cycles for the equilibrium / raster
-        if 0 not in list(s.data.get('params.analyze_myofibrils.frames', [])):
-            s.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
-        s.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
+        s.motion.analyze(by='pool')                  # pooled cycles for the equilibrium / raster
+        if 0 not in list(s.data.get('params.structure.analyze_myofibrils.frames', [])):
+            s.structure.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
+        s.motion.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
         return s
 
     def test_kinematics_shapes_and_equilibrium(self, sarc):
-        kin = sarc.get_track_kinematics()
+        kin = sarc.motion.kinematics()
         n, T = np.asarray(sarc.data['motion.tracks.slen']).shape
         for key in ('slen', 'delta_slen', 'vel'):
             assert kin[key].shape == (n, T)

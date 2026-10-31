@@ -31,7 +31,10 @@ def dict_to_list_table(dictionary, caption='Table of features'):
     header = ['Feature (dict key)', 'Name', 'Function', 'Description', 'Data Type']
     rows = []
     for key, value in dictionary.items():
-        function_link = f":py:func:`sarcasm.{value['function']}`"
+        # 'sarc.structure.analyze_vectors' -> the method of the namespace class
+        namespace, method = value['function'].split('.')[1:]
+        cls = {'structure': 'sarcasm.structure.StructureAnalysis', 'motion': 'sarcasm.motion.MotionAnalysis'}[namespace]
+        function_link = f":py:meth:`{value['function']} <{cls}.{method}>`"
         data_type = get_type_name(value["data type"])
         description = value["description"].replace('\n', ' ').replace('  ', ' ')
 
@@ -94,7 +97,7 @@ with open('./motion_features.rst', 'w') as file:
     file.write(generate_rst_content(
         "Motion Features", table_motion,
         "The following table describes the per-group motion features analyzed by "
-        "SarcAsM. They are computed by :py:meth:`sarcasm.SarcAsM.analyze_track_motion` "
+        "SarcAsM. They are computed by :py:meth:`sarcasm.motion.MotionAnalysis.analyze` "
         "and stored under ``motion.<kind>.<feature>``, where ``kind`` is the grouping "
         "used (``pool``, ``mband``, ``myofibril``, ``domain``, ``loi`` or ``custom``) "
         "— e.g. ``sarc.data['motion.pool.beating_rate']``, equivalently "

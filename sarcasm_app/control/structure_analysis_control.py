@@ -109,7 +109,7 @@ class StructureAnalysisControl:
             network_model = None                       # the bundled 3D checkpoint
         cell: SarcAsM = TypeUtils.unbox(model.cell)
         size = patch_size_from_parameters(model.parameters, 'structure.predict_fast_movie')
-        cell.detect_z_bands_fast_movie(model_path=network_model,
+        cell.motion.detect_z_bands_fast_movie(model_path=network_model,
                                        max_patch_size=size,
                                        clip_thres=(
                                            model.parameters.get_parameter(
@@ -203,7 +203,7 @@ class StructureAnalysisControl:
         def __internal_call(w, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
+            cell.structure.analyze_z_bands(frames=m.parameters.get_parameter('structure.frames').get_value(),
                                  threshold=m.parameters.get_parameter(
                                      'structure.z_band_analysis.threshold').get_value(),
                                  min_length=m.parameters.get_parameter(
@@ -241,7 +241,7 @@ class StructureAnalysisControl:
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.analyze_sarcomere_vectors(
+            cell.structure.analyze_vectors(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 slen_lims=(
                     m.parameters.get_parameter('structure.vectors.length_limit_lower').get_value(),
@@ -273,11 +273,7 @@ class StructureAnalysisControl:
         pass
 
     def on_btn_myofibril(self):
-        """
-        analyze_myofibrils(self, frames=None, n_seeds=200, score_threshold=None, persistence=3,
-                           threshold_distance=0.3,
-                           save_all=False, plot=False)
-        """
+        """Run ``sarc.structure.analyze_myofibrils`` with the panel's parameters."""
         if not self.__chk_initialized():
             return
         if not self.__chk_frames():
@@ -287,7 +283,7 @@ class StructureAnalysisControl:
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.analyze_myofibrils(
+            cell.structure.analyze_myofibrils(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 ratio_seeds=m.parameters.get_parameter('structure.myofibril.ratio_seeds').get_value(),
                 persistence=m.parameters.get_parameter('structure.myofibril.persistence').get_value(),
@@ -320,7 +316,7 @@ class StructureAnalysisControl:
         def __internal_call(w: Any, m: ApplicationModel):
             progress_notifier = self.__get_progress_notifier(w)
             cell: SarcAsM = TypeUtils.unbox(m.cell)
-            cell.analyze_sarcomere_domains(
+            cell.structure.analyze_domains(
                 frames=m.parameters.get_parameter('structure.frames').get_value(),
                 d_max=m.parameters.get_parameter('structure.domain.analysis.d_max').get_value(),
                 cosine_min=m.parameters.get_parameter('structure.domain.analysis.cosine_min').get_value(),

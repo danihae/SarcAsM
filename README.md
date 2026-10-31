@@ -103,16 +103,16 @@ sarc = SarcAsM("path/to/your/image_or_movie.tif")
 sarc.detect_sarcomeres()
 
 # Analyze sarcomere length and orientations (sarcomere 'vectors')
-sarc.analyze_sarcomere_vectors()
+sarc.structure.analyze_vectors()
 
 # Analyze Z-bands
-sarc.analyze_z_bands()
+sarc.structure.analyze_z_bands()
 
 # Analyze myofibrils
-sarc.analyze_myofibrils()
+sarc.structure.analyze_myofibrils()
 
 # Analyze domains
-sarc.analyze_sarcomere_domains()
+sarc.structure.analyze_domains()
 
 # Export data to xlsx file (summary statistics per frame; the full results live in the
 # sibling <name>.ome.zarr store next to the tif)

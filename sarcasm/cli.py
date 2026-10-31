@@ -175,7 +175,7 @@ def cmd_structure(args) -> Dict[str, Any]:
     frames = _frames_used(sarc, args.frames)
     sel = 'all' if args.frames == 'all' else frames
     sarc.detect_sarcomeres(frames=sel, model_path=args.model)
-    sarc.full_analysis_structure(frames=sel)
+    sarc.structure.full_analysis(frames=sel)
     n = sarc.metadata.n_stack
     features = {k: _per_frame(sarc.data.get(k), frames, n) for k in Export.structure_keys_default}
     return {'command': 'structure', 'sarcasm_version': _version(), **_metadata(sarc),
@@ -193,17 +193,17 @@ def cmd_motion(args) -> Dict[str, Any]:
     sel = 'all' if args.frames == 'all' else frames
     sarc.detect_sarcomeres(frames=sel, model_path=args.model)
     if args.fast_movie:
-        sarc.detect_z_bands_fast_movie()
-    sarc.analyze_sarcomere_vectors(frames=sel)
-    sarc.track_sarcomere_vectors(frames=sel, motion_predictor=args.motion_predictor)
+        sarc.motion.detect_z_bands_fast_movie()
+    sarc.structure.analyze_vectors(frames=sel)
+    sarc.motion.track(frames=sel, motion_predictor=args.motion_predictor)
     if args.by in ('myofibril', 'domain'):
         ref = frames[0]
-        sarc.analyze_myofibrils(frames=[ref])
+        sarc.structure.analyze_myofibrils(frames=[ref])
         if args.by == 'domain':
-            sarc.analyze_sarcomere_domains(frames=[ref])
-        sarc.analyze_track_motion(by=args.by, reference_frame=ref)
+            sarc.structure.analyze_domains(frames=[ref])
+        sarc.motion.analyze(by=args.by, reference_frame=ref)
     else:
-        sarc.analyze_track_motion(by=args.by)
+        sarc.motion.analyze(by=args.by)
     meta_keys = set(sarc.metadata.to_dict())
     groups = [{k: v for k, v in rec.items() if k not in meta_keys and k != 'tif_name'}
               for rec in Export.get_motion_dict_per_group(sarc, kind=args.by)]

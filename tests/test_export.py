@@ -125,7 +125,7 @@ def test_motion_records_collapse_per_cycle_arrays():
     sarc = _fake_structure(n_tracks=6)
     sarc.file_path = 'synthetic.tif'
     sarc.metadata.to_dict = lambda: {'file_name': 'synthetic.tif', 'frametime': 0.01}
-    sarc.analyze_track_motion(by='mband', reference_frame=0)
+    sarc.motion.analyze(by='mband', reference_frame=0)
     recs = Export.get_motion_dict_per_group(sarc, kind='mband', condition='ctrl')
     assert [r['group_id'] for r in recs] == [0, 1]
     for r in recs:
@@ -160,7 +160,7 @@ class TestBatchExportRoundTrip:
         s = SarcAsM(motion_file_path_class)
         if 'motion.tracks.slen' not in s.data:
             pytest.skip('20 kPa store has no tracks')
-        s.analyze_track_motion(by='pool')            # (re)writes the per-kind provenance keys
+        s.motion.analyze(by='pool')            # (re)writes the per-kind provenance keys
         folder = tmp_path_factory.mktemp('batch')
         return BatchExport([motion_file_path_class], folder=str(folder), experiment='exp',
                            stiffness=lambda f: 'soft' if '20kPa' in f else 'stiff')

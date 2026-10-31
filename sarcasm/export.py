@@ -30,7 +30,7 @@ from scipy import sparse
 from tqdm import tqdm as tqdm
 
 from sarcasm._internal.meta_data_handler import ImageMetadata
-from sarcasm.structure import SarcAsM
+from sarcasm.core import SarcAsM
 from sarcasm.motion import Motion
 
 logger = logging.getLogger(__name__)
@@ -255,7 +255,7 @@ class Export:
                               'structure.zbands.mask_intensity']
 
     # Track-based grouped-motion feature suffixes (resolved per grouping kind to
-    # ``<kind>_<suffix>`` keys written by SarcAsM.analyze_track_motion). One value
+    # ``<kind>_<suffix>`` keys written by MotionAnalysis.analyze). One value
     # per group; per-cycle arrays are collapsed to a per-group nanmean.
     motion_keys_default = ['beating_rate', 'beating_rate_variability', 'equ', 'n_contr',
                            'n_contr_complete',
@@ -429,7 +429,7 @@ class Export:
         Build one record per group of track-based motion features from a SarcAsM object.
 
         Reads the ``<kind>_<suffix>`` keys written by
-        :meth:`SarcAsM.analyze_track_motion` (kind = pool / mband / myofibril /
+        :meth:`MotionAnalysis.analyze` (kind = pool / mband / myofibril /
         domain / loi). Each record is one group; per-cycle arrays (e.g.
         ``contr_max``) are collapsed to a per-group ``nanmean``.
 
@@ -455,7 +455,7 @@ class Export:
         kind = kind or data.get('motion.groups.analyzed_kind')
         if kind is None:
             raise ValueError("No track motion found ('motion.groups.analyzed_kind' missing). "
-                             "Run analyze_track_motion() first.")
+                             "Run sarc.motion.analyze() first.")
         if motion_keys is None:
             motion_keys = Export.motion_keys_default
         metadata_dict = sarc_obj.metadata.to_dict()
@@ -465,7 +465,7 @@ class Export:
         if f'motion.groups.{kind}.n' not in data:
             raise ValueError(
                 f"No '{kind}' track motion in this store. "
-                f"Run analyze_track_motion(by='{kind}') first; "
+                f"Run sarc.motion.analyze(by='{kind}') first; "
                 f"analysed kinds: {data.get('motion.groups.analyzed_kinds')}.")
         n_groups = int(data[f'motion.groups.{kind}.n'])
         member_counts = np.asarray(data.get(f'motion.groups.{kind}.member_counts',
@@ -687,7 +687,7 @@ class Export:
         Parameters
         ----------
         sarc_obj : SarcAsM
-            Analyzed object (must have run analyze_track_motion).
+            Analyzed object (must have run sarc.motion.analyze).
         file_path : str
             Path to the output file.
         motion_keys : list or None, optional

@@ -308,7 +308,7 @@ class ApplicationControl:
     TRACK_COLOR_LABELS = {label: key for key, (label, _, _) in TRACK_COLOR_FEATURES.items()}
 
     def track_kinematics(self):
-        """``SarcAsM.get_track_kinematics()`` of the current cell, cached until the
+        """``MotionAnalysis.kinematics()`` of the current cell, cached until the
         tracks, the grouping or the pooled contraction state change. None without tracks."""
         cell = self.model.cell
         if cell is None or 'motion.tracks.slen' not in cell.data or not int(cell.data.get('motion.tracks.n', 0)):
@@ -318,7 +318,7 @@ class ApplicationControl:
         cached = getattr(cell, '_track_kinematics_cache', None)
         if cached is not None and cached[0] == key:
             return cached[1]
-        kin = cell.get_track_kinematics()
+        kin = cell.motion.kinematics()
         cell._track_kinematics_cache = (key, kin)
         return kin
 
@@ -480,9 +480,9 @@ class ApplicationControl:
         order = np.asarray(cell.data.get('motion.tracks.group_order', np.zeros(n_tracks))).reshape(-1)
         if gid.shape[0] != n_tracks:
             return
-        ref = int(cell.data.get('params.group_tracks.reference_frame', 0))
+        ref = int(cell.data.get('params.motion.group_tracks.reference_frame', 0))
         try:
-            ref_idx = cell._tracked_frame_index(ref)
+            ref_idx = cell.motion._tracked_frame_index(ref)
         except Exception:
             ref_idx = 0
         n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
@@ -664,7 +664,7 @@ class ApplicationControl:
         """Add (or focus) a Shapes layer for drawing LOI lines on the movie.
 
         With 'Group by = loi', any drawn polylines are grouped + ordered along the
-        line exactly like auto-detected LOIs (see SarcAsM.group_tracks by='loi')."""
+        line exactly like auto-detected LOIs (see MotionAnalysis.group_tracks by='loi')."""
         cell = self.model.cell
         if cell is None:
             return
@@ -788,7 +788,7 @@ class ApplicationControl:
         n_stack = cell.metadata.n_stack
         pixelsize = cell.metadata.pixelsize
         multi_frame = n_stack > 1
-        analyzed_frames = cell.data.get('params.analyze_z_bands.frames', [])
+        analyzed_frames = cell.data.get('params.structure.analyze_z_bands.frames', [])
 
         labels_groups = np.zeros((n_stack, *cell.metadata.size), dtype='uint16')
         connections = []
@@ -873,7 +873,7 @@ class ApplicationControl:
         for name in ('SarcomereVectors', 'MidlinePoints'):
             if name in self.viewer.layers:
                 self.viewer.layers.remove(self.viewer.layers[name])
-        analyzed = cell.data.get('params.analyze_sarcomere_vectors.frames')
+        analyzed = cell.data.get('params.structure.analyze_vectors.frames')
         px = cell.metadata.pixelsize
         starts, dirs, mids = [], [], []
         for frame in range(cell.metadata.n_stack):
@@ -945,14 +945,14 @@ class ApplicationControl:
 
         _domain_masks = np.zeros((total_frames, *size), dtype='uint16')
 
-        if 'params.analyze_sarcomere_domains.frames' in cell.data:
+        if 'params.structure.analyze_domains.frames' in cell.data:
             frames_to_analyze = [f for f in range(total_frames)
-                                 if f in cell.data['params.analyze_sarcomere_domains.frames']]
+                                 if f in cell.data['params.structure.analyze_domains.frames']]
         else:
             frames_to_analyze = range(total_frames)
 
-        area_min = cell.data.get('params.analyze_sarcomere_domains.area_min')
-        dilation_radius = cell.data.get('params.analyze_sarcomere_domains.dilation_radius')
+        area_min = cell.data.get('params.structure.analyze_domains.area_min')
+        dilation_radius = cell.data.get('params.structure.analyze_domains.dilation_radius')
         pixelsize = cell.metadata.pixelsize
 
         def process_frame(frame, cell, area_min, dilation_radius, pixelsize, size):

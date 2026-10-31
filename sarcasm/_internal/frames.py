@@ -14,7 +14,7 @@
 """One canonical form for every ``frames`` / ``frame`` argument.
 
 The analysis steps take ``frames`` as ``'all'``, one frame number or any sequence of frame numbers; plots,
-``reference_frame`` and ``detect_lois`` take a single frame. These helpers turn every spelling into one value
+``reference_frame`` and ``sarc.motion.detect_lois`` take a single frame. These helpers turn every spelling into one value
 and reject everything else with an error that says what is valid, so that ``k``, ``np.int64(k)``, ``[k]``,
 ``(k,)``, ``range(k, k + 1)``, ``np.array([k])`` and ``np.array(k)`` select the same frame everywhere.
 

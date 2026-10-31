@@ -35,7 +35,7 @@ def test_loi_name_as_second_positional_raises(tmp_path):
     msg = str(exc.value)
     assert "restart" in msg
     # the message has to point at the replacement API, not just complain about a type
-    assert "get_track_motion" in msg
+    assert "motion.get_track_motion" in msg
 
 
 def test_loi_name_does_not_delete_the_store(tmp_path):
@@ -84,6 +84,20 @@ def test_restart_true_still_recreates_the_store(tmp_path):
     assert not marker.exists(), "restart=True must clear the previous store contents"
 
 
+def test_store_from_before_the_namespaces_warns(tmp_path, caplog, monkeypatch):
+    """A store written by 1.0.0b4 or earlier names its params by the old steps (SARC-27)."""
+    import logging
+    p = _movie(tmp_path)
+    sarc = SarcAsM(p, **META)
+    sarc.data['params.analyze_sarcomere_vectors.frames'] = [0]
+    sarc.commit()
+    reopened = SarcAsM(p, **META)        # its constructor sets up logging, so capture afterwards
+    monkeypatch.setattr(logging.getLogger('sarcasm'), 'propagate', True)
+    with caplog.at_level(logging.WARNING, logger='sarcasm'):
+        reopened._load_structure_data()
+    assert 'SarcAsM 1.0.0b4 or earlier (analyze_sarcomere_vectors)' in caplog.text
+
+
 def test_restart_leaves_the_folder_named_after_the_movie(tmp_path):
     """restart=True deletes only the store, not a ``<name>/`` folder beside the movie (SARC-26).
 
@@ -118,8 +132,8 @@ def test_str_on_analysed_object(tmp_path):
     sarc = SarcAsM(_movie(tmp_path), **META)
     sarc.data.update({
         "params.detect_sarcomeres.frames": [0, 1, 2, 3],
-        "params.analyze_sarcomere_vectors.frames": [0, 1, 2, 3],
-        "params.track_sarcomere_vectors.frames": [0, 1, 2, 3],
+        "params.structure.analyze_vectors.frames": [0, 1, 2, 3],
+        "params.motion.track.frames": [0, 1, 2, 3],
         "structure.sarcomere.n_vectors": np.array([40.0, 41.0, 39.0, 40.0]),
         "motion.tracks.n": 12,
         "motion.groups.n": 3,
@@ -127,9 +141,9 @@ def test_str_on_analysed_object(tmp_path):
     })
     sarc.commit()
     text = str(sarc)
-    assert "detect_sarcomeres" in text and "track_sarcomere_vectors" in text
+    assert "detect_sarcomeres" in text and "motion.track" in text
     # pipeline order, not alphabetical
-    assert text.index("detect_sarcomeres") < text.index("track_sarcomere_vectors")
+    assert text.index("detect_sarcomeres") < text.index("motion.track")
     assert "12 tracks" in text and "3 groups (pool)" in text
     assert "~40 vectors/frame" in text
 

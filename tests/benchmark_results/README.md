@@ -13,11 +13,11 @@ Each benchmark result is stored as a JSON file with the following structure:
     "timestamp": "2026-04-23T10:00:00.000000",
     "substeps": {
         "detect_sarcomeres": 12.3456,
-        "analyze_cell_mask": 2.1234,
-        "analyze_z_bands": 5.6789,
-        "analyze_sarcomere_vectors": 3.4567,
-        "analyze_myofibrils": 8.9012,
-        "analyze_sarcomere_domains": 4.5678
+        "structure.analyze_cell_mask": 2.1234,
+        "structure.analyze_z_bands": 5.6789,
+        "structure.analyze_vectors": 3.4567,
+        "structure.analyze_myofibrils": 8.9012,
+        "structure.analyze_domains": 4.5678
     },
     "total_time": 37.0736,
     "metadata": {
@@ -53,7 +53,7 @@ uv run pytest tests/test_benchmark.py -m "not slow" -v
 ## Benchmark Categories
 
 ### Structure Benchmarks
-- `full_structure_pipeline`: Complete structure analysis (detect_sarcomeres + full_analysis_structure)
+- `full_structure_pipeline`: Complete structure analysis (detect_sarcomeres + structure.full_analysis)
 - `structure_substeps`: Individual substep timing
 - `structure_timelapse_pipeline`: Structure analysis on time-lapse data
 

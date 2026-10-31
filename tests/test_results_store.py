@@ -40,8 +40,8 @@ def _sample_data():
         "structure.domain.slen_std": [np.asarray(0.1), None, np.asarray(0.2)],  # 0-d ragged
         "structure.domain.mask": [sparse.random(15, 15, density=0.2, random_state=1).tocoo(), None,
                         sparse.eye(15).tocoo()],          # per-frame sparse
-        "params.track_sarcomere_vectors.frames": list(range(30)),
-        "params.track_sarcomere_vectors.max_disp_along_um": 1.0,
+        "params.motion.track.frames": list(range(30)),
+        "params.motion.track.max_disp_along_um": 1.0,
         "params.detect_sarcomeres.model_path": "model_v3",
     }
 
@@ -207,7 +207,7 @@ def test_attribute_access(store):
     assert _equal(r.motion.tracks.slen, r["motion.tracks.slen"])
     assert r.structure.sarcomere.oop == r["structure.sarcomere.oop"]
     assert type(r.structure.sarcomere.oop) is type(r["structure.sarcomere.oop"])
-    assert r.params.track_sarcomere_vectors.max_disp_along_um == 1.0
+    assert r.params.motion.track.max_disp_along_um == 1.0
     assert r.params.detect_sarcomeres.model_path == "model_v3"
 
 

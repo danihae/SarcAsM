@@ -2,7 +2,7 @@
 
 Tune the parameters on one or two representative files first, see
 ``docs/notebooks/tutorial_structure_analysis.ipynb`` for the step-by-step
-equivalent of ``full_analysis_structure``. Run this as a script rather than in a
+equivalent of ``sarc.structure.full_analysis``. Run this as a script rather than in a
 notebook -- ``multiprocessing`` needs the ``__main__`` guard below.
 """
 import glob
@@ -45,7 +45,7 @@ def analyze_tif(file):
 
         # cell mask, Z-bands, sarcomere vectors, myofibrils and domains in one
         # call -- use the step-by-step analysis to tune individual parameters
-        sarc.full_analysis_structure(frames=frames)
+        sarc.structure.full_analysis(frames=frames)
 
         # remove intermediate masks to save storage, optional
         # sarc.remove_intermediate_masks()

@@ -23,7 +23,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 
 from sarcasm.plotting.plot_utils import PlotUtils
 from sarcasm.plotting.plots import Plots
-from sarcasm.structure import SarcAsM
+from sarcasm.core import SarcAsM
 
 FramesSpec = Union[None, Tuple[float, float], Sequence[int], np.ndarray]
 
@@ -32,7 +32,7 @@ def _movie_frame(sarc_obj: SarcAsM, position: int) -> int:
     """Movie frame number at ``position`` of the tracked frame list. The renderers are driven by these
     positions (see :meth:`Animations.resolve_frames`); a tracking that did not start at frame 0 shifts them
     against the movie. Without tracks the positions are the movie frames."""
-    tracked = sarc_obj.data.get('params.track_sarcomere_vectors.frames') if 'motion.tracks.n' in sarc_obj.data else None
+    tracked = sarc_obj.data.get('params.motion.track.frames') if 'motion.tracks.n' in sarc_obj.data else None
     return int(position) if tracked is None else int(np.asarray(tracked).ravel()[int(position)])
 
 #: Shading of ContractionNet contraction periods in the time-series panels.
@@ -291,7 +291,7 @@ class Animations:
             gid = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(int)
             order = sarc_obj.data.get('motion.tracks.group_order')
         else:
-            raise ValueError(f"no '{kind}' grouping found; run analyze_track_motion(by='{kind}') first")
+            raise ValueError(f"no '{kind}' grouping found; run sarc.motion.analyze(by='{kind}') first")
         return gid, (np.asarray(order).reshape(-1) if order is not None else None)
 
     @staticmethod
@@ -542,7 +542,7 @@ class Animations:
             The output path.
         """
         frames = Animations.resolve_frames(sarc_obj, frames)
-        kin = sarc_obj.get_track_kinematics() if color_by in ('delta_slen', 'vel') else None
+        kin = sarc_obj.motion.kinematics() if color_by in ('delta_slen', 'vel') else None
         h, w = sarc_obj.metadata.size[-2:]
         ph = panel_width * h / w
         fig = plt.figure(figsize=(panel_width + 1.0, ph + 0.6), dpi=dpi)
@@ -582,7 +582,7 @@ class Animations:
         Parameters
         ----------
         sarc_obj : SarcAsM
-            Object with tracks and a pooled motion analysis (``analyze_track_motion(by='pool')``);
+            Object with tracks and a pooled motion analysis (``sarc.motion.analyze(by='pool')``);
             the M-band / myofibril groupings for the requested time series.
         out : str
             Output path (``.mp4`` or ``.gif``).
@@ -634,7 +634,7 @@ class Animations:
         """
         frames = Animations.resolve_frames(sarc_obj, frames)
         ft = float(sarc_obj.metadata.frametime)
-        kin = sarc_obj.get_track_kinematics()
+        kin = sarc_obj.motion.kinematics()
         groups = [Animations._parse_group(sarc_obj, spec, frames, min_coverage) for spec in timeseries]
         highlight = [members for kind, _, members in groups if kind != 'pool']
 

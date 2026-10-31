@@ -32,9 +32,9 @@ Common flags: `--pixelsize` (µm), `--frametime` (s), `--axes` (e.g. `TYX`), `--
 from sarcasm import SarcAsM
 sarc = SarcAsM('movie.tif', pixelsize=0.065, frametime=0.0164)  # calibration optional if in metadata
 sarc.detect_sarcomeres()
-sarc.full_analysis_structure()                 # Z-bands, vectors, myofibrils, domains
-sarc.track_sarcomere_vectors()                 # movies only
-sarc.analyze_track_motion(by='pool')
+sarc.structure.full_analysis()                 # Z-bands, vectors, myofibrils, domains
+sarc.motion.track()                 # movies only
+sarc.motion.analyze(by='pool')
 sarc.data['structure.sarcomere.slen_mean']     # results: a key is its dotted path
 sarc.data.find('slen'); sarc.data.describe('motion.pool.beating_rate')
 ```

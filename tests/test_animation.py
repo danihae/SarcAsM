@@ -51,7 +51,7 @@ def _fake_tracks(n_tracks=5, T=10, slen=1.8, pixelsize=0.1, theta=0.0):
         'motion.tracks.positions_um': pos * pixelsize,
         'motion.tracks.observed': observed,
         'motion.tracks.orientations': np.full((n_tracks, T), theta, np.float32),
-        'params.track_sarcomere_vectors.frames': list(range(T)),
+        'params.motion.track.frames': list(range(T)),
     }
     return sarc
 
@@ -105,7 +105,7 @@ def test_renderers_map_tracked_positions_to_movie_frames():
     T, start = 10, 3
     sarc = _fake_tracks(T=T)
     sarc.metadata.n_stack = start + T
-    sarc.data['params.track_sarcomere_vectors.frames'] = list(range(start, start + T))
+    sarc.data['params.motion.track.frames'] = list(range(start, start + T))
     sarc.read_imgs = lambda frames: (np.full((64, 128), frames, float) if np.ndim(frames) == 0
                                      else np.stack([np.full((64, 128), f, float) for f in frames]))
     image = _ImageLayer(sarc, np.arange(T))

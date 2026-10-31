@@ -114,7 +114,7 @@ and pass that file as `model_path`.
 
 # 3D Z-band model for high-speed movies
 
-`detect_z_bands_fast_movie` predicts Z-bands from the whole movie at once, for high-speed recordings
+`motion.detect_z_bands_fast_movie` predicts Z-bands from the whole movie at once, for high-speed recordings
 (about 6 or more frames per contraction). Only the Z-bands come from it; M-bands and orientation still
 come from the 2D model.
 
@@ -124,11 +124,11 @@ come from the 2D model.
 | `legacy` | `model_z_bands_unet3d.pt` | shipped before v1.0.0 |
 
 ```python
-sarc.detect_z_bands_fast_movie()                     # 'generalist'
-sarc.detect_z_bands_fast_movie(model_path='legacy')  # the pre-v1.0.0 3D model
+sarc.motion.detect_z_bands_fast_movie()                     # 'generalist'
+sarc.motion.detect_z_bands_fast_movie(model_path='legacy')  # the pre-v1.0.0 3D model
 ```
 
-The resolved alias is stored as `params.detect_z_bands_fast_movie.model_path`.
+The resolved alias is stored as `params.motion.detect_z_bands_fast_movie.model_path`.
 
 ## What changed in v2
 

@@ -74,7 +74,7 @@ class TestStructureTimelapseAnalysis:
         """Test complete structural analysis pipeline on time-lapse."""
         sarc = SarcAsM(structure_crop_file_path, restart=False)
         sarc.detect_sarcomeres()
-        sarc.full_analysis_structure()
+        sarc.structure.full_analysis()
         
         # Verify analysis results
         assert 'structure.sarcomere.slen' in sarc.data
@@ -99,7 +99,7 @@ class TestStructureSingleImageAnalysis:
         """Test complete structural analysis pipeline on single image."""
         sarc = SarcAsM(structure_single_image_path, restart=False)
         sarc.detect_sarcomeres()
-        sarc.full_analysis_structure()
+        sarc.structure.full_analysis()
         
         # Verify analysis results
         assert 'structure.sarcomere.slen' in sarc.data
@@ -122,7 +122,7 @@ class TestStructureErrors:
         The per-frame loop zips list_frames against the mask stacks, so a short
         stack analyses fewer frames than asked. If the stored `frames` param still
         claimed the full range, the mismatch would only surface much later and far
-        away — as track_sarcomere_vectors reporting missing vectors.
+        away — as motion.track reporting missing vectors.
         """
         import logging
 
@@ -149,7 +149,7 @@ class TestStructureErrors:
         log = logging.getLogger('sarcasm.structure')
         log.addHandler(handler)
         try:
-            sarc.analyze_sarcomere_vectors(frames='all')
+            sarc.structure.analyze_vectors(frames='all')
         finally:
             log.removeHandler(handler)
 
@@ -157,7 +157,7 @@ class TestStructureErrors:
             f'expected a truncation warning, got: {records}'
         assert any('mbands' in m for m in records)
         # The recorded frame list must match what was actually analyzed.
-        stored = sarc.data['params.analyze_sarcomere_vectors.frames']
+        stored = sarc.data['params.structure.analyze_vectors.frames']
         assert len(stored) == 1, f'frames param should be trimmed to 1, got {stored}'
         assert sarc.data['structure.sarcomere.pos_px'][0] is not None
 
@@ -190,25 +190,25 @@ class TestFramesAcceptsAnySequence:
     def test_a_range_survives_the_real_pipeline(self, structure_crop_file_path_class):
         by_range = SarcAsM(structure_crop_file_path_class, restart=True)
         by_range.detect_sarcomeres(frames=range(0, 2))
-        by_range.analyze_sarcomere_vectors(frames=range(0, 2))
+        by_range.structure.analyze_vectors(frames=range(0, 2))
 
         by_list = SarcAsM(structure_crop_file_path_class, restart=True)
         by_list.detect_sarcomeres(frames=[0, 1])
-        by_list.analyze_sarcomere_vectors(frames=[0, 1])
+        by_list.structure.analyze_vectors(frames=[0, 1])
 
         for key in ('params.detect_sarcomeres.frames',
-                    'params.analyze_sarcomere_vectors.frames'):
+                    'params.structure.analyze_vectors.frames'):
             assert list(by_range.data[key]) == list(by_list.data[key]) == [0, 1]
         assert [len(v) for v in by_range.data['structure.sarcomere.pos_px']] == \
                [len(v) for v in by_list.data['structure.sarcomere.pos_px']]
 
     def test_numpy_integer_is_a_valid_single_frame(self, structure_crop_file_path_class):
-        """analyze_myofibrils and analyze_sarcomere_domains rejected np.int64."""
+        """structure.analyze_myofibrils and structure.analyze_domains rejected np.int64."""
         sarc = SarcAsM(structure_crop_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=np.int64(0))
-        sarc.analyze_sarcomere_vectors(frames=np.int64(0))
-        sarc.analyze_myofibrils(frames=np.int64(0))
-        sarc.analyze_sarcomere_domains(frames=np.int64(0))
+        sarc.structure.analyze_vectors(frames=np.int64(0))
+        sarc.structure.analyze_myofibrils(frames=np.int64(0))
+        sarc.structure.analyze_domains(frames=np.int64(0))
         assert list(sarc.data['params.detect_sarcomeres.frames']) == [0]
 
 
@@ -218,10 +218,10 @@ class TestPartialDetectionIsNotSilent:
     ``detect_sarcomeres(frames=0)`` used to be the documented first step of the
     motion workflow, but M-bands, orientation and the sarcomere mask are needed in
     every tracked frame and only ``detect_sarcomeres`` produces them. The mask
-    store then held one page while ``analyze_sarcomere_vectors(frames='all')``
+    store then held one page while ``sarc.structure.analyze_vectors(frames='all')``
     asked for the whole movie; ``zip`` stopped at the shortest input, so all but
     the first frame went unanalysed while the stored params still claimed the full
-    stack. The failure only surfaced in ``track_sarcomere_vectors``, as vectors
+    stack. The failure only surfaced in ``sarc.motion.track``, as vectors
     "missing" for every frame but one.
     """
 
@@ -229,13 +229,13 @@ class TestPartialDetectionIsNotSilent:
     def partially_detected(self, structure_crop_file_path_class):
         sarc = SarcAsM(structure_crop_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=0)
-        sarc.analyze_sarcomere_vectors(frames='all')
+        sarc.structure.analyze_vectors(frames='all')
         return sarc
 
     def test_params_record_only_the_frames_analyzed(self, partially_detected):
         """Downstream steps trust these params, so they must not overclaim."""
         assert partially_detected.metadata.n_stack > 1, "fixture needs a multi-frame file"
-        assert list(partially_detected.data['params.analyze_sarcomere_vectors.frames']) == [0]
+        assert list(partially_detected.data['params.structure.analyze_vectors.frames']) == [0]
 
     def test_only_the_detected_frame_carries_vectors(self, partially_detected):
         pos = partially_detected.data['structure.sarcomere.pos_px']
@@ -243,13 +243,13 @@ class TestPartialDetectionIsNotSilent:
         assert all(v is None for v in pos[1:])
 
     def test_tracking_names_the_cause(self, partially_detected):
-        """The old message blamed an interrupted analyze_sarcomere_vectors run."""
+        """The old message blamed an interrupted structure.analyze_vectors run."""
         with pytest.raises(ValueError, match='detect_sarcomeres'):
-            partially_detected.track_sarcomere_vectors()
+            partially_detected.motion.track()
 
     def test_analyze_z_bands_records_only_the_frames_analyzed(self, partially_detected):
-        partially_detected.analyze_z_bands(frames='all')
-        assert list(partially_detected.data['params.analyze_z_bands.frames']) == [0]
+        partially_detected.structure.analyze_z_bands(frames='all')
+        assert list(partially_detected.data['params.structure.analyze_z_bands.frames']) == [0]
 
 
 class TestStructureIntegration:
@@ -267,7 +267,7 @@ class TestStructureIntegration:
         sarc.detect_sarcomeres()
         
         # Run full analysis
-        sarc.full_analysis_structure()
+        sarc.structure.full_analysis()
         
         # Verify all components completed successfully
         assert hasattr(sarc, 'zbands')
@@ -288,7 +288,7 @@ class TestStructureIntegration:
         sarc.detect_sarcomeres()
         
         # Run full analysis
-        sarc.full_analysis_structure()
+        sarc.structure.full_analysis()
         
         # Verify all components completed successfully
         assert hasattr(sarc, 'zbands')
@@ -297,7 +297,7 @@ class TestStructureIntegration:
         assert 'structure.domain.members' in sarc.data
         assert sarc.metadata.user_info['experiment_type'] == 'single_image'
         # the member lists line up with every per-domain array (only domains that passed the size filters)
-        f = sarc.data['params.analyze_sarcomere_domains.frames'][0]
+        f = sarc.data['params.structure.analyze_domains.frames'][0]
         n = int(sarc.data['structure.domain.n'][f])
         assert len(sarc.data['structure.domain.members'][f]) == n
         for key in ('area', 'slen', 'oop', 'orientation', 'registry_lateral', 'registry_axial'):
@@ -314,7 +314,7 @@ class TestStructureIntegration:
         """
         sarc = SarcAsM(structure_timelapse_file_path, experiment_type='timelapse', restart=True)
         sarc.detect_sarcomeres()
-        sarc.full_analysis_structure()
+        sarc.structure.full_analysis()
 
         assert hasattr(sarc, 'zbands')
         assert 'structure.sarcomere.slen' in sarc.data
@@ -336,10 +336,10 @@ class TestStructurePlots:
         """
         sarc = SarcAsM(structure_crop_file_path_class, restart=True)
         sarc.detect_sarcomeres(frames=1)
-        sarc.analyze_z_bands(frames=[1])
-        sarc.analyze_sarcomere_vectors(frames=1)
-        sarc.analyze_sarcomere_domains(frames=1)
-        sarc.analyze_myofibrils(frames=1)
+        sarc.structure.analyze_z_bands(frames=[1])
+        sarc.structure.analyze_vectors(frames=1)
+        sarc.structure.analyze_domains(frames=1)
+        sarc.structure.analyze_myofibrils(frames=1)
         return sarc
 
     def test_data_key_is_its_path_on_a_real_store(self, analyzed_structure):
@@ -364,7 +364,7 @@ class TestStructurePlots:
     def test_print_object_summary(self, analyzed_structure):
         """print(sarc) reports the steps that actually ran."""
         text = str(analyzed_structure)
-        assert 'detect_sarcomeres' in text and 'analyze_myofibrils' in text
+        assert 'detect_sarcomeres' in text and 'structure.analyze_myofibrils' in text
         assert 'vectors/frame' in text
         assert '\n' not in repr(analyzed_structure)
 
@@ -473,8 +473,8 @@ class TestStructurePlots:
 class TestDomainMotionPlots:
     """Real-data cover for the tracking and contraction pipeline.
 
-    This is the only test that runs track_sarcomere_vectors and
-    analyze_track_motion -- and so ContractionNet -- on an actual movie, so it
+    This is the only test that runs motion.track and
+    motion.analyze -- and so ContractionNet -- on an actual movie, so it
     stays in the default run rather than behind --runslow. The class-scoped
     fixture pays the analysis cost once for all tests here.
     """
@@ -487,10 +487,10 @@ class TestDomainMotionPlots:
         """
         sarc = SarcAsM(motion_30kPa_file_path_class, restart=True)
         # Every step must use the SAME window: detection only produces masks for
-        # these frames, so analyze_sarcomere_vectors / track_sarcomere_vectors must
+        # these frames, so structure.analyze_vectors / motion.track must
         # be scoped to them too (passing frames='all'/default here requests all 500
         # movie frames and trips the "vectors missing for N frames" guard in
-        # track_sarcomere_vectors).
+        # motion.track).
         #
         # The window is sized from the movie, not picked round: this cell beats at
         # ~1.38 Hz and the frame time is 16.4 ms, so one cycle is ~44 frames. 150
@@ -500,10 +500,10 @@ class TestDomainMotionPlots:
         # spare. test_at_least_two_contractions_are_analysed pins this down.
         frames = np.arange(150)
         sarc.detect_sarcomeres(frames=frames, max_patch_size=(256, 1024))
-        sarc.analyze_sarcomere_vectors(frames=frames, interpolation_method='akima')
-        sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-        sarc.track_sarcomere_vectors(frames=frames)
-        sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
+        sarc.structure.analyze_vectors(frames=frames, interpolation_method='akima')
+        sarc.structure.analyze_domains(frames=0, leiden_resolution=1, store_mask=True)
+        sarc.motion.track(frames=frames)
+        sarc.motion.analyze(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
         return sarc
 
     def test_track_length_refinement(self, analyzed_domain_motion):
@@ -513,13 +513,13 @@ class TestDomainMotionPlots:
         from sarcasm.analysis import sarcomere_tracking as st
         sarc = analyzed_domain_motion
         d = sarc.data
-        assert bool(d['params.track_sarcomere_vectors.refine_lengths'])
-        assert d['params.analyze_sarcomere_vectors.interpolation_method'] == 'akima'
+        assert bool(d['params.motion.track.refine_lengths'])
+        assert d['params.structure.analyze_vectors.interpolation_method'] == 'akima'
         raw = np.asarray(d['motion.tracks.slen_raw'], dtype=float)
         refined = np.asarray(d['motion.tracks.slen'], dtype=float)
         observed = np.asarray(d['motion.tracks.observed'], dtype=bool)
-        frames = list(d['params.track_sarcomere_vectors.frames'])
-        zbands = ('zbands_fast_movie' if d['params.analyze_sarcomere_vectors.zbands_source'] == 'fast_movie_3d'
+        frames = list(d['params.motion.track.frames'])
+        zbands = ('zbands_fast_movie' if d['params.structure.analyze_vectors.zbands_source'] == 'fast_movie_3d'
                   else 'zbands')
         # the stored positions are the refined (Z-band midpoint) ones; the detections' integer M-band pixels
         # come back through detection_id
@@ -538,10 +538,10 @@ class TestDomainMotionPlots:
         again, _, _ = st.refine_track_lengths(
             pos_raw, d['motion.tracks.orientations_raw'], observed,
             lambda k: sarc._read_mask(zbands, frames=int(frames[k])), sarc.metadata.pixelsize, window_frames=1,
-            slen_lims=tuple(d['params.analyze_sarcomere_vectors.slen_lims']),
-            interp_factor=int(d['params.analyze_sarcomere_vectors.interp_factor']),
-            linewidth=float(d['params.analyze_sarcomere_vectors.linewidth']), interpolation_method='akima',
-            peak_prominence=float(d['params.analyze_sarcomere_vectors.peak_prominence']))
+            slen_lims=tuple(d['params.structure.analyze_vectors.slen_lims']),
+            interp_factor=int(d['params.structure.analyze_vectors.interp_factor']),
+            linewidth=float(d['params.structure.analyze_vectors.linewidth']), interpolation_method='akima',
+            peak_prominence=float(d['params.structure.analyze_vectors.peak_prominence']))
         m = observed & np.isfinite(raw)
         # exact up to the float32 storage of the track orientations, which flips a handful of profiles that sit
         # exactly at a peak-acceptance threshold (9 of ~370k on this movie)
@@ -592,7 +592,7 @@ def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path)
     """The cell mask is a detection output, so its features come with detect_sarcomeres."""
     sarc = SarcAsM(structure_crop_file_path, restart=True)
     sarc.detect_sarcomeres(frames=0)
-    assert sarc.data['params.analyze_cell_mask.frames'] == [0]
+    assert sarc.data['params.structure.analyze_cell_mask.frames'] == [0]
     area = np.asarray(sarc.data['structure.cell.mask_area'])
     ratio = np.asarray(sarc.data['structure.cell.mask_area_ratio'])
     # per-frame arrays indexed by frame (NaN for frames not analyzed), like all structure results
@@ -600,27 +600,27 @@ def test_detect_sarcomeres_computes_cell_mask_features(structure_crop_file_path)
     assert np.isnan(area[1:]).all()
     assert 0 < ratio[0] <= 1
     # still callable on its own, e.g. with another threshold
-    sarc.analyze_cell_mask(frames=0, threshold=0.5)
-    assert sarc.data['params.analyze_cell_mask.threshold'] == 0.5
+    sarc.structure.analyze_cell_mask(frames=0, threshold=0.5)
+    assert sarc.data['params.structure.analyze_cell_mask.threshold'] == 0.5
 
 
 def test_neighbor_filter_counts_add_up(structure_crop_file_path):
     """Kept + removed vectors equal the unfiltered count; the filter is on by default and recorded."""
     sarc = SarcAsM(structure_crop_file_path, restart=True)
     sarc.detect_sarcomeres(frames=0)
-    sarc.analyze_sarcomere_vectors(frames=0, max_neighbor_deviation=None)
+    sarc.structure.analyze_vectors(frames=0, max_neighbor_deviation=None)
     n_all = sarc.data['structure.sarcomere.n_vectors'][0]
     assert sarc.data['structure.sarcomere.n_vectors_removed'][0] == 0
-    assert sarc.data['params.analyze_sarcomere_vectors.max_neighbor_deviation'] is None
+    assert sarc.data['params.structure.analyze_vectors.max_neighbor_deviation'] is None
 
-    sarc.analyze_sarcomere_vectors(frames=0)
+    sarc.structure.analyze_vectors(frames=0)
     n_kept = sarc.data['structure.sarcomere.n_vectors'][0]
     n_removed = sarc.data['structure.sarcomere.n_vectors_removed'][0]
     assert n_kept + n_removed == n_all and n_removed >= 0
     for key in ('pos', 'pos_px', 'slen', 'orientation', 'midline_id', 'midline_length'):
         assert len(sarc.data[f'structure.sarcomere.{key}'][0]) == n_kept, key
-    assert sarc.data['params.analyze_sarcomere_vectors.neighbor_radius'] == 1.0
-    assert sarc.data['params.analyze_sarcomere_vectors.max_neighbor_deviation'] == 30.0
+    assert sarc.data['params.structure.analyze_vectors.neighbor_radius'] == 1.0
+    assert sarc.data['params.structure.analyze_vectors.max_neighbor_deviation'] == 30.0
     # per-frame result indexed by frame, NaN where not analysed
     removed = np.asarray(sarc.data['structure.sarcomere.n_vectors_removed'])
     assert removed.shape == (sarc.metadata.n_stack,) and np.isnan(removed[1:]).all()
@@ -635,7 +635,7 @@ def test_vectors_on_a_frame_without_m_bands(structure_crop_file_path):
     sarc = SarcAsM(structure_crop_file_path, restart=True)
     sarc.detect_sarcomeres(frames=0)
     sarc.store.write_mask('mbands', np.zeros_like(sarc.store.read_mask('mbands')))
-    sarc.analyze_sarcomere_vectors(frames=0)
+    sarc.structure.analyze_vectors(frames=0)
     d = sarc.data
     assert d['structure.sarcomere.n_mbands'][0] == 0
     assert d['structure.sarcomere.n_vectors'][0] == 0 and d['structure.sarcomere.n_vectors_removed'][0] == 0
@@ -652,9 +652,9 @@ def test_contrast_background_of_a_covered_frame_does_not_depend_on_the_call(stru
     mask = np.asarray(sarc.store.read_mask('cell_mask')).copy()
     mask[1] = 1.0
     sarc.store.write_mask('cell_mask', mask)
-    sarc.analyze_z_bands(frames='all')
+    sarc.structure.analyze_z_bands(frames='all')
     together = (sarc.data['structure.zbands.background'][1], sarc.data['structure.zbands.contrast_median'][1])
-    sarc.analyze_z_bands(frames=[1])
+    sarc.structure.analyze_z_bands(frames=[1])
     alone = (sarc.data['structure.zbands.background'][1], sarc.data['structure.zbands.contrast_median'][1])
     assert np.isfinite(together[0]) and together == alone
 
@@ -665,7 +665,7 @@ def test_orientation_mean_and_std_are_axial(structure_crop_file_path):
     to a different axis."""
     sarc = SarcAsM(structure_crop_file_path, restart=True)
     sarc.detect_sarcomeres(frames=0)
-    sarc.analyze_sarcomere_vectors(frames=0)
+    sarc.structure.analyze_vectors(frames=0)
     theta = np.asarray(sarc.data['structure.sarcomere.orientation'][0], float)
     theta = theta[np.isfinite(theta)]
     mean = sarc.data['structure.sarcomere.orientation_mean'][0]

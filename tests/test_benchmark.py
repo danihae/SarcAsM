@@ -173,7 +173,7 @@ class TestStructureBenchmark:
         with timer(result, "full_pipeline"):
             sarc = SarcAsM(structure_single_file_path, restart=True)
             sarc.detect_sarcomeres(frames=0, max_patch_size=(1024, 1024))
-            sarc.full_analysis_structure()
+            sarc.structure.full_analysis()
 
         filepath = result.save_json(benchmark_output_dir, prefix="structure_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
@@ -188,16 +188,16 @@ class TestStructureBenchmark:
 
         with timer(result, "detect_sarcomeres"):
             sarc.detect_sarcomeres(frames=0, max_patch_size=(1024, 1024))
-        with timer(result, "analyze_cell_mask"):
-            sarc.analyze_cell_mask()
-        with timer(result, "analyze_z_bands"):
-            sarc.analyze_z_bands(frames=0)
-        with timer(result, "analyze_sarcomere_vectors"):
-            sarc.analyze_sarcomere_vectors(frames=0)
-        with timer(result, "analyze_myofibrils"):
-            sarc.analyze_myofibrils(frames=0)
-        with timer(result, "analyze_sarcomere_domains"):
-            sarc.analyze_sarcomere_domains(frames=0)
+        with timer(result, "structure.analyze_cell_mask"):
+            sarc.structure.analyze_cell_mask()
+        with timer(result, "structure.analyze_z_bands"):
+            sarc.structure.analyze_z_bands(frames=0)
+        with timer(result, "structure.analyze_vectors"):
+            sarc.structure.analyze_vectors(frames=0)
+        with timer(result, "structure.analyze_myofibrils"):
+            sarc.structure.analyze_myofibrils(frames=0)
+        with timer(result, "structure.analyze_domains"):
+            sarc.structure.analyze_domains(frames=0)
 
         filepath = result.save_json(benchmark_output_dir, prefix="structure_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
@@ -211,7 +211,7 @@ class TestStructureBenchmark:
         with timer(result, "full_pipeline_timelapse"):
             sarc = SarcAsM(structure_timelapse_file_path, restart=True)
             sarc.detect_sarcomeres(frames=0, max_patch_size=(512, 512))
-            sarc.full_analysis_structure()
+            sarc.structure.full_analysis()
 
         filepath = result.save_json(benchmark_output_dir, prefix="structure_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
@@ -241,10 +241,10 @@ class TestDomainMotionBenchmark:
         with timer(result, "full_domain_motion_pipeline"):
             sarc = SarcAsM(motion_30kPa_file_path, restart=True)
             sarc.detect_sarcomeres(frames=bench_frames, max_patch_size=(256, 1024))
-            sarc.analyze_sarcomere_vectors(frames=bench_frames, interpolation_method="akima")
-            sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-            sarc.track_sarcomere_vectors(frames=bench_frames)
-            sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
+            sarc.structure.analyze_vectors(frames=bench_frames, interpolation_method="akima")
+            sarc.structure.analyze_domains(frames=0, leiden_resolution=1, store_mask=True)
+            sarc.motion.track(frames=bench_frames)
+            sarc.motion.analyze(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
         filepath = result.save_json(benchmark_output_dir, prefix="domain_motion_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
@@ -262,14 +262,14 @@ class TestDomainMotionBenchmark:
 
         with timer(result, "detect_sarcomeres_multi_frame"):
             sarc.detect_sarcomeres(frames=bench_frames, max_patch_size=(256, 1024))
-        with timer(result, "analyze_sarcomere_vectors"):
-            sarc.analyze_sarcomere_vectors(frames=bench_frames, interpolation_method="akima")
-        with timer(result, "analyze_sarcomere_domains"):
-            sarc.analyze_sarcomere_domains(frames=0, leiden_resolution=1, store_mask=True)
-        with timer(result, "track_sarcomere_vectors"):
-            sarc.track_sarcomere_vectors(frames=bench_frames)
+        with timer(result, "structure.analyze_vectors"):
+            sarc.structure.analyze_vectors(frames=bench_frames, interpolation_method="akima")
+        with timer(result, "structure.analyze_domains"):
+            sarc.structure.analyze_domains(frames=0, leiden_resolution=1, store_mask=True)
+        with timer(result, "motion.track"):
+            sarc.motion.track(frames=bench_frames)
         with timer(result, "analyze_track_motion_domain"):
-            sarc.analyze_track_motion(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
+            sarc.motion.analyze(by='domain', reference_frame=0, threshold=0.3, contr_time_min=0.2)
 
         filepath = result.save_json(benchmark_output_dir, prefix="domain_motion_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")

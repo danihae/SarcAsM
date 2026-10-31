@@ -23,13 +23,13 @@ Commands
     Axes, shape, frame count, pixel size (µm), frame time (s), stored masks.
 
 ``structure FILE``
-    Sarcomere detection followed by :meth:`~sarcasm.SarcAsM.full_analysis_structure`.
+    Sarcomere detection followed by :meth:`~sarcasm.structure.StructureAnalysis.full_analysis`.
     Prints the summary features of :attr:`~sarcasm.Export.structure_keys_default`, each
     a list aligned with ``"frames"``.
 
 ``motion FILE``
-    Detection, sarcomere vectors, :meth:`~sarcasm.SarcAsM.track_sarcomere_vectors` and
-    :meth:`~sarcasm.SarcAsM.analyze_track_motion`. Prints one record per group (``--by``;
+    Detection, sarcomere vectors, :meth:`~sarcasm.motion.MotionAnalysis.track` and
+    :meth:`~sarcasm.motion.MotionAnalysis.analyze`. Prints one record per group (``--by``;
     default ``pool``), with per-cycle features averaged over cycles.
 
 ``results FILE [KEY ...]``

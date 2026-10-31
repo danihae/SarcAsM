@@ -115,19 +115,22 @@ class TestParameters:
         assert params.get_parameter('batch.pixel.size').get_value() == 0.1
 
     @pytest.mark.parametrize('param, method, kwarg', [
-        ('structure.vectors.line_width', 'analyze_sarcomere_vectors', 'linewidth'),
-        ('structure.vectors.interpolation_factor', 'analyze_sarcomere_vectors', 'interp_factor'),
-        ('structure.vectors.radius', 'analyze_sarcomere_vectors', 'median_filter_radius'),
-        ('structure.z_band_analysis.threshold', 'analyze_z_bands', 'threshold'),
-        ('structure.z_band_analysis.min_length', 'analyze_z_bands', 'min_length'),
-        ('structure.z_band_analysis.max_axial_offset', 'analyze_z_bands', 'max_axial_offset'),
+        ('structure.vectors.line_width', 'structure.analyze_vectors', 'linewidth'),
+        ('structure.vectors.interpolation_factor', 'structure.analyze_vectors', 'interp_factor'),
+        ('structure.vectors.radius', 'structure.analyze_vectors', 'median_filter_radius'),
+        ('structure.z_band_analysis.threshold', 'structure.analyze_z_bands', 'threshold'),
+        ('structure.z_band_analysis.min_length', 'structure.analyze_z_bands', 'min_length'),
+        ('structure.z_band_analysis.max_axial_offset', 'structure.analyze_z_bands', 'max_axial_offset'),
     ])
     def test_gui_defaults_match_the_python_defaults(self, model, param, method, kwarg):
         """The same image must give the same numbers in the GUI as with SarcAsM() defaults
         (linewidth 0.2 / interp_factor 0 in the GUI once gave 3398 instead of 3447 vectors)."""
         import inspect
-        from sarcasm import SarcAsM
-        api = inspect.signature(getattr(SarcAsM, method)).parameters[kwarg].default
+        from sarcasm.motion import MotionAnalysis
+        from sarcasm.structure import StructureAnalysis
+        namespace, name = method.split('.')
+        cls = {'structure': StructureAnalysis, 'motion': MotionAnalysis}[namespace]
+        api = inspect.signature(getattr(cls, name)).parameters[kwarg].default
         assert model.parameters.get_parameter(param).get_value() == pytest.approx(api)
 
     def test_auto_patch_size_is_the_default(self, model):
@@ -443,8 +446,8 @@ class TestBatchProcessingParameters:
         data = {'structure.myofibril.lines': [None, None, None]}
         if analysed_frames is not None:
             data['params.detect_sarcomeres.frames'] = analysed_frames
-            data['params.analyze_sarcomere_vectors.frames'] = analysed_frames
-            data['params.analyze_sarcomere_vectors.zbands_source'] = source
+            data['params.structure.analyze_vectors.frames'] = analysed_frames
+            data['params.structure.analyze_vectors.zbands_source'] = source
         sarc = MagicMock()
         sarc.data = data
         sarc.metadata = SimpleNamespace(n_stack=3, frametime=0.01)
@@ -457,19 +460,19 @@ class TestBatchProcessingParameters:
         ctl = bpc.BatchProcessingControl(MagicMock(), MagicMock())
         with patch.object(bpc, 'SarcAsM', return_value=sarc):
             ctl._BatchProcessingControl__single_motion_analysis('movie.tif', 0.1, 0.1, 0, '', False, model)
-        assert sarc.analyze_sarcomere_vectors.called == expect_structure
+        assert sarc.structure.analyze_vectors.called == expect_structure
         assert sarc.detect_sarcomeres.called == (recalc or analysed_frames != [0, 1, 2]
                                                  or (expect_structure and not masks_kept))
         if expect_structure:
-            kwargs = sarc.analyze_sarcomere_vectors.call_args.kwargs
+            kwargs = sarc.structure.analyze_vectors.call_args.kwargs
             assert kwargs['frames'] == 'all' and kwargs['use_fast_movie_zbands'] is fast
-        assert sarc.detect_z_bands_fast_movie.called == (fast and source != 'fast_movie_3d')
-        assert sarc.analyze_myofibrils.call_args.kwargs['frames'] == [0]       # no myofibrils at frame 0 yet
-        sarc.track_sarcomere_vectors.assert_called_once()
-        assert sarc.track_sarcomere_vectors.call_args.kwargs['refine_lengths'] is True
+        assert sarc.motion.detect_z_bands_fast_movie.called == (fast and source != 'fast_movie_3d')
+        assert sarc.structure.analyze_myofibrils.call_args.kwargs['frames'] == [0]       # no myofibrils at frame 0 yet
+        sarc.motion.track.assert_called_once()
+        assert sarc.motion.track.call_args.kwargs['refine_lengths'] is True
         # the default groupings: whole cell and myofibrils, each grouped and analysed
-        assert [c.kwargs['by'] for c in sarc.group_tracks.call_args_list] == ['pool', 'myofibril']
-        assert sarc.analyze_track_motion.call_count == 2
+        assert [c.kwargs['by'] for c in sarc.motion.group_tracks.call_args_list] == ['pool', 'myofibril']
+        assert sarc.motion.analyze.call_count == 2
         sarc.commit.assert_called_once()
 
     def test_batch_motion_refuses_single_images(self, model):
@@ -481,7 +484,7 @@ class TestBatchProcessingParameters:
         ctl = bpc.BatchProcessingControl(MagicMock(), MagicMock())
         with patch.object(bpc, 'SarcAsM', return_value=sarc), pytest.raises(ValueError, match='single image'):
             ctl._BatchProcessingControl__single_motion_analysis('image.tif', 0.1, 0.1, 0, '', False, model)
-        sarc.track_sarcomere_vectors.assert_not_called()
+        sarc.motion.track.assert_not_called()
 
 
 class TestMotionParameters:
@@ -586,9 +589,9 @@ class TestTrackLayers:
         cell = SarcAsM(motion_file_path_class, auto_save=False)
         if 'motion.tracks.slen' not in cell.data:
             pytest.skip('20 kPa store has no tracks')
-        if 0 not in list(cell.data.get('params.analyze_myofibrils.frames', [])):
-            cell.analyze_myofibrils(frames=0)              # the store holds no myofibril lines
-        cell.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
+        if 0 not in list(cell.data.get('params.structure.analyze_myofibrils.frames', [])):
+            cell.structure.analyze_myofibrils(frames=0)              # the store holds no myofibril lines
+        cell.motion.group_tracks(by='myofibril', reference_frame=0, min_group_size=6)
         cell.scale = (1, cell.metadata.pixelsize, cell.metadata.pixelsize)
         model = ApplicationModel()
         model.set_to_default()
@@ -763,7 +766,7 @@ class TestGuiFixes2026_10:
         data = {'structure.sarcomere.pos': per_frame([[1.0, 2.0], [3.0, 4.0]]),
                 'structure.sarcomere.orientation': per_frame([0.0, 1.0]),
                 'structure.sarcomere.slen': per_frame([1.8, 1.9]),
-                'params.analyze_sarcomere_vectors.frames': list(range(n_stack))}
+                'params.structure.analyze_vectors.frames': list(range(n_stack))}
         scale = (px, px) if n_stack == 1 else (1, px, px)
         cell = SimpleNamespace(data=data, scale=scale,
                                metadata=SimpleNamespace(pixelsize=px, n_stack=n_stack))
@@ -930,14 +933,14 @@ class TestGuiOutputFixes2026_10_24:
         assert 'broken movie.tif: not a TIFF' in str(err.value)
 
     def test_zero_tracks_give_a_reason_instead_of_a_reshape_error(self):
-        from sarcasm.structure import SarcAsM
+        from sarcasm.core import SarcAsM
         sarc = SarcAsM.__new__(SarcAsM)
         sarc.data = {'motion.tracks.slen': np.empty((0, 10)), 'motion.tracks.n': 0}
         with pytest.raises(ValueError, match='found no tracks'):
-            sarc._require_tracks()
+            sarc.motion._require_tracks()
         sarc.data = {}
         with pytest.raises(ValueError, match='No tracks found'):
-            sarc._require_tracks()
+            sarc.motion._require_tracks()
 
     def test_groups_layer_tolerates_zero_tracks(self):
         from types import SimpleNamespace
@@ -951,8 +954,8 @@ class TestGuiOutputFixes2026_10_24:
 
     @pytest.mark.parametrize('message, expected', [
         ('The tracking found no tracks: no sarcomere was followed', 'Min. track duration'),
-        ('No tracks found. Run track_sarcomere_vectors first.', '1. Track sarcomere vectors'),
-        ('No track grouping found. Run group_tracks(...) first', '2. Group tracks'),
+        ('No tracks found. Run sarc.motion.track first.', '1. Track sarcomere vectors'),
+        ('No track grouping found. Run sarc.motion.group_tracks(...) first', '2. Group tracks'),
         ('reference_frame 99 was not tracked.', 'reference frame that was tracked'),
     ])
     def test_error_hints_match_the_backend_messages(self, message, expected):

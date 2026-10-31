@@ -12,7 +12,7 @@ The weight is how often patches come from that folder, independent of its size.
 A GPU is strongly recommended (the default 60 epochs take a few hours on a workstation
 GPU; Apple-silicon MPS is ~20x slower). The best checkpoint is runs/.../best.pt; use it with
 
-    sarc.detect_z_bands_fast_movie(model_path='runs/generalist/best.pt')
+    sarc.motion.detect_z_bands_fast_movie(model_path='runs/generalist/best.pt')
 """
 import argparse
 

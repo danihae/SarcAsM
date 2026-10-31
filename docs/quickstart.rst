@@ -22,16 +22,16 @@ More detailed instructions see :doc:`notebooks/tutorial_structure_analysis`.
     sarc_obj.detect_sarcomeres()
 
     # analyze Z-band morphology
-    sarc_obj.analyze_z_bands()
+    sarc_obj.structure.analyze_z_bands()
 
     # analyze sarcomere vectors
-    sarc_obj.analyze_sarcomere_vectors()
+    sarc_obj.structure.analyze_vectors()
 
     # analyze myofibrils
-    sarc_obj.analyze_myofibrils()
+    sarc_obj.structure.analyze_myofibrils()
 
     # analyze sarcomere domains
-    sarc_obj.analyze_sarcomere_domains()
+    sarc_obj.structure.analyze_domains()
 
 Sarcomere motion analysis
 =========================
@@ -56,22 +56,22 @@ contractions of *groups* of tracks. More detailed instructions see
 
     # optional, for high-speed movies: replace the per-frame Z-band mask with the
     # temporally consistent 3D U-Net output
-    sarc_obj.detect_z_bands_fast_movie()
+    sarc_obj.motion.detect_z_bands_fast_movie()
 
     # analyze sarcomere vectors in all frames
-    sarc_obj.analyze_sarcomere_vectors(frames='all')
+    sarc_obj.structure.analyze_vectors(frames='all')
 
     # track every sarcomere vector through the movie; when the frame rate is coarse
     # relative to the motion (one contraction moves a sarcomere a good part of its
     # length between frames) add motion_predictor='flow' (raw-image optical flow)
-    sarc_obj.track_sarcomere_vectors()
+    sarc_obj.motion.track()
 
     # analyze contractions of all tracks pooled into one averaged signal
-    sarc_obj.analyze_track_motion(by='pool')
+    sarc_obj.motion.analyze(by='pool')
 
     # ... or group the tracks per myofibril and analyze each group separately
-    sarc_obj.analyze_myofibrils(frames=[0])
-    sarc_obj.analyze_track_motion(by='myofibril', reference_frame=0)
+    sarc_obj.structure.analyze_myofibrils(frames=[0])
+    sarc_obj.motion.analyze(by='myofibril', reference_frame=0)
 
 Tracks can also be grouped by M-band (``by='mband'``), by myofibril domain
 (``by='domain'``), along automatically detected lines of interest (``by='loi'``),

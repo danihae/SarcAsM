@@ -2,8 +2,8 @@
 
 The v1.0.0 pipeline is
 
-    detect_sarcomeres -> analyze_sarcomere_vectors -> track_sarcomere_vectors
-    -> analyze_track_motion(by=...)
+    detect_sarcomeres -> structure.analyze_vectors -> motion.track
+    -> motion.analyze(by=...)
 
 Tune the parameters on one or two representative movies first, see
 ``docs/notebooks/tutorial_sarcomere_tracking.ipynb``. Run this as a script rather
@@ -54,18 +54,18 @@ def analyze_motion(file):
                                batch_size=batch_size)
 
         if fast_movie_zbands:
-            sarc.detect_z_bands_fast_movie()
+            sarc.motion.detect_z_bands_fast_movie()
 
         # per-frame sarcomere vectors (position, length, orientation)
-        sarc.analyze_sarcomere_vectors(frames=frames)
+        sarc.structure.analyze_vectors(frames=frames)
 
         # dense (n_tracks, T) trajectories
-        sarc.track_sarcomere_vectors(frames=frames)
+        sarc.motion.track(frames=frames)
 
         # contractions of all tracks pooled into one averaged signal. Group
         # instead by 'mband', 'myofibril', 'loi', 'domain' or 'custom' to analyze
         # each group separately -- see the tracking tutorial.
-        sarc.analyze_track_motion(by='pool')
+        sarc.motion.analyze(by='pool')
 
         # remove intermediate masks to save storage, optional
         # sarc.remove_intermediate_masks()

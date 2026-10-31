@@ -1,6 +1,6 @@
 # Retraining the 3D U-Net for high-speed movies
 
-`SarcAsM.detect_z_bands_fast_movie` predicts Z-bands with a 3D U-Net that looks at
+`MotionAnalysis.detect_z_bands_fast_movie` predicts Z-bands with a 3D U-Net that looks at
 several frames at once. It gives steadier Z-band masks than the per-frame 2D model,
 but only on data like what it was trained on. These four scripts retrain it on your
 own movies, or fine-tune it for them.
@@ -50,7 +50,7 @@ python 4_evaluate.py clips/synthetic_val clips/real_val \
 Then use the model:
 
 ```python
-sarc.detect_z_bands_fast_movie(model_path='runs/my_model/best.pt')
+sarc.motion.detect_z_bands_fast_movie(model_path='runs/my_model/best.pt')
 ```
 
 ## Things worth knowing

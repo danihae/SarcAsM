@@ -564,12 +564,12 @@ def test_orientation_window_warns_about_too_few_frames(caplog, monkeypatch):
     # 5 fps: 0.1 s holds half a frame -> warning, one axis per track instead of a running median
     sarc.metadata = types.SimpleNamespace(frametime=0.2, pixelsize=0.1)
     with caplog.at_level(logging.WARNING):
-        assert sarc._orientation_window_frames(0.1) is None
+        assert sarc.motion._orientation_window_frames(0.1) is None
     assert 'holds 0.50 frames' in caplog.text and 'at least 5' in caplog.text
-    assert sarc._orientation_window_frames(None) is None
-    assert sarc._orientation_window_frames(3.0) == 15
+    assert sarc.motion._orientation_window_frames(None) is None
+    assert sarc.motion._orientation_window_frames(3.0) == 15
     sarc.metadata = types.SimpleNamespace(frametime=None, pixelsize=0.1)
     caplog.clear()
     with caplog.at_level(logging.WARNING):
-        assert sarc._orientation_window_frames(2.0) is None
+        assert sarc.motion._orientation_window_frames(2.0) is None
     assert 'frametime is unknown' in caplog.text

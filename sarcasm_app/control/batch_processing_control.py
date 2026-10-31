@@ -92,7 +92,7 @@ def _detect_sarcomeres(sarc_obj: SarcAsM, parameters, frames, progress_notifier=
 
 def _detect_z_bands_fast_movie(sarc_obj: SarcAsM, parameters, progress_notifier=None):
     network_model = parameters.get_parameter('structure.predict_fast_movie.network_path').get_value()
-    sarc_obj.detect_z_bands_fast_movie(
+    sarc_obj.motion.detect_z_bands_fast_movie(
         model_path=None if network_model in ('default', 'generalist') else network_model,
         max_patch_size=patch_size_from_parameters(parameters, 'structure.predict_fast_movie'),
         clip_thres=(parameters.get_parameter('structure.predict_fast_movie.clip_thresh_min').get_value(),
@@ -101,7 +101,7 @@ def _detect_z_bands_fast_movie(sarc_obj: SarcAsM, parameters, progress_notifier=
 
 
 def _analyze_z_bands(sarc_obj: SarcAsM, p, frames):
-    sarc_obj.analyze_z_bands(frames=frames,
+    sarc_obj.structure.analyze_z_bands(frames=frames,
                              threshold=p('structure.z_band_analysis.threshold'),
                              min_length=p('structure.z_band_analysis.min_length'),
                              median_filter_radius=p('structure.z_band_analysis.median_filter_radius'),
@@ -113,7 +113,7 @@ def _analyze_z_bands(sarc_obj: SarcAsM, p, frames):
 
 
 def _analyze_sarcomere_vectors(sarc_obj: SarcAsM, p, frames, progress_notifier=None, use_fast_movie_zbands=True):
-    sarc_obj.analyze_sarcomere_vectors(
+    sarc_obj.structure.analyze_vectors(
         frames=frames,
         use_fast_movie_zbands=use_fast_movie_zbands,
         slen_lims=(p('structure.vectors.length_limit_lower'), p('structure.vectors.length_limit_upper')),
@@ -128,7 +128,7 @@ def _analyze_sarcomere_vectors(sarc_obj: SarcAsM, p, frames, progress_notifier=N
 
 
 def _analyze_myofibrils(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
-    sarc_obj.analyze_myofibrils(frames=frames,
+    sarc_obj.structure.analyze_myofibrils(frames=frames,
                                 ratio_seeds=p('structure.myofibril.ratio_seeds'),
                                 persistence=p('structure.myofibril.persistence'),
                                 threshold_distance=p('structure.myofibril.threshold_distance'),
@@ -138,7 +138,7 @@ def _analyze_myofibrils(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
 
 
 def _analyze_sarcomere_domains(sarc_obj: SarcAsM, p, frames, progress_notifier=None):
-    sarc_obj.analyze_sarcomere_domains(frames=frames,
+    sarc_obj.structure.analyze_domains(frames=frames,
                                        d_max=p('structure.domain.analysis.d_max'),
                                        cosine_min=p('structure.domain.analysis.cosine_min'),
                                        leiden_resolution=p('structure.domain.analysis.leiden_resolution'),
@@ -496,9 +496,9 @@ class BatchProcessingControl:
             done = data.get(f'params.{step}.frames')
             return done is not None and len(done) >= n_stack
 
-        source = data.get('params.analyze_sarcomere_vectors.zbands_source')
+        source = data.get('params.structure.analyze_vectors.zbands_source')
         run_fast = fast and (redo or not sarc_obj._mask_exists('zbands_fast_movie'))
-        run_vectors = (redo or run_fast or not _all_frames('analyze_sarcomere_vectors')
+        run_vectors = (redo or run_fast or not _all_frames('structure.analyze_vectors')
                        or fast != (source == 'fast_movie_3d'))
         # the vectors read the detection masks, which 'Delete intermediate masks' may have removed
         run_detect = redo or not _all_frames('detect_sarcomeres') or (run_vectors and not all(
@@ -511,7 +511,7 @@ class BatchProcessingControl:
         if run_vectors:
             _analyze_sarcomere_vectors(sarc_obj, _p, 'all', progress_notifier, use_fast_movie_zbands=fast)
 
-        sarc_obj.track_sarcomere_vectors(
+        sarc_obj.motion.track(
             frames='all',
             max_disp_along_um=_p('motion.track.max_disp_along'),
             max_disp_perp_um=_p('motion.track.max_disp_perp'),
@@ -528,13 +528,13 @@ class BatchProcessingControl:
                 if run_vectors or lines is None or lines[ref] is None:
                     _analyze_myofibrils(sarc_obj, _p, [ref], progress_notifier)
             elif by == 'domain':
-                if run_vectors or ref not in list(data.get('params.analyze_sarcomere_domains.frames', [])):
+                if run_vectors or ref not in list(data.get('params.structure.analyze_domains.frames', [])):
                     _analyze_sarcomere_domains(sarc_obj, _p, [ref], progress_notifier)
             elif by == 'loi':
-                sarc_obj.detect_lois(frame=ref, **detect_lois_kwargs(_p))
-            sarc_obj.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
+                sarc_obj.motion.detect_lois(frame=ref, **detect_lois_kwargs(_p))
+            sarc_obj.motion.group_tracks(by=by, reference_frame=ref, min_coverage=_p('motion.group.min_coverage'),
                                   min_group_size=int(_p('motion.group.min_group_size')))
-            sarc_obj.analyze_track_motion(
+            sarc_obj.motion.analyze(
                 aggregate=str(_p('motion.analyze.aggregate')),
                 slen_lims=(_p('motion.analyze.slen_lower'), _p('motion.analyze.slen_upper')),
                 threshold=_p('motion.analyze.threshold'),

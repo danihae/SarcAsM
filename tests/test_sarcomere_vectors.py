@@ -227,7 +227,7 @@ def test_orientation_at_points_matches_full_angle_map_in_interior():
     """The sparse gather must equal the full-frame disk median away from borders.
 
     ``orientation_at_points`` replaced a whole-image median filter that was 59%
-    of ``analyze_sarcomere_vectors`` runtime while ~98% of its output was
+    of ``sarc.structure.analyze_vectors`` runtime while ~98% of its output was
     discarded. Interior results must be identical; at the border they
     legitimately differ, because the full-frame filter zero-pads and zero is not
     a valid unit vector, whereas the gather replicates the edge.

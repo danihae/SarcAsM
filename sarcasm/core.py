@@ -11,8 +11,9 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""Base class with file paths, metadata handling and lazy image/mask loading from the OME-Zarr store."""
+"""The :class:`SarcAsM` recording: file paths, metadata, the OME-Zarr store and sarcomere detection."""
 
+import functools
 import json
 import logging
 import math
@@ -21,13 +22,17 @@ import os
 import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Union, Literal, Dict, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import tifffile
 import torch
+from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm.exceptions import MetaDataError
+from sarcasm._internal.gpu_watch import watch_metal_errors
+from sarcasm.io.results_store import Results, export_to_json
+from sarcasm.analysis import detection
 from sarcasm._internal.frames import canonical_frame, canonical_frames
 from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.io.ome_store import (
@@ -40,6 +45,10 @@ from sarcasm.io.ome_store import (
 from sarcasm.utils import Utils
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from sarcasm.motion import MotionAnalysis
+    from sarcasm.structure import StructureAnalysis
 
 
 def _frame_int(value) -> int:
@@ -165,7 +174,7 @@ class SarcAsMBase:
                 f"{type(restart).__name__} {restart!r}. The second positional argument is "
                 f"'restart', and restart=True DELETES the existing analysis store. "
                 f"The pre-1.0 form Motion(file_path, loi_name) was removed together with the "
-                f"manual-LOI workflow — use SarcAsM.get_track_motion(group) to obtain a "
+                f"manual-LOI workflow — use sarc.motion.get_track_motion(group) to obtain a "
                 f"Motion object for a tracked myofibril."
             )
 
@@ -1382,3 +1391,400 @@ class SarcAsMBase:
         names = self._STORE_MASKS if masks is None else masks
         for name in names:
             self.store.delete_mask(name)
+
+
+class SarcAsM(SarcAsMBase):
+    """
+    One recording: image, calibration, analysis store and sarcomere detection.
+
+    The analyses are reached through two namespaces: ``sarc.structure`` for sarcomere
+    morphology (:class:`~sarcasm.structure.StructureAnalysis`) and ``sarc.motion`` for
+    sarcomere motion from tracked sarcomere vectors (:class:`~sarcasm.motion.MotionAnalysis`).
+
+    Parameters
+    ----------
+    file_path : str or os.PathLike
+        Path to the image TIFF file (or OME-Zarr).
+    restart : bool, optional
+        If True, delete the analysis store and start fresh. Default is False.
+    pixelsize : float or None, optional
+        Physical pixel size in µm. If None, taken from file metadata; an
+        explicit value overrides the metadata. Default is None.
+    frametime : float or None, optional
+        Time between frames in s. If None, taken from metadata; an explicit
+        value overrides it. Default is None.
+    channel : int or None, optional
+        Index of the fluorescence channel that shows the sarcomeres. Ignored
+        for single-channel images. Default is None.
+    axes : str or None, optional
+        Explicit dimension order (e.g. ``'TXYC'``). None auto-detects the order.
+        Default is None.
+    auto_save : bool, optional
+        Write analysis results to disk automatically. Default is True.
+    use_gui : bool, optional
+        Activate GUI mode. Default is False.
+    device : torch.device or {'auto'}, optional
+        Device on which PyTorch kernels are executed. ``'auto'`` selects CUDA
+        or MPS when available. Default is ``'auto'``.
+    **info
+        Additional key-value pairs stored in the metadata file.
+
+    Attributes
+    ----------
+    data : Results
+        Lazy, Zarr-backed store of morphology, tracking and motion results
+        (populated after running the respective routines). A key is its path, so
+        ``sarc.data['motion.tracks.slen']`` and ``sarc.data.motion.tracks.slen``
+        are the same value. ``structure.*`` is per-frame morphology, ``motion.*``
+        is everything derived from the tracks, ``params.*`` records what each
+        step ran with. ``print(sarc.data)`` gives an overview,
+        ``sarc.data.find('slen')`` searches, ``sarc.data.describe(key)``
+        explains one. Write with ``sarc.data['key'] = value`` (attributes are
+        read-only) followed by :meth:`commit`.
+    structure : StructureAnalysis
+        Sarcomere morphology: Z-bands, sarcomere vectors, myofibrils, domains.
+    motion : MotionAnalysis
+        Sarcomere motion: tracking, grouping, contraction analysis.
+    """
+
+    def __init__(self,
+                 file_path: Union[str, os.PathLike],
+                 restart: bool = False,
+                 pixelsize: Union[float, None] = None,
+                 frametime: Union[float, None] = None,
+                 channel: Union[int, None] = None,
+                 axes: Union[str, None] = None,
+                 auto_save: bool = True,
+                 use_gui: bool = False,
+                 device: Union[torch.device, Literal['auto']] = 'auto',
+                 **info: Any) -> None:
+        """
+        Instantiate a SarcAsM object and initialize the common SarcAsMBase.
+        """
+        super().__init__(
+            file_path=file_path,
+            restart=restart,
+            pixelsize=pixelsize,
+            frametime=frametime,
+            channel=channel,
+            axes=axes,
+            auto_save=auto_save,
+            use_gui=use_gui,
+            device=device,
+            **info
+        )
+
+        # Initialize structure data store (lazy Zarr-backed; migrates legacy JSON)
+        self._load_structure_data()
+
+    def __get_store_path(self) -> str:
+        """Path to the analysis subgroup of the OME-Zarr store (``<name>.ome.zarr/sarcasm``)."""
+        return str(self.store.results_path)
+
+    def __get_structure_data_file(self, is_temp_file: bool = False) -> str:
+        """
+        Returns the path to the structure data file.
+
+        Parameters
+        ----------
+        is_temp_file : bool, optional
+            If True, returns the path to a temporary file. This temporary file is used to prevent
+            creating corrupted data files due to aborted operations (e.g., exceptions or user intervention).
+            The temporary file can be committed to a final file by renaming it. Default is False.
+
+        Returns
+        -------
+        str
+            The path to the structure data file, either temporary or final.
+        """
+        file_name = "structure.temp.json" if is_temp_file else "structure.json"
+        return os.path.join(self.data_dir, file_name)
+
+    def commit(self) -> None:
+        """Persist any staged result writes to the Zarr store."""
+        self.store_structure_data()
+
+    def _summary_rows(self) -> List[Tuple[str, str]]:
+        """Extend the base summary with which steps ran and what they produced.
+
+        Reads the manifest and a handful of scalar attrs only — no result array
+        is materialised, so ``print(sarc)`` stays cheap on a 1 GB store.
+        """
+        rows = super()._summary_rows()
+        data = self.__dict__.get('data')
+        if data is None:
+            return rows
+
+        def step_of(key):
+            # params.<step>.<arg> on the recording, params.<namespace>.<step>.<arg> in a namespace
+            parts = key.split('.')
+            return '.'.join(parts[1:3]) if parts[1] in ('structure', 'motion') else parts[1]
+        steps = {step_of(k) for k in data if k.startswith('params.') and k.count('.') >= 2}
+        order = {name: i for i, name in enumerate(self._PIPELINE_STEPS)}
+        ranked = sorted(steps, key=lambda s: (order.get(s, len(order)), s))
+        rows.append(("steps", " → ".join(ranked) if ranked else
+                     "— (no analysis yet; start with sarc.detect_sarcomeres())"))
+
+        counts = [f"{len(data)} keys"]
+        if 'structure.sarcomere.n_vectors' in data:
+            n_vec = np.asarray(data['structure.sarcomere.n_vectors'], dtype=float)
+            if n_vec.size and not np.all(np.isnan(n_vec)):
+                counts.append(f"~{int(np.nanmedian(n_vec))} vectors/frame")
+        if 'motion.tracks.n' in data:
+            counts.append(f"{int(data['motion.tracks.n'])} tracks")
+        if 'motion.groups.n' in data:
+            kind = data.get('motion.groups.kind') or data.get('motion.groups.analyzed_kind')
+            counts.append(f"{int(data['motion.groups.n'])} groups"
+                          + (f" ({kind})" if kind else ""))
+        rows.append(("results", "  ·  ".join(counts)))
+        return rows
+
+    def store_structure_data(self, override: bool = True) -> None:
+        """Persist structure/track results to the Zarr store (incremental).
+
+        Only members changed since the last call are rewritten. Image metadata
+        is mirrored into the store so it is a single, self-contained artifact.
+
+        Parameters
+        ----------
+        override : bool, optional
+            If False and a store already exists, do nothing. Default is True.
+        """
+        if not override and os.path.exists(self.__get_store_path()):
+            return
+        if not isinstance(self.data, Results):
+            # defensive: a caller replaced self.data with a plain dict
+            self.data = Results(self.__get_store_path(), initial=self.data)
+        self.data.flush()
+        self.save_metadata()  # mirror metadata into the OME-Zarr store root
+
+    def export_json(self, path: Optional[str] = None, *, keys=None,
+                    include_arrays: bool = True) -> str:
+        """Export results to a JSON file.
+
+        Parameters
+        ----------
+        path : str or None, optional
+            Output path. Default is None, which uses the default
+            ``structure.json`` location.
+        keys : list of str or None, optional
+            Subset of result keys to export. Default is None (all keys).
+        include_arrays : bool, optional
+            If False, skip large arrays for a readable dump. Default is True.
+
+        Returns
+        -------
+        str
+            Path to the written JSON file.
+        """
+        if path is None:
+            path = self.__get_structure_data_file(is_temp_file=False)
+        return str(export_to_json(self.data, path, keys=keys, include_arrays=include_arrays))
+
+    #: Params steps of stores written by SarcAsM 1.0.0b4 or earlier, before the structure/motion namespaces.
+    _OLD_PARAMS_STEPS = ('analyze_cell_mask', 'analyze_z_bands', 'analyze_sarcomere_vectors', 'analyze_myofibrils',
+                         'analyze_sarcomere_domains', 'detect_z_bands_fast_movie', 'track_sarcomere_vectors',
+                         'group_tracks', 'analyze_track_motion')
+
+    def _load_structure_data(self) -> None:
+        """Bind the lazy results store (the ``sarcasm/`` group of the OME-Zarr store)."""
+        self.data = Results(self.__get_store_path())
+        old = sorted({k.split('.')[1] for k in self.data
+                      if k.startswith('params.') and k.split('.')[1] in self._OLD_PARAMS_STEPS})
+        if old:
+            logger.warning(
+                f"This analysis was made by SarcAsM 1.0.0b4 or earlier ({', '.join(old)}). Its results use key "
+                f"names this version does not read, so these steps count as not run. Run them again "
+                f"(sarc.structure.* and sarc.motion.*), or open with restart=True to start a fresh store.")
+
+    def detect_sarcomeres(self, frames: Union[str, int, Sequence[int]] = 'all',
+                          model_path: str = None, max_patch_size: Union[Tuple[int, int], str] = 'auto',
+                          normalization_mode: str = 'all', clip_thres: Tuple[float, float] = (0., 99.98),
+                          rescale_factor: float = 1.0, batch_size: Union[int, str] = 'auto',
+                          memory_budget_gb: float = 2.0, prune_level: int = None,
+                          progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()):
+        """
+        Predict sarcomeres (Z-bands, M-bands, sarcomere mask, orientation, cell mask) with the U-Net.
+
+        The cell-mask features (``structure.cell.mask_area``, ``mask_area_ratio``,
+        ``mask_intensity``) are computed for the detected frames right away
+        (:meth:`~sarcasm.structure.StructureAnalysis.analyze_cell_mask`).
+
+        Parameters
+        ----------
+        frames : {'all', int, sequence of int} or None, optional
+            Frames for sarcomere detection: ``'all'`` (or None), a frame number, or
+            any sequence of frame numbers (list, tuple, range, array; order and
+            repeats do not matter). ``k``, ``[k]`` and ``np.array([k])`` are the same
+            selection. Frames outside the movie raise a ValueError. Default is 'all'.
+        model_path : str or None, optional
+            None (or ``'generalist'``, ``'auto'``) uses the bundled ``'generalist'`` (v2) model at
+            every pixel size. ``'legacy'`` selects the first bundled model, which reproduces
+            high-magnification results of earlier versions (they picked it below 0.08 µm/px); any other
+            string is a path to custom U-Net weights, e.g. the betas' v1 model (see sarcasm/models/README.md). The resolved model is stored as
+            ``params.detect_sarcomeres.model_path``. Default is None.
+        max_patch_size : tuple of int or 'auto', optional
+            Maximal patch dimensions ``(n_x, n_y)`` for the CNN. 'auto' derives
+            them from free device memory and the model, which avoids splitting an
+            image that would fit in one patch. Default is 'auto'.
+        normalization_mode : str, optional
+            Intensity normalization mode for 3D stacks ('single': each image
+            individually, 'all': histogram of full stack, 'first': histogram of
+            first image). Default is 'all'.
+        clip_thres : tuple of float, optional
+            Clip threshold (lower, upper percentiles) for intensity
+            normalization. Default is (0., 99.98).
+        rescale_factor : float, optional
+            Factor to rescale input images in XY before prediction (e.g. 0.5
+            halves the XY resolution); outputs are rescaled back afterwards.
+            Intended to bring the pixel size into the model's trained range, not
+            as a speed knob: resampling and the upscaling of the masks afterwards
+            can introduce artefacts. Default is 1.0 (no rescaling).
+        batch_size : int or 'auto', optional
+            Patches per forward pass. 'auto' sizes from free GPU memory on CUDA
+            and uses 1 elsewhere, where batching does not help. Default is 'auto'.
+        memory_budget_gb : float, optional
+            Rough ceiling on the working set while predicting. Long movies are
+            predicted in blocks so the five output heads do not have to fit in
+            memory at once. Default is 2.0.
+        prune_level : int, optional
+            Stop the U-Net at this nesting depth (1, 2 or 3) and read the matching
+            deep-supervision head. Level 2 roughly halves the compute but changes
+            the masks, so validate it on your data first. None uses the full model,
+            the default.
+        progress_notifier : ProgressNotifier, optional
+            Progress notifier for inclusion in the GUI. Default is
+            ProgressNotifier.progress_notifier_tqdm().
+        """
+        frames = self._canonical_frames(frames)
+        max_patch_size = Utils.check_and_round_max_patch_size(max_patch_size)
+        n_stack = self.metadata.n_stack or 1
+        if frames == 'all' or frames == list(range(n_stack)):
+            # Hand the detector a lazy handle so the raw stack is read block by
+            # block instead of being materialised in full.
+            if not self.store.has_image():
+                self.read_imgs()  # first open: ingest the source TIFF into the store
+            images = self.store.image_handle() if self.store.has_image() else self.read_imgs()
+            list_frames = list(range(images.shape[0] if len(images.shape) > 2 else 1))
+        else:
+            # a subset of a movie: read as a (n, H, W) stack also for a single frame, so that the masks hold
+            # one page per detected frame however the frame was spelled (k, [k], np.int64(k), ...)
+            images = self.read_imgs(frames=frames)
+            list_frames = frames
+
+        # Rescaling is done inside detect_sarcomeres_unet, which also scales the
+        # predicted masks back to the input resolution. Doing it here as well would
+        # apply the factor twice and return masks at the wrong size.
+
+        # Check pixelsize is not None
+        if self.metadata.pixelsize is None:
+            raise ValueError("Pixel size is not available. Please provide pixelsize during initialization.")
+        
+        # Delegate to the detection module, which writes each block of predicted
+        # masks straight into the OME-Zarr store as it is produced.
+        info = {}
+
+        def predict():
+            detection.detect_sarcomeres_unet(
+                info=info,
+                images=images,
+                model_path=model_path,
+                model_dir=str(self.model_dir),
+                pixelsize=self.metadata.pixelsize,
+                max_patch_size=max_patch_size,
+                normalization_mode=normalization_mode,
+                clip_thres=clip_thres,
+                rescale_factor=rescale_factor,
+                device=self.device,
+                batch_size=batch_size,
+                memory_budget_gb=memory_budget_gb,
+                prune_level=prune_level,
+                make_sink=self.store.create_mask,
+                progress_notifier=progress_notifier
+            )
+
+        self._predict_on_gpu(predict, 'detect_sarcomeres')
+
+        _dict = {
+            'params.detect_sarcomeres.frames': list_frames,
+            'params.detect_sarcomeres.model_path': info.get('model', model_path),
+            'params.detect_sarcomeres.normalization_mode': normalization_mode,
+            'params.detect_sarcomeres.clip_thres': clip_thres,
+            'params.detect_sarcomeres.rescale_factor': rescale_factor,
+            'params.detect_sarcomeres.prune_level': prune_level,
+            'params.detect_sarcomeres.max_patch_size': max_patch_size,
+            # what 'auto' actually resolved to, so the run can be reproduced
+            'params.detect_sarcomeres.patch_size_used': info.get('patch_size'),
+        }
+        self.data.update(_dict)
+        if self.auto_save:
+            # the masks are already on disk; store the frames they belong to with them, so that a failure in
+            # the steps below cannot leave new masks next to the frame list of an earlier detection
+            self.store_structure_data()
+        # the cell mask is one of the predicted outputs: its area / intensity
+        # features belong to the detection step, not to a separate call
+        self.structure.analyze_cell_mask(frames=list_frames)
+
+    def _predict_on_gpu(self, predict, step: str) -> None:
+        """Run ``predict()``; on Apple GPUs run it once more if macOS aborted GPU work during it
+        (the masks would hold garbage, see :mod:`sarcasm._internal.gpu_watch`), and raise if
+        that happens twice rather than store wrong masks."""
+        for attempt in (1, 2):
+            with watch_metal_errors(self.device) as watch:
+                predict()
+            if not watch.failed:
+                return
+            if attempt == 1:
+                logger.warning(f'{step}: macOS aborted part of the GPU computation (the display needed the '
+                               f'GPU), so the predicted masks may be wrong. Predicting again.')
+        raise RuntimeError(f"{step}: macOS aborted the GPU computation twice, so the predicted masks cannot be "
+                           f"trusted. Close GPU-heavy programs (or hide the movie in the viewer) and run it "
+                           f"again, or use device='cpu'.")
+
+    def load_mask_full_stack(self, name: str) -> Optional[np.ndarray]:
+        """
+        Load a mask from the store by name and expand it to full stack length for display.
+
+        Masks are stored sparsely (only for detected frames). For napari display alongside
+        the raw movie, this returns an (n_stack, ...) array with computed frames placed at
+        their original frame indices and zeros elsewhere. ``name`` is a store mask name
+        (e.g. ``'zbands'``, ``'mbands'``, ``'cell_mask'``, ``'zbands_fast_movie'``). Returns
+        None if the mask is not present.
+        """
+        if not self._mask_exists(name):
+            return None
+        arr = self._read_mask(name)
+        n_stack = self.metadata.n_stack or 1
+        # only the detection masks are stored sparsely; the fast-movie Z-bands cover every frame
+        detected = self._detected_frames() if name in self._DETECTION_MASKS else None
+        if n_stack <= 1 or detected is None or detected == list(range(n_stack)):
+            return arr
+        pages = arr if arr.ndim > self._MASK_FRAME_NDIM.get(name, 2) else arr[None]
+        if len(pages) != len(detected):
+            return arr  # unexpected shape, pass through
+        full = np.zeros((n_stack,) + pages.shape[1:], dtype=arr.dtype)
+        for page, f in zip(pages, detected):
+            if 0 <= f < n_stack:
+                full[f] = page
+        return full
+
+    # Analysis steps in pipeline order, so ``print(sarc)`` lists what has run in
+    # the order it ran rather than alphabetically. Steps not listed sort last.
+    _PIPELINE_STEPS = ('detect_sarcomeres', 'motion.detect_z_bands_fast_movie',
+                       'structure.analyze_cell_mask', 'structure.analyze_z_bands',
+                       'structure.analyze_vectors', 'structure.analyze_domains',
+                       'structure.analyze_myofibrils', 'motion.detect_lois',
+                       'motion.track', 'motion.group_tracks',
+                       'motion.analyze')
+
+    @functools.cached_property
+    def structure(self) -> "StructureAnalysis":
+        """Sarcomere morphology of this recording (:class:`~sarcasm.structure.StructureAnalysis`)."""
+        from sarcasm.structure import StructureAnalysis
+        return StructureAnalysis(self)
+
+    @functools.cached_property
+    def motion(self) -> "MotionAnalysis":
+        """Sarcomere motion of this recording (:class:`~sarcasm.motion.MotionAnalysis`)."""
+        from sarcasm.motion import MotionAnalysis
+        return MotionAnalysis(self)

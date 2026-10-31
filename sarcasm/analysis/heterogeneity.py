@@ -14,7 +14,7 @@
 """Heterogeneity of sarcomere dynamics within a group of tracked sarcomeres.
 
 Two analyses over a member matrix ``(N, T)`` of per-sarcomere traces, shared by
-:meth:`sarcasm.SarcAsM.analyze_track_motion` (per group, every grouping kind) and
+:meth:`sarcasm.motion.MotionAnalysis.analyze` (per group, every grouping kind) and
 by :class:`sarcasm.Motion` for a fibre chain:
 
 * **Serial / mutual correlation** (Haertter et al., *bioRxiv* 2024, eq. 1).

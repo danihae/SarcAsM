@@ -1,7 +1,7 @@
 """Step 4: compare 3D models (and the per-frame 2D model) on validation clips.
 
 Runs each model through the same prediction path SarcAsM uses
-(detect_z_bands_fast_movie) and scores it against the clip labels:
+(motion.detect_z_bands_fast_movie) and scores it against the clip labels:
 
   dice   Dice at 0.5 over all frames
   fast   Dice on the quarter of frames where the label moves most (smoothing shows here)

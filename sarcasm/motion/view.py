@@ -110,7 +110,7 @@ class Motion(SarcAsMBase):
 
         Wraps a synthesized myofibril chain (an ordered ``z_pos`` / ``slen``
         built from 2D tracks, see
-        :meth:`sarcasm.structure.SarcAsM.get_track_motion`) so the full LOI
+        :meth:`sarcasm.motion.MotionAnalysis.get_track_motion`) so the full LOI
         analysis and all LOI plots apply to it. ``loi_data`` is
         marked ``synthetic=True``. Nothing is written to disk unless
         ``auto_save=True``.
@@ -491,7 +491,7 @@ class Motion(SarcAsMBase):
             (100% = peak, 0% = end of the cycle). A percentage is reached at the
             first crossing of that fraction of the cycle's peak shortening,
             interpolated linearly between frames, like the percentile times of
-            :meth:`~sarcasm.structure.SarcAsM.analyze_track_motion`. NaN for a
+            :meth:`~sarcasm.motion.MotionAnalysis.analyze`. NaN for a
             cycle with gaps, without shortening, or whose trace does not reach
             the level (or reaches it before the onset). Default is None.
         """
@@ -740,7 +740,7 @@ class Motion(SarcAsMBase):
         low. Their mean falls below ``peak`` and misses the beat; the median asks whether most
         traces see it. A higher quantile, or the larger of the two channels, lets a few
         moving traces call a contraction in a quiescent cell. On track chains of held-out
-        drug-panel cells, read as :meth:`~sarcasm.structure.SarcAsM.get_track_motion` reads
+        drug-panel cells, read as :meth:`~sarcasm.motion.MotionAnalysis.get_track_motion` reads
         them, the median finds 1657 of 1660 beats and no false contraction in 7 quiescent
         cells (mean of the channel means: 1639 and none; larger: 1658 and 18 in 3 cells). On 50
         hand-annotated LOIs it finds 890 of 1017 contractions (mean: 610; larger: 906). A

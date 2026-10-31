@@ -12,7 +12,7 @@
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
 
-"""Training of the 3D Z-band U-Net used by ``SarcAsM.detect_z_bands_fast_movie``.
+"""Training of the 3D Z-band U-Net used by ``MotionAnalysis.detect_z_bands_fast_movie``.
 
 Training data are folders of clips, each with two sub-folders of same-named TIFFs:
 ``volume/`` (movie clips, any integer type) and ``zbands_fast_movie/`` (uint8 labels,
@@ -32,7 +32,7 @@ What differs from ``bio_image_unet.multi_output_unet3d.Trainer``, and why:
   predictions rewards smoothing exactly where motion is fast.
 
 The saved checkpoint has the format ``bio_image_unet`` expects, so it can be passed to
-``SarcAsM.detect_z_bands_fast_movie(model_path=...)`` directly.
+``MotionAnalysis.detect_z_bands_fast_movie(model_path=...)`` directly.
 """
 
 import glob
@@ -49,7 +49,7 @@ from bio_image_unet.multi_output_unet3d.multi_output_unet3d import MultiOutputUn
 from torch.utils.data import DataLoader, Dataset
 
 TARGET = 'zbands_fast_movie'
-CLIP_PERCENTILES = (0.0, 99.8)   # normalisation used at inference by detect_z_bands_fast_movie
+CLIP_PERCENTILES = (0.0, 99.8)   # normalisation used at inference by motion.detect_z_bands_fast_movie
 
 
 @dataclass

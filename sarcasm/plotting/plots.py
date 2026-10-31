@@ -28,7 +28,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from sarcasm.features import structure_feature_dict
 from sarcasm.motion import Motion
 from sarcasm.plotting.plot_utils import PlotUtils
-from sarcasm.structure import SarcAsM
+from sarcasm.core import SarcAsM
 from sarcasm.analysis import domain_clustering, grouped_motion, heterogeneity, myofibril_analysis
 from sarcasm.utils import Utils
 
@@ -181,12 +181,12 @@ class Plots:
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols),
                                       constrained_layout=True)
 
-        if isinstance(sarc_obj.data['params.analyze_sarcomere_vectors.frames'], int):
-            frame = sarc_obj.data['params.analyze_sarcomere_vectors.frames']
-        elif sarc_obj.data['params.analyze_sarcomere_vectors.frames'] == 'all':
+        if isinstance(sarc_obj.data['params.structure.analyze_vectors.frames'], int):
+            frame = sarc_obj.data['params.structure.analyze_vectors.frames']
+        elif sarc_obj.data['params.structure.analyze_vectors.frames'] == 'all':
             frame = frame
         else:
-            frame = sarc_obj.data['params.analyze_sarcomere_vectors.frames'][frame]
+            frame = sarc_obj.data['params.structure.analyze_vectors.frames'][frame]
 
         Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, cmap=cmap_z_bands)
         Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, cmap=cmap_z_bands)
@@ -629,8 +629,8 @@ class Plots:
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         frame = Plots._frame(sarc_obj, frame)
-        assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
-        assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
+        assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run sarc.structure.analyze_z_bands first.'
+        assert frame in sarc_obj.data['params.structure.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.data['structure.zbands.labels'][frame].toarray()
         if shuffle:
@@ -703,8 +703,8 @@ class Plots:
             Bounds of inset axis, specified as (x0, y0, width, height). Default is (0.6, 0.6, 0.4, 0.4).
         """
         frame = Plots._frame(sarc_obj, frame)
-        assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run analyze_z_bands first.'
-        assert frame in sarc_obj.data['params.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
+        assert 'structure.zbands.labels' in sarc_obj.data, 'Z-bands not yet analyzed. Run sarc.structure.analyze_z_bands first.'
+        assert frame in sarc_obj.data['params.structure.analyze_z_bands.frames'], f'Frame {frame} not yet analyzed.'
 
         labels = sarc_obj.data['structure.zbands.labels'][frame].toarray()
 
@@ -938,7 +938,7 @@ class Plots:
 
         # binarize sarcomere mask
         if threshold is None:
-            threshold = sarc_obj.data.get('params.analyze_sarcomere_vectors.threshold_sarcomere_mask')
+            threshold = sarc_obj.data.get('params.structure.analyze_vectors.threshold_sarcomere_mask')
         sarcomere_mask = sarcomere_mask > threshold
 
         # plot sarcomere mask
@@ -1040,8 +1040,8 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         assert 'structure.sarcomere.pos' in sarc_obj.data.keys(), ('Sarcomere vectors not yet calculated, '
-                                                                 'run analyze_sarcomere_vectors first.')
-        assert frame in sarc_obj.data['params.analyze_sarcomere_vectors.frames'], f'Frame {frame} not yet analyzed.'
+                                                                 'run sarc.structure.analyze_vectors first.')
+        assert frame in sarc_obj.data['params.structure.analyze_vectors.frames'], f'Frame {frame} not yet analyzed.'
 
         pos_vectors = sarc_obj.data['structure.sarcomere.pos'][frame] / sarc_obj.metadata.pixelsize
         sarcomere_orientation_vectors = sarc_obj.data['structure.sarcomere.orientation'][frame]
@@ -1165,15 +1165,15 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         assert 'structure.domain.n' in sarc_obj.data.keys(), ('Sarcomere domains not analyzed. '
-                                                               'Run analyze_sarcomere_domains first.')
-        assert frame in sarc_obj.data['params.analyze_sarcomere_domains.frames'], (f'Domains in frame {frame} are not yet '
+                                                               'Run sarc.structure.analyze_domains first.')
+        assert frame in sarc_obj.data['params.structure.analyze_domains.frames'], (f'Domains in frame {frame} are not yet '
                                                                            f'analyzed.')
         domains = sarc_obj.data['structure.domain.members'][frame]
         pos_vectors = sarc_obj.data['structure.sarcomere.pos'][frame]
         sarcomere_orientation_vectors = sarc_obj.data['structure.sarcomere.orientation'][frame]
         sarcomere_length_vectors = sarc_obj.data['structure.sarcomere.slen'][frame]
-        area_min = sarc_obj.data['params.analyze_sarcomere_domains.area_min']
-        dilation_radius = sarc_obj.data['params.analyze_sarcomere_domains.dilation_radius']
+        area_min = sarc_obj.data['params.structure.analyze_domains.area_min']
+        dilation_radius = sarc_obj.data['params.structure.analyze_domains.dilation_radius']
         domain_mask, *_ = domain_clustering.analyze_domains(
             domains, pos_vectors, sarcomere_orientation_vectors, sarcomere_length_vectors,
             size=sarc_obj.metadata.size, pixelsize=sarc_obj.metadata.pixelsize,
@@ -1254,8 +1254,8 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         assert 'structure.myofibril.lines' in sarc_obj.data.keys(), ('Myofibrils not analyzed. '
-                                                                'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+                                                                'Run sarc.structure.analyze_myofibrils first.')
+        assert frame in sarc_obj.data['params.structure.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         Plots._draw_background(ax, sarc_obj, frame=frame, show_image=show_image, show_z_bands=show_z_bands,
                                invert_image=invert_image, invert_z_bands=invert_z_bands,
@@ -1366,15 +1366,15 @@ class Plots:
         frame = Plots._frame(sarc_obj, frame)
         # create myofibril length map
         assert 'structure.myofibril.lines' in sarc_obj.data.keys(), ('Myofibrils not yet analyzed. '
-                                                                'Run analyze_myofibrils first.')
-        assert frame in sarc_obj.data['params.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
+                                                                'Run sarc.structure.analyze_myofibrils first.')
+        assert frame in sarc_obj.data['params.structure.analyze_myofibrils.frames'], f'Frame {frame} not yet analyzed.'
 
         myof_lines = sarc_obj.data['structure.myofibril.lines'][frame]
         myof_lengths = sarc_obj.data['structure.myofibril.length'][frame]
         pos_vectors = sarc_obj.data['structure.sarcomere.pos'][frame]
         orientation_vectors = sarc_obj.data['structure.sarcomere.orientation'][frame]
         length_vectors = sarc_obj.data['structure.sarcomere.slen'][frame]
-        median_filter_radius = sarc_obj.data['params.analyze_myofibrils.median_filter_radius']
+        median_filter_radius = sarc_obj.data['params.structure.analyze_myofibrils.median_filter_radius']
         myof_length_map = myofibril_analysis.create_myofibril_length_map(
             myof_lines=myof_lines, myof_length=myof_lengths,
             pos_vectors=pos_vectors,
@@ -1850,7 +1850,7 @@ class Plots:
         """
         # Validate prerequisites
         if 'motion.domain.slen' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call analyze_track_motion(by='domain') first.")
+            raise ValueError("Domain motion analysis not run. Call sarc.motion.analyze(by='domain') first.")
 
         # Get data
         key = 'motion.domain.slen_median' if use_median else 'motion.domain.slen'
@@ -1897,7 +1897,7 @@ class Plots:
         """
         # Validate prerequisites
         if 'motion.domain.slen' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call analyze_track_motion(by='domain') first.")
+            raise ValueError("Domain motion analysis not run. Call sarc.motion.analyze(by='domain') first.")
 
         # Get data
         if use_median:
@@ -2038,8 +2038,8 @@ class Plots:
             fig_events.savefig(save_name)
 
     # ------------------------------------------------------------------
-    # 2D sarcomere tracking + grouped motion (track_sarcomere_vectors ->
-    # group_tracks -> analyze_track_motion).
+    # 2D sarcomere tracking + grouped motion (motion.track ->
+    # motion.group_tracks -> motion.analyze).
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -2054,7 +2054,7 @@ class Plots:
         Parameters
         ----------
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
 
         Returns
         -------
@@ -2062,7 +2062,7 @@ class Plots:
             Coverage in percent, shape ``(n_tracks,)``.
         """
         if 'motion.tracks.n_frames' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+            raise ValueError('No tracks found. Run sarc.motion.track first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         n_t = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1).shape[1]
         return np.asarray(sarc_obj.data['motion.tracks.n_frames'], dtype=float) / max(n_t, 1) * 100.0
@@ -2090,13 +2090,13 @@ class Plots:
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
         frame : int, optional
             Movie frame used for the **background** image/Z-bands only (the
             trajectories always span the full movie). Default is 0.
         color_by : {'coverage', 'slen', 'group'}, optional
             Per-track colour: observation coverage in percent, the track's mean sarcomere
-            length, or ``track_group_id`` (requires :meth:`SarcAsM.group_tracks`).
+            length, or ``track_group_id`` (requires :meth:`MotionAnalysis.group_tracks`).
             Default is 'coverage'.
         cmap : str, optional
             Colormap for the 'coverage'/'slen' colourings ('group' always uses a
@@ -2141,7 +2141,7 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+            raise ValueError('No tracks found. Run sarc.motion.track first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)
         observed = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1).astype(bool)
@@ -2154,7 +2154,7 @@ class Plots:
             clabel = 'Sarcomere length [µm]'
         elif color_by == 'group':
             if 'motion.tracks.group_id' not in sarc_obj.data:
-                raise ValueError("color_by='group' requires group_tracks() first.")
+                raise ValueError("color_by='group' requires sarc.motion.group_tracks() first.")
             c = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(float)
             clabel = 'Group id'
         else:  # coverage
@@ -2231,7 +2231,7 @@ class Plots:
         Parameters
         ----------
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
         frame : int
             Frame index (position in the tracked frame list).
         mask : np.ndarray, optional
@@ -2247,7 +2247,7 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
-        t = sarc_obj._tracked_frame_index(frame)
+        t = sarc_obj.motion._tracked_frame_index(frame)
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
         slen = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
         ori = np.asarray(sarc_obj.data['motion.tracks.orientations'], dtype=float).reshape(n_tracks, -1)[:, t]
@@ -2272,7 +2272,7 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
-        t = sarc_obj._tracked_frame_index(frame)
+        t = sarc_obj.motion._tracked_frame_index(frame)
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
         slen = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
         ori = np.asarray(sarc_obj.data['motion.tracks.orientations'], dtype=float).reshape(n_tracks, -1)[:, t]
@@ -2302,10 +2302,10 @@ class Plots:
             SarcAsM with tracks.
         color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}
             Quantity. ``'delta_slen'`` and ``'vel'`` come from
-            :meth:`SarcAsM.get_track_kinematics` (equilibrium over the quiet frames of the pooled
+            :meth:`MotionAnalysis.kinematics` (equilibrium over the quiet frames of the pooled
             signal when available).
         kinematics : dict, optional
-            A cached result of :meth:`SarcAsM.get_track_kinematics` to avoid recomputing it per frame.
+            A cached result of :meth:`MotionAnalysis.kinematics` to avoid recomputing it per frame.
 
         Returns
         -------
@@ -2317,13 +2317,13 @@ class Plots:
         if color_by == 'slen':
             return np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)
         if color_by in ('delta_slen', 'vel'):
-            kin = kinematics if kinematics is not None else sarc_obj.get_track_kinematics()
+            kin = kinematics if kinematics is not None else sarc_obj.motion.kinematics()
             return np.asarray(kin[color_by], dtype=float).reshape(n_tracks, -1)
         if color_by == 'coverage':
             return Plots._track_coverage(sarc_obj)
         if color_by == 'group':
             if 'motion.tracks.group_id' not in sarc_obj.data:
-                raise ValueError("color_by='group' requires group_tracks() first.")
+                raise ValueError("color_by='group' requires sarc.motion.group_tracks() first.")
             return np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(float)
         raise ValueError(f"unknown color_by {color_by!r}")
 
@@ -2351,7 +2351,7 @@ class Plots:
         ax : matplotlib.axes.Axes
             The axes to draw on.
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
         frame : int, optional
             Frame to draw. Default is 0.
         color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}, optional
@@ -2369,7 +2369,7 @@ class Plots:
         show_image, show_z_bands, invert_image, invert_z_bands, cmap_image, cmap_z_bands, alpha_image, alpha_z_bands
             Background options as in :meth:`plot_tracks`.
         kinematics : dict, optional
-            Cached :meth:`SarcAsM.get_track_kinematics` result.
+            Cached :meth:`MotionAnalysis.kinematics` result.
 
         Returns
         -------
@@ -2378,13 +2378,13 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run track_sarcomere_vectors first.')
+            raise ValueError('No tracks found. Run sarc.motion.track first.')
         cmap_d, clim_d, clabel = Plots.TRACK_COLOR_DEFAULTS[color_by]
         cmap = cmap or cmap_d
         clim = clim if clim is not None else clim_d
         mask = Plots.track_vector_mask(sarc_obj, frame, only_observed=only_observed)
         values = Plots.track_color_values(sarc_obj, color_by, kinematics)
-        vals = values[:, sarc_obj._tracked_frame_index(frame)] if values.ndim == 2 else values
+        vals = values[:, sarc_obj.motion._tracked_frame_index(frame)] if values.ndim == 2 else values
         if color_by == 'group':
             mask &= vals >= 0
         mask &= np.isfinite(vals)
@@ -2438,14 +2438,14 @@ class Plots:
 
         Lets a user eyeball the partition (and the tracks dropped by
         ``min_coverage``, drawn in grey) before running the expensive
-        :meth:`SarcAsM.analyze_track_motion`. Requires :meth:`SarcAsM.group_tracks`.
+        :meth:`MotionAnalysis.analyze`. Requires :meth:`MotionAnalysis.group_tracks`.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
         sarc_obj : SarcAsM
-            SarcAsM with a track grouping (:meth:`SarcAsM.group_tracks`).
+            SarcAsM with a track grouping (:meth:`MotionAnalysis.group_tracks`).
         frame : int, optional
             Movie frame to draw. Default is 0.
         cmap : str, optional
@@ -2480,9 +2480,9 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.group_id' not in sarc_obj.data:
-            raise ValueError('No track grouping found. Run group_tracks(...) first.')
+            raise ValueError('No track grouping found. Run sarc.motion.group_tracks(...) first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
-        t = sarc_obj._tracked_frame_index(frame)
+        t = sarc_obj.motion._tracked_frame_index(frame)
         n_groups = int(sarc_obj.data.get('motion.groups.n', 0))
 
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)
@@ -2586,12 +2586,12 @@ class Plots:
     def _resolve_kind(sarc_obj, kind):
         """Resolve and validate the grouping kind, defaulting to the last analyzed one."""
         # Validate the kind being plotted, not just the current grouping.
-        sarc_obj._assert_track_motion_fresh(kind)
+        sarc_obj.motion._assert_track_motion_fresh(kind)
         if kind is None:
             kind = sarc_obj.data.get('motion.groups.analyzed_kind')
         if f'motion.{kind}.slen' not in sarc_obj.data:
             raise ValueError(f"No '{kind}' track-motion results found. "
-                             f"Run analyze_track_motion(by='{kind}') first.")
+                             f"Run sarc.motion.analyze(by='{kind}') first.")
         return kind
 
     @staticmethod
@@ -2600,7 +2600,7 @@ class Plots:
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False, readable_labels: bool = False):
         """
-        Plot stacked per-group MEAN sarcomere-length time-series from :meth:`SarcAsM.analyze_track_motion`.
+        Plot stacked per-group MEAN sarcomere-length time-series from :meth:`MotionAnalysis.analyze`.
 
         One row per group, each showing that group's aggregated (mean, or median if
         ``use_median``) sarcomere length over time — the signal the contraction
@@ -2788,7 +2788,7 @@ class Plots:
           track ``group`` (``kind`` defaults to the last analyzed grouping), with
           the group aggregate drawn bold. Members are subsampled to ``max_lines``
           (longest-coverage first) for legibility. Requires
-          :meth:`SarcAsM.analyze_track_motion`.
+          :meth:`MotionAnalysis.analyze`.
         * **Motion** (LOI): overlays the per-sarcomere lengths along the LOI
           plus the average (``t_lim``/``y_lim``/``show_contr``/``show_mean``/``color``/
           ``mean_color`` apply; ``group``/``kind``/``max_lines`` are ignored).
@@ -2847,7 +2847,7 @@ class Plots:
           one track ``group`` (``equ`` = each member's median length over the
           group's non-contracting frames), with the group ΔSL drawn bold. Members
           are subsampled to ``max_lines`` (longest-coverage first) for legibility.
-          Requires :meth:`SarcAsM.analyze_track_motion`.
+          Requires :meth:`MotionAnalysis.analyze`.
         * **Motion** (LOI): the stacked per-sarcomere ΔSL view,
           one inset row per sarcomere.
 
@@ -2916,7 +2916,7 @@ class Plots:
         sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
         line at ``frame``, so you can see where each analyzed fibre runs and its
         shape. Requires a ``'myofibril'`` grouping
-        (:meth:`SarcAsM.group_tracks` / :meth:`SarcAsM.analyze_track_motion`
+        (:meth:`MotionAnalysis.group_tracks` / :meth:`MotionAnalysis.analyze`
         with ``by='myofibril'``).
 
         Parameters
@@ -2929,7 +2929,7 @@ class Plots:
             Movie frame to draw. Default is 0.
         color_by : {'group', 'slen', 'beating_rate'}, optional
             Per-fibre colour: fibre id, the fibre's median sarcomere length at this
-            frame, or its beating rate (requires ``analyze_track_motion(by='myofibril')``).
+            frame, or its beating rate (requires ``sarc.motion.analyze(by='myofibril')``).
             Default is 'group'.
         cmap : str, optional
             Colormap. Default is 'gist_rainbow'.
@@ -2968,9 +2968,9 @@ class Plots:
         frame = Plots._frame(sarc_obj, frame)
         if sarc_obj.data.get('motion.groups.kind') != 'myofibril':
             raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "
-                             "Run group_tracks(by='myofibril') first.")
+                             "Run sarc.motion.group_tracks(by='myofibril') first.")
         n_tracks = int(sarc_obj.data['motion.tracks.n'])
-        t = sarc_obj._tracked_frame_index(frame)
+        t = sarc_obj.motion._tracked_frame_index(frame)
         n_groups = int(sarc_obj.data.get('motion.groups.n', 0))
 
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
@@ -3063,7 +3063,7 @@ class Plots:
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
         frame : int, optional
             Movie frame used for the **background** image only (the trajectories
             always span the full movie). Default is 0.
@@ -3129,7 +3129,7 @@ class Plots:
         ax : matplotlib.axes.Axes
             The axes to draw the histogram on.
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results.
+            SarcAsM with :meth:`MotionAnalysis.track` results.
         bins : int, optional
             Number of histogram bins across ``clim``. Default is 25.
         cmap : str or None, optional
@@ -3205,8 +3205,8 @@ class Plots:
         ax : matplotlib.axes.Axes
             The axes to draw on.
         sarc_obj : SarcAsM
-            SarcAsM with :meth:`SarcAsM.track_sarcomere_vectors` results; the cycle
-            average needs ``analyze_track_motion(by='pool')``.
+            SarcAsM with :meth:`MotionAnalysis.track` results; the cycle
+            average needs ``sarc.motion.analyze(by='pool')``.
         value : {'delta_slen', 'slen', 'vel'}, optional
             Length change from equilibrium (µm), length (µm) or velocity (µm/s).
             Default is 'delta_slen'.
@@ -3247,14 +3247,14 @@ class Plots:
             raise ValueError(f"value must be 'delta_slen', 'slen' or 'vel', got {value!r}")
         if sort_by not in ('time_to_peak', 'amplitude', 'group'):
             raise ValueError(f"sort_by must be 'time_to_peak', 'amplitude' or 'group', got {sort_by!r}")
-        kin = sarc_obj.get_track_kinematics()
+        kin = sarc_obj.motion.kinematics()
         series = np.asarray(kin[value], dtype=float)
         n_tracks, T = series.shape
         frametime = sarc_obj.metadata.frametime
         keep = kin['coverage'] >= min_coverage
 
-        gid_key = sarc_obj._grouping_key(kind, 'motion.tracks.group_id')
-        order_key = sarc_obj._grouping_key(kind, 'motion.tracks.group_order')
+        gid_key = sarc_obj.motion._grouping_key(kind, 'motion.tracks.group_id')
+        order_key = sarc_obj.motion._grouping_key(kind, 'motion.tracks.group_order')
         gid = None
         if gid_key in sarc_obj.data:
             gid = np.asarray(sarc_obj.data[gid_key]).reshape(-1)[:n_tracks]
@@ -3265,7 +3265,7 @@ class Plots:
             labels = sarc_obj.data.get('motion.pool.labels_contr')
             if labels is None:
                 raise ValueError("cycle_average needs the pooled contraction cycles: "
-                                 "run analyze_track_motion(by='pool') first.")
+                                 "run sarc.motion.analyze(by='pool') first.")
             onsets, _ = heterogeneity.cycle_windows(np.asarray(labels).reshape(-1))
             if onsets.size < 2:
                 raise ValueError('cycle_average needs at least two complete contraction cycles.')

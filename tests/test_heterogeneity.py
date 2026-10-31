@@ -211,7 +211,7 @@ def test_track_motion_writes_heterogeneity_keys(motion_file_path, by):
     s = SarcAsM(motion_file_path)
     if 'motion.tracks.slen' not in s.data:
         pytest.skip('20 kPa store has no tracks')
-    s.analyze_track_motion(by=by, reference_frame=0)
+    s.motion.analyze(by=by, reference_frame=0)
     n = int(s.data[f'motion.groups.{by}.n'])
     for key in het.GROUP_KEYS:
         assert f'motion.{by}.{key}' in s.data, key

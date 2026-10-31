@@ -17,6 +17,7 @@ import napari
 from .parameters import Parameters, patch_size_from_parameters
 from .parameter import Parameter
 from sarcasm import SarcAsM
+from sarcasm.motion import MotionAnalysis
 from typing import Optional
 
 
@@ -36,9 +37,9 @@ def _default_contraction_threshold(fallback: float = 0.5) -> float:
 
 
 def default_min_coverage(group_by: str) -> float:
-    """SarcAsM.group_tracks' coverage floor for ``group_by`` when min_coverage=None: chains
+    """MotionAnalysis.group_tracks' coverage floor for ``group_by`` when min_coverage=None: chains
     (myofibril, loi) keep partially tracked sarcomeres, group means drop them."""
-    return SarcAsM._CHAIN_MIN_COVERAGE if group_by in SarcAsM._CHAIN_LEVELS else 0.5
+    return MotionAnalysis._CHAIN_MIN_COVERAGE if group_by in MotionAnalysis._CHAIN_LEVELS else 0.5
 
 
 class ApplicationModel:
@@ -167,7 +168,7 @@ class ApplicationModel:
         # Group tracks
         self.__parameters.get_parameter(name='motion.group.by').set_value('myofibril')
         self.__parameters.get_parameter(name='motion.group.reference_frame').set_value(0)
-        # SarcAsM.group_tracks' floor for the default grouping (myofibril): 0.1 for chains, 0.5 otherwise
+        # MotionAnalysis.group_tracks' floor for the default grouping (myofibril): 0.1 for chains, 0.5 otherwise
         self.__parameters.get_parameter(name='motion.group.min_coverage').set_value(
             default_min_coverage(self.__parameters.get_parameter(name='motion.group.by').get_value()))
         self.__parameters.get_parameter(name='motion.group.min_group_size').set_value(1)

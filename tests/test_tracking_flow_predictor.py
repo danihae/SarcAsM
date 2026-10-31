@@ -58,4 +58,4 @@ def test_flow_predictor_is_neutral_on_the_61fps_reference_movie(motion_file_path
 def test_wrapper_rejects_an_unknown_predictor(motion_file_path):
     sarc = SarcAsM(motion_file_path, auto_save=False)
     with pytest.raises(ValueError, match='motion_predictor'):
-        sarc.track_sarcomere_vectors(motion_predictor='bogus')
+        sarc.motion.track(motion_predictor='bogus')

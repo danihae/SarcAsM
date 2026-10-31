@@ -16,10 +16,10 @@ always the parameter's name in the method signature. Four keys had drifted from 
 |---|---|
 | `params.detect_sarcomeres.model` | `params.detect_sarcomeres.model_path` |
 | `params.detect_sarcomeres.clip_threshold` | `params.detect_sarcomeres.clip_thres` |
-| `params.detect_z_bands_fast_movie.model` | `params.detect_z_bands_fast_movie.model_path` |
-| `params.detect_z_bands_fast_movie.clip_threshold` | `params.detect_z_bands_fast_movie.clip_thres` |
+| `params.motion.detect_z_bands_fast_movie.model` | `params.motion.detect_z_bands_fast_movie.model_path` |
+| `params.motion.detect_z_bands_fast_movie.clip_threshold` | `params.motion.detect_z_bands_fast_movie.clip_thres` |
 
-## `SarcAsM.analyze_cell_mask`
+## `StructureAnalysis.analyze_cell_mask`
 
 | old | new |
 |---|---|
@@ -27,7 +27,7 @@ always the parameter's name in the method signature. Four keys had drifted from 
 | `cell_mask_area_ratio` | `structure.cell.mask_area_ratio` |
 | `cell_mask_intensity` | `structure.cell.mask_intensity` |
 
-## `SarcAsM.analyze_z_bands`
+## `StructureAnalysis.analyze_z_bands`
 
 The `z_` prefix is replaced by the group name.
 
@@ -80,7 +80,7 @@ entry in `structure.zbands.lat_groups`. The same holds for `structure.myofibril.
 | `z_straightness_mean` | `structure.zbands.straightness_mean` |
 | `z_straightness_std` | `structure.zbands.straightness_std` |
 
-## `SarcAsM.analyze_sarcomere_vectors`
+## `StructureAnalysis.analyze_vectors`
 
 The per-vector arrays and their per-frame summaries now live in one group, so `slen` (per vector) sits next to `slen_mean` (per frame). The `_vectors` suffix is dropped, and sarcomere length is `slen` everywhere — `length` is reserved for the length of the object a group is about (`structure.zbands.length`, `structure.myofibril.length`).
 
@@ -104,7 +104,7 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | — (new) | `structure.sarcomere.registry_lateral`, `structure.sarcomere.registry_axial` (per vector) |
 | — (new) | `structure.sarcomere.registry_lateral_mean`, `structure.sarcomere.registry_axial_mean`, `structure.sarcomere.registry_mean` (per frame) |
 
-## `SarcAsM.analyze_myofibrils`
+## `StructureAnalysis.analyze_myofibrils`
 
 | old | new |
 |---|---|
@@ -120,7 +120,7 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | `myof_straightness_mean` | `structure.myofibril.straightness_mean` |
 | `myof_straightness_std` | `structure.myofibril.straightness_std` |
 
-## `SarcAsM.analyze_sarcomere_domains`
+## `StructureAnalysis.analyze_domains`
 
 | old | new |
 |---|---|
@@ -140,13 +140,13 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | — (new) | `structure.domain.registry_lateral`, `structure.domain.registry_axial` (per domain) |
 | — (new) | `structure.domain.registry_lateral_mean`, `structure.domain.registry_axial_mean` (per frame) |
 
-## `SarcAsM.detect_lois`
+## `MotionAnalysis.detect_lois`
 
 | old | new |
 |---|---|
 | `loi_data` | `motion.loi.data` |
 
-## `SarcAsM.track_sarcomere_vectors`
+## `MotionAnalysis.track`
 
 `track_lengths` becomes `n_frames` — it is a duration in frames, not a length.
 
@@ -168,16 +168,16 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 | `tracks_positions_um` | `motion.tracks.positions_um` |
 | `tracks_slen` | `motion.tracks.slen` |
 
-## `SarcAsM.group_tracks`
+## `MotionAnalysis.group_tracks`
 
-`track_motion_kind` (written by `analyze_track_motion`) becomes `motion.groups.analyzed_kind`, next to the `kind` the grouping was built with.
+`track_motion_kind` (written by `motion.analyze`) becomes `motion.groups.analyzed_kind`, next to the `kind` the grouping was built with.
 
 The keys below describe **the grouping currently in effect** and are overwritten by the
-next `group_tracks` call. Each is additionally mirrored under `motion.groups.<kind>.<leaf>`
+next `motion.group_tracks` call. Each is additionally mirrored under `motion.groups.<kind>.<leaf>`
 (`motion.groups.pool.n`, `motion.groups.mband.member_counts`, ...), so grouping one tracking
-several ways keeps every grouping independently readable. `analyze_track_motion` accumulates
+several ways keeps every grouping independently readable. `motion.analyze` accumulates
 the kinds it has run in `motion.groups.analyzed_kinds`, and readers that name a kind
-(`get_tracks(kind=...)`, `Export.get_motion_dict_per_group`) read that kind's mirror and
+(`motion.tracks(kind=...)`, `Export.get_motion_dict_per_group`) read that kind's mirror and
 raise if it is absent, rather than silently falling back to the current grouping.
 
 | current | per-kind mirror |
@@ -203,7 +203,7 @@ raise if it is absent, rather than silently falling back to the current grouping
 | `track_group_order` | `motion.tracks.group_order` |
 | `track_ids_snapshot` | `motion.groups.track_ids` |
 
-## `SarcAsM.analyze_track_motion`
+## `MotionAnalysis.analyze`
 
 Written once per grouping `kind` in pool / mband / myofibril / domain / loi / custom. The `_timeseries` suffix is dropped — nearly every array in the store is per-frame, so it marked nothing.
 

@@ -1,8 +1,8 @@
 """Frame selection is spelling-independent and results stay paired with their own frame.
 
 ``detect_sarcomeres(frames=[k])`` used to store ``(1, H, W)`` masks while ``frames=k`` stored ``(H, W)``;
-``_read_mask`` then returned ``(1, 1, H, W)`` and ``analyze_cell_mask`` crashed. Around it: an explicit frame
-number after a single-frame detection was filed under position 0 (so ``analyze_myofibrils(frames=k)`` failed),
+``_read_mask`` then returned ``(1, 1, H, W)`` and ``sarc.structure.analyze_cell_mask`` crashed. Around it: an explicit frame
+number after a single-frame detection was filed under position 0 (so ``sarc.structure.analyze_myofibrils(frames=k)`` failed),
 ratios divided by the cell area of another frame, the fast-movie Z-bands of frame 0 were paired with the
 M-bands of the detected frame, invalid frames ran silently or failed deep inside zarr, and the app's frame
 field silently fell back to frame 0. These tests pin the behaviour of the shared frame helpers.
@@ -175,10 +175,10 @@ def crop_copy(structure_crop_file_path_class, tmp_path_factory):
 
 
 def _run_chain(sarc, frames):
-    sarc.analyze_z_bands(frames=frames)
-    sarc.analyze_sarcomere_vectors(frames=frames)
-    sarc.analyze_myofibrils(frames=frames)
-    sarc.analyze_sarcomere_domains(frames=frames)
+    sarc.structure.analyze_z_bands(frames=frames)
+    sarc.structure.analyze_vectors(frames=frames)
+    sarc.structure.analyze_myofibrils(frames=frames)
+    sarc.structure.analyze_domains(frames=frames)
 
 
 def _finite_at(sarc, key):
@@ -202,12 +202,12 @@ class TestSingleFrameDetection:
         """The app/batch flow: the same frame number passed to every step."""
         sarc = SarcAsM(crop_copy('by_number'), log_level='ERROR')
         sarc.detect_sarcomeres(frames=[1], **DETECT)
-        _run_chain(sarc, [1])                                     # analyze_myofibrils(frames=1) used to raise
+        _run_chain(sarc, [1])                                     # structure.analyze_myofibrils(frames=1) used to raise
         return sarc
 
     def test_every_step_files_the_frame_under_its_number(self, by_number):
-        for step in ('analyze_cell_mask', 'analyze_z_bands', 'analyze_sarcomere_vectors', 'analyze_myofibrils',
-                     'analyze_sarcomere_domains'):
+        for step in ('structure.analyze_cell_mask', 'structure.analyze_z_bands', 'structure.analyze_vectors', 'structure.analyze_myofibrils',
+                     'structure.analyze_domains'):
             assert list(by_number.data[f'params.{step}.frames']) == [1], step
         for key in ('structure.zbands.n', 'structure.sarcomere.n_vectors', 'structure.domain.n'):
             assert _finite_at(by_number, key) == [1], key
@@ -222,8 +222,8 @@ class TestSingleFrameDetection:
     def test_other_spellings_give_identical_results(self, crop_copy, by_number, frames):
         sarc = SarcAsM(crop_copy('spelling'), log_level='ERROR')
         sarc.detect_sarcomeres(frames=frames, **DETECT)
-        sarc.analyze_z_bands(frames=frames)
-        sarc.analyze_sarcomere_vectors(frames=frames)
+        sarc.structure.analyze_z_bands(frames=frames)
+        sarc.structure.analyze_vectors(frames=frames)
         for key in ('structure.cell.mask_intensity', 'structure.zbands.n', 'structure.zbands.intensity_mean',
                     'structure.sarcomere.n_vectors', 'structure.sarcomere.slen_mean'):
             np.testing.assert_array_equal(np.asarray(sarc.data[key]), np.asarray(by_number.data[key]), key)
@@ -242,12 +242,12 @@ class TestSingleFrameDetection:
         sarc = SarcAsM(crop_copy('all_single'), log_level='ERROR')
         sarc.detect_sarcomeres(frames=1, **DETECT)
         _run_chain(sarc, 'all')
-        for step in ('analyze_z_bands', 'analyze_sarcomere_vectors', 'analyze_myofibrils',
-                     'analyze_sarcomere_domains'):
+        for step in ('structure.analyze_z_bands', 'structure.analyze_vectors', 'structure.analyze_myofibrils',
+                     'structure.analyze_domains'):
             assert list(sarc.data[f'params.{step}.frames']) == [1], step
         for key in ('structure.zbands.intensity_mean', 'structure.sarcomere.n_vectors', 'structure.sarcomere.area_ratio'):
             np.testing.assert_array_equal(np.asarray(sarc.data[key]), np.asarray(by_number.data[key]), key)
-        for call in (sarc.analyze_cell_mask, sarc.analyze_z_bands, sarc.analyze_sarcomere_vectors):
+        for call in (sarc.structure.analyze_cell_mask, sarc.structure.analyze_z_bands, sarc.structure.analyze_vectors):
             with pytest.raises(ValueError, match=r'not detected.*\[1\]'):
                 call(frames=0)
 
@@ -261,7 +261,7 @@ class TestSingleFrameDetection:
             sarc.detect_sarcomeres(frames=[])
         sarc.detect_sarcomeres(frames=1, **DETECT)
         with pytest.raises(ValueError, match=r'not detected.*\[1\]'):
-            sarc.analyze_z_bands(frames=[0, 1])
+            sarc.structure.analyze_z_bands(frames=[0, 1])
 
 
 class TestPartialDetectionOfAMovie:
@@ -284,31 +284,31 @@ class TestPartialDetectionOfAMovie:
         assert list(sarc.data['params.detect_sarcomeres.frames']) == [1, 2]
         assert sarc.store.read_mask('zbands').shape == (2, 512, 512)
         # 'all' = the detected frames, filed under their numbers
-        sarc.analyze_z_bands(frames='all')
-        sarc.analyze_sarcomere_vectors(frames='all')
+        sarc.structure.analyze_z_bands(frames='all')
+        sarc.structure.analyze_vectors(frames='all')
         d = sarc.data
-        assert list(d['params.analyze_z_bands.frames']) == [1, 2]
+        assert list(d['params.structure.analyze_z_bands.frames']) == [1, 2]
         for frame in [1, 2]:
             cell_area = d['structure.cell.mask_area'][frame]
             assert np.isclose(d['structure.zbands.mask_area_ratio'][frame], d['structure.zbands.mask_area'][frame] / cell_area)
             assert np.isclose(d['structure.sarcomere.area_ratio'][frame], d['structure.sarcomere.area'][frame] / cell_area)
         # explicit frame numbers are filed under their numbers
-        sarc.analyze_sarcomere_vectors(frames=[2, 1])
-        assert list(d['params.analyze_sarcomere_vectors.frames']) == [1, 2]
-        sarc.analyze_myofibrils(frames=2)
-        assert list(d['params.analyze_myofibrils.frames']) == [2]
+        sarc.structure.analyze_vectors(frames=[2, 1])
+        assert list(d['params.structure.analyze_vectors.frames']) == [1, 2]
+        sarc.structure.analyze_myofibrils(frames=2)
+        assert list(d['params.structure.analyze_myofibrils.frames']) == [2]
         with pytest.raises(ValueError, match='not detected'):
-            sarc.analyze_z_bands(frames=0)
+            sarc.structure.analyze_z_bands(frames=0)
 
 
 def test_fast_movie_z_bands_are_paired_with_their_own_frame(crop_copy):
-    """analyze_sarcomere_vectors after a single-frame detection used to combine the fast-movie Z-bands of
+    """structure.analyze_vectors after a single-frame detection used to combine the fast-movie Z-bands of
     frame 0 with the M-bands of the detected frame."""
     from sarcasm.analysis import sarcomere_vectors as sv
     sarc = SarcAsM(crop_copy('fast_movie'), log_level='ERROR')
-    sarc.detect_z_bands_fast_movie()
+    sarc.motion.detect_z_bands_fast_movie()
     sarc.detect_sarcomeres(frames=1, **DETECT)
-    sarc.analyze_sarcomere_vectors(frames='all')
+    sarc.structure.analyze_vectors(frames='all')
     z = sarc._read_mask('zbands_fast_movie', frames=1)
     m = sarc._read_mask('mbands', frames=1)
     o = sarc._read_mask('orientation', frames=1)

@@ -6,6 +6,33 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **The analyses moved into two namespaces of the recording**: `sarc.structure.*` for sarcomere morphology and
+  `sarc.motion.*` for tracking, grouping and contraction analysis. `SarcAsM` itself keeps the file, the calibration,
+  the store (`sarc.data`, `commit`) and sarcomere detection. No aliases. Old → new:
+
+  | 1.0.0b4 | now |
+  |---|---|
+  | `sarc.detect_sarcomeres()` | unchanged |
+  | `sarc.analyze_cell_mask()`, `analyze_z_bands()`, `analyze_myofibrils()` | `sarc.structure.analyze_cell_mask()`, … (same names) |
+  | `sarc.analyze_sarcomere_vectors()` | `sarc.structure.analyze_vectors()` |
+  | `sarc.analyze_sarcomere_domains()` | `sarc.structure.analyze_domains()` |
+  | `sarc.full_analysis_structure()` | `sarc.structure.full_analysis()` |
+  | `sarc.detect_z_bands_fast_movie()` | `sarc.motion.detect_z_bands_fast_movie()` |
+  | `sarc.track_sarcomere_vectors()` | `sarc.motion.track()` |
+  | `sarc.get_tracks()` | `sarc.motion.tracks()` |
+  | `sarc.get_track_kinematics()` | `sarc.motion.kinematics()` |
+  | `sarc.group_tracks()`, `detect_lois()` | `sarc.motion.group_tracks()`, `sarc.motion.detect_lois()` |
+  | `sarc.analyze_track_motion()` | `sarc.motion.analyze()` |
+
+  `SarcAsM` is imported from `sarcasm` as before (it now lives in `sarcasm.core`; `sarcasm.structure` holds
+  `StructureAnalysis`, `sarcasm.motion` holds `MotionAnalysis`).
+- **Parameter keys follow the call path** of the step that wrote them: `params.structure.analyze_vectors.*`,
+  `params.motion.track.*`, … (`params.detect_sarcomeres.*` is unchanged). Stores written by 1.0.0b4 or earlier are
+  opened with a warning, and their analysis steps count as not run: run them again, or open the file with
+  `restart=True`.
+
 ### Changed
 
 - Faster motion analysis, same results: `analyze_track_motion(by='myofibril')` takes half the time (30 → 15 s on

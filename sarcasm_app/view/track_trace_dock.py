@@ -30,7 +30,7 @@ class TrackTraceDock(QWidget):
     mean, and the clicked sarcomere highlighted, with the contraction cycles shaded.
 
     ``set_source(kinematics, group_id, frametime, kind, group_contr)`` supplies the per-track
-    arrays from :meth:`sarcasm.SarcAsM.get_track_kinematics` and, if the grouping was
+    arrays from :meth:`sarcasm.motion.MotionAnalysis.kinematics` and, if the grouping was
     analysed, the ContractionNet intervals of every group; ``show_track(track_id)``
     draws one; ``set_frame(t)`` moves the cursor line with the viewer.
     """

@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from sarcasm._internal.gpu_watch import watch_metal_errors
-from sarcasm.structure import SarcAsM
+from sarcasm.core import SarcAsM
 
 MPS = torch.device('mps')
 ABORT = b'Error: command buffer exited with error status.\n'

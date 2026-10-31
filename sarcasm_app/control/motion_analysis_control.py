@@ -16,7 +16,7 @@
 Workflow: Track sarcomere vectors -> group tracks (pool / m-band / myofibril /
 domain / loi) -> analyze track motion (ContractionNet per group). Visualization:
 napari track overlays, matplotlib grouped summaries, and a per-fibre LOI-style
-detail panel via :meth:`SarcAsM.get_track_motion`.
+detail panel via :meth:`MotionAnalysis.get_track_motion`.
 """
 
 import logging
@@ -85,7 +85,7 @@ def _pv(model: ApplicationModel, name: str):
 
 
 def detect_lois_kwargs(get) -> dict:
-    """``SarcAsM.detect_lois`` keyword arguments from the ``loi.detect.*`` parameters.
+    """``MotionAnalysis.detect_lois`` keyword arguments from the ``loi.detect.*`` parameters.
 
     ``get(name)`` returns a parameter value. Shared by the interactive Motion tab and
     the batch run so both use the same tuned LOI detection.
@@ -139,7 +139,7 @@ class MotionAnalysisControl:
     def __chk_all_frames(self) -> bool:
         """Tracking follows only the frames with sarcomere vectors: ask before tracking a part of the movie."""
         cell = self.__main_control.model.cell
-        frames = cell.data.get('params.analyze_sarcomere_vectors.frames')
+        frames = cell.data.get('params.structure.analyze_vectors.frames')
         n_stack = int(cell.metadata.n_stack or 1)
         if frames is None or len(frames) >= n_stack:
             return True
@@ -169,7 +169,7 @@ class MotionAnalysisControl:
     def __track_call(self, worker, m: ApplicationModel):
         pn = self.__get_progress_notifier(worker)
         cell: SarcAsM = TypeUtils.unbox(m.cell)
-        cell.track_sarcomere_vectors(
+        cell.motion.track(
             frames='all',
             max_disp_along_um=_pv(m, 'motion.track.max_disp_along'),
             max_disp_perp_um=_pv(m, 'motion.track.max_disp_perp'),
@@ -208,8 +208,8 @@ class MotionAnalysisControl:
                 # user-drawn lines (yx-px polylines) feed the same loi grouping
                 cell.data['motion.loi.data'] = {'loi_lines': self.__drawn_lois}
             else:
-                cell.detect_lois(frame=ref, **detect_lois_kwargs(lambda name: _pv(m, name)))
-        cell.group_tracks(by=by, reference_frame=ref, min_coverage=cov, min_group_size=min_size)
+                cell.motion.detect_lois(frame=ref, **detect_lois_kwargs(lambda name: _pv(m, name)))
+        cell.motion.group_tracks(by=by, reference_frame=ref, min_coverage=cov, min_group_size=min_size)
 
     def on_btn_draw_lois(self):
         if not self.__chk_initialized():
@@ -245,7 +245,7 @@ class MotionAnalysisControl:
     # ------------------------------------------------------------------ #
     def __analyze_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
-        cell.analyze_track_motion(
+        cell.motion.analyze(
             aggregate=str(_pv(m, 'motion.analyze.aggregate')),
             slen_lims=(_pv(m, 'motion.analyze.slen_lower'), _pv(m, 'motion.analyze.slen_upper')),
             threshold=_pv(m, 'motion.analyze.threshold'),
@@ -313,12 +313,12 @@ class MotionAnalysisControl:
         w.btn_show_fibre_detail.setEnabled(is_fibre)
 
     # ------------------------------------------------------------------ #
-    # per-fibre detail panel (LOI-style plots via get_track_motion)
+    # per-fibre detail panel (LOI-style plots via sarc.motion.get_track_motion)
     # ------------------------------------------------------------------ #
     def __fibre_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
         group = int(self.__motion_analysis_widget.cb_fibre_group.currentText())
-        motion = cell.get_track_motion(group, analyze=True)
+        motion = cell.motion.get_track_motion(group, analyze=True)
         try:
             motion.analyze_popping()
         except Exception as e:
@@ -386,7 +386,7 @@ class MotionAnalysisControl:
             logger.warning('No track motion analyzed yet — run "Analyze track motion" first.')
             return
         current = cell.data.get('motion.groups.kind')
-        if current != kind or (cell.data.get('params.analyze_track_motion.grouping_hash')
+        if current != kind or (cell.data.get('params.motion.analyze.grouping_hash')
                                != cell.data.get('motion.groups.hash')):
             # the tracks were grouped again after the analysis: the summary would mix both groupings
             QMessageBox.information(self.__motion_analysis_widget.btn_analyze_track_motion, 'Analyze the new grouping first',
@@ -481,7 +481,7 @@ class MotionAnalysisControl:
         kind = cell.data.get('motion.groups.kind', '')
         # each group's own ContractionNet intervals, if the current grouping was analysed
         group_contr = None
-        if kind and cell.data.get(f'params.analyze_track_motion.grouping_hash_{kind}') == cell.data.get('motion.groups.hash'):
+        if kind and cell.data.get(f'params.motion.analyze.grouping_hash_{kind}') == cell.data.get('motion.groups.hash'):
             group_contr = cell.data.get(f'motion.{kind}.contr')
             group_contr = None if group_contr is None else np.asarray(group_contr)
         self.__trace_dock.export_dir = os.path.dirname(cell.file_path)
@@ -582,7 +582,7 @@ class MotionAnalysisControl:
         p('motion.group.reference_frame').connect(w.sb_group_reference_frame)
         p('motion.group.min_coverage').connect(w.dsb_group_min_coverage)
         p('motion.group.min_group_size').connect(w.sb_group_min_group_size)
-        # the coverage floor follows the grouping, like SarcAsM.group_tracks(min_coverage=None)
+        # the coverage floor follows the grouping, like MotionAnalysis.group_tracks(min_coverage=None)
         w.cb_group_by.currentTextChanged.connect(
             lambda by: w.dsb_group_min_coverage.setValue(default_min_coverage(by)) if by else None)
         # display
