@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Several groupings off one tracking must stay independently readable.
+"""Each grouping kind is stored once, beside the others, and every reader names its kind.
 
-``sarc.motion.group_tracks`` / ``sarc.motion.analyze`` write single-valued keys
-(``motion.groups.n``, ``motion.groups.member_counts``, ``motion.tracks.group_id``,
-...) describing the grouping *currently* in effect, so a second grouping overwrote
-the first. The per-group export then iterated the wrong group count and read
-``motion.<kind>.*`` out of range — silently returning wrong-length data rather than
-failing. These tests pin the ``motion.groups.<kind>.*`` mirrors that fix it.
+Until 1.0.0b4 ``group_tracks`` wrote the grouping "currently in effect" to single-valued
+keys (``motion.groups.n``, ``motion.tracks.group_id``, ...) plus a per-kind copy, so what a
+reader got depended on which call ran last (SARC-27). Now there is only
+``motion.groups.<kind>.*``, and these tests pin that model.
 """
 from __future__ import annotations
 
@@ -17,10 +15,9 @@ from sarcasm.export import Export
 from .test_grouped_motion import _fake_structure
 
 
-def _analyze_three_kinds(sarc):
-    """pool (1 group) -> mband (2 groups), the ordering that used to clobber."""
-    sarc.motion.analyze(by='pool')
-    sarc.motion.analyze(by='mband', reference_frame=0)
+def _analyze_two_kinds(sarc):
+    sarc.motion.analyze('pool')
+    sarc.motion.analyze('mband', reference_frame=0)
 
 
 def _exportable(sarc):
@@ -31,138 +28,150 @@ def _exportable(sarc):
 
 
 # ---------------------------------------------------------------------------
-# motion.group_tracks writes per-kind mirrors
+# storage: one grouping per kind, side by side
 # ---------------------------------------------------------------------------
 
-def test_group_tracks_mirrors_survive_a_later_grouping():
+def test_each_kind_is_stored_beside_the_others():
     sarc = _fake_structure(n_tracks=6)
     sarc.motion.group_tracks(by='pool')
     sarc.motion.group_tracks(by='mband', reference_frame=0)
 
-    # the unsuffixed keys track the current grouping ...
-    assert sarc.data['motion.groups.kind'] == 'mband'
-    assert sarc.data['motion.groups.n'] == 2
-    # ... while both per-kind mirrors persist
     assert sarc.data['motion.groups.pool.n'] == 1
     assert sarc.data['motion.groups.mband.n'] == 2
     assert np.all(sarc.data['motion.groups.pool.track_group_id'] == 0)
     assert sarc.data['motion.groups.pool.member_counts'].tolist() == [6]
     assert sarc.data['motion.groups.mband.member_counts'].tolist() == [3, 3]
     assert sarc.data['motion.groups.pool.hash'] != sarc.data['motion.groups.mband.hash']
+    assert sarc.motion._grouped_kinds() == ['pool', 'mband']
+    # no "current grouping" keys
+    for key in ('motion.groups.kind', 'motion.groups.n', 'motion.tracks.group_id', 'motion.groups.analyzed_kind'):
+        assert key not in sarc.data
 
 
-def test_mirrors_carry_chain_order():
+def test_grouping_params_are_stored_per_kind():
     sarc = _fake_structure(n_tracks=6)
+    sarc.motion.group_tracks(by='pool', min_coverage=0.3)
     sarc.motion.group_tracks(by='mband', reference_frame=0)
-    assert 'motion.groups.mband.track_group_order' in sarc.data
-    np.testing.assert_array_equal(sarc.data['motion.groups.mband.track_group_order'],
-                                  sarc.data['motion.tracks.group_order'])
+    assert sarc.data['params.motion.group_tracks.pool.min_coverage'] == 0.3
+    assert sarc.data['params.motion.group_tracks.mband.min_coverage'] == 0.5
+
+
+def test_regrouping_a_kind_drops_only_its_analysis():
+    sarc = _fake_structure(n_tracks=6)
+    _analyze_two_kinds(sarc)
+    sarc.motion.group_tracks(by='mband', reference_frame=0, min_coverage=0.3)
+    assert 'motion.mband.contr' not in sarc.data
+    assert 'params.motion.analyze.mband.grouping_hash' not in sarc.data
+    assert 'motion.pool.contr' in sarc.data
+    sarc.motion._assert_track_motion_fresh('pool')
 
 
 # ---------------------------------------------------------------------------
-# motion.analyze provenance
+# analyze(by): the stored grouping, unless grouping arguments are given
 # ---------------------------------------------------------------------------
 
-def test_track_motion_kinds_accumulates_in_call_order():
+def test_analyze_uses_the_stored_grouping():
     sarc = _fake_structure(n_tracks=6)
-    _analyze_three_kinds(sarc)
-    assert sarc.data['motion.groups.analyzed_kinds'] == ['pool', 'mband']
-    assert sarc.data['motion.groups.analyzed_kind'] == 'mband'          # last one still wins
-    assert sarc.data['params.motion.analyze.n_groups_pool'] == 1
-    assert sarc.data['params.motion.analyze.n_groups_mband'] == 2
+    sarc.motion.group_tracks(by='mband', reference_frame=0, min_coverage=0.3)
+    sarc.motion.analyze('mband')
+    assert sarc.data['params.motion.group_tracks.mband.min_coverage'] == 0.3
 
 
-def test_re_analyzing_a_kind_does_not_duplicate_it():
+def test_analyze_with_grouping_arguments_regroups():
     sarc = _fake_structure(n_tracks=6)
-    sarc.motion.analyze(by='pool')
-    sarc.motion.analyze(by='pool')
-    assert sarc.data['motion.groups.analyzed_kinds'] == ['pool']
+    sarc.motion.group_tracks(by='mband', reference_frame=0, min_coverage=0.3)
+    sarc.motion.analyze('mband', min_coverage=0.6)
+    assert sarc.data['params.motion.group_tracks.mband.min_coverage'] == 0.6
 
 
-def test_freshness_guard_accepts_an_earlier_kind():
+def test_analyze_groups_a_kind_not_grouped_yet():
     sarc = _fake_structure(n_tracks=6)
-    _analyze_three_kinds(sarc)
-    # the earlier kind is still valid against the current tracks ...
+    sarc.motion.analyze('pool')
+    assert sarc.data['motion.groups.pool.n'] == 1
+
+
+def test_analyze_custom_needs_its_own_grouping():
+    sarc = _fake_structure(n_tracks=6)
+    with pytest.raises(ValueError, match="group_tracks\\(by='custom'"):
+        sarc.motion.analyze('custom')
+    sarc.motion.group_tracks(by='custom', labels=np.array([0, 0, 1, 1, 2, 2]))
+    with pytest.raises(ValueError, match='no grouping arguments'):
+        sarc.motion.analyze('custom', min_coverage=0.2)
+    sarc.motion.analyze('custom')
+    assert sarc.data['motion.groups.custom.n'] == 3
+
+
+def test_analyze_needs_a_kind():
+    sarc = _fake_structure(n_tracks=6)
+    with pytest.raises(TypeError):
+        sarc.motion.analyze()
+    with pytest.raises(ValueError, match='Unknown grouping'):
+        sarc.motion.analyze('fibre')
+
+
+def test_analysis_params_are_stored_per_kind():
+    sarc = _fake_structure(n_tracks=6)
+    _analyze_two_kinds(sarc)
+    assert sarc.motion._analyzed_kinds() == ['pool', 'mband']
+    assert sarc.data['params.motion.analyze.pool.n_groups'] == 1
+    assert sarc.data['params.motion.analyze.mband.n_groups'] == 2
+    assert sarc.data['params.motion.analyze.mband.grouping_hash'] == sarc.data['motion.groups.mband.hash']
+
+
+def test_group_average_is_slen_avg():
+    sarc = _fake_structure(n_tracks=6)
+    sarc.motion.analyze('mband', reference_frame=0)
+    assert sarc.data['motion.mband.slen_avg'].shape == (2, sarc.data['motion.tracks.slen'].shape[1])
+    assert 'motion.mband.slen' not in sarc.data
+
+
+# ---------------------------------------------------------------------------
+# readers name their kind
+# ---------------------------------------------------------------------------
+
+def test_freshness_is_checked_per_kind():
+    sarc = _fake_structure(n_tracks=6)
+    _analyze_two_kinds(sarc)
     sarc.motion._assert_track_motion_fresh('pool')
     sarc.motion._assert_track_motion_fresh('mband')
-    # ... and the unsuffixed check still describes the current grouping
-    sarc.motion._assert_track_motion_fresh()
-
-
-def test_freshness_guard_rejects_a_kind_never_analyzed():
-    sarc = _fake_structure(n_tracks=6)
-    sarc.motion.analyze(by='pool')
-    with pytest.raises(ValueError, match="myofibril"):
+    with pytest.raises(ValueError, match='myofibril'):
         sarc.motion._assert_track_motion_fresh('myofibril')
 
 
-# ---------------------------------------------------------------------------
-# The export bug this whole patch exists for
-# ---------------------------------------------------------------------------
-
 def test_export_reads_each_kind_with_its_own_group_count():
     sarc = _fake_structure(n_tracks=6)
-    _analyze_three_kinds(sarc)
+    _analyze_two_kinds(sarc)
     _exportable(sarc)
-
     pool = Export.get_motion_dict_per_group(sarc, kind='pool')
     mband = Export.get_motion_dict_per_group(sarc, kind='mband')
-
-    # Before the fix both used the last grouping's n_groups (2), so 'pool'
-    # returned two records, the second one reading past the end of pool_*.
-    assert len(pool) == 1
-    assert len(mband) == 2
+    assert len(pool) == 1 and len(mband) == 2
     assert [r['kind'] for r in pool] == ['pool']
     assert pool[0]['group_member_count'] == 6
     assert [r['group_member_count'] for r in mband] == [3, 3]
 
 
-def test_export_defaults_to_the_last_analyzed_kind():
+def test_export_needs_an_analysed_kind():
     sarc = _fake_structure(n_tracks=6)
-    _analyze_three_kinds(sarc)
+    sarc.motion.analyze('mband', reference_frame=0)
     _exportable(sarc)
-    records = Export.get_motion_dict_per_group(sarc)
-    assert [r['kind'] for r in records] == ['mband', 'mband']
-
-
-def test_export_raises_for_a_kind_never_analyzed():
-    """Asking for an unanalysed kind is an error, not an empty result.
-
-    The whole bug was a silent wrong-length read, so the export refuses to guess
-    from the unsuffixed keys.
-    """
-    sarc = _fake_structure(n_tracks=6)
-    sarc.motion.analyze(by='mband', reference_frame=0)
-    _exportable(sarc)
+    with pytest.raises(ValueError, match='Name the grouping'):
+        Export.get_motion_dict_per_group(sarc)
     with pytest.raises(ValueError, match='pool'):
         Export.get_motion_dict_per_group(sarc, kind='pool')
 
 
-# ---------------------------------------------------------------------------
-# motion.tracks must be able to name the grouping it labels by
-# ---------------------------------------------------------------------------
-
-def test_get_tracks_labels_the_requested_kind():
+def test_tracks_have_one_group_column_per_kind():
     sarc = _fake_structure(n_tracks=6)
     sarc.motion.group_tracks(by='mband', reference_frame=0)
     sarc.motion.group_tracks(by='pool')
-
-    # default keeps the historical meaning: whatever grouping is in effect
-    assert set(sarc.motion.tracks()['group_id']) == {0}
-    # naming the kind reaches back to the earlier grouping
-    assert set(sarc.motion.tracks(kind='mband')['group_id']) == {0, 1}
-    assert set(sarc.motion.tracks(kind='pool')['group_id']) == {0}
-
-
-def test_get_tracks_raises_for_a_kind_never_grouped():
-    sarc = _fake_structure(n_tracks=6)
-    sarc.motion.group_tracks(by='pool')
-    with pytest.raises(ValueError, match='myofibril'):
-        sarc.motion.tracks(kind='myofibril')
+    tracks = sarc.motion.tracks()
+    assert set(tracks['group_mband']) == {0, 1}
+    assert set(tracks['group_pool']) == {0}
+    assert 'order_mband' not in tracks          # only the ordered kinds (myofibril, loi) have an order
 
 
 # ---------------------------------------------------------------------------
-# The mirrors have to survive the store, not just live in self.data
+# the store, and re-tracking
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -180,52 +189,32 @@ def synthetic_movie(tmp_path):
 
 
 def test_per_kind_keys_survive_the_store_round_trip(synthetic_movie):
-    """Reopening the store must give back every grouping, not just the last.
-
-    The mirrors are only useful if results_store routes and persists them; a
-    synthetic self.data dict cannot show that.
-    """
     from sarcasm.core import SarcAsM as RealSarcAsM
 
     path, T = synthetic_movie
     sarc = RealSarcAsM(path)
-    n_tracks = 6
-    template = _fake_structure(n_tracks=n_tracks, T=T)
+    template = _fake_structure(n_tracks=6, T=T)
     sarc.data.update(template.data)
-    sarc.motion.analyze(by='pool')
-    sarc.motion.analyze(by='mband', reference_frame=0)
+    _analyze_two_kinds(sarc)
     sarc.store_structure_data()
 
     reopened = RealSarcAsM(path)
-    data = reopened.data
-    assert data['motion.groups.analyzed_kinds'] == ['pool', 'mband']
-    assert int(data['motion.groups.pool.n']) == 1
-    assert int(data['motion.groups.mband.n']) == 2
-    assert np.asarray(data['motion.groups.mband.member_counts']).tolist() == [3, 3]
-    assert np.all(np.asarray(data['motion.groups.pool.track_group_id']) == 0)
-    assert data['motion.groups.pool.hash'] != data['motion.groups.mband.hash']
-
-    # and the readers work off the reopened store
+    assert reopened.motion._analyzed_kinds() == ['pool', 'mband']
+    assert int(reopened.data['motion.groups.pool.n']) == 1
+    assert np.asarray(reopened.data['motion.groups.mband.member_counts']).tolist() == [3, 3]
     reopened.motion._assert_track_motion_fresh('pool')
-    assert set(reopened.motion.tracks(kind='mband')['group_id']) == {0, 1}
-    assert len(Export.get_motion_dict_per_group(reopened, kind='pool')) == 1
+    assert set(reopened.motion.tracks()['group_mband']) == {0, 1}
     assert len(Export.get_motion_dict_per_group(reopened, kind='mband')) == 2
 
 
-# ---------------------------------------------------------------------------
-# Re-tracking must not leave a mirror behind
-# ---------------------------------------------------------------------------
-
-def test_retracking_clears_every_per_kind_key():
+def test_retracking_clears_every_grouping_and_its_analysis():
     sarc = _fake_structure(n_tracks=6)
-    _analyze_three_kinds(sarc)
-    assert 'motion.groups.pool.n' in sarc.data
+    _analyze_two_kinds(sarc)
+    sarc.motion.set_lois([np.array([[0, 20], [40, 20]], float)])
 
     sarc.motion._invalidate_groupings()
 
-    leftovers = [k for k in sarc.data
-                 if k.startswith(('motion.groups.', 'motion.tracks.group_',
-                                  'params.motion.analyze.grouping_hash',
-                                  'params.motion.analyze.n_groups'))]
+    leftovers = [k for k in sarc.data if k.startswith(
+        ('motion.groups.', 'motion.pool.', 'motion.mband.', 'params.motion.group_tracks.', 'params.motion.analyze.'))]
     assert leftovers == []
-    assert 'motion.groups.kind' not in sarc.data
+    assert 'motion.lois.lines' in sarc.data        # LOI lines are input, not a grouping

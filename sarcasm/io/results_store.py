@@ -872,7 +872,7 @@ def _html_escape(text: Any) -> str:
 def _display_name(key: str) -> str:
     """Registry label for ``key``, blank when it just restates the key.
 
-    ``params.motion.group_tracks.by`` is labelled ``by``, which adds nothing next to
+    ``params.motion.analyze.pool.reading`` is labelled ``reading``, which adds nothing next to
     the key itself — drop it rather than print the same word twice.
     """
     name = pretty_name(key)

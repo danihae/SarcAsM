@@ -24,10 +24,35 @@ All notable changes to SarcAsM are documented here. The format follows
   | `sarc.get_tracks()` | `sarc.motion.tracks()` |
   | `sarc.get_track_kinematics()` | `sarc.motion.kinematics()` |
   | `sarc.group_tracks()`, `detect_lois()` | `sarc.motion.group_tracks()`, `sarc.motion.detect_lois()` |
-  | `sarc.analyze_track_motion()` | `sarc.motion.analyze()` |
+  | `sarc.analyze_track_motion(by=...)` | `sarc.motion.analyze(by)` (the kind is required) |
 
   `SarcAsM` is imported from `sarcasm` as before (it now lives in `sarcasm.core`; `sarcasm.structure` holds
   `StructureAnalysis`, `sarcasm.motion` holds `MotionAnalysis`).
+- **One grouping per kind, stored side by side; every call names its kind.** Each kind is stored once under
+  `motion.groups.<kind>.*` (`track_group_id`, `track_group_order`, `n`, `member_counts`, `track_ids`, `hash`, …), its
+  parameters under `params.motion.group_tracks.<kind>.*` and its analysis under `params.motion.analyze.<kind>.*`.
+  The "grouping currently in effect" is gone: `motion.groups.kind`, `motion.groups.n`, `motion.tracks.group_id`,
+  `motion.groups.analyzed_kind(s)` and the other unqualified copies are no longer written, so nothing depends on
+  which grouping ran last. Grouping a kind again replaces it and drops its analysis; tracking again drops every
+  grouping and every `motion.<kind>.*` result.
+  - `sarc.motion.analyze(by)` needs the kind. It analyses the stored grouping of that kind (made with
+    `group_tracks`' defaults if there is none); passing grouping arguments (`reference_frame`, `min_coverage`,
+    `min_group_size`, `max_drift_slen`) groups it again first.
+  - `sarc.motion.tracks()` has one `group_<kind>` column per stored grouping (and `order_<kind>` for myofibril and
+    loi) instead of `group_id` / `order_in_group`; its `kind` argument is gone.
+  - Plots that show a grouping take its `kind`: `plot_slen_mean`, `plot_delta_slen_mean`, `plot_track_groups`
+    (required), `plot_slen` / `plot_delta_slen` of a `SarcAsM`, and `color_by='group'` of `plot_tracks`,
+    `plot_track_vectors`, `track_color_values` and `Animations.animate_track_vectors`; `plot_track_myofibrils` takes
+    `kind='myofibril'` or `'loi'`, `plot_track_raster` an optional `kind`. `Export.get_motion_dict_per_group` needs
+    `kind`. `get_track_motion(group, kind=...)`.
+- **The group average is `motion.<kind>.slen_avg`** (was `motion.<kind>.slen`), so it cannot be confused with the
+  members' `motion.tracks.slen`.
+- **LOI lines are `motion.lois.lines`** (px), `motion.lois.lengths` (µm, now for every line) and
+  `motion.lois.index_lines`, instead of one `motion.loi.data` dict that shared its namespace with the `loi`
+  grouping's results. `sarc.motion.set_lois(lines)` sets hand-drawn lines (the GUI uses it). `detect_lois` records
+  its parameters under `params.motion.detect_lois.*`.
+- Removed: `Plots.plot_loi_detection`, `Plots.plot_domain_timeseries` (use `plot_slen_mean(ax, sarc, 'domain')`) and
+  `Plots.plot_overlay_domain_timeseries`.
 - **Parameter keys follow the call path** of the step that wrote them: `params.structure.analyze_vectors.*`,
   `params.motion.track.*`, … (`params.detect_sarcomeres.*` is unchanged). Stores written by 1.0.0b4 or earlier are
   opened with a warning, and their analysis steps count as not run: run them again, or open the file with

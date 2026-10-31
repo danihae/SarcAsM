@@ -97,11 +97,8 @@ class ExportPopup(QDialog):
         # Motion: which grouping to export (every grouping analysed for this file)
         self._cb_kind = None
         if self._popup_type == 'motion':
-            data = self._model.cell.data
-            kinds = list(data.get('motion.groups.analyzed_kinds') or [])
-            last = data.get('motion.groups.analyzed_kind')
-            if last and last not in kinds:
-                kinds.append(last)
+            kinds = self._model.cell.motion._analyzed_kinds()
+            last = self._model.group_kind      # the grouping the Motion tab shows
             if kinds:
                 kind_row = QHBoxLayout()
                 kind_row.addWidget(QLabel('Grouping:'))
@@ -112,7 +109,7 @@ class ExportPopup(QDialog):
                 self._cb_kind.setToolTip('<p>Which grouping of the tracked sarcomeres to export: pool (whole cell), mband, myofibril, '
                                          'domain or loi. Each grouping you analysed is kept separately; the export writes one row per '
                                          'group of the chosen one, with per-cycle values averaged per group. Export once per grouping if '
-                                         'you need several. Preselected: the grouping analysed last.</p>')
+                                         'you need several. Preselected: the grouping chosen in the Motion tab.</p>')
                 kind_row.addWidget(self._cb_kind)
                 kind_row.addStretch(1)
                 root.addLayout(kind_row)

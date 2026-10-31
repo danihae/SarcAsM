@@ -1,7 +1,7 @@
 # Result key migration (1.0)
 
-In 1.0 a result key **is its path**: `sarc.data['motion.pool.slen']` and
-`sarc.data.motion.pool.slen` are the same value. Keys live in three namespaces —
+In 1.0 a result key **is its path**: `sarc.data['motion.pool.slen_avg']` and
+`sarc.data.motion.pool.slen_avg` are the same value. Keys live in three namespaces —
 `structure` (per-frame / single-frame morphology), `motion` (everything derived from
 the sarcomere tracks) and `params` (what each analysis step ran with).
 
@@ -9,15 +9,20 @@ There is **no runtime translation layer** and no store migration: an analysis wr
 before 1.0 holds the old keys and must be regenerated. Exported CSV / DataFrame column
 names change with the keys, so downstream analyses need re-pointing against this table.
 
-`params.<step>.<name>` keys are **unchanged**, with one rule made consistent: `<name>` is
-always the parameter's name in the method signature. Four keys had drifted from it:
+A parameter key is the **call path** of the step that wrote it plus the parameter's name in the
+method signature: `params.detect_sarcomeres.<name>` for the recording's own step,
+`params.structure.<step>.<name>` and `params.motion.<step>.<name>` for the analyses, and
+`params.motion.group_tracks.<kind>.<name>` / `params.motion.analyze.<kind>.<name>` for the grouping
+of each kind and its analysis. For example `params.analyze_sarcomere_vectors.frames` (1.0.0b4) is
+`params.structure.analyze_vectors.frames`, and `params.analyze_track_motion.reading` is
+`params.motion.analyze.<kind>.reading`. Four names had drifted from the signature:
 
 | old | new |
 |---|---|
 | `params.detect_sarcomeres.model` | `params.detect_sarcomeres.model_path` |
 | `params.detect_sarcomeres.clip_threshold` | `params.detect_sarcomeres.clip_thres` |
-| `params.motion.detect_z_bands_fast_movie.model` | `params.motion.detect_z_bands_fast_movie.model_path` |
-| `params.motion.detect_z_bands_fast_movie.clip_threshold` | `params.motion.detect_z_bands_fast_movie.clip_thres` |
+| `params.detect_z_bands_fast_movie.model` | `params.motion.detect_z_bands_fast_movie.model_path` |
+| `params.detect_z_bands_fast_movie.clip_threshold` | `params.motion.detect_z_bands_fast_movie.clip_thres` |
 
 ## `StructureAnalysis.analyze_cell_mask`
 
@@ -144,7 +149,9 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 
 | old | new |
 |---|---|
-| `loi_data` | `motion.loi.data` |
+| `loi_data` (dict) | `motion.lois.lines` (px), `motion.lois.lengths` (µm), `motion.lois.index_lines` |
+
+The grown candidate lines, their Hausdorff distances and clusters are no longer stored.
 
 ## `MotionAnalysis.track`
 
@@ -170,38 +177,22 @@ The per-vector arrays and their per-frame summaries now live in one group, so `s
 
 ## `MotionAnalysis.group_tracks`
 
-`track_motion_kind` (written by `motion.analyze`) becomes `motion.groups.analyzed_kind`, next to the `kind` the grouping was built with.
-
-The keys below describe **the grouping currently in effect** and are overwritten by the
-next `motion.group_tracks` call. Each is additionally mirrored under `motion.groups.<kind>.<leaf>`
-(`motion.groups.pool.n`, `motion.groups.mband.member_counts`, ...), so grouping one tracking
-several ways keeps every grouping independently readable. `motion.analyze` accumulates
-the kinds it has run in `motion.groups.analyzed_kinds`, and readers that name a kind
-(`motion.tracks(kind=...)`, `Export.get_motion_dict_per_group`) read that kind's mirror and
-raise if it is absent, rather than silently falling back to the current grouping.
-
-| current | per-kind mirror |
-|---|---|
-| `motion.tracks.group_id` | `motion.groups.<kind>.track_group_id` |
-| `motion.tracks.group_order` | `motion.groups.<kind>.track_group_order` |
-| `motion.groups.n` | `motion.groups.<kind>.n` |
-| `motion.groups.member_counts` | `motion.groups.<kind>.member_counts` |
-| `motion.groups.n_vectors_total` | `motion.groups.<kind>.n_vectors_total` |
-| `motion.groups.n_vectors_in_long_tracks` | `motion.groups.<kind>.n_vectors_in_long_tracks` |
-| `motion.groups.track_ids` | `motion.groups.<kind>.track_ids` |
-| `motion.groups.hash` | `motion.groups.<kind>.hash` |
+Each grouping kind is stored **once**, beside the others, under `motion.groups.<kind>.<leaf>`;
+grouping a kind again replaces it and drops its analysis. There is no "grouping currently in
+effect": every reader names its kind, and `sarc.motion.tracks()` has one `group_<kind>` column per
+stored kind (plus `order_<kind>` for myofibril and loi).
 
 | old | new |
 |---|---|
-| `group_kind` | `motion.groups.kind` |
-| `group_member_counts` | `motion.groups.member_counts` |
-| `group_n_vectors_in_long_tracks` | `motion.groups.n_vectors_in_long_tracks` |
-| `group_n_vectors_total` | `motion.groups.n_vectors_total` |
-| `grouping_hash` | `motion.groups.hash` |
-| `n_groups` | `motion.groups.n` |
-| `track_group_id` | `motion.tracks.group_id` |
-| `track_group_order` | `motion.tracks.group_order` |
-| `track_ids_snapshot` | `motion.groups.track_ids` |
+| `group_kind` | — (the kind is part of every key) |
+| `group_member_counts` | `motion.groups.<kind>.member_counts` |
+| `group_n_vectors_in_long_tracks` | `motion.groups.<kind>.n_vectors_in_long_tracks` |
+| `group_n_vectors_total` | `motion.groups.<kind>.n_vectors_total` |
+| `grouping_hash` | `motion.groups.<kind>.hash` |
+| `n_groups` | `motion.groups.<kind>.n` |
+| `track_group_id` | `motion.groups.<kind>.track_group_id` |
+| `track_group_order` | `motion.groups.<kind>.track_group_order` |
+| `track_ids_snapshot` | `motion.groups.<kind>.track_ids` |
 
 ## `MotionAnalysis.analyze`
 
@@ -209,8 +200,8 @@ Written once per grouping `kind` in pool / mband / myofibril / domain / loi / cu
 
 | old | new |
 |---|---|
-| `track_motion_kind` | `motion.groups.analyzed_kind` |
-| `<kind>_slen_timeseries` | `motion.<kind>.slen` |
+| `track_motion_kind` | — (a kind is analysed when `params.motion.analyze.<kind>.*` exists) |
+| `<kind>_slen_timeseries` | `motion.<kind>.slen_avg` (the group average; the members' lengths are `motion.tracks.slen`) |
 | `<kind>_slen_median_timeseries` | `motion.<kind>.slen_median` |
 | `<kind>_slen_std_timeseries` | `motion.<kind>.slen_std` |
 | `<kind>_slen_q25_timeseries` | `motion.<kind>.slen_q25` |

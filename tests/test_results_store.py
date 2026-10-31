@@ -186,7 +186,7 @@ def test_structure_and_motion_never_collide():
     """The same subject on both branches stays distinct — this is why paths."""
     assert _route("structure.domain.slen") != _route("motion.domain.slen")
     assert _route("structure.myofibril.length") != _route("motion.myofibril.slen")
-    assert _route("motion.loi.data") == ("motion/loi", "data")
+    assert _route("motion.lois.lines") == ("motion/lois", "lines")
     for kind in ("pool", "mband", "myofibril", "domain", "loi", "custom"):
         assert _route(f"motion.{kind}.equ") == (f"motion/{kind}", "equ")
 

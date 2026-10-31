@@ -664,10 +664,10 @@ class TestTrackLayers:
         from sarcasm_app.view.track_trace_dock import TrackTraceDock
         cell = control.model.cell
         dock = TrackTraceDock()
-        dock.set_source(control.track_kinematics(), cell.data['motion.tracks.group_id'],
+        dock.set_source(control.track_kinematics(), cell.data['motion.groups.myofibril.track_group_id'],
                         cell.metadata.frametime, 'myofibril')
         assert 'all tracks' in dock.lbl_info.text()
-        gid = np.asarray(cell.data['motion.tracks.group_id'])
+        gid = np.asarray(cell.data['motion.groups.myofibril.track_group_id'])
         track = int(np.flatnonzero(gid == 0)[0])
         dock.show_track(track)
         assert f'Track {track}' in dock.lbl_info.text() and 'myofibril 0' in dock.lbl_info.text()
@@ -945,17 +945,20 @@ class TestGuiOutputFixes2026_10_24:
     def test_groups_layer_tolerates_zero_tracks(self):
         from types import SimpleNamespace
         from sarcasm_app.control.application_control import ApplicationControl
-        cell = SimpleNamespace(data={'motion.tracks.group_id': np.empty(0), 'motion.groups.kind': 'myofibril',
-                                     'motion.tracks.positions_px': np.empty((0,))})
-        ctl = SimpleNamespace(model=SimpleNamespace(cell=cell), viewer=MagicMock())
+        motion = SimpleNamespace(_grouped_kinds=lambda: ['myofibril'],
+                                 _grouping=lambda kind: {'track_group_id': np.empty(0), 'track_group_order': np.empty(0),
+                                                         'n': 0, 'member_counts': np.empty(0)})
+        cell = SimpleNamespace(data={'motion.tracks.positions_px': np.empty((0,))}, motion=motion)
+        ctl = SimpleNamespace(model=SimpleNamespace(cell=cell, group_kind='myofibril'), viewer=MagicMock())
         ctl.viewer.layers = []
         ApplicationControl.init_track_groups_layer(ctl)              # used to fail to unpack the shape
         ctl.viewer.add_shapes.assert_not_called()
 
     @pytest.mark.parametrize('message, expected', [
         ('The tracking found no tracks: no sarcomere was followed', 'Min. track duration'),
-        ('No tracks found. Run sarc.motion.track first.', '1. Track sarcomere vectors'),
-        ('No track grouping found. Run sarc.motion.group_tracks(...) first', '2. Group tracks'),
+        ('No tracks found. Run sarc.motion.track() first.', '1. Track sarcomere vectors'),
+        ("No 'mband' grouping found. Run sarc.motion.group_tracks(by='mband') first.", '2. Group tracks'),
+        ("No analysis of the 'pool' grouping found. Run sarc.motion.analyze('pool') first.", '3. Analyze'),
         ('reference_frame 99 was not tracked.', 'reference frame that was tracked'),
     ])
     def test_error_hints_match_the_backend_messages(self, message, expected):

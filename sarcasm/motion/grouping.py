@@ -14,13 +14,13 @@
 
 """Grouping of tracks (pool, M-band, myofibril, LOI, domain, custom) and LOI detection."""
 
-"""Main :class:`SarcAsM` object: sarcomere morphology, full-field 2D tracking, and grouped motion analysis."""
-
 import hashlib
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+from sarcasm.features import MOTION_KINDS
 
 
 
@@ -37,55 +37,46 @@ from sarcasm.analysis import (
 class GroupingMixin:
     """Part of :class:`~sarcasm.motion.MotionAnalysis`; see there."""
 
-    #: Artifacts of the grouping currently in effect -> the leaf they are mirrored
-    #: under at ``motion.groups.<kind>.<leaf>`` (``motion.groups.kind`` is not mirrored).
-    _GROUPING_MIRRORS = {
-        'motion.tracks.group_id': 'track_group_id',
-        'motion.tracks.group_order': 'track_group_order',
-        'motion.groups.n': 'n',
-        'motion.groups.member_counts': 'member_counts',
-        'motion.groups.n_vectors_total': 'n_vectors_total',
-        'motion.groups.n_vectors_in_long_tracks': 'n_vectors_in_long_tracks',
-        'motion.groups.track_ids': 'track_ids',
-        'motion.groups.hash': 'hash',
-    }
-
-    @classmethod
-    def _grouping_key(cls, kind: Optional[str], current_key: str) -> str:
-        """Key holding ``current_key``'s value for ``kind``.
-
-        ``kind=None`` means the grouping currently in effect, which lives in the
-        unqualified key; naming a kind selects that kind's own mirror.
-        """
-        if kind is None:
-            return current_key
-        return f'motion.groups.{kind}.{cls._GROUPING_MIRRORS[current_key]}'
+    @staticmethod
+    def _gkey(kind: str, leaf: str) -> str:
+        """Store key of one artifact of the ``kind`` grouping: ``motion.groups.<kind>.<leaf>``."""
+        return f'motion.groups.{kind}.{leaf}'
 
     def _grouped_kinds(self) -> List[str]:
-        """Kinds whose grouping is mirrored in this store, in grouping-level order."""
-        return [lvl for lvl in self._GROUPING_LEVELS
-                if self._grouping_key(lvl, 'motion.tracks.group_id') in self.data]
+        """Kinds grouped in this store, in grouping-level order."""
+        return [kind for kind in self._GROUPING_LEVELS if self._gkey(kind, 'track_group_id') in self.data]
+
+    def _grouping(self, kind: str) -> Dict[str, np.ndarray]:
+        """The stored grouping of ``kind``: ``track_group_id``, ``track_group_order``, ``n``, ``member_counts``."""
+        if kind not in self._GROUPING_LEVELS:
+            raise ValueError(f"Unknown grouping '{kind}'. Valid: {self._GROUPING_LEVELS}.")
+        if self._gkey(kind, 'track_group_id') not in self.data:
+            raise ValueError(f"No '{kind}' grouping found. Run sarc.motion.group_tracks(by='{kind}') "
+                             f"or sarc.motion.analyze('{kind}') first.")
+        return {'track_group_id': np.asarray(self.data[self._gkey(kind, 'track_group_id')]).reshape(-1),
+                'track_group_order': np.asarray(self.data[self._gkey(kind, 'track_group_order')]).reshape(-1),
+                'n': int(self.data[self._gkey(kind, 'n')]),
+                'member_counts': np.asarray(self.data[self._gkey(kind, 'member_counts')])}
+
+    def _analyzed_kinds(self) -> List[str]:
+        """Kinds whose grouping has been analysed (:meth:`analyze`), in grouping-level order."""
+        return [kind for kind in self._GROUPING_LEVELS if f'params.motion.analyze.{kind}.grouping_hash' in self.data]
+
+    def _drop_keys(self, *prefixes: str) -> None:
+        """Delete every result whose key starts with one of ``prefixes``."""
+        for key in [k for k in self.data if k.startswith(prefixes)]:
+            del self.data[key]
 
     def _invalidate_groupings(self) -> None:
-        """Drop every grouping artifact, current and per-kind.
+        """Drop every grouping and every result computed from one.
 
-        A grouping labels *tracks*, so re-tracking makes it meaningless. Leaving a
-        mirror behind would let a stale grouping be read back afterwards.
+        A grouping labels *tracks*, so re-tracking makes it, and the contraction analysis
+        of its groups, meaningless.
         """
-        stale = list(self._GROUPING_MIRRORS)
-        stale += ['motion.groups.kind', 'motion.groups.analyzed_kind',
-                  'motion.groups.analyzed_kinds',
-                  'params.motion.analyze.grouping_hash',
-                  'params.motion.analyze.n_groups']
-        for lvl in self._GROUPING_LEVELS:
-            stale.extend(self._grouping_key(lvl, key) for key in self._GROUPING_MIRRORS)
-            stale.append(f'params.motion.analyze.grouping_hash_{lvl}')
-            stale.append(f'params.motion.analyze.n_groups_{lvl}')
-        for key in stale:
-            if key in self.data:
-                del self.data[key]
+        self._drop_keys('motion.groups.', 'params.motion.group_tracks.', 'params.motion.analyze.',
+                        *(f'motion.{kind}.' for kind in self._GROUPING_LEVELS))
 
-    _GROUPING_LEVELS = ('pool', 'mband', 'myofibril', 'loi', 'domain', 'custom')
+    _GROUPING_LEVELS = MOTION_KINDS
 
     # Groupings that order their members head-to-tail into a 1D fibre thread.
     # They represent geometry, not just a set, so they keep partially-tracked
@@ -272,14 +263,12 @@ class GroupingMixin:
 
         Notes
         -----
-        Stores ``motion.tracks.group_id`` / ``motion.tracks.group_order``
-        ``(n_tracks,)``, ``motion.groups.kind``, ``motion.groups.n``,
-        ``motion.groups.member_counts``, ``motion.groups.track_ids`` and
-        ``motion.groups.hash`` into ``self.data``, and mirrors all of them (bar the
-        kind's own name) under ``motion.groups.<by>.*`` so a later grouping of the
-        same tracking cannot overwrite this one. The hash changes whenever the tracks
-        or the recipe change; a stale :meth:`analyze` result is then
-        detected on read.
+        Stores the grouping of ``by`` under ``motion.groups.<by>.*``: ``track_group_id`` and
+        ``track_group_order`` ``(n_tracks,)``, ``n``, ``member_counts``, ``track_ids`` and
+        ``hash``, and its parameters under ``params.motion.group_tracks.<by>.*``. Each kind is
+        stored once, beside the others; grouping a kind again replaces it and drops its
+        analysis. The hash changes whenever the tracks or the recipe change, so a stale
+        :meth:`analyze` result is detected on read.
         """
         self._require_tracks()
         if by not in self._GROUPING_LEVELS:
@@ -394,13 +383,12 @@ class GroupingMixin:
                 # chain it was selected from; lines without one (fitted / hand-drawn)
                 # take the geometric path, thinned to one track per sarcomere step
                 rf_idx = self._tracked_frame_index(reference_frame)
-                loi_data = self.data.get('motion.loi.data')
-                loi_lines = None if loi_data is None else loi_data.get('loi_lines')
+                loi_lines = self.data.get('motion.lois.lines')
                 if loi_lines is None or len(loi_lines) == 0:
                     raise ValueError(
-                        'LOI lines not available. Run detect_lois first, e.g. '
-                        'detect_lois(frame=reference_frame).')
-                index_lines = None if loi_data is None else loi_data.get('loi_index_lines')
+                        'LOI lines not available. Run sarc.motion.detect_lois(frame=reference_frame) '
+                        'or draw them with sarc.motion.set_lois(lines).')
+                index_lines = self.data.get('motion.lois.index_lines')
                 lines_px = [np.asarray(l, dtype=float).reshape(-1, 2) for l in loi_lines]
 
                 med_slen_um = float(np.nanmedian(slen[eligible])) if eligible.any() else np.nan
@@ -497,30 +485,24 @@ class GroupingMixin:
             max_drift_slen=max_drift_slen,
             labels=labels if by == 'custom' else None)
 
-        current = {
-            'motion.tracks.group_id': gid,
-            'motion.tracks.group_order': order,
-            'motion.groups.n': n_groups,
-            'motion.groups.member_counts': counts,
-            'motion.groups.n_vectors_total': int(n_vectors_total),
-            'motion.groups.n_vectors_in_long_tracks': int(n_vectors_long),
-            'motion.groups.track_ids': np.asarray(track_ids).copy(),
-            'motion.groups.hash': grouping_hash,
+        # One grouping per kind: regrouping a kind replaces it, and the analysis of its
+        # earlier groups no longer applies.
+        self._drop_keys(f'motion.groups.{by}.', f'params.motion.group_tracks.{by}.',
+                        f'motion.{by}.', f'params.motion.analyze.{by}.')
+        grouping = {
+            'track_group_id': gid,
+            'track_group_order': order,
+            'n': n_groups,
+            'member_counts': counts,
+            'n_vectors_total': int(n_vectors_total),
+            'n_vectors_in_long_tracks': int(n_vectors_long),
+            'track_ids': np.asarray(track_ids).copy(),
+            'hash': grouping_hash,
         }
-        # The keys above mean "the grouping currently in effect" and are overwritten by
-        # the next group_tracks call; the motion.groups.<by>.* mirrors persist, so
-        # several groupings of one tracking stay independently readable.
-        per_kind = {self._grouping_key(by, key): value for key, value in current.items()}
-        self.data.update({
-            **current,
-            **per_kind,
-            'motion.groups.kind': by,
-            'params.motion.group_tracks.by': by,
-            'params.motion.group_tracks.reference_frame': reference_frame,
-            'params.motion.group_tracks.min_coverage': min_coverage,
-            'params.motion.group_tracks.min_group_size': min_group_size,
-            'params.motion.group_tracks.max_drift_slen': max_drift_slen,
-        })
+        params = {'reference_frame': reference_frame, 'min_coverage': min_coverage,
+                  'min_group_size': min_group_size, 'max_drift_slen': max_drift_slen}
+        self.data.update({self._gkey(by, leaf): value for leaf, value in grouping.items()})
+        self.data.update({f'params.motion.group_tracks.{by}.{name}': value for name, value in params.items()})
         logger.info(
             f"group_tracks(by='{by}'): {n_groups} groups, "
             f"{int((gid >= 0).sum())}/{n_tracks} tracks assigned.")
@@ -586,7 +568,9 @@ class GroupingMixin:
         Grows candidate lines from seed vectors, filters them by geometric and
         morphological criteria, clusters them, and selects one line per cluster
         (or fitted / random lines). The selected lines are stored as
-        ``self.data['motion.loi.data']['loi_lines']`` and consumed by :meth:`group_tracks`
+        ``motion.lois.lines`` (px), their lengths as ``motion.lois.lengths`` (µm) and, except
+        for fitted straight lines, their sarcomere chains as ``motion.lois.index_lines``;
+        they are consumed by :meth:`group_tracks`
         with ``by='loi'`` to group full-field tracks along the curated fibres.
 
         Parameters
@@ -673,7 +657,7 @@ class GroupingMixin:
 
         index_lines = None              # a fitted straight line has no detection chain
         if mode == 'random_line':
-            loi_lines, len_loi_lines, index_lines = loi_detection.select_random_lois(
+            loi_lines, _, index_lines = loi_detection.select_random_lois(
                 lines=lines, pos_vectors=pos_px, n_lois=n_lois)
         else:
             # Hausdorff distances (µm) between the remaining lines, then clustering
@@ -683,23 +667,53 @@ class GroupingMixin:
             cluster, n_clusters = loi_detection.cluster_lois(
                 hausdorff_dist_matrix=dist, distance_threshold=distance_threshold_lois, linkage=linkage)
             if mode == 'fit_straight_line':
-                loi_lines, len_loi_lines = loi_detection.fit_straight_line_to_clusters(
+                loi_lines, _ = loi_detection.fit_straight_line_to_clusters(
                     lines_vectors=lines_vectors, cluster_labels=cluster, n_clusters=n_clusters,
                     pixelsize=self.metadata.pixelsize, add_length=2, n_lois=n_lois)
             else:
                 select = (loi_detection.select_longest_in_cluster if mode == 'longest_in_cluster'
                           else loi_detection.select_random_from_cluster)
-                loi_lines, len_loi_lines, index_lines = select(
+                loi_lines, _, index_lines = select(
                     lines=lines, pos_vectors=pos_px, cluster_labels=cluster, n_clusters=n_clusters, n_lois=n_lois)
-        # Only what group_tracks(by='loi') and the plots read is stored. loi_index_lines is the
-        # ordered detection-index chain of each line, so the grouping follows it head to tail.
-        # Plain lists: the store writes this dict as JSON, which takes lists of arrays but not
-        # object arrays.
-        loi = {'loi_lines': [np.asarray(line, dtype=float) for line in loi_lines],
-               'len_loi_lines': np.asarray(len_loi_lines, dtype=float),
-               'loi_index_lines': (None if index_lines is None
-                                   else [np.asarray(c, dtype=int) for c in index_lines])}
-        self.data['motion.loi.data'] = loi
+        # index_lines is the ordered detection-index chain of each line, so
+        # group_tracks(by='loi') follows it head to tail.
+        self._store_lois(loi_lines, index_lines)
+        self.data.update({f'params.motion.detect_lois.{name}': value for name, value in dict(
+            frame=frame, n_lois=n_lois, ratio_seeds=ratio_seeds, persistence=persistence,
+            threshold_distance=threshold_distance, mode=mode, random_seed=random_seed,
+            number_lims=number_lims, length_lims=length_lims,
+            sarcomere_mean_length_lims=sarcomere_mean_length_lims,
+            sarcomere_std_length_lims=sarcomere_std_length_lims,
+            midline_mean_length_lims=midline_mean_length_lims,
+            midline_std_length_lims=midline_std_length_lims,
+            midline_min_length_lims=midline_min_length_lims,
+            distance_threshold_lois=distance_threshold_lois, linkage=linkage).items()})
         if self.auto_save:
             self.store_structure_data()
-        logger.info(f"detect_lois: selected {len(loi['loi_lines'])} LOI line(s).")
+        logger.info(f"detect_lois: selected {len(loi_lines)} LOI line(s).")
+
+    def set_lois(self, lines: Sequence[np.ndarray]) -> None:
+        """Set the lines of interest by hand, e.g. lines drawn in the GUI.
+
+        Replaces any lines from :meth:`detect_lois`. :meth:`group_tracks` with ``by='loi'``
+        then assigns each track to the line it lies on.
+
+        Parameters
+        ----------
+        lines : sequence of np.ndarray
+            One polyline per LOI, each of shape ``(n_points, 2)`` in pixels, (row, column).
+        """
+        self._store_lois(lines, None)
+        self._drop_keys('params.motion.detect_lois.')
+        if self.auto_save:
+            self.store_structure_data()
+
+    def _store_lois(self, lines, index_lines) -> None:
+        """Store LOI polylines (px), their lengths (µm) and, for detected lines, their sarcomere chains."""
+        lines = [np.asarray(line, dtype=float).reshape(-1, 2) for line in lines]
+        self._drop_keys('motion.lois.')
+        self.data['motion.lois.lines'] = lines
+        self.data['motion.lois.lengths'] = np.asarray(
+            [float(np.hypot(*np.diff(line, axis=0).T).sum()) * self.metadata.pixelsize for line in lines])
+        if index_lines is not None:
+            self.data['motion.lois.index_lines'] = [np.asarray(c, dtype=int) for c in index_lines]

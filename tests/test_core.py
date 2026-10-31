@@ -136,15 +136,15 @@ def test_str_on_analysed_object(tmp_path):
         "params.motion.track.frames": [0, 1, 2, 3],
         "structure.sarcomere.n_vectors": np.array([40.0, 41.0, 39.0, 40.0]),
         "motion.tracks.n": 12,
-        "motion.groups.n": 3,
-        "motion.groups.kind": "pool",
+        "motion.groups.pool.track_group_id": np.zeros(12, int),
+        "motion.groups.pool.n": 3,
     })
     sarc.commit()
     text = str(sarc)
     assert "detect_sarcomeres" in text and "motion.track" in text
     # pipeline order, not alphabetical
     assert text.index("detect_sarcomeres") < text.index("motion.track")
-    assert "12 tracks" in text and "3 groups (pool)" in text
+    assert "12 tracks" in text and "groups: 3 pool" in text
     assert "~40 vectors/frame" in text
 
 

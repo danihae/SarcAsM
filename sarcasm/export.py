@@ -132,8 +132,7 @@ class BatchExport:
             :attr:`Export.motion_keys_default` when None. Default is None.
         kinds : str, list of str or None, optional
             Grouping kinds to export. ``None`` (default) exports every kind
-            analysed for the file (``motion.groups.analyzed_kinds``) rather than only
-            whichever ran last. Kinds missing from a file are skipped.
+            analysed for the file. Kinds missing from a file are skipped.
             Default is None.
         """
         if isinstance(kinds, str):
@@ -142,7 +141,7 @@ class BatchExport:
         for tif_file in tqdm(self.files):
             try:
                 sarc_obj = SarcAsM(file_path=tif_file)
-                available = sarc_obj.data.get('motion.groups.analyzed_kinds') or []
+                available = sarc_obj.motion._analyzed_kinds()
                 wanted = [k for k in (kinds or available) if k in available]
                 if not wanted:
                     logger.warning(f'{tif_file}: no track motion analyzed, skipping')
@@ -428,7 +427,7 @@ class Export:
         """
         Build one record per group of track-based motion features from a SarcAsM object.
 
-        Reads the ``<kind>_<suffix>`` keys written by
+        Reads the ``motion.<kind>.<suffix>`` keys written by
         :meth:`MotionAnalysis.analyze` (kind = pool / mband / myofibril /
         domain / loi). Each record is one group; per-cycle arrays (e.g.
         ``contr_max``) are collapsed to a per-group ``nanmean``.
@@ -436,13 +435,12 @@ class Export:
         Parameters
         ----------
         sarc_obj : SarcAsM
-            Analyzed object holding ``motion.groups.analyzed_kind`` and ``motion.<kind>.*`` keys.
+            Analyzed object holding the ``motion.<kind>.*`` keys.
         motion_keys : list or None, optional
             Feature suffixes; uses :attr:`Export.motion_keys_default` when None.
             Default is None.
-        kind : str or None, optional
-            Grouping kind; defaults to ``sarc_obj.data['motion.groups.analyzed_kind']``.
-            Default is None.
+        kind : str
+            The grouping kind to export.
         **conditions
             Extra columns: constants or filename-regex functions.
 
@@ -452,21 +450,16 @@ class Export:
             One record per group (metadata + group_id + selected features).
         """
         data = sarc_obj.data
-        kind = kind or data.get('motion.groups.analyzed_kind')
         if kind is None:
-            raise ValueError("No track motion found ('motion.groups.analyzed_kind' missing). "
-                             "Run sarc.motion.analyze() first.")
+            raise ValueError("Name the grouping kind to export, e.g. kind='myofibril'.")
         if motion_keys is None:
             motion_keys = Export.motion_keys_default
         metadata_dict = sarc_obj.metadata.to_dict()
-        # This kind's own group count, never 'motion.groups.n': that belongs to
-        # whichever grouping ran last, so on a multi-grouping store it iterates the
-        # wrong number of groups and reads motion.<kind>.* out of range.
-        if f'motion.groups.{kind}.n' not in data:
+        if kind not in sarc_obj.motion._analyzed_kinds():
             raise ValueError(
                 f"No '{kind}' track motion in this store. "
-                f"Run sarc.motion.analyze(by='{kind}') first; "
-                f"analysed kinds: {data.get('motion.groups.analyzed_kinds')}.")
+                f"Run sarc.motion.analyze('{kind}') first; "
+                f"analysed kinds: {sarc_obj.motion._analyzed_kinds()}.")
         n_groups = int(data[f'motion.groups.{kind}.n'])
         member_counts = np.asarray(data.get(f'motion.groups.{kind}.member_counts',
                                             np.full(n_groups, np.nan)))

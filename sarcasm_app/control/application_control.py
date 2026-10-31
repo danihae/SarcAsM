@@ -313,8 +313,7 @@ class ApplicationControl:
         cell = self.model.cell
         if cell is None or 'motion.tracks.slen' not in cell.data or not int(cell.data.get('motion.tracks.n', 0)):
             return None
-        key = (id(cell.data.get('motion.tracks.slen')), cell.data.get('motion.groups.hash'),
-               id(cell.data.get('motion.pool.contr')))
+        key = (id(cell.data.get('motion.tracks.slen')), id(cell.data.get('motion.pool.contr')))
         cached = getattr(cell, '_track_kinematics_cache', None)
         if cached is not None and cached[0] == key:
             return cached[1]
@@ -338,11 +337,13 @@ class ApplicationControl:
         if pos.ndim != 3 or pos.shape[0] == 0:
             return None
         n_tracks, T = pos.shape[:2]
-        gid = cell.data.get('motion.tracks.group_id')
-        gid = np.asarray(gid).reshape(-1) if gid is not None else np.full(n_tracks, -1)
+        kind = self.model.group_kind
+        grouped = kind in cell.motion._grouped_kinds()
+        gid = cell.motion._grouping(kind)['track_group_id'] if grouped else np.full(n_tracks, -1)
         if gid.shape[0] != n_tracks:
             gid = np.full(n_tracks, -1)                      # stale grouping
-        key = (id(cell.data.get('motion.tracks.slen')), cell.data.get('motion.groups.hash'),
+        key = (id(cell.data.get('motion.tracks.slen')), kind,
+               cell.data.get(f'motion.groups.{kind}.hash') if grouped else None,
                id(cell.data.get('motion.pool.contr')))
         cached = getattr(cell, '_track_layer_table', None)
         if cached is not None and cached[0] == key:
@@ -465,27 +466,23 @@ class ApplicationControl:
         if 'Groups' in self.viewer.layers:
             self.viewer.layers.remove(self.viewer.layers['Groups'])
         cell = self.model.cell
-        if cell is None or 'motion.tracks.group_id' not in cell.data:
-            return
-        kind = cell.data.get('motion.groups.kind')
-        if kind not in ('myofibril', 'loi'):
+        kind = self.model.group_kind
+        if cell is None or kind not in ('myofibril', 'loi') or kind not in cell.motion._grouped_kinds():
             return
         pos = np.asarray(cell.data['motion.tracks.positions_px'], dtype=float)
         if pos.ndim < 3 or pos.shape[0] == 0:
             return                               # no tracks
         n_tracks, T = pos.shape[:2]
-        gid = np.asarray(cell.data['motion.tracks.group_id']).reshape(-1)
-        if gid.size == 0:
+        grouping = cell.motion._grouping(kind)
+        gid, order = grouping['track_group_id'], grouping['track_group_order']
+        if gid.size == 0 or gid.shape[0] != n_tracks:
             return
-        order = np.asarray(cell.data.get('motion.tracks.group_order', np.zeros(n_tracks))).reshape(-1)
-        if gid.shape[0] != n_tracks:
-            return
-        ref = int(cell.data.get('params.motion.group_tracks.reference_frame', 0))
+        ref = int(cell.data.get(f'params.motion.group_tracks.{kind}.reference_frame', 0))
         try:
             ref_idx = cell.motion._tracked_frame_index(ref)
         except Exception:
             ref_idx = 0
-        n_groups = max(1, int(cell.data.get('motion.groups.n', int(gid.max()) + 1)))
+        n_groups = max(1, grouping['n'])
         import matplotlib.pyplot as plt
         cmap = plt.get_cmap('gist_rainbow')
         paths, colors, ids = [], [], []
@@ -1078,7 +1075,9 @@ class ApplicationControl:
         ('found no tracks', 'Lower "Min. track duration" in the Motion tab (it must be shorter than the movie) '
                             'and run the structure analysis with "All frames" selected.'),
         ('No tracks found', 'Run "1. Track sarcomere vectors" (or "Track → Group → Analyze") first.'),
-        ('No track grouping found', 'Run "2. Group tracks" (or "Track → Group → Analyze") first.'),
+        ("grouping found. Run sarc.motion.group_tracks", 'Run "2. Group tracks" (or "Track → Group → Analyze") first.'),
+        ('No analysis of the', 'Run "3. Analyze track motion" (or "Track → Group → Analyze") first.'),
+        ('changed since it was analysed', 'Run "3. Analyze track motion" again: the tracks were grouped anew.'),
         ('not tracked', 'Choose a reference frame that was tracked (the tracking covers only the frames '
                         'of the structure analysis).'),
         ('invalid numeric entries', 'Check the tracking parameters: the maximum displacements must be larger '

@@ -1532,10 +1532,9 @@ class SarcAsM(SarcAsMBase):
                 counts.append(f"~{int(np.nanmedian(n_vec))} vectors/frame")
         if 'motion.tracks.n' in data:
             counts.append(f"{int(data['motion.tracks.n'])} tracks")
-        if 'motion.groups.n' in data:
-            kind = data.get('motion.groups.kind') or data.get('motion.groups.analyzed_kind')
-            counts.append(f"{int(data['motion.groups.n'])} groups"
-                          + (f" ({kind})" if kind else ""))
+        grouped = [(kind, int(data[f'motion.groups.{kind}.n'])) for kind in self.motion._grouped_kinds()]
+        if grouped:
+            counts.append("groups: " + ", ".join(f"{n} {kind}" for kind, n in grouped))
         rows.append(("results", "  ·  ".join(counts)))
         return rows
 

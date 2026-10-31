@@ -157,74 +157,6 @@ class Plots:
         plt.show()
 
     @staticmethod
-    def plot_loi_detection(sarc_obj: SarcAsM, frame: int = 0, file_path: str = None,
-                           cmap_z_bands='Greys'):
-        """
-        Plot all steps of the automated LOI finding algorithm.
-
-        Parameters
-        ----------
-        sarc_obj : SarcAsM
-            The instance of SarcAsM class to plot.
-        frame : int, optional
-            The frame to plot. Default is 0.
-        file_path : str, optional
-            Path to save the plot. If None, the plot is not saved. Default is None.
-        cmap_z_bands : str, optional
-            Colormap of Z-bands. Default is 'Greys'.
-        """
-        mosaic = """
-        ac
-        bd
-        """
-
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(PlotUtils.width_2cols, PlotUtils.width_1p5cols),
-                                      constrained_layout=True)
-
-        if isinstance(sarc_obj.data['params.structure.analyze_vectors.frames'], int):
-            frame = sarc_obj.data['params.structure.analyze_vectors.frames']
-        elif sarc_obj.data['params.structure.analyze_vectors.frames'] == 'all':
-            frame = frame
-        else:
-            frame = sarc_obj.data['params.structure.analyze_vectors.frames'][frame]
-
-        Plots.plot_z_bands(axs['a'], sarc_obj, frame=frame, cmap=cmap_z_bands)
-        Plots.plot_z_bands(axs['c'], sarc_obj, frame=frame, cmap=cmap_z_bands)
-        Plots.plot_z_bands(axs['d'], sarc_obj, frame=frame, cmap=cmap_z_bands)
-
-        for i, pos_vectors_i in enumerate(sarc_obj.data['motion.loi.data']['lines_vectors']):
-            axs['a'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0], c='r', lw=0.2, alpha=0.6)
-
-        axs['b'].hist(sarc_obj.data['motion.loi.data']['hausdorff_dist_matrix'].reshape(-1), bins=100, color='k',
-                      alpha=0.75,
-                      rwidth=0.75)
-        axs['b'].set_xlim(0, 400)
-        axs['b'].set_xlabel('Hausdorff distance')
-        axs['b'].set_ylabel('# LOI pairs')
-
-        for i, (pos_vectors_i, label_i) in enumerate(zip(sarc_obj.data['motion.loi.data']['lines_vectors'],
-                                                         sarc_obj.data['motion.loi.data']['line_cluster'])):
-            axs['c'].plot(pos_vectors_i[:, 1], pos_vectors_i[:, 0],
-                          c=plt.cm.jet(label_i / sarc_obj.data['motion.loi.data']['n_lines_clusters']), lw=0.2)
-
-        for i, line_i in enumerate(sarc_obj.data['motion.loi.data']['loi_lines']):
-            axs['d'].plot(line_i.T[1], line_i.T[0], lw=2, label=i)
-        axs['d'].legend(loc='lower left', fontsize='xx-small')
-
-        PlotUtils.label_all_panels(axs, offset=(0.05, 0.9))
-
-        axs['a'].set_title('1. Line growth', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
-        axs['b'].set_title('2. Pair-wise Hausdorff distance', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1,
-                           fontweight='bold')
-        axs['c'].set_title('3. Agglomerative clustering', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1,
-                           fontweight='bold')
-        axs['d'].set_title('4. LOI lines', ha='left', x=0.02, fontsize=PlotUtils.fontsize + 1, fontweight='bold')
-
-        if file_path is not None:
-            fig.savefig(file_path, dpi=300)
-        plt.show()
-
-    @staticmethod
     def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap: str = 'gray',
                    alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
                    title: Union[None, str] = None, show_loi: bool = False, invert: bool = False,
@@ -1453,8 +1385,8 @@ class Plots:
         """
         # A track chain viewed as a Motion carries no LOI polyline; only a SarcAsM holds LOI lines.
         loi_lines = None
-        if hasattr(sarc_obj, 'data') and 'motion.loi.data' in sarc_obj.data:
-            loi_lines = sarc_obj.data['motion.loi.data'].get('loi_lines', [])
+        if hasattr(sarc_obj, 'data') and 'motion.lois.lines' in sarc_obj.data:
+            loi_lines = sarc_obj.data['motion.lois.lines']
 
         if loi_lines is not None:
             # Plot each line
@@ -1814,137 +1746,6 @@ class Plots:
         PlotUtils.polish_xticks(ax)
 
     @staticmethod
-    def plot_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
-                               y_lim: Tuple[float, float] = (1.6, 2.2), n_rows: Optional[int] = None,
-                               show_contr: bool = True, use_median: bool = False):
-        """
-        Plots domain sarcomere length time-series in a stacked multi-subplot layout.
-
-        Each domain's sarcomere length time-series is shown in a separate row, with optional
-        contraction period shading and a dotted line at the domain's equilibrium length
-        (its median length over the non-contracting frames). Same rendering as
-        :meth:`plot_slen_mean`, with the rows numbered like the domain masks.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            The axes to draw the plot on.
-        sarc_obj : SarcAsM
-            The SarcAsM object with domain motion analysis results.
-        t_lim : tuple of float, optional
-            The time limits for the plot in seconds; ``None`` on either side means the
-            recording boundary. Default is (0, None).
-        y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Default is (1.6, 2.2).
-        n_rows : int, optional
-            Number of domains to display. If None, all domains are shown. Default is None.
-        show_contr : bool, optional
-            Whether to shade contraction periods. Default is True.
-        use_median : bool, optional
-            If True, use median sarcomere length instead of mean. Default is False.
-
-        Raises
-        ------
-        ValueError
-            If domain motion analysis has not been run.
-        """
-        # Validate prerequisites
-        if 'motion.domain.slen' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call sarc.motion.analyze(by='domain') first.")
-
-        # Get data
-        key = 'motion.domain.slen_median' if use_median else 'motion.domain.slen'
-        slen_timeseries = np.asarray(sarc_obj.data[key], dtype=float)
-        domain_contr = sarc_obj.data.get('motion.domain.contr', None)
-        Plots._plot_group_stacked(ax, sarc_obj, 'domain', slen_timeseries, domain_contr, _LABEL_SL,
-                                  t_lim, y_lim, n_rows, show_contr, label_offset=1)
-
-    @staticmethod
-    def plot_overlay_domain_timeseries(ax: Axes, sarc_obj: SarcAsM, t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
-                                       y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True,
-                                       show_average: bool = True, use_median: bool = False,
-                                       domain_indices: Optional[list] = None):
-        """
-        Plots domain sarcomere length time-series as overlaid trajectories.
-
-        All domain time-series are plotted on the same axes with different colors,
-        optionally with an average line and contraction period shading.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes
-            The axes to draw the plot on.
-        sarc_obj : SarcAsM
-            The SarcAsM object with domain motion analysis results.
-        t_lim : tuple of float, optional
-            The time limits for the plot in seconds; ``None`` on either side means the
-            recording boundary. Default is (0, None).
-        y_lim : tuple of float, optional
-            The y-axis limits for sarcomere length in µm. Default is (1.4, 2.2).
-        show_contr : bool, optional
-            Whether to shade contraction periods (union of all domain contractions). Default is True.
-        show_average : bool, optional
-            Whether to show the average across all domains. Default is True.
-        use_median : bool, optional
-            If True, use median sarcomere length instead of mean. Default is False.
-        domain_indices : list of int, optional
-            Domain indices (0-based) to plot. If None, all domains are plotted. Default is None.
-
-        Raises
-        ------
-        ValueError
-            If domain motion analysis has not been run.
-        """
-        # Validate prerequisites
-        if 'motion.domain.slen' not in sarc_obj.data:
-            raise ValueError("Domain motion analysis not run. Call sarc.motion.analyze(by='domain') first.")
-
-        # Get data
-        if use_median:
-            slen_timeseries = sarc_obj.data['motion.domain.slen_median']
-        else:
-            slen_timeseries = sarc_obj.data['motion.domain.slen']
-        n_domains, n_frames = slen_timeseries.shape
-        time = np.arange(n_frames) * sarc_obj.metadata.frametime
-
-        # Select domains to plot
-        if domain_indices is None:
-            domain_indices = list(range(n_domains))
-        domain_indices = [i for i in domain_indices if 0 <= i < n_domains]
-
-        # Get contraction data if available
-        domain_contr = sarc_obj.data.get('motion.domain.contr', None)
-
-        # Shade contraction periods (union across selected domains)
-        if show_contr and domain_contr is not None:
-            any_contr = np.any(domain_contr[domain_indices], axis=0)
-            ax.fill_between(time, y_lim[0], y_lim[1], where=any_contr, color='lavender', alpha=0.5)
-
-        # Domain colormap
-        cm = plt.cm.gist_rainbow(np.linspace(0, 1, n_domains))
-
-        # Plot individual domain trajectories
-        for domain_idx in domain_indices:
-            ax.plot(time, slen_timeseries[domain_idx], c=cm[domain_idx], lw=0.8,
-                    label=f'Domain {domain_idx + 1}', alpha=0.8)
-
-        # Plot average trajectory
-        if show_average and len(domain_indices) > 1:
-            avg_slen = np.nanmean(slen_timeseries[domain_indices], axis=0)
-            ax.plot(time, avg_slen, c='k', lw=2, linestyle='-', label='Average')
-
-        # Configure axes
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Sarcomere length [µm]')
-        ax.set_xlim(t_lim)
-        ax.set_ylim(y_lim)
-        PlotUtils.polish_xticks(ax)
-        PlotUtils.polish_yticks(ax, 0.2, 0.1)
-
-        # Add legend
-        ax.legend(loc='upper right', fontsize='x-small')
-
-    @staticmethod
     def plot_phase_space(ax: Axes, motion_obj: Motion, t_lim=(0, None), number_contr=None, frame=None):
         """
         Plot the sarcomere trajectory in length-change vs. velocity phase space.
@@ -2062,14 +1863,14 @@ class Plots:
             Coverage in percent, shape ``(n_tracks,)``.
         """
         if 'motion.tracks.n_frames' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run sarc.motion.track first.')
+            raise ValueError('No tracks found. Run sarc.motion.track() first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         n_t = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1).shape[1]
         return np.asarray(sarc_obj.data['motion.tracks.n_frames'], dtype=float) / max(n_t, 1) * 100.0
 
     @staticmethod
     def plot_tracks(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'coverage',
-                    cmap: str = 'viridis', linewidth: float = 0.8, only_observed: bool = True,
+                    kind: Optional[str] = None, cmap: str = 'viridis', linewidth: float = 0.8, only_observed: bool = True,
                     max_tracks: Optional[int] = 2000, alpha: float = 0.8,
                     clim: Optional[Tuple[float, float]] = None,
                     scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
@@ -2096,8 +1897,9 @@ class Plots:
             trajectories always span the full movie). Default is 0.
         color_by : {'coverage', 'slen', 'group'}, optional
             Per-track colour: observation coverage in percent, the track's mean sarcomere
-            length, or ``track_group_id`` (requires :meth:`MotionAnalysis.group_tracks`).
-            Default is 'coverage'.
+            length, or the track's group in the ``kind`` grouping. Default is 'coverage'.
+        kind : str, optional
+            The grouping ``color_by='group'`` shows. Default is None.
         cmap : str, optional
             Colormap for the 'coverage'/'slen' colourings ('group' always uses a
             discrete ``gist_rainbow``). Default is 'viridis'.
@@ -2141,7 +1943,7 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run sarc.motion.track first.')
+            raise ValueError('No tracks found. Run sarc.motion.track() first.')
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)
         observed = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1).astype(bool)
@@ -2153,10 +1955,10 @@ class Plots:
                 c = np.nanmean(np.where(observed, slen, np.nan), axis=1)
             clabel = 'Sarcomere length [µm]'
         elif color_by == 'group':
-            if 'motion.tracks.group_id' not in sarc_obj.data:
-                raise ValueError("color_by='group' requires sarc.motion.group_tracks() first.")
-            c = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(float)
-            clabel = 'Group id'
+            if kind is None:
+                raise ValueError("color_by='group' needs the grouping, e.g. kind='mband'.")
+            c = sarc_obj.motion._grouping(kind)['track_group_id'].astype(float)
+            clabel = f'Group id ({kind})'
         else:  # coverage
             c = Plots._track_coverage(sarc_obj)
             clabel = 'Track coverage [%]'
@@ -2194,7 +1996,7 @@ class Plots:
         if segments:
             vals = np.asarray(seg_vals, dtype=float)
             if color_by == 'group':
-                n_groups = max(int(sarc_obj.data.get('motion.groups.n', 0)), 1)
+                n_groups = max(sarc_obj.motion._grouping(kind)['n'], 1)
                 gcm = plt.get_cmap('gist_rainbow')
                 colors = gcm((vals.astype(int) % n_groups) / n_groups)
                 lc = LineCollection(segments, colors=colors, linewidths=linewidth, alpha=alpha)
@@ -2292,7 +2094,7 @@ class Plots:
 
     @staticmethod
     def track_color_values(sarc_obj: SarcAsM, color_by: str = 'slen',
-                           kinematics: Optional[dict] = None) -> np.ndarray:
+                           kinematics: Optional[dict] = None, kind: Optional[str] = None) -> np.ndarray:
         """
         Per-track colour values for the vector overlays.
 
@@ -2306,6 +2108,8 @@ class Plots:
             signal when available).
         kinematics : dict, optional
             A cached result of :meth:`MotionAnalysis.kinematics` to avoid recomputing it per frame.
+        kind : str, optional
+            The grouping whose group ids ``color_by='group'`` shows. Default is None.
 
         Returns
         -------
@@ -2322,14 +2126,14 @@ class Plots:
         if color_by == 'coverage':
             return Plots._track_coverage(sarc_obj)
         if color_by == 'group':
-            if 'motion.tracks.group_id' not in sarc_obj.data:
-                raise ValueError("color_by='group' requires sarc.motion.group_tracks() first.")
-            return np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(float)
+            if kind is None:
+                raise ValueError("color_by='group' needs the grouping, e.g. kind='mband'.")
+            return sarc_obj.motion._grouping(kind)['track_group_id'].astype(float)
         raise ValueError(f"unknown color_by {color_by!r}")
 
     @staticmethod
     def plot_track_vectors(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, color_by: str = 'slen',
-                           cmap: Optional[str] = None, clim: Optional[Tuple[float, float]] = None,
+                           kind: Optional[str] = None, cmap: Optional[str] = None, clim: Optional[Tuple[float, float]] = None,
                            linewidth: Optional[float] = None, only_observed: bool = True,
                            scalebar: bool = True, colorbar: bool = False, title: Optional[str] = None,
                            show_image: bool = False, show_z_bands: bool = False,
@@ -2356,6 +2160,8 @@ class Plots:
             Frame to draw. Default is 0.
         color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}, optional
             Colour quantity. Default is 'slen'.
+        kind : str, optional
+            The grouping ``color_by='group'`` shows. Default is None.
         cmap : str, optional
             Colormap; default per quantity from :attr:`TRACK_COLOR_DEFAULTS`.
         clim : tuple of float, optional
@@ -2378,12 +2184,12 @@ class Plots:
         """
         frame = Plots._frame(sarc_obj, frame)
         if 'motion.tracks.positions_px' not in sarc_obj.data:
-            raise ValueError('No tracks found. Run sarc.motion.track first.')
+            raise ValueError('No tracks found. Run sarc.motion.track() first.')
         cmap_d, clim_d, clabel = Plots.TRACK_COLOR_DEFAULTS[color_by]
         cmap = cmap or cmap_d
         clim = clim if clim is not None else clim_d
         mask = Plots.track_vector_mask(sarc_obj, frame, only_observed=only_observed)
-        values = Plots.track_color_values(sarc_obj, color_by, kinematics)
+        values = Plots.track_color_values(sarc_obj, color_by, kinematics, kind=kind)
         vals = values[:, sarc_obj.motion._tracked_frame_index(frame)] if values.ndim == 2 else values
         if color_by == 'group':
             mask &= vals >= 0
@@ -2400,7 +2206,7 @@ class Plots:
             width_px = float(sarc_obj.metadata.size[-1])
             linewidth = max(72.0 * bb.width / ax.figure.dpi / width_px * 1.4, 0.3)
         if color_by == 'group':
-            n_groups = max(int(sarc_obj.data.get('motion.groups.n', 0)), 1)
+            n_groups = max(sarc_obj.motion._grouping(kind)['n'], 1)
             colors = plt.get_cmap(cmap)((vals[mask].astype(int) % n_groups) / n_groups)
             lc = LineCollection(segments, colors=colors, linewidths=linewidth, capstyle='butt')
         else:
@@ -2426,7 +2232,7 @@ class Plots:
         return lc
 
     @staticmethod
-    def plot_track_groups(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, cmap: str = 'gist_rainbow',
+    def plot_track_groups(ax: Axes, sarc_obj: SarcAsM, kind: str, frame: int = 0, cmap: str = 'gist_rainbow',
                           s: float = 5, show_dropped: bool = True, dropped_color: str = 'lightgrey',
                           scalebar: bool = True, title: Optional[str] = None,
                           show_image: bool = False, show_z_bands: bool = False,
@@ -2446,6 +2252,8 @@ class Plots:
             The axes to draw the plot on.
         sarc_obj : SarcAsM
             SarcAsM with a track grouping (:meth:`MotionAnalysis.group_tracks`).
+        kind : str
+            The grouping to show ('pool', 'mband', 'myofibril', ...).
         frame : int, optional
             Movie frame to draw. Default is 0.
         cmap : str, optional
@@ -2479,14 +2287,13 @@ class Plots:
             Opacity of the Z-band background. Default is 1.
         """
         frame = Plots._frame(sarc_obj, frame)
-        if 'motion.tracks.group_id' not in sarc_obj.data:
-            raise ValueError('No track grouping found. Run sarc.motion.group_tracks(...) first.')
+        grouping = sarc_obj.motion._grouping(kind)
         n_tracks = int(sarc_obj.data.get('motion.tracks.n', 0))
         t = sarc_obj.motion._tracked_frame_index(frame)
-        n_groups = int(sarc_obj.data.get('motion.groups.n', 0))
+        n_groups = grouping['n']
 
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)
-        gid = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1)
+        gid = grouping['track_group_id']
         yx = pos[:, t]
         finite = np.isfinite(yx[:, 0]) & np.isfinite(yx[:, 1])
 
@@ -2509,7 +2316,6 @@ class Plots:
                                    width_fraction=0.02, location='lower right', scale_loc='top',
                                    font_properties={'size': PlotUtils.fontsize - 1}))
         ax.set_xticks([]); ax.set_yticks([])
-        kind = sarc_obj.data.get('motion.groups.kind', '')
         ax.set_title(title if title is not None else f"Track groups ('{kind}', n={n_groups})",
                      fontsize=PlotUtils.fontsize)
 
@@ -2584,18 +2390,17 @@ class Plots:
 
     @staticmethod
     def _resolve_kind(sarc_obj, kind):
-        """Resolve and validate the grouping kind, defaulting to the last analyzed one."""
-        # Validate the kind being plotted, not just the current grouping.
-        sarc_obj.motion._assert_track_motion_fresh(kind)
+        """Validate that the ``kind`` grouping is analysed and current."""
         if kind is None:
-            kind = sarc_obj.data.get('motion.groups.analyzed_kind')
-        if f'motion.{kind}.slen' not in sarc_obj.data:
+            raise ValueError("Name the grouping to plot, e.g. kind='myofibril'.")
+        sarc_obj.motion._assert_track_motion_fresh(kind)
+        if f'motion.{kind}.slen_avg' not in sarc_obj.data:
             raise ValueError(f"No '{kind}' track-motion results found. "
                              f"Run sarc.motion.analyze(by='{kind}') first.")
         return kind
 
     @staticmethod
-    def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
+    def plot_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: str,
                        t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (1.3, 2.0),
                        n_rows: Optional[int] = None, show_contr: bool = True,
                        use_median: bool = False, readable_labels: bool = False):
@@ -2613,9 +2418,8 @@ class Plots:
             The axes to draw the plot on.
         sarc_obj : SarcAsM
             The SarcAsM object with track motion analysis results.
-        kind : str, optional
-            Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
-            grouping (``motion.groups.analyzed_kind``) is used. Default is None.
+        kind : str
+            The grouping to plot ('pool', 'mband', 'myofibril', ...).
         t_lim : tuple of float, optional
             The time limits for the plot in seconds; ``None`` on either side means the
             recording boundary. Default is (0, None).
@@ -2632,14 +2436,14 @@ class Plots:
             y tick labels only on the bottom row, for many rows. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
-        key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen'
+        key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen_avg'
         matrix = np.asarray(sarc_obj.data[key])
         group_contr = sarc_obj.data.get(f'motion.{kind}.contr', None)
         Plots._plot_group_stacked(ax, sarc_obj, kind, matrix, group_contr, _LABEL_SL,
                                   t_lim, y_lim, n_rows, show_contr, readable_labels=readable_labels)
 
     @staticmethod
-    def plot_delta_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: Optional[str] = None,
+    def plot_delta_slen_mean(ax: Axes, sarc_obj: SarcAsM, kind: str,
                              t_lim: Tuple[Optional[float], Optional[float]] = (0, None), y_lim: Tuple[float, float] = (-0.4, 0.4),
                              n_rows: Optional[int] = None, show_contr: bool = True,
                              use_median: bool = False, readable_labels: bool = False):
@@ -2657,9 +2461,8 @@ class Plots:
             The axes to draw the plot on.
         sarc_obj : SarcAsM
             The SarcAsM object with track motion analysis results.
-        kind : str, optional
-            Grouping prefix ('pool', 'mband', ...). If None, the last analyzed
-            grouping (``motion.groups.analyzed_kind``) is used. Default is None.
+        kind : str
+            The grouping to plot ('pool', 'mband', 'myofibril', ...).
         t_lim : tuple of float, optional
             The time limits for the plot in seconds; ``None`` on either side means the
             recording boundary. Default is (0, None).
@@ -2675,7 +2478,7 @@ class Plots:
             See :meth:`plot_slen_mean`. Default is False.
         """
         kind = Plots._resolve_kind(sarc_obj, kind)
-        key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen'
+        key = f'motion.{kind}.slen_median' if use_median else f'motion.{kind}.slen_avg'
         slen_ts = np.asarray(sarc_obj.data[key], dtype=float)
         contr = np.asarray(sarc_obj.data[f'motion.{kind}.contr']) if f'motion.{kind}.contr' in sarc_obj.data else None
         delta = np.full_like(slen_ts, np.nan)
@@ -2701,14 +2504,15 @@ class Plots:
         if y_lim is None:
             y_lim = (-0.4, 0.4) if mode == 'delta' else (1.6, 2.2)
         n_tracks = int(sarc_obj.data['motion.tracks.n'])
-        n_groups = int(sarc_obj.data.get('motion.groups.n', 0))
+        grouping = sarc_obj.motion._grouping(kind)
+        n_groups = grouping['n']
         if not (0 <= group < max(n_groups, 1)):
             raise ValueError(f'group {group} out of range [0, {n_groups}).')
-        gid = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1)
+        gid = grouping['track_group_id']
         slen_tracks = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)
         T = slen_tracks.shape[1]
         time = np.arange(T) * sarc_obj.metadata.frametime
-        agg = np.asarray(sarc_obj.data[f'motion.{kind}.slen'], dtype=float)[group]
+        agg = np.asarray(sarc_obj.data[f'motion.{kind}.slen_avg'], dtype=float)[group]
         contr = (np.asarray(sarc_obj.data[f'motion.{kind}.contr'])[group]
                  if f'motion.{kind}.contr' in sarc_obj.data else np.zeros(T, dtype=bool))
 
@@ -2785,7 +2589,7 @@ class Plots:
         Polymorphic — pass either object:
 
         * **SarcAsM** (track grouping): overlays the member sarcomeres of one
-          track ``group`` (``kind`` defaults to the last analyzed grouping), with
+          track ``group`` of the ``kind`` grouping, with
           the group aggregate drawn bold. Members are subsampled to ``max_lines``
           (longest-coverage first) for legibility. Requires
           :meth:`MotionAnalysis.analyze`.
@@ -2802,8 +2606,7 @@ class Plots:
         group : int, optional
             Track group index to plot (SarcAsM only). Default is 0.
         kind : str, optional
-            Grouping prefix (SarcAsM only). If None, the last analyzed grouping is
-            used. Default is None.
+            The grouping the group belongs to (SarcAsM only, required there).
         t_lim : tuple of float, optional
             The time limits for the plot in seconds; ``None`` on either side means the
             recording boundary. Default is (0, None).
@@ -2865,8 +2668,7 @@ class Plots:
         group : int, optional
             Track group index to plot (SarcAsM only). Default is 0.
         kind : str, optional
-            Grouping prefix ('pool', 'mband', ...) (SarcAsM only). If None, the last
-            analyzed grouping is used. Default is None.
+            The grouping the group belongs to ('pool', 'mband', ...) (SarcAsM only, required there).
         t_lim : tuple of float, optional
             The time limits for the plot in seconds; ``None`` on either side means the
             recording boundary. Default is (0, None).
@@ -2900,7 +2702,7 @@ class Plots:
                                           color=color, mean_color=mean_color)
 
     @staticmethod
-    def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0,
+    def plot_track_myofibrils(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, kind: str = 'myofibril',
                               color_by: str = 'group', cmap: str = 'gist_rainbow',
                               linewidth: float = 1.5, show_points: bool = True, markersize: float = 6,
                               only_observed: bool = False,
@@ -2927,6 +2729,8 @@ class Plots:
             SarcAsM with a myofibril grouping.
         frame : int, optional
             Movie frame to draw. Default is 0.
+        kind : {'myofibril', 'loi'}, optional
+            The ordered grouping to draw. Default is 'myofibril'.
         color_by : {'group', 'slen', 'beating_rate'}, optional
             Per-fibre colour: fibre id, the fibre's median sarcomere length at this
             frame, or its beating rate (requires ``sarc.motion.analyze(by='myofibril')``).
@@ -2966,16 +2770,17 @@ class Plots:
             Opacity of the Z-band background. Default is 1.
         """
         frame = Plots._frame(sarc_obj, frame)
-        if sarc_obj.data.get('motion.groups.kind') != 'myofibril':
-            raise ValueError("plot_track_myofibrils requires a 'myofibril' grouping. "
-                             "Run sarc.motion.group_tracks(by='myofibril') first.")
+        if kind not in sarc_obj.motion._CHAIN_LEVELS:
+            raise ValueError(f"plot_track_myofibrils draws an ordered grouping, {sarc_obj.motion._CHAIN_LEVELS}, "
+                             f"got '{kind}'.")
+        grouping = sarc_obj.motion._grouping(kind)
         n_tracks = int(sarc_obj.data['motion.tracks.n'])
         t = sarc_obj.motion._tracked_frame_index(frame)
-        n_groups = int(sarc_obj.data.get('motion.groups.n', 0))
+        n_groups = grouping['n']
 
         pos = np.asarray(sarc_obj.data['motion.tracks.positions_px'], dtype=float).reshape(n_tracks, -1, 2)[:, t]
-        gid = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1)
-        order = np.asarray(sarc_obj.data['motion.tracks.group_order']).reshape(-1)
+        gid = grouping['track_group_id']
+        order = grouping['track_group_order']
         observed = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1)[:, t].astype(bool)
         slen_t = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
 
@@ -2983,7 +2788,7 @@ class Plots:
         metric = None
         clabel = ''
         if color_by == 'beating_rate':
-            metric = np.asarray(sarc_obj.data.get('motion.myofibril.beating_rate', np.full(n_groups, np.nan)), dtype=float)
+            metric = np.asarray(sarc_obj.data.get(f'motion.{kind}.beating_rate', np.full(n_groups, np.nan)), dtype=float)
             clabel = 'Beating rate [Hz]'
         elif color_by == 'slen':
             with np.errstate(invalid='ignore'):
@@ -3218,8 +3023,8 @@ class Plots:
             group id and, for the fibre groupings, head-to-tail. Default is 'time_to_peak'
             (``'group'`` when ``cycle_average`` is False).
         kind : str or None, optional
-            Grouping whose labels are used; None uses the grouping currently in
-            effect, or no grouping if none exists. Default is None.
+            Grouping whose labels are used (tracks outside its groups are left out, and
+            ``sort_by='group'`` sorts by it); None uses no grouping. Default is None.
         clim : tuple of float or None, optional
             Colour limits. None: symmetric at the 99th percentile of |value| for
             ``delta_slen`` / ``vel``, the 1st-99th percentiles for ``slen``. Default is None.
@@ -3253,12 +3058,13 @@ class Plots:
         frametime = sarc_obj.metadata.frametime
         keep = kin['coverage'] >= min_coverage
 
-        gid_key = sarc_obj.motion._grouping_key(kind, 'motion.tracks.group_id')
-        order_key = sarc_obj.motion._grouping_key(kind, 'motion.tracks.group_order')
-        gid = None
-        if gid_key in sarc_obj.data:
-            gid = np.asarray(sarc_obj.data[gid_key]).reshape(-1)[:n_tracks]
+        gid = order = None
+        if kind is not None:
+            grouping = sarc_obj.motion._grouping(kind)
+            gid, order = grouping['track_group_id'][:n_tracks], grouping['track_group_order'][:n_tracks]
             keep &= gid >= 0
+        elif sort_by == 'group':
+            raise ValueError("sort_by='group' needs the grouping, e.g. kind='myofibril'.")
 
         peak_frame = None
         if cycle_average:
@@ -3296,8 +3102,6 @@ class Plots:
             amp = -np.nanmin(dsl[rows], axis=1)
             rows = rows[np.argsort(-amp, kind='stable')]
         elif gid is not None:
-            order = (np.asarray(sarc_obj.data[order_key]).reshape(-1)[:n_tracks]
-                     if order_key in sarc_obj.data else np.zeros(n_tracks))
             pos0 = np.asarray(sarc_obj.data['motion.tracks.positions_um'], dtype=float).reshape(n_tracks, T, 2)
             start = np.asarray(sarc_obj.data.get('motion.tracks.start_frame', np.zeros(n_tracks, int))).astype(int)
             yx = pos0[np.arange(n_tracks), start]
@@ -3328,9 +3132,9 @@ class Plots:
             if groups.size <= 40:
                 ax.set_yticks([np.mean(np.flatnonzero(g_sorted == g)) + 0.5 for g in groups])
                 ax.set_yticklabels([str(int(g)) for g in groups], fontsize='x-small')
-                ax.set_ylabel(f'Group ({sarc_obj.data.get("motion.groups.kind", "")})')
+                ax.set_ylabel(f'Group ({kind})')
             else:
-                ax.set_ylabel(f'Sarcomere (by {sarc_obj.data.get("motion.groups.kind", "group")})')
+                ax.set_ylabel(f'Sarcomere (by {kind})')
         else:
             ax.set_ylabel({'time_to_peak': 'Sarcomere (sorted by time to peak)',
                            'amplitude': 'Sarcomere (sorted by amplitude)'}.get(sort_by, 'Sarcomere'))

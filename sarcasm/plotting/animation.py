@@ -120,8 +120,10 @@ class _TrackVectorLayer:
     def __init__(self, sarc_obj: SarcAsM, color_by: str = 'slen', cmap: Optional[str] = None,
                  clim: Optional[Tuple[float, float]] = None, linewidth: Optional[float] = None,
                  only_observed: bool = True, colorbar: bool = True,
-                 highlight: Optional[Sequence[np.ndarray]] = None, kinematics: Optional[dict] = None):
+                 highlight: Optional[Sequence[np.ndarray]] = None, kinematics: Optional[dict] = None,
+                 kind: Optional[str] = None):
         self.sarc, self.color_by, self.cmap, self.clim = sarc_obj, color_by, cmap, clim
+        self.kind = kind
         self.linewidth, self.only_observed, self.colorbar = linewidth, only_observed, colorbar
         self.highlight = highlight or []
         self.kin = kinematics
@@ -129,11 +131,11 @@ class _TrackVectorLayer:
         self.lc = None
 
     def setup(self, ax: Axes, frame: int) -> None:
-        self.values = Plots.track_color_values(self.sarc, self.color_by, self.kin)
+        self.values = Plots.track_color_values(self.sarc, self.color_by, self.kin, kind=self.kind)
         self.lc = Plots.plot_track_vectors(ax, self.sarc, _movie_frame(self.sarc, frame), color_by=self.color_by,
                                            cmap=self.cmap, clim=self.clim, linewidth=self.linewidth,
                                            only_observed=self.only_observed, scalebar=False, colorbar=False,
-                                           kinematics=self.kin)
+                                           kinematics=self.kin, kind=self.kind)
         if self.colorbar and self.color_by != 'group':
             bb = ax.get_position()
             cax = ax.figure.add_axes([bb.x1 + 0.006, bb.y0 + 0.1 * (bb.y1 - bb.y0), 0.008, 0.8 * (bb.y1 - bb.y0)])
@@ -156,7 +158,7 @@ class _TrackVectorLayer:
         mask &= np.isfinite(vals)
         self.lc.set_segments(Plots.track_vector_segments(self.sarc, movie_frame, mask))
         if self.color_by == 'group':
-            n_groups = max(int(self.sarc.data.get('motion.groups.n', 0)), 1)
+            n_groups = max(self.sarc.motion._grouping(self.kind)['n'], 1)
             self.lc.set_colors(plt.get_cmap(self.cmap or 'gist_rainbow')((vals[mask].astype(int) % n_groups) / n_groups))
         else:
             self.lc.set_array(vals[mask])
@@ -281,18 +283,11 @@ class Animations:
 
     @staticmethod
     def _group_members(sarc_obj: SarcAsM, kind: str) -> Tuple[np.ndarray, Optional[np.ndarray]]:
-        """Group ids of all tracks for ``kind`` (per-kind mirror or the current grouping) and the
-        order along the chain for the chain levels."""
-        key = f'motion.groups.{kind}.track_group_id'
-        if key in sarc_obj.data:
-            gid = np.asarray(sarc_obj.data[key]).reshape(-1).astype(int)
-            order = sarc_obj.data.get(f'motion.groups.{kind}.track_group_order')
-        elif sarc_obj.data.get('motion.groups.kind') == kind:
-            gid = np.asarray(sarc_obj.data['motion.tracks.group_id']).reshape(-1).astype(int)
-            order = sarc_obj.data.get('motion.tracks.group_order')
-        else:
-            raise ValueError(f"no '{kind}' grouping found; run sarc.motion.analyze(by='{kind}') first")
-        return gid, (np.asarray(order).reshape(-1) if order is not None else None)
+        """Group ids of all tracks in the ``kind`` grouping, and the order along the line for the
+        ordered kinds (None for the others)."""
+        grouping = sarc_obj.motion._grouping(kind)
+        order = grouping['track_group_order'] if kind in sarc_obj.motion._CHAIN_LEVELS else None
+        return grouping['track_group_id'].astype(int), order
 
     @staticmethod
     def _window_members(sarc_obj: SarcAsM, frames: np.ndarray, min_coverage: float) -> np.ndarray:
@@ -401,7 +396,7 @@ class Animations:
                                 label=f'{percentiles[0]:g}–{percentiles[3]:g}%')
                 ax.fill_between(t, q[1], q[2], color='#4c78b4', alpha=0.55, lw=0, zorder=2.2,
                                 label=f'{percentiles[1]:g}–{percentiles[2]:g}%')
-            pool_key = 'motion.pool.slen' if quantity == 'slen' else None
+            pool_key = 'motion.pool.slen_avg' if quantity == 'slen' else None
             if pool_key in sarc_obj.data:
                 mean = np.asarray(sarc_obj.data[pool_key], dtype=float).reshape(-1)[frames]
             else:
@@ -415,8 +410,8 @@ class Animations:
             for j, k in enumerate(members):
                 ax.plot(t, values[k], lw=0.3 if thin else 0.45, color=cmap(j / max(members.size - 1, 1)),
                         alpha=0.3 if thin else 0.4, zorder=2)
-            if 'motion.pool.slen' in sarc_obj.data and quantity == 'slen':
-                cell = np.asarray(sarc_obj.data['motion.pool.slen'], dtype=float).reshape(-1)[frames]
+            if 'motion.pool.slen_avg' in sarc_obj.data and quantity == 'slen':
+                cell = np.asarray(sarc_obj.data['motion.pool.slen_avg'], dtype=float).reshape(-1)[frames]
             else:
                 cov_all = np.flatnonzero(obs.mean(axis=1) >= 0.5)
                 cell = np.nanmean(values[cov_all], axis=0)
@@ -506,6 +501,7 @@ class Animations:
 
     @staticmethod
     def animate_track_vectors(sarc_obj: SarcAsM, out: str, color_by: str = 'slen', frames: FramesSpec = None,
+                              kind: Optional[str] = None,
                               background: str = 'image', cmap: Optional[str] = None,
                               clim: Optional[Tuple[float, float]] = None, linewidth: Optional[float] = None,
                               highlight_groups: Optional[Dict[str, int]] = None, title: Optional[str] = None,
@@ -523,6 +519,8 @@ class Animations:
             Output path (``.mp4`` or ``.gif``).
         color_by : {'slen', 'delta_slen', 'vel', 'coverage', 'group'}, optional
             Colour quantity. Default is 'slen'.
+        kind : str, optional
+            The grouping ``color_by='group'`` shows. Default is None.
         frames : None, (start_s, stop_s) or sequence of int, optional
             Frames to render. Default all tracked frames.
         background : {'image', 'zbands', 'none'}, optional
@@ -559,7 +557,7 @@ class Animations:
             gid, _ = Animations._group_members(sarc_obj, kind)
             highlight.append(np.flatnonzero(gid == g))
         vec = _TrackVectorLayer(sarc_obj, color_by=color_by, cmap=cmap, clim=clim, linewidth=linewidth,
-                                highlight=highlight, kinematics=kin)
+                                highlight=highlight, kinematics=kin, kind=kind)
         vec.setup(ax, int(frames[0]))
         renderers.append(vec)
         ax.set_title(title or Plots.TRACK_COLOR_DEFAULTS[color_by][2], fontsize=PlotUtils.fontsize, fontweight='bold')

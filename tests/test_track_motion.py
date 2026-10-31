@@ -131,7 +131,7 @@ class TestGetTrackMotion:
 
     def test_chain_geometry(self, sarc, raw):
         ld = raw.loi_data
-        K = int(np.count_nonzero(sarc.data['motion.tracks.group_id'] == 0))
+        K = int(np.count_nonzero(sarc.data['motion.groups.myofibril.track_group_id'] == 0))
         T = int(np.asarray(sarc.data['motion.tracks.slen']).shape[1])
         assert ld['synthetic'] is True
         assert ld['n_sarcomeres'] == K and K >= 3
@@ -139,8 +139,8 @@ class TestGetTrackMotion:
         assert ld['z_pos'].shape == (K + 1, T)
         assert np.nanmin(ld['z_pos']) == pytest.approx(0.0)          # legacy z_pos[0] == 0
         # member lengths are the tracks' own, not re-derived from z_pos
-        members = np.flatnonzero(sarc.data['motion.tracks.group_id'] == 0)
-        order = np.asarray(sarc.data['motion.tracks.group_order'])[members]
+        members = np.flatnonzero(sarc.data['motion.groups.myofibril.track_group_id'] == 0)
+        order = np.asarray(sarc.data['motion.groups.myofibril.track_group_order'])[members]
         tracks_slen = np.asarray(sarc.data['motion.tracks.slen'], float)[members[np.argsort(order)]]
         assert np.allclose(np.nan_to_num(ld['slen']), np.nan_to_num(tracks_slen), atol=1e-6)
         # a missing member blanks only its own row: NaN rows never exceed missing members
@@ -209,7 +209,7 @@ class TestTrackKinematics:
     @pytest.mark.parametrize('sort_by', ['time_to_peak', 'amplitude', 'group'])
     def test_cycle_raster(self, sarc, sort_by):
         ax = plt.figure().gca()
-        im = Plots.plot_track_raster(ax, sarc, sort_by=sort_by)
+        im = Plots.plot_track_raster(ax, sarc, sort_by=sort_by, kind='myofibril' if sort_by == 'group' else None)
         assert im is not None
         h, w = im.get_array().shape
         n_cycle = int(np.median(np.diff(

@@ -48,7 +48,7 @@ def aggregate_group_slen(
     aggregate: str = 'mean',
     slen_lims: Optional[Tuple[float, float]] = None,
 ) -> Dict[str, np.ndarray]:
-    """Aggregate per-track ``slen(t)`` into per-group ``slen(t)``.
+    """Aggregate per-track ``slen(t)`` into the per-group average ``slen_avg(t)``.
 
     Parameters
     ----------
@@ -61,7 +61,7 @@ def aggregate_group_slen(
     n_groups : int
         Number of groups (labels ``0 .. n_groups-1``).
     aggregate : {'mean', 'median'}, optional
-        How the members' lengths are combined into the group's ``slen`` (the
+        How the members' lengths are combined into the group's ``slen_avg`` (the
         signal fed to the contraction engine), over the members with a finite
         length in each frame. The per-frame spread (median/std/q25/q75) is
         returned regardless of this choice. Default is 'mean'.
@@ -72,7 +72,7 @@ def aggregate_group_slen(
     Returns
     -------
     dict
-        ``slen`` (the chosen aggregate), ``slen_median``,
+        ``slen_avg`` (the chosen aggregate), ``slen_median``,
         ``slen_std``, ``slen_q25``, ``slen_q75``,
         and ``n_members`` (int count of members with a finite length
         per frame), each shape ``(n_groups, T)``.
@@ -113,7 +113,7 @@ def aggregate_group_slen(
             q25_ts[g], q75_ts[g] = np.nanpercentile(sub, [25, 75], axis=0)
 
     return {
-        'slen': slen_ts,
+        'slen_avg': slen_ts,
         'slen_median': median_ts,
         'slen_std': std_ts,
         'slen_q25': q25_ts,

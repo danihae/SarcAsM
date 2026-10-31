@@ -14,8 +14,6 @@
 
 """``sarc.structure``: sarcomere morphology of a recording (Z-bands, sarcomere vectors, myofibrils, domains)."""
 
-"""Main :class:`SarcAsM` object: sarcomere morphology, full-field 2D tracking, and grouped motion analysis."""
-
 import logging
 from typing import List, Optional, Sequence, Tuple, Union
 

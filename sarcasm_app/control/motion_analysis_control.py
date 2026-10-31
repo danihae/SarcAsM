@@ -206,7 +206,7 @@ class MotionAnalysisControl:
         if by == 'loi':
             if self.__drawn_lois:
                 # user-drawn lines (yx-px polylines) feed the same loi grouping
-                cell.data['motion.loi.data'] = {'loi_lines': self.__drawn_lois}
+                cell.motion.set_lois(self.__drawn_lois)
             else:
                 cell.motion.detect_lois(frame=ref, **detect_lois_kwargs(lambda name: _pv(m, name)))
         cell.motion.group_tracks(by=by, reference_frame=ref, min_coverage=cov, min_group_size=min_size)
@@ -246,6 +246,7 @@ class MotionAnalysisControl:
     def __analyze_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
         cell.motion.analyze(
+            m.group_kind,
             aggregate=str(_pv(m, 'motion.analyze.aggregate')),
             slen_lims=(_pv(m, 'motion.analyze.slen_lower'), _pv(m, 'motion.analyze.slen_upper')),
             threshold=_pv(m, 'motion.analyze.threshold'),
@@ -304,8 +305,9 @@ class MotionAnalysisControl:
         w = self.__motion_analysis_widget
         cell = self.__main_control.model.cell
         w.cb_fibre_group.clear()
-        kind = cell.data.get('motion.groups.kind') if cell is not None else None
-        n_groups = int(cell.data.get('motion.groups.n', 0)) if cell is not None else 0
+        kind = self.__main_control.model.group_kind
+        grouped = cell is not None and kind in cell.motion._grouped_kinds()
+        n_groups = cell.motion._grouping(kind)['n'] if grouped else 0
         is_fibre = kind in _FIBRE_KINDS and n_groups > 0
         if is_fibre:
             w.cb_fibre_group.addItems([str(g) for g in range(n_groups)])
@@ -318,7 +320,7 @@ class MotionAnalysisControl:
     def __fibre_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
         group = int(self.__motion_analysis_widget.cb_fibre_group.currentText())
-        motion = cell.motion.get_track_motion(group, analyze=True)
+        motion = cell.motion.get_track_motion(group, kind=m.group_kind, analyze=True)
         try:
             motion.analyze_popping()
         except Exception as e:
@@ -329,8 +331,7 @@ class MotionAnalysisControl:
     def on_btn_show_fibre_detail(self):
         if not self.__chk_initialized():
             return
-        cell = self.__main_control.model.cell
-        kind = cell.data.get('motion.groups.kind') if cell is not None else None
+        kind = self.__main_control.model.group_kind
         if kind not in _FIBRE_KINDS:
             logger.warning("Per-fibre detail requires a 'myofibril' or 'loi' grouping.")
             return
@@ -353,8 +354,7 @@ class MotionAnalysisControl:
         if motion is None:
             return
         before = plt.get_fignums()
-        cell = self.__main_control.model.cell
-        kind = cell.data.get('motion.groups.kind', '') if cell is not None else ''
+        kind = self.__main_control.model.group_kind
         fig, axd = plt.subplot_mosaic([['zpos', 'phase'], ['dslen', 'dslen']],
                                       figsize=(12, 7), constrained_layout=True)
         for key, fn in (('zpos', lambda ax: Plots.plot_z_pos(ax, motion)),
@@ -381,18 +381,14 @@ class MotionAnalysisControl:
         from sarcasm_app.view.figure_window import show_new_figures
         before = plt.get_fignums()
         cell = self.__main_control.model.cell
-        kind = cell.data.get('motion.groups.analyzed_kind') if cell is not None else None
-        if kind is None:
-            logger.warning('No track motion analyzed yet — run "Analyze track motion" first.')
-            return
-        current = cell.data.get('motion.groups.kind')
-        if current != kind or (cell.data.get('params.motion.analyze.grouping_hash')
-                               != cell.data.get('motion.groups.hash')):
-            # the tracks were grouped again after the analysis: the summary would mix both groupings
-            QMessageBox.information(self.__motion_analysis_widget.btn_analyze_track_motion, 'Analyze the new grouping first',
-                                    f'The tracks were grouped again ({current}) after the last motion analysis '
-                                    f'({kind}). Click "3. Analyze track motion" (or "Track → Group → Analyze"), '
-                                    f'then plot the summary.')
+        kind = self.__main_control.model.group_kind
+        try:
+            cell.motion._assert_track_motion_fresh(kind)
+        except ValueError:
+            # not analysed, or grouped again after the analysis: the summary would mix both groupings
+            QMessageBox.information(self.__motion_analysis_widget.btn_analyze_track_motion, 'Analyze the grouping first',
+                                    f'The {kind} grouping has not been analysed since it was made. Click '
+                                    f'"3. Analyze track motion" (or "Track → Group → Analyze"), then plot the summary.')
             return
         is_fibre = kind in _FIBRE_KINDS
         # raster of every sarcomere over one averaged cycle (needs the pooled cycles),
@@ -405,19 +401,19 @@ class MotionAnalysisControl:
         def raster(ax):
             if cycle:
                 try:
-                    Plots.plot_track_raster(ax, cell, cycle_average=True, sort_by='time_to_peak',
+                    Plots.plot_track_raster(ax, cell, cycle_average=True, sort_by='time_to_peak', kind=kind,
                                             title='ΔSL of every sarcomere over the averaged cycle, sorted by time to peak')
                     return
                 except ValueError as e:                      # e.g. fewer than two complete cycles
                     logger.debug(f'cycle raster skipped: {e}')
                     ax.clear()
-            Plots.plot_track_raster(ax, cell, cycle_average=False,
+            Plots.plot_track_raster(ax, cell, cycle_average=False, kind=kind,
                                     title='ΔSL of every sarcomere over the recording, by group')
 
         panels = (('coverage', lambda ax: Plots.plot_track_coverage_map(ax, cell)),
-                  ('groups', lambda ax: Plots.plot_track_groups(ax, cell)),
-                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell, n_rows=8, readable_labels=True)),
-                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell, n_rows=8, readable_labels=True)),
+                  ('groups', lambda ax: Plots.plot_track_groups(ax, cell, kind)),
+                  ('slen', lambda ax: Plots.plot_slen_mean(ax, cell, kind, n_rows=8, readable_labels=True)),
+                  ('dslen', lambda ax: Plots.plot_delta_slen_mean(ax, cell, kind, n_rows=8, readable_labels=True)),
                   ('raster', raster))
         for key, fn in panels:
             try:
@@ -426,7 +422,7 @@ class MotionAnalysisControl:
                 logger.warning(f'summary {key} plot failed: {e}')
         if is_fibre:
             try:
-                Plots.plot_track_myofibrils(axd['fibrils'], cell, color_by='beating_rate', colorbar=True)
+                Plots.plot_track_myofibrils(axd['fibrils'], cell, kind=kind, color_by='beating_rate', colorbar=True)
             except Exception as e:
                 logger.warning(f'summary fibrils plot failed: {e}')
         fig.suptitle(f'{Path(cell.file_path).name} — {kind}')
@@ -477,13 +473,15 @@ class MotionAnalysisControl:
         if cell is None or kin is None:
             self.__trace_dock.set_source(None, None, 1.0)
             return
-        gid = cell.data.get('motion.tracks.group_id')
-        kind = cell.data.get('motion.groups.kind', '')
-        # each group's own ContractionNet intervals, if the current grouping was analysed
+        kind = self.__main_control.model.group_kind
+        gid = cell.motion._grouping(kind)['track_group_id'] if kind in cell.motion._grouped_kinds() else None
+        # each group's own ContractionNet intervals, if the grouping was analysed since it was made
         group_contr = None
-        if kind and cell.data.get(f'params.motion.analyze.grouping_hash_{kind}') == cell.data.get('motion.groups.hash'):
-            group_contr = cell.data.get(f'motion.{kind}.contr')
-            group_contr = None if group_contr is None else np.asarray(group_contr)
+        try:
+            cell.motion._assert_track_motion_fresh(kind)
+            group_contr = np.asarray(cell.data[f'motion.{kind}.contr'])
+        except (ValueError, KeyError):
+            pass
         self.__trace_dock.export_dir = os.path.dirname(cell.file_path)
         self.__trace_dock.export_stem = Path(cell.file_path).stem
         self.__trace_dock.set_source(kin, gid, cell.metadata.frametime, kind, group_contr)
@@ -491,7 +489,9 @@ class MotionAnalysisControl:
     def __on_track_selected(self, track_id: int):
         """A sarcomere was clicked: select its group, highlight it, show its overlay."""
         cell = self.__main_control.model.cell
-        gid = cell.data.get('motion.tracks.group_id') if cell is not None else None
+        kind = self.__main_control.model.group_kind
+        gid = (cell.motion._grouping(kind)['track_group_id']
+               if cell is not None and kind in cell.motion._grouped_kinds() else None)
         group = None
         if gid is not None:
             gid = np.asarray(gid).reshape(-1)

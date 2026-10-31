@@ -27,9 +27,9 @@ def test_aggregate_group_slen_basic():
     ], dtype=float)
     gid = np.array([0, 0, 1, 1])
     out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=2, aggregate='mean')
-    assert out['slen'].shape == (2, 3)
-    assert np.allclose(out['slen'][0], 1.5)   # mean(2,1)
-    assert np.allclose(out['slen'][1], 2.0)   # mean(3,1)
+    assert out['slen_avg'].shape == (2, 3)
+    assert np.allclose(out['slen_avg'][0], 1.5)   # mean(2,1)
+    assert np.allclose(out['slen_avg'][1], 2.0)   # mean(3,1)
     assert np.all(out['n_members'] == 2)
 
 
@@ -43,11 +43,11 @@ def test_aggregate_group_slen_median_nan_and_slen_lims():
     out = grouped_motion.aggregate_group_slen(
         tracks_slen, gid, n_groups=1, aggregate='median', slen_lims=(1.0, 3.0))
     # frame 0: median(2.0, 2.2, 1.8) = 2.0 ; members = 3
-    assert out['slen'][0, 0] == pytest.approx(2.0)
+    assert out['slen_avg'][0, 0] == pytest.approx(2.0)
     assert out['n_members'][0, 0] == 3
     # frame 2: only 2.0 finite & in-range (5.0 clipped to NaN, 1.8->nan) -> 1 member
     assert out['n_members'][0, 2] == 1
-    assert out['slen'][0, 2] == pytest.approx(2.0)
+    assert out['slen_avg'][0, 2] == pytest.approx(2.0)
 
 
 def test_aggregate_group_slen_rejects_unknown_reduction():
@@ -60,7 +60,7 @@ def test_aggregate_group_slen_unassigned_excluded():
     tracks_slen = np.array([[2.0, 2.0], [9.0, 9.0]], dtype=float)
     gid = np.array([0, -1])   # second track unassigned
     out = grouped_motion.aggregate_group_slen(tracks_slen, gid, n_groups=1, aggregate='mean')
-    assert np.allclose(out['slen'][0], 2.0)
+    assert np.allclose(out['slen_avg'][0], 2.0)
     assert np.all(out['n_members'][0] == 1)
 
 
@@ -78,7 +78,7 @@ def _contr(slen, ft, reading):
     agg = grouped_motion.aggregate_group_slen(slen, gid, 1)
     gp = (grouped_motion.track_contraction_prob(slen, gid, 1, ft, model, slen_lims=(1.0, 3.0))
           if reading == 'tracks' else None)
-    return contraction_analysis.detect_contractions(agg['slen'], ft, model, group_prob=gp), gp
+    return contraction_analysis.detect_contractions(agg['slen_avg'], ft, model, group_prob=gp), gp
 
 
 def test_track_reading_finds_the_beats_most_tracks_show():
@@ -116,7 +116,7 @@ def test_track_reading_skips_jumping_out_of_range_and_sparse_tracks():
 def test_analyze_track_motion_reads_tracks_by_default_and_aggregate_on_request():
     sarc = _fake_structure(T=400, frametime=0.05)
     sarc.motion.analyze(by='pool')
-    assert sarc.data['params.motion.analyze.reading'] == 'tracks'
+    assert sarc.data['params.motion.analyze.pool.reading'] == 'tracks'
     assert sarc.data['motion.pool.n_tracks_read'].tolist() == [6]
     sarc.motion.analyze(by='pool', reading='aggregate')
     assert sarc.data['motion.pool.n_tracks_read'].tolist() == [0]
@@ -363,22 +363,22 @@ def _fake_structure(n_tracks=6, T=80, frametime=0.01, seed=0):
 def test_group_tracks_pool():
     sarc = _fake_structure()
     sarc.motion.group_tracks(by='pool')
-    assert sarc.data['motion.groups.kind'] == 'pool'
-    assert sarc.data['motion.groups.n'] == 1
-    assert np.all(sarc.data['motion.tracks.group_id'] == 0)
-    assert 'motion.groups.hash' in sarc.data
+    assert 'motion.groups.pool.n' in sarc.data
+    assert sarc.data['motion.groups.pool.n'] == 1
+    assert np.all(sarc.data['motion.groups.pool.track_group_id'] == 0)
+    assert 'motion.groups.pool.hash' in sarc.data
 
 
 def test_group_tracks_mband():
     sarc = _fake_structure(n_tracks=6)
     sarc.motion.group_tracks(by='mband', reference_frame=0)
-    gid = sarc.data['motion.tracks.group_id']
-    assert sarc.data['motion.groups.n'] == 2
+    gid = sarc.data['motion.groups.mband.track_group_id']
+    assert sarc.data['motion.groups.mband.n'] == 2
     # tracks sharing an M-band id land in the same group
     assert gid[0] == gid[1] == gid[2]
     assert gid[3] == gid[4] == gid[5]
     assert gid[0] != gid[3]
-    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 3]
+    assert sarc.data['motion.groups.mband.member_counts'].tolist() == [3, 3]
 
 
 def test_group_tracks_custom_and_min_coverage():
@@ -390,10 +390,10 @@ def test_group_tracks_custom_and_min_coverage():
     sarc.data['motion.tracks.n_frames'] = snp.sum(axis=1)
     labels = np.array([0, 0, 1, 1])
     sarc.motion.group_tracks(by='custom', labels=labels, min_coverage=0.5)
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.custom.track_group_id']
     assert gid[0] == gid[1]
     assert gid[3] == -1               # dropped by min_coverage
-    assert sarc.data['motion.groups.n'] == 2  # labels 0 and 1 both still present (track 2)
+    assert sarc.data['motion.groups.custom.n'] == 2  # labels 0 and 1 both still present (track 2)
 
 
 def test_group_tracks_min_group_size_drops_and_renumbers():
@@ -405,16 +405,16 @@ def test_group_tracks_min_group_size_drops_and_renumbers():
     sarc.data['motion.tracks.midline_id'] = mids
 
     sarc.motion.group_tracks(by='mband', reference_frame=0, min_group_size=1)
-    assert sarc.data['motion.groups.n'] == 2
-    assert sarc.data['motion.groups.member_counts'].tolist() == [5, 1]
+    assert sarc.data['motion.groups.mband.n'] == 2
+    assert sarc.data['motion.groups.mband.member_counts'].tolist() == [5, 1]
 
     sarc.motion.group_tracks(by='mband', reference_frame=0, min_group_size=2)
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.mband.track_group_id']
     assert gid[5] == -1                                   # the 1-track group is dropped
     assert gid[:5].tolist() == [0] * 5                    # survivor renumbered to 0
-    assert sarc.data['motion.groups.n'] == 1
-    assert sarc.data['motion.groups.member_counts'].tolist() == [5]
-    assert sarc.data['params.motion.group_tracks.min_group_size'] == 2
+    assert sarc.data['motion.groups.mband.n'] == 1
+    assert sarc.data['motion.groups.mband.member_counts'].tolist() == [5]
+    assert sarc.data['params.motion.group_tracks.mband.min_group_size'] == 2
 
 
 def test_group_tracks_min_group_size_keeps_fixed_label_space():
@@ -426,14 +426,14 @@ def test_group_tracks_min_group_size_keeps_fixed_label_space():
     sarc.data['motion.tracks.positions_um'] = pos * sarc.metadata.pixelsize
 
     sarc.motion.group_tracks(by='domain', reference_frame=0, min_group_size=1)
-    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 1, 0]
+    assert sarc.data['motion.groups.domain.member_counts'].tolist() == [3, 1, 0]
 
     sarc.motion.group_tracks(by='domain', reference_frame=0, min_group_size=2)
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.domain.track_group_id']
     assert gid[:3].tolist() == [0, 0, 0]                  # label 1 -> group 0 unchanged
     assert gid[3] == -1                                   # the 1-track domain is dropped
-    assert sarc.data['motion.groups.n'] == 3                     # label space preserved
-    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 0, 0]
+    assert sarc.data['motion.groups.domain.n'] == 3                     # label space preserved
+    assert sarc.data['motion.groups.domain.member_counts'].tolist() == [3, 0, 0]
 
 
 def test_analyze_track_motion_forwards_min_group_size():
@@ -442,8 +442,8 @@ def test_analyze_track_motion_forwards_min_group_size():
     mids[5] = 9
     sarc.data['motion.tracks.midline_id'] = mids
     sarc.motion.analyze(by='mband', reference_frame=0, min_group_size=2)
-    assert sarc.data['motion.groups.n'] == 1
-    assert np.asarray(sarc.data['motion.mband.slen']).shape[0] == 1
+    assert sarc.data['motion.groups.mband.n'] == 1
+    assert np.asarray(sarc.data['motion.mband.slen_avg']).shape[0] == 1
 
 
 def test_group_tracks_custom_requires_labels():
@@ -468,15 +468,15 @@ def test_analyze_track_motion_pool_end_to_end():
     sarc = _fake_structure()
     sarc.motion.analyze(by='pool')   # front door: groups + analyzes
     # legacy-mirrored keys exist under the 'pool' prefix
-    for k in ['motion.pool.slen', 'motion.pool.contr', 'motion.pool.n_contr',
+    for k in ['motion.pool.slen_avg', 'motion.pool.contr', 'motion.pool.n_contr',
               'motion.pool.beating_rate', 'motion.pool.equ', 'motion.pool.contr_max']:
         assert k in sarc.data, k
-    assert sarc.data['motion.pool.slen'].shape == (1, 80)
+    assert sarc.data['motion.pool.slen_avg'].shape == (1, 80)
     assert sarc.data['motion.pool.contr'].shape == (1, 80)
-    assert sarc.data['motion.groups.analyzed_kind'] == 'pool'
-    assert sarc.data['params.motion.analyze.grouping_hash'] == sarc.data['motion.groups.hash']
+    assert sarc.motion._analyzed_kinds() == ['pool']
+    assert sarc.data['params.motion.analyze.pool.grouping_hash'] == sarc.data['motion.groups.pool.hash']
     # freshness guard passes right after analysis
-    sarc.motion._assert_track_motion_fresh()
+    sarc.motion._assert_track_motion_fresh('pool')
 
 
 def test_analyze_track_motion_ignores_merge_time_max_and_stores_the_polarity_score():
@@ -486,7 +486,7 @@ def test_analyze_track_motion_ignores_merge_time_max_and_stores_the_polarity_sco
     sarc = _fake_structure(T=400, frametime=0.05)          # 20 s of 1.25-Hz beats
     with pytest.warns(DeprecationWarning, match='merge_time_max'):
         sarc.motion.analyze(by='pool', merge_time_max=0.05)
-    assert sarc.data['params.motion.analyze.merge_time_max'] is None
+    assert 'params.motion.analyze.pool.merge_time_max' not in sarc.data      # ignored, so not recorded
     assert sarc.data['motion.pool.n_contr'].tolist() == [25]
     score = sarc.data['motion.pool.polarity_score']
     assert score.shape == (1,) and score[0] > 0.1             # the lengths rest at their long side
@@ -495,17 +495,17 @@ def test_analyze_track_motion_ignores_merge_time_max_and_stores_the_polarity_sco
 def test_analyze_track_motion_mband_shapes():
     sarc = _fake_structure(n_tracks=6)
     sarc.motion.analyze(by='mband', reference_frame=0)
-    assert sarc.data['motion.mband.slen'].shape == (2, 80)
+    assert sarc.data['motion.mband.slen_avg'].shape == (2, 80)
     assert sarc.data['motion.mband.contr'].shape == (2, 80)
 
 
 def test_stale_grouping_hard_raises():
     sarc = _fake_structure()
     sarc.motion.analyze(by='pool')
-    sarc.motion._assert_track_motion_fresh()           # fresh
-    sarc.motion.group_tracks(by='mband')               # re-group, do NOT re-analyze
-    with pytest.raises(ValueError):
-        sarc.motion._assert_track_motion_fresh()       # stale -> hard raise
+    sarc.motion._assert_track_motion_fresh('pool')     # fresh
+    sarc.data['motion.groups.pool.hash'] = 'changed'   # the grouping changed without a new analysis
+    with pytest.raises(ValueError, match='changed since it was analysed'):
+        sarc.motion._assert_track_motion_fresh('pool')
 
 
 def test_analyze_refuses_stale_track_ids():
@@ -514,18 +514,17 @@ def test_analyze_refuses_stale_track_ids():
     # simulate re-tracking that changed the track set
     sarc.data['motion.tracks.ids'] = np.arange(99)
     with pytest.raises(ValueError):
-        sarc.motion.analyze()
+        sarc.motion.analyze('pool')
 
 
 def test_get_tracks_group_columns_after_grouping():
     sarc = _fake_structure(n_tracks=6)
     df0 = sarc.motion.tracks()
-    assert 'group_id' not in df0.columns        # before grouping
+    assert not any(c.startswith('group_') for c in df0.columns)        # before grouping
     assert 'ref_midline_id' in df0.columns
     sarc.motion.group_tracks(by='mband', reference_frame=0)
     df1 = sarc.motion.tracks()
-    assert 'group_id' in df1.columns
-    assert set(df1['group_id'].unique()) == {0, 1}
+    assert set(df1['group_mband'].unique()) == {0, 1}
 
 
 # ---------------------------------------------------------------------------
@@ -559,13 +558,13 @@ def _fake_structure_domain(n_per=3, T=80, frametime=0.01):
 def test_group_tracks_domain_label_alignment_and_empty_group():
     sarc = _fake_structure_domain(n_per=3)
     sarc.motion.group_tracks(by='domain', reference_frame=0)
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.domain.track_group_id']
     # mask label 1 region -> group 0 ; label 2 region -> group 1
     assert gid[:3].tolist() == [0, 0, 0]
     assert gid[3:].tolist() == [1, 1, 1]
     # label space preserved: n_groups == n_domains (3) even though group 2 is empty
-    assert sarc.data['motion.groups.n'] == 3
-    assert sarc.data['motion.groups.member_counts'].tolist() == [3, 3, 0]
+    assert sarc.data['motion.groups.domain.n'] == 3
+    assert sarc.data['motion.groups.domain.member_counts'].tolist() == [3, 3, 0]
 
 
 def test_analyze_track_motion_emits_the_full_member_set():
@@ -578,18 +577,18 @@ def test_analyze_track_motion_emits_the_full_member_set():
     sarc.motion.analyze(by='domain', reference_frame=0)
     written = {k for k in sarc.data if k.startswith('motion.domain.')}
     assert {k.rpartition('.')[2] for k in written} == set(motion_feature_dict)
-    assert sarc.data['motion.domain.slen'].shape == (3, 80)
+    assert sarc.data['motion.domain.slen_avg'].shape == (3, 80)
     assert sarc.data['motion.domain.contr'].shape == (3, 80)
     assert sarc.data['motion.domain.n_contr'].shape == (3,)
     # the empty domain (group 2) yields no contractions
     assert sarc.data['motion.domain.n_contr'][2] == 0
-    assert sarc.data['motion.groups.analyzed_kind'] == 'domain'
+    assert sarc.motion._analyzed_kinds() == ['domain']
 
 
 def test_domain_front_door_and_unknown_level():
     sarc = _fake_structure_domain(n_per=3)
     sarc.motion.analyze(by='domain', reference_frame=0)   # front door works
-    assert sarc.data['motion.groups.kind'] == 'domain'
+    assert 'motion.groups.domain.n' in sarc.data
     with pytest.raises(ValueError):
         sarc.motion.group_tracks(by='nonsense')
 
@@ -744,17 +743,16 @@ def test_group_tracks_chain_keeps_partially_tracked_sarcomeres():
     pos[:, :, 1] = 20.0
     sarc.data['motion.tracks.positions_px'] = pos
     sarc.data['motion.tracks.positions_um'] = pos * 0.1
-    sarc.data['motion.loi.data'] = {
-        'loi_lines': [np.array([[0, 20], [3 * _SLEN_PX, 20]], float)]}
+    sarc.motion.set_lois([np.array([[0, 20], [3 * _SLEN_PX, 20]], float)])
 
     sarc.motion.group_tracks(by='loi', reference_frame=0)          # chain default (0.1)
-    assert int((sarc.data['motion.tracks.group_id'] >= 0).sum()) == 4, 'chain lost a sarcomere'
+    assert int((sarc.data['motion.groups.loi.track_group_id'] >= 0).sum()) == 4, 'chain lost a sarcomere'
 
     sarc.motion.group_tracks(by='pool')                            # pooled default (0.5)
-    assert sarc.data['motion.tracks.group_id'][2] == -1
+    assert sarc.data['motion.groups.pool.track_group_id'][2] == -1
     # an explicit value always wins over the per-kind default
     sarc.motion.group_tracks(by='loi', reference_frame=0, min_coverage=0.5)
-    assert sarc.data['motion.tracks.group_id'][2] == -1
+    assert sarc.data['motion.groups.loi.track_group_id'][2] == -1
 
 
 def test_synthesize_loi_chain_arc_is_monotone_on_a_curved_fibre():
@@ -904,9 +902,9 @@ def test_group_tracks_myofibril_ordering():
     # two fibres; fibre A lists vectors in reversed order [2,1,0]
     sarc.data['structure.myofibril.lines'] = [[np.array([2, 1, 0]), np.array([3, 4, 5])]]
     sarc.motion.group_tracks(by='myofibril', reference_frame=0)
-    gid = sarc.data['motion.tracks.group_id']
-    order = sarc.data['motion.tracks.group_order']
-    assert sarc.data['motion.groups.n'] == 2
+    gid = sarc.data['motion.groups.myofibril.track_group_id']
+    order = sarc.data['motion.groups.myofibril.track_group_order']
+    assert sarc.data['motion.groups.myofibril.n'] == 2
     # fibre A: tracks {0,1,2} share a group; ordering follows the vector order [2,1,0]
     assert gid[0] == gid[1] == gid[2]
     assert gid[3] == gid[4] == gid[5]
@@ -924,9 +922,9 @@ def test_analyze_track_motion_myofibril_coarse():
     sarc = _fake_structure(n_tracks=6)
     sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
     sarc.motion.analyze(by='myofibril', reference_frame=0)
-    assert sarc.data['motion.myofibril.slen'].shape == (2, 80)
+    assert sarc.data['motion.myofibril.slen_avg'].shape == (2, 80)
     assert 'motion.myofibril.contr' in sarc.data
-    assert sarc.data['motion.groups.analyzed_kind'] == 'myofibril'
+    assert sarc.motion._analyzed_kinds() == ['myofibril']
 
 
 def test_plot_track_myofibrils_smoke():
@@ -944,10 +942,10 @@ def test_plot_track_myofibrils_smoke():
         sarc.motion.group_tracks(by='myofibril', reference_frame=0)
         for cb in ('group', 'slen'):
             Plots.plot_track_myofibrils(plt.figure().gca(), sarc, frame=0, color_by=cb, scalebar=False)
-        # requires a myofibril grouping
+        # requires an ordered grouping
         sarc.motion.group_tracks(by='pool')
-        with pytest.raises(ValueError):
-            Plots.plot_track_myofibrils(plt.figure().gca(), sarc)
+        with pytest.raises(ValueError, match='ordered grouping'):
+            Plots.plot_track_myofibrils(plt.figure().gca(), sarc, kind='pool')
     finally:
         Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
         plt.close('all')
@@ -969,9 +967,11 @@ def test_plot_tracks_lines_smoke():
         pos = np.asarray(sarc.data['motion.tracks.positions_px'], dtype=np.float32)
         pos[:, :, 1] += np.linspace(0, 2, pos.shape[1])[None, :]
         sarc.data['motion.tracks.positions_px'] = pos
-        # color_by='group' requires a grouping first
-        with pytest.raises(ValueError):
+        # color_by='group' requires a named, stored grouping
+        with pytest.raises(ValueError, match='needs the grouping'):
             Plots.plot_tracks(plt.figure().gca(), sarc, color_by='group')
+        with pytest.raises(ValueError, match="No 'pool' grouping"):
+            Plots.plot_tracks(plt.figure().gca(), sarc, color_by='group', kind='pool')
         # 'coverage' / 'slen' draw one trajectory LineCollection
         for cb in ('coverage', 'slen'):
             ax = plt.figure().gca()
@@ -980,7 +980,7 @@ def test_plot_tracks_lines_smoke():
         # 'group' colouring works once grouped
         sarc.motion.group_tracks(by='pool')
         ax = plt.figure().gca()
-        Plots.plot_tracks(ax, sarc, color_by='group', scalebar=False)
+        Plots.plot_tracks(ax, sarc, color_by='group', kind='pool', scalebar=False)
         assert any(isinstance(c, LineCollection) for c in ax.collections)
     finally:
         Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
@@ -1080,16 +1080,16 @@ def test_group_tracks_loi_assigns_and_orders():
     # curated LOI polylines (px), each running along one fibre
     line0 = np.array([[0, 20], [2 * _SLEN_PX, 20]], float)
     line1 = np.array([[150, 20], [150 + 2 * _SLEN_PX, 20]], float)
-    sarc.data['motion.loi.data'] = {'loi_lines': [line0, line1]}
+    sarc.motion.set_lois([line0, line1])
 
     sarc.motion.group_tracks(by='loi', reference_frame=0)
-    gid = sarc.data['motion.tracks.group_id']
-    assert sarc.data['motion.groups.kind'] == 'loi'
-    assert sarc.data['motion.groups.n'] == 2
+    gid = sarc.data['motion.groups.loi.track_group_id']
+    assert 'motion.groups.loi.n' in sarc.data
+    assert sarc.data['motion.groups.loi.n'] == 2
     assert gid[[1, 2, 0]].tolist() == [0, 0, 0]
     assert gid[[4, 5, 3]].tolist() == [1, 1, 1]
     # order is rank along the line (by arc length / row), independent of track index
-    order = sarc.data['motion.tracks.group_order']
+    order = sarc.data['motion.groups.loi.track_group_order']
     assert order[1] == 0 and order[2] == 1 and order[0] == 2
     assert order[4] == 0 and order[5] == 1 and order[3] == 2
 
@@ -1105,15 +1105,14 @@ def test_group_tracks_loi_is_a_thread_not_a_band():
     pos[:, :, 1] = np.tile([20.0, 26.0], 3)[:, None]
     sarc.data['motion.tracks.positions_px'] = pos
     sarc.data['motion.tracks.positions_um'] = pos * 0.1
-    sarc.data['motion.loi.data'] = {
-        'loi_lines': [np.array([[0, 20], [2 * _SLEN_PX, 20]], float)]}
+    sarc.motion.set_lois([np.array([[0, 20], [2 * _SLEN_PX, 20]], float)])
 
     sarc.motion.group_tracks(by='loi', reference_frame=0)
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.loi.track_group_id']
     assert int((gid == 0).sum()) == 3          # one per step, not all 6
     assert gid[[0, 2, 4]].tolist() == [0, 0, 0]   # the on-line ones (col 20) win
     assert gid[[1, 3, 5]].tolist() == [-1, -1, -1]
-    assert sorted(sarc.data['motion.tracks.group_order'][gid == 0]) == [0, 1, 2]
+    assert sorted(sarc.data['motion.groups.loi.track_group_order'][gid == 0]) == [0, 1, 2]
 
 
 def test_group_tracks_loi_uses_the_detection_chain_when_available():
@@ -1128,13 +1127,11 @@ def test_group_tracks_loi_uses_the_detection_chain_when_available():
     sarc.data['motion.tracks.positions_px'] = pos
     sarc.data['motion.tracks.positions_um'] = pos * 0.1
     # tracks_detection_id maps track i -> detection i in _fake_structure
-    sarc.data['motion.loi.data'] = {
-        'loi_lines': [np.array([[0, 20], [300, 20]], float)],
-        'loi_index_lines': [np.array([2, 0, 1])],      # chain: track 2 -> 0 -> 1
-    }
+    sarc.data['motion.lois.lines'] = [np.array([[0, 20], [300, 20]], float)]
+    sarc.data['motion.lois.index_lines'] = [np.array([2, 0, 1])]      # chain: track 2 -> 0 -> 1
 
     sarc.motion.group_tracks(by='loi', reference_frame=0)
-    gid, order = sarc.data['motion.tracks.group_id'], sarc.data['motion.tracks.group_order']
+    gid, order = sarc.data['motion.groups.loi.track_group_id'], sarc.data['motion.groups.loi.track_group_order']
     assert gid.tolist() == [0, 0, 0, -1]           # track 3 is not on the chain
     assert order[2] == 0 and order[0] == 1 and order[1] == 2   # chain order, not geometry
 
@@ -1146,9 +1143,9 @@ def test_group_tracks_loi_far_tracks_unassigned():
     pos[:, :, 0] = np.array([0.0, _SLEN_PX, 900.0], float)[:, None]  # track 2 far away
     pos[:, :, 1] = 20.0
     sarc.data['motion.tracks.positions_px'] = pos
-    sarc.data['motion.loi.data'] = {'loi_lines': [np.array([[0, 20], [_SLEN_PX, 20]], float)]}
+    sarc.motion.set_lois([np.array([[0, 20], [_SLEN_PX, 20]], float)])
     sarc.motion.group_tracks(by='loi')
-    gid = sarc.data['motion.tracks.group_id']
+    gid = sarc.data['motion.groups.loi.track_group_id']
     assert gid[0] == 0 and gid[1] == 0
     assert gid[2] == -1            # > 0.5*slen from the line -> dropped
 
@@ -1177,10 +1174,10 @@ def test_detect_lois_selection_survives_reopening(motion_file_path, tmp_path):
     sarc.data.flush()
 
     sarc.motion.detect_lois(frame=0, n_lois=3, random_seed=0, number_lims=(5, 50))
-    saved = Results(store)['motion.loi.data']
-    assert len(saved['loi_lines']) == len(sarc.data['motion.loi.data']['loi_lines']) == 3
-    assert len(saved['loi_index_lines']) == 3
-    for line, chain in zip(saved['loi_lines'], saved['loi_index_lines']):
+    saved = Results(store)
+    assert len(saved['motion.lois.lines']) == len(sarc.data['motion.lois.lines']) == 3
+    assert len(saved['motion.lois.index_lines']) == 3 and len(saved['motion.lois.lengths']) == 3
+    for line, chain in zip(saved['motion.lois.lines'], saved['motion.lois.index_lines']):
         assert np.asarray(line).shape == (len(chain), 2)
 
 

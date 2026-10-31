@@ -14,8 +14,6 @@
 
 """Tracking of sarcomere vectors through the movie (``sarc.motion.track`` and its readers)."""
 
-"""Main :class:`SarcAsM` object: sarcomere morphology, full-field 2D tracking, and grouped motion analysis."""
-
 import logging
 from typing import Dict, Optional, Sequence, Tuple, Union
 
@@ -419,7 +417,7 @@ class TrackingMixin:
                     'kept their detection length.')
         return True
 
-    def tracks(self, min_coverage: float = 0.0, kind: Optional[str] = None) -> pd.DataFrame:
+    def tracks(self, min_coverage: float = 0.0) -> pd.DataFrame:
         """Tidy per-track summary of the 2D tracker output (one row per track).
 
         Discoverable accessor over the dense ``tracks_*`` arrays written by
@@ -431,13 +429,6 @@ class TrackingMixin:
         min_coverage : float, optional
             Only return tracks whose coverage (observed frames / n_frames)
             is at least this value. Default 0.0 (all kept tracks).
-        kind : str or None, optional
-            Which grouping's labels to put in ``group_id`` / ``order_in_group``.
-            ``None`` (default) uses the grouping currently in effect. Name a kind
-            to read that grouping's labels instead — what you want after grouping
-            one tracking several ways, since otherwise the labels are those of
-            whichever grouping ran last. Raises if the kind was never grouped.
-            Default is None.
 
         Returns
         -------
@@ -448,13 +439,12 @@ class TrackingMixin:
             its neighbours — roughly one sarcomere length means it probably
             changed identity; NaN if too short to score),
             ``start_y_um``, ``start_x_um``, ``ref_midline_id`` (the M-band id at
-            the start frame), and — once :meth:`group_tracks` has been run —
-            ``group_id`` / ``order_in_group`` (``order_in_group`` is 0 for the
-            unordered levels pool/m-band/domain/custom; it carries the within-fibre
-            rank only for the myofibril level).
+            the start frame), and per stored grouping ``group_<kind>`` (the track's group
+            in that grouping, -1 if unassigned), plus ``order_<kind>`` (rank along the line)
+            for the ordered kinds myofibril and loi.
         """
         if 'motion.tracks.slen' not in self.data:   # zero tracks give an empty table
-            raise ValueError('No tracks found. Run track first.')
+            raise ValueError('No tracks found. Run sarc.motion.track() first.')
 
         n_tracks = int(self.data.get('motion.tracks.n', 0))
         columns = ['track_id', 'start_frame', 'length', 'n_frames', 'coverage',
@@ -495,17 +485,11 @@ class TrackingMixin:
             'start_x_um': start_pos[:, 1],
             'ref_midline_id': ref_mid,
         })
-        # Grouping columns appear once group_tracks has been run.
-        gid_key = self._grouping_key(kind, 'motion.tracks.group_id')
-        order_key = self._grouping_key(kind, 'motion.tracks.group_order')
-        if kind and gid_key not in self.data:
-            raise ValueError(
-                f"No '{kind}' grouping in this store. Run group_tracks(by='{kind}') "
-                f"first; grouped kinds: {self._grouped_kinds()}.")
-        if gid_key in self.data:
-            df['group_id'] = np.asarray(self.data[gid_key]).reshape(-1)[:n_tracks]
-        if order_key in self.data:
-            df['order_in_group'] = np.asarray(self.data[order_key]).reshape(-1)[:n_tracks]
+        for kind in self._grouped_kinds():
+            df[f'group_{kind}'] = np.asarray(self.data[self._gkey(kind, 'track_group_id')]).reshape(-1)[:n_tracks]
+            if kind in self._CHAIN_LEVELS:
+                df[f'order_{kind}'] = np.asarray(
+                    self.data[self._gkey(kind, 'track_group_order')]).reshape(-1)[:n_tracks]
 
         if min_coverage > 0.0:
             df = df[df['coverage'] >= min_coverage].reset_index(drop=True)
@@ -585,7 +569,7 @@ class TrackingMixin:
     def _require_tracks(self):
         """Raise a ValueError naming the reason when there are no tracks to work with."""
         if 'motion.tracks.slen' not in self.data:
-            raise ValueError('No tracks found. Run track first.')
+            raise ValueError('No tracks found. Run sarc.motion.track() first.')
         if int(self.data.get('motion.tracks.n', 0)) == 0:
             raise ValueError(self._NO_TRACKS_MESSAGE)
 

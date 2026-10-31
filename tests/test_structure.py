@@ -571,20 +571,11 @@ class TestDomainMotionPlots:
         assert ax.images, "No sarcomere domains were plotted"
         plt.close(fig)
 
-    def test_plot_domain_timeseries(self, analyzed_domain_motion):
-        """Test plot_domain_timeseries function."""
+    def test_plot_slen_mean_of_the_domains(self, analyzed_domain_motion):
+        """The stacked group averages of the domain grouping."""
         fig, ax = plt.subplots(figsize=(12, 6))
-        Plots.plot_domain_timeseries(ax, analyzed_domain_motion, t_lim=(0, 2), y_lim=(1.4, 2.2))
-        # Check that at least the main axes exists (inset axes may not be created if few domains)
+        Plots.plot_slen_mean(ax, analyzed_domain_motion, 'domain', t_lim=(0, 2), y_lim=(1.4, 2.2))
         assert len(fig.axes) >= 1, "No domain time-series plot was created"
-        plt.close(fig)
-
-    def test_plot_overlay_domain_timeseries(self, analyzed_domain_motion):
-        """Test plot_overlay_domain_timeseries function."""
-        fig, ax = plt.subplots(figsize=(12, 4))
-        Plots.plot_overlay_domain_timeseries(ax, analyzed_domain_motion, t_lim=(0, 2), y_lim=(1.4, 2.2))
-        # Check for plotted lines
-        assert ax.lines, "No domain time-series lines were plotted"
         plt.close(fig)
 
 

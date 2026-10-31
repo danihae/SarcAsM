@@ -14,11 +14,9 @@
 
 """Contraction analysis of each group of tracks (``sarc.motion.analyze``)."""
 
-"""Main :class:`SarcAsM` object: sarcomere morphology, full-field 2D tracking, and grouped motion analysis."""
-
 import logging
 import os
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import numpy as np
 
@@ -37,13 +35,23 @@ from sarcasm.analysis import (
 )
 
 
+class _Stored:
+    """Default of a grouping argument of :meth:`AnalysisMixin.analyze`: use the stored grouping."""
+
+    def __repr__(self) -> str:
+        return 'stored'
+
+
+_STORED = _Stored()
+
+
 class AnalysisMixin:
     """Part of :class:`~sarcasm.motion.MotionAnalysis`; see there."""
 
     def analyze(
         self,
+        by: str,
         *,
-        by: Optional[str] = None,
         reading: str = 'tracks',
         aggregate: str = 'mean',
         slen_lims: Tuple[float, float] = (1.0, 3.0),
@@ -56,26 +64,25 @@ class AnalysisMixin:
         buffer_frames: int = 3,
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
-        reference_frame: int = 0,
-        min_coverage: Optional[float] = None,
-        min_group_size: int = 1,
-        max_drift_slen: Optional[float] = 1.0,
+        reference_frame: Any = _STORED,
+        min_coverage: Any = _STORED,
+        min_group_size: Any = _STORED,
+        max_drift_slen: Any = _STORED,
     ) -> None:
-        """Per-group sarcomere-contraction analysis over the current track grouping.
+        """Contraction analysis of each group of one grouping kind.
 
         Reads the contraction state of each group with ContractionNet and measures the
         contraction cycles on the member tracks' aggregated ``slen(t)``. By default
         (``reading='tracks'``) the network reads each member track and the group's state is
         decoded from the per-frame median of their probabilities
         (:func:`grouped_motion.track_contraction_prob`); ``reading='aggregate'`` reads the
-        aggregated length once, as up to 1.0.0b4. Grouping-blind: it analyzes
-        whatever :meth:`group_tracks` produced. Pass ``by=`` to run grouping
-        inline — the one-call front door for every level but ``'custom'``.
+        aggregated length once, as up to 1.0.0b4. Each kind is analysed on its own
+        and stored beside the others.
 
         Outputs are written under ``motion.<kind>.*`` (e.g. ``motion.pool.beating_rate``,
-        ``motion.mband.slen``, ``motion.mband.contr``) with the same members for
+        ``motion.mband.slen_avg``, ``motion.mband.contr``) with the same members for
         every grouping, so one set of plotting/export code serves them all:
-        the aggregated ``slen`` statistics, the ContractionNet cycle metrics
+        the group average ``slen_avg`` and its spread, the ContractionNet cycle metrics
         (including the percentile times ``time_to_50``, ``time_contr_10_90``,
         ``time_relax_50`` and ``time_relax_90``) with the polarity score of each
         group's sarcomere length (``polarity_score``), the per-group heterogeneity of
@@ -85,12 +92,10 @@ class AnalysisMixin:
 
         Parameters
         ----------
-        by : {'pool', 'mband', 'myofibril', 'loi', 'domain'} or None, optional
-            If given, run ``group_tracks(by=..., reference_frame=..., min_coverage=...,
-            min_group_size=..., max_drift_slen=...)`` first — the one-call front door
-            for every grouping level except ``'custom'``, which needs its own
-            :meth:`group_tracks` call to pass ``labels``. If None, use the existing
-            grouping (whatever :meth:`group_tracks` produced last). Default is None.
+        by : {'pool', 'mband', 'myofibril', 'loi', 'domain', 'custom'}
+            The grouping kind to analyse. Its stored grouping is used; if there is none,
+            it is made first with :meth:`group_tracks`' defaults, except ``'custom'``,
+            which needs its own ``group_tracks(by='custom', labels=...)`` call.
         reading : {'tracks', 'aggregate'}, optional
             What ContractionNet reads. ``'tracks'``: every member track whose length stays in
             ``slen_lims``, is measured in at least ``min_valid_frames`` of the frames and never
@@ -119,9 +124,10 @@ class AnalysisMixin:
             ``merge_time_max`` is deprecated and ignored: gaps between contractions are
             not closed.
         reference_frame, min_coverage, min_group_size, max_drift_slen
-            Forwarded to :meth:`group_tracks` when ``by`` is given. Defaults are
-            0, None (0.1 for chain kinds / 0.5 otherwise), 1 and 1.0.
-            ``min_group_size`` discards groups with too few
+            Grouping arguments, see :meth:`group_tracks`. Left out, the stored grouping of
+            ``by`` is used; given, ``by`` is grouped again with them (the arguments left out
+            take :meth:`group_tracks`' defaults) before the analysis. ``min_group_size``
+            discards groups with too few
             member tracks (e.g. ``min_group_size=6`` to skip 1–5 sarcomere
             myofibril fragments whose group mean is too noisy to analyse);
             ``max_drift_slen`` drops identity-drifting tracks from the chain
@@ -130,36 +136,34 @@ class AnalysisMixin:
         contraction_analysis._warn_merge_time_max(merge_time_max)
         if reading not in ('tracks', 'aggregate'):
             raise ValueError(f"reading must be 'tracks' or 'aggregate', got {reading!r}")
-        if by is not None:
-            if by == 'custom':
-                raise ValueError(
-                    "by='custom' cannot be used as a front door; call "
-                    "group_tracks(by='custom', labels=...) then analyze().")
-            self.group_tracks(by=by, reference_frame=reference_frame,
-                              min_coverage=min_coverage, min_group_size=min_group_size,
-                              max_drift_slen=max_drift_slen)
-        elif min_group_size > 1:
-            logger.warning(
-                'min_group_size is only applied when by=... is given (it is a '
-                'grouping parameter); the existing grouping is used unchanged. '
-                'Call group_tracks(..., min_group_size=%d) to apply it.', min_group_size)
-
-        if 'motion.tracks.group_id' not in self.data:
-            raise ValueError('No track grouping found. Run group_tracks(...) first '
-                             '(or pass by=... to analyze).')
+        if by not in self._GROUPING_LEVELS:
+            raise ValueError(f"Unknown grouping '{by}'. Valid: {self._GROUPING_LEVELS}.")
+        grouping_args = {name: value for name, value in dict(
+            reference_frame=reference_frame, min_coverage=min_coverage,
+            min_group_size=min_group_size, max_drift_slen=max_drift_slen).items() if value is not _STORED}
+        grouped = self._gkey(by, 'track_group_id') in self.data
+        if by == 'custom':
+            if grouping_args:
+                raise ValueError("A custom grouping is made by group_tracks(by='custom', labels=...); "
+                                 "pass no grouping arguments to analyze('custom').")
+            if not grouped:
+                raise ValueError("No custom grouping found. Run sarc.motion.group_tracks(by='custom', "
+                                 "labels=...) first.")
+        elif grouping_args or not grouped:
+            self.group_tracks(by=by, **grouping_args)
         if self.metadata.frametime is None:
             raise ValueError('Frame time not defined in metadata. Required for motion analysis.')
 
         # Refuse to analyze a grouping that no longer matches the current tracks.
-        snapshot_ids = np.asarray(self.data.get('motion.groups.track_ids', []))
+        snapshot_ids = np.asarray(self.data.get(self._gkey(by, 'track_ids'), []))
         cur_ids = np.asarray(self.data.get('motion.tracks.ids', []))
         if not np.array_equal(snapshot_ids, cur_ids):
-            raise ValueError('Tracks changed since group_tracks was run. Re-run '
-                             'group_tracks(...) before analyze().')
+            raise ValueError(f"Tracks changed since the '{by}' grouping was made. Run "
+                             f"sarc.motion.group_tracks(by='{by}') again before analyze().")
 
-        kind = self.data['motion.groups.kind']
-        n_groups = int(self.data['motion.groups.n'])
-        gid = np.asarray(self.data['motion.tracks.group_id'])
+        kind = by
+        n_groups = int(self.data[self._gkey(kind, 'n')])
+        gid = np.asarray(self.data[self._gkey(kind, 'track_group_id')])
         tracks_slen = np.asarray(self.data['motion.tracks.slen'], dtype=float)
 
         agg = grouped_motion.aggregate_group_slen(
@@ -176,7 +180,7 @@ class AnalysisMixin:
                 slen_lims=slen_lims, max_tracks=max_tracks, max_step_slen=max_step_slen,
                 min_valid_frames=min_valid_frames)
         engine = grouped_motion.run_cycle_engine(
-            agg['slen'], frametime=self.metadata.frametime, model_path=model,
+            agg['slen_avg'], frametime=self.metadata.frametime, model_path=model,
             threshold=threshold, contr_time_min=contr_time_min,
             buffer_frames=buffer_frames, min_valid_frames=min_valid_frames,
             filter_params=filter_params,
@@ -201,69 +205,45 @@ class AnalysisMixin:
         result: dict = {f'motion.{kind}.{name}': value
                         for name, value in {**agg, **engine, **het}.items()}
 
-        result.update({
-            'motion.groups.analyzed_kind': kind,
-            'params.motion.analyze.group_kind': kind,
-            'params.motion.analyze.grouping_hash': self.data['motion.groups.hash'],
-            'params.motion.analyze.reading': reading,
-            'params.motion.analyze.max_tracks': max_tracks,
-            'params.motion.analyze.max_step_slen': max_step_slen,
-            'params.motion.analyze.aggregate': aggregate,
-            'params.motion.analyze.slen_lims': list(slen_lims),
-            'params.motion.analyze.model': model,
-            'params.motion.analyze.threshold': threshold,
-            'params.motion.analyze.contr_time_min': contr_time_min,
-            'params.motion.analyze.merge_time_max': None,   # no gap is closed
-            'params.motion.analyze.buffer_frames': buffer_frames,
-            'params.motion.analyze.min_valid_frames': min_valid_frames,
-            'params.motion.analyze.filter_params': filter_params,
-            'params.motion.analyze.n_groups': n_groups,
-            # Per-kind provenance, so an earlier kind stays validatable after a later
-            # grouping overwrote the keys of the grouping currently in effect.
-            f'params.motion.analyze.grouping_hash_{kind}': self.data['motion.groups.hash'],
-            f'params.motion.analyze.n_groups_{kind}': n_groups,
-        })
-        kinds = list(self.data.get('motion.groups.analyzed_kinds') or [])
-        if kind not in kinds:
-            kinds.append(kind)
-        result['motion.groups.analyzed_kinds'] = kinds
+        params = {
+            'grouping_hash': self.data[self._gkey(kind, 'hash')],
+            'n_groups': n_groups,
+            'reading': reading,
+            'max_tracks': max_tracks,
+            'max_step_slen': max_step_slen,
+            'aggregate': aggregate,
+            'slen_lims': list(slen_lims),
+            'model': model,
+            'threshold': threshold,
+            'contr_time_min': contr_time_min,
+            'buffer_frames': buffer_frames,
+            'min_valid_frames': min_valid_frames,
+            'filter_params': filter_params,
+        }
+        result.update({f'params.motion.analyze.{kind}.{name}': value for name, value in params.items()})
         self.data.update(result)
         logger.info(f"analyze complete ('{kind}', {n_groups} groups).")
         if self.auto_save:
             self.store_structure_data()
 
-    def _assert_track_motion_fresh(self, kind: Optional[str] = None) -> None:
-        """Hard-raise if grouped track-motion results are missing or stale.
+    def _assert_track_motion_fresh(self, kind: str) -> None:
+        """Raise if the analysis of the ``kind`` grouping is missing or stale.
 
-        Guards getters/plots so a grouping changed after analysis can never
-        silently return the previous grouping's numbers.
-
-        Parameters
-        ----------
-        kind : str or None, optional
-            Grouping kind to validate. ``None`` (default) checks the grouping
-            currently in effect. Naming a kind checks that kind's own recorded
-            grouping against the current tracks, so a kind analysed before a later
-            ``group_tracks`` call stays readable. Default is None.
+        Guards getters and plots, so a grouping changed after its analysis can never
+        silently return the earlier grouping's numbers.
         """
-        suffix = f'_{kind}' if kind else ''
-        used = self.data.get(f'params.motion.analyze.grouping_hash{suffix}')
+        used = self.data.get(f'params.motion.analyze.{kind}.grouping_hash')
         if used is None:
-            which = f" for kind '{kind}'" if kind else ''
-            raise ValueError(f'No grouped track-motion analysis found{which}. '
-                             'Run analyze() first.')
-        cur = self.data.get(self._grouping_key(kind, 'motion.groups.hash'))
-        if cur is None or cur != used:
-            raise ValueError('Track grouping changed since analyze() was run. '
-                             'Re-run analyze() before reading grouped results.')
-        snapshot_ids = np.asarray(
-            self.data.get(self._grouping_key(kind, 'motion.groups.track_ids'), []))
-        cur_ids = np.asarray(self.data.get('motion.tracks.ids', []))
-        if not np.array_equal(snapshot_ids, cur_ids):
-            raise ValueError('Tracks changed since grouping. Re-run track '
-                             '-> group_tracks -> analyze.')
+            raise ValueError(f"No analysis of the '{kind}' grouping found. "
+                             f"Run sarc.motion.analyze('{kind}') first.")
+        if self.data.get(self._gkey(kind, 'hash')) != used:
+            raise ValueError(f"The '{kind}' grouping changed since it was analysed. "
+                             f"Run sarc.motion.analyze('{kind}') again.")
+        snapshot_ids = np.asarray(self.data.get(self._gkey(kind, 'track_ids'), []))
+        if not np.array_equal(snapshot_ids, np.asarray(self.data.get('motion.tracks.ids', []))):
+            raise ValueError('Tracks changed since grouping. Run sarc.motion.track -> group_tracks -> analyze again.')
 
-    def get_track_motion(self, group: int, *, analyze: bool = False,
+    def get_track_motion(self, group: int, *, kind: str = 'myofibril', analyze: bool = False,
                          persist_loi: bool = False) -> "Motion":
         """Return a :class:`~sarcasm.motion.Motion` view of one myofibril (fibre).
 
@@ -280,6 +260,8 @@ class AnalysisMixin:
         ----------
         group : int
             Fibre group id (``0 .. n_groups-1``).
+        kind : {'myofibril', 'loi'}, optional
+            The grouping the group belongs to. Default is 'myofibril'.
         analyze : bool, optional
             If True, run the standard LOI chain on the view
             (``detect_analyze_contractions`` -> ``get_trajectories`` ->
@@ -292,18 +274,17 @@ class AnalysisMixin:
         """
         from sarcasm.motion import Motion
 
-        kind = self.data.get('motion.groups.kind')
-        if kind not in ('myofibril', 'loi'):
-            raise ValueError("get_track_motion requires a 'myofibril' or 'loi' grouping "
-                             "(both order tracks along a fibre). "
-                             "Run group_tracks(by='myofibril') or group_tracks(by='loi') first.")
+        if kind not in self._CHAIN_LEVELS:
+            raise ValueError(f"get_track_motion needs an ordered grouping, {self._CHAIN_LEVELS}, got '{kind}'.")
+        if self._gkey(kind, 'track_group_id') not in self.data:
+            raise ValueError(f"No '{kind}' grouping found. Run sarc.motion.group_tracks(by='{kind}') first.")
         n_tracks = int(self.data['motion.tracks.n'])
-        gid = np.asarray(self.data['motion.tracks.group_id']).reshape(-1)
-        order = np.asarray(self.data['motion.tracks.group_order']).reshape(-1)
+        gid = np.asarray(self.data[self._gkey(kind, 'track_group_id')]).reshape(-1)
+        order = np.asarray(self.data[self._gkey(kind, 'track_group_order')]).reshape(-1)
         members = np.flatnonzero(gid == int(group))
         if members.size == 0:
             raise ValueError(f"No tracks in {kind} group {group} "
-                             f'(n_groups={self.data.get("motion.groups.n")}).')
+                             f'(n_groups={self.data.get(self._gkey(kind, "n"))}).')
         members = members[np.argsort(order[members])]  # head -> tail along the fibre
 
         slen = np.asarray(self.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[members]
@@ -314,7 +295,7 @@ class AnalysisMixin:
                             dtype=float).reshape(n_tracks, -1, 2)[members]
         # Anchor the chain geometry on the frame the grouping (and hence the
         # head-to-tail order) was built from.
-        ref_frame = int(self.data.get('params.motion.group_tracks.reference_frame', 0))
+        ref_frame = int(self.data.get(f'params.motion.group_tracks.{kind}.reference_frame', 0))
         try:
             ref_idx = self._tracked_frame_index(ref_frame)
         except (ValueError, KeyError):

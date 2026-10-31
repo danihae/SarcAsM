@@ -583,82 +583,26 @@ structure_feature_dict = {
         'function': 'sarc.structure.analyze_vectors',
         'name': 'Sarcomere vector position [px]'
     },
-    'motion.loi.data': {
-        'description': 'Geometry of the detected lines of interest (LOIs): the line points, their '
-                       'features, cluster assignment and the sampled LOI lines. Nested dict.',
-        'data type': dict,
+    'motion.lois.lines': {
+        'description': 'Lines of interest (LOIs) from sarc.motion.detect_lois or sarc.motion.set_lois: one '
+                       'polyline per LOI, np.ndarray of shape (n_points, 2) in pixels (row, column).',
+        'data type': list[np.ndarray],
         'function': 'sarc.motion.detect_lois',
-        'name': 'LOI geometry'
+        'name': 'LOI lines [px]'
     },
-    'motion.tracks.group_id': {
-        'description': 'Group each track was assigned to by the current grouping, -1 for '
-                       'unassigned. np.ndarray of shape (n_tracks,).',
+    'motion.lois.lengths': {
+        'description': 'Length of each LOI polyline in µm. np.ndarray of shape (n_lois,).',
         'data type': np.ndarray,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Track group id'
+        'function': 'sarc.motion.detect_lois',
+        'name': 'LOI length [µm]'
     },
-    'motion.tracks.group_order': {
-        'description': 'Rank of the track along its group, for groupings that order their members '
-                       'head-to-tail into a fibre (myofibril, loi). np.ndarray of shape (n_tracks,).',
-        'data type': np.ndarray,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Track order within group'
-    },
-    'motion.groups.kind': {
-        'description': 'Grouping the tracks were grouped by: pool, mband, myofibril, domain, loi '
-                       'or custom.',
-        'data type': str,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Grouping'
-    },
-    'motion.groups.analyzed_kind': {
-        'description': 'Grouping the motion analysis was last run on. Differs from '
-                       'motion.groups.kind if the tracks were regrouped without re-running '
-                       'motion.analyze.',
-        'data type': str,
-        'function': 'sarc.motion.analyze',
-        'name': 'Analyzed grouping'
-    },
-    'motion.groups.n': {
-        'description': 'Number of groups in the current grouping.',
-        'data type': int,
-        'function': 'sarc.motion.group_tracks',
-        'name': '# Groups'
-    },
-    'motion.groups.member_counts': {
-        'description': 'Number of tracks assigned to each group. np.ndarray of shape (n_groups,).',
-        'data type': np.ndarray,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Group member count'
-    },
-    'motion.groups.n_vectors_total': {
-        'description': 'Total number of sarcomere vector observations across all tracked frames, '
-                       'the denominator of the grouping coverage QC.',
-        'data type': int,
-        'function': 'sarc.motion.group_tracks',
-        'name': '# Vectors (total)'
-    },
-    'motion.groups.n_vectors_in_long_tracks': {
-        'description': 'Number of vector observations that fall in tracks long enough to be '
-                       'grouped. Divided by motion.groups.n_vectors_total this is the fraction of '
-                       'the detected sarcomeres the grouped motion analysis actually covers.',
-        'data type': int,
-        'function': 'sarc.motion.group_tracks',
-        'name': '# Vectors (in long tracks)'
-    },
-    'motion.groups.track_ids': {
-        'description': 'Track ids the current grouping was built from, kept so a grouped result '
-                       'read after re-tracking can be detected as stale. np.ndarray (n_tracks,).',
-        'data type': np.ndarray,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Grouping track ids'
-    },
-    'motion.groups.hash': {
-        'description': 'Fingerprint of the tracks and grouping recipe, used to hard-raise when a '
-                       'grouped motion result is read after its grouping changed.',
-        'data type': str,
-        'function': 'sarc.motion.group_tracks',
-        'name': 'Grouping fingerprint'
+    'motion.lois.index_lines': {
+        'description': 'For detected LOIs, the sarcomere vectors of each line, in order along it (indices into '
+                       'the vectors of the detection frame); group_tracks(by=\'loi\') follows these chains. '
+                       'Absent for hand-drawn and fitted straight lines.',
+        'data type': list[np.ndarray],
+        'function': 'sarc.motion.detect_lois',
+        'name': 'LOI sarcomere chains'
     },
     'motion.tracks.n': {
         'description': 'Number of sarcomere query-point tracks kept after the '
@@ -903,11 +847,13 @@ motion_feature_dict = {
         'data type': np.ndarray,
         'function': 'sarc.motion.analyze',
         'name': 'Group time to 90 % relaxation [s]'},
-    'slen': {
-        'description': 'Aggregated per-group sarcomere length over time, shape (n_groups, T).',
+    'slen_avg': {
+        'description': 'Average sarcomere length of each group over time, over the members present in each '
+                       "frame (mean, or median with aggregate='median'), shape (n_groups, T). The members' "
+                       'own lengths are motion.tracks.slen.',
         'data type': np.ndarray,
         'function': 'sarc.motion.analyze',
-        'name': 'Group sarcomere length time-series [µm]'},
+        'name': 'Group average sarcomere length [µm]'},
     'contr': {
         'description': 'Binary contraction state for each group over time. np.ndarray with shape (n_groups, '
                        'n_frames). True = contracting, False = quiescent.',
@@ -1069,19 +1015,56 @@ motion_feature_dict = {
 }
 
 
-#: Grouping levels that :meth:`sarcasm.motion.MotionAnalysis.analyze` can write.
-#: Motion result keys are ``'<kind>_<suffix>'`` with the suffix documented in
-#: :data:`motion_feature_dict`.
-MOTION_KINDS = ('pool', 'mband', 'myofibril', 'domain', 'loi', 'custom')
+#: Grouping kinds, in the order the GUI and the summaries list them. Motion results are stored
+#: as ``motion.<kind>.<suffix>`` with the suffix documented in :data:`motion_feature_dict`, and
+#: each grouping as ``motion.groups.<kind>.<leaf>`` with the leaf documented in
+#: :data:`grouping_feature_dict`.
+MOTION_KINDS = ('pool', 'mband', 'myofibril', 'loi', 'domain', 'custom')
+
+#: The grouping of one kind, written by ``sarc.motion.group_tracks`` as ``motion.groups.<kind>.<leaf>``.
+grouping_feature_dict = {
+    'track_group_id': {
+        'description': 'Group of each track in this grouping, -1 for unassigned. np.ndarray of shape (n_tracks,).',
+        'data type': np.ndarray, 'function': 'sarc.motion.group_tracks', 'name': 'Track group id'},
+    'track_group_order': {
+        'description': 'Rank of each track along its group, for the kinds that order their members along a '
+                       'line (myofibril, loi); 0 otherwise. np.ndarray of shape (n_tracks,).',
+        'data type': np.ndarray, 'function': 'sarc.motion.group_tracks', 'name': 'Track order within group'},
+    'n': {
+        'description': 'Number of groups.',
+        'data type': int, 'function': 'sarc.motion.group_tracks', 'name': '# Groups'},
+    'member_counts': {
+        'description': 'Number of tracks in each group. np.ndarray of shape (n_groups,).',
+        'data type': np.ndarray, 'function': 'sarc.motion.group_tracks', 'name': 'Group member count'},
+    'n_vectors_total': {
+        'description': 'Total number of sarcomere vector observations across all tracked frames, the '
+                       'denominator of the grouping coverage QC.',
+        'data type': int, 'function': 'sarc.motion.group_tracks', 'name': '# Vectors (total)'},
+    'n_vectors_in_long_tracks': {
+        'description': 'Number of vector observations in tracks long enough to be grouped. Divided by '
+                       'n_vectors_total this is the fraction of the detected sarcomeres the grouped motion '
+                       'analysis covers.',
+        'data type': int, 'function': 'sarc.motion.group_tracks', 'name': '# Vectors (in long tracks)'},
+    'track_ids': {
+        'description': 'Track ids the grouping was built from, so a grouped result read after re-tracking '
+                       'is detected as stale. np.ndarray of shape (n_tracks,).',
+        'data type': np.ndarray, 'function': 'sarc.motion.group_tracks', 'name': 'Grouping track ids'},
+    'hash': {
+        'description': 'Fingerprint of the tracks and the grouping recipe; reading a motion result raises '
+                       'when the grouping changed after its analysis.',
+        'data type': str, 'function': 'sarc.motion.group_tracks', 'name': 'Grouping fingerprint'},
+}
 
 
 def describe_key(key: str, registry: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Look up the registry entry for a result key.
 
-    Resolves the three shapes a key can have: an exact path documented in
+    Resolves the shapes a key can have: an exact path documented in
     :data:`structure_feature_dict`, a per-group motion feature
     ``motion.<kind>.<suffix>`` documented once by suffix in
-    :data:`motion_feature_dict`, and ``params.<step>.<name>``.
+    :data:`motion_feature_dict`, a grouping artifact ``motion.groups.<kind>.<leaf>``
+    documented once by leaf in :data:`grouping_feature_dict`, and a parameter
+    ``params.<step>.<name>`` / ``params.<namespace>.<step>[.<kind>].<name>``.
 
     Parameters
     ----------
@@ -1111,12 +1094,18 @@ def describe_key(key: str, registry: Optional[str] = None) -> Optional[Dict[str,
         if head == 'motion' and kind in MOTION_KINDS and suffix in motion_feature_dict:
             return {**motion_feature_dict[suffix], 'registry': 'motion',
                     'kind': kind, 'suffix': suffix}
+        if head == 'motion' and kind == 'groups':
+            group_kind, _, leaf = suffix.partition('.')
+            if group_kind in MOTION_KINDS and leaf in grouping_feature_dict:
+                return {**grouping_feature_dict[leaf], 'registry': 'structure', 'kind': group_kind}
     if registry is None and key.startswith('params.'):
+        # params.<step>.<name> for the recording's own steps, params.<namespace>.<step>.<name> for the
+        # analyses, and params.motion.<step>.<kind>.<name> for the grouping and its analysis
         parts = key.split('.')
-        step = parts[1] if len(parts) > 1 else ''
-        return {'description': f'Analysis parameter of SarcAsM.{step}(), recorded when the '
-                               f'step was run. See the method docstring for its meaning.',
-                'data type': None, 'function': f'SarcAsM.{step}', 'name': parts[-1],
+        step = '.'.join(parts[1:3]) if len(parts) > 3 and parts[1] in ('structure', 'motion') else parts[1]
+        return {'description': f'Analysis parameter of sarc.{step}(), recorded when the step was run. '
+                               f'See the method docstring for its meaning.',
+                'data type': None, 'function': f'sarc.{step}', 'name': parts[-1],
                 'registry': 'params', 'step': step}
     return None
 

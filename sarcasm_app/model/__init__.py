@@ -68,6 +68,11 @@ class ApplicationModel:
     def cell(self) -> Optional[SarcAsM]:
         return self._cell
 
+    @property
+    def group_kind(self) -> str:
+        """The grouping the Motion tab groups, analyses and displays (its 'group by' choice)."""
+        return str(self.parameters.get_parameter('motion.group.by').get_value())
+
     def init_cell(self, cell_file, **kwargs):
         """Open ``cell_file``; ``kwargs`` (restart, pixelsize, frametime, axes, channel) go to SarcAsM."""
         self.__cell_file_name = cell_file
