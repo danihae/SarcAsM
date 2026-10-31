@@ -85,9 +85,8 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+from numba import njit, prange
 from scipy.optimize import linear_sum_assignment
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 logger = logging.getLogger(__name__)
@@ -116,6 +115,168 @@ _PREDICT_PERP_KEEP_FRAC = 1.0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _with_progress(frames: range, progress_notifier, label: str):
+    """``frames`` wrapped in the notifier's progress iterator (as is without one), labelled where the iterator
+    takes a label: tracking reports two passes, so a bare console bar would look like one task run twice."""
+    if progress_notifier is None:
+        return frames
+    iterator = progress_notifier.iterator(frames, total=len(frames))
+    if hasattr(iterator, 'set_description'):              # tqdm; the GUI notifier has no label
+        iterator.set_description(label)
+    return iterator
+
+
+@njit(cache=True, parallel=True)
+def _ball_pairs_sorted(det_y, det_x, order, row_start, row0, query, radius):
+    """Detections within ``radius`` of each query point, by scanning the image rows the disk spans.
+
+    ``order`` sorts the detections by ``floor(det_y)``; ``row_start[k]`` is the first of them in row
+    ``row0 + k``. Returns ``(counts, det)``: the hits of query ``p`` are ``det[sum(counts[:p]):][:counts[p]]``,
+    ascending, the output of ``cKDTree(dets).query_ball_point(query, radius)`` flattened."""
+    n_query, n_rows = query.shape[0], row_start.shape[0] - 1
+    r2 = radius * radius
+    counts = np.zeros(n_query, dtype=np.int64)
+    for p in prange(n_query):
+        y, x = query[p, 0], query[p, 1]
+        lo = max(int(np.floor(y - radius)) - row0, 0)
+        hi = min(int(np.floor(y + radius)) - row0, n_rows - 1)
+        c = 0
+        for k in range(lo, hi + 1):
+            for s in range(row_start[k], row_start[k + 1]):
+                dy, dx = det_y[order[s]] - y, det_x[order[s]] - x
+                if dy * dy + dx * dx <= r2:
+                    c += 1
+        counts[p] = c
+    offsets = np.zeros(n_query + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
+    det = np.empty(offsets[-1], dtype=np.int64)
+    for p in prange(n_query):
+        y, x = query[p, 0], query[p, 1]
+        lo = max(int(np.floor(y - radius)) - row0, 0)
+        hi = min(int(np.floor(y + radius)) - row0, n_rows - 1)
+        o = offsets[p]
+        for k in range(lo, hi + 1):
+            for s in range(row_start[k], row_start[k + 1]):
+                dy, dx = det_y[order[s]] - y, det_x[order[s]] - x
+                if dy * dy + dx * dx <= r2:
+                    det[o] = order[s]
+                    o += 1
+        det[offsets[p]:o].sort()
+    return counts, det
+
+
+def _candidate_pairs(dets: np.ndarray, query: np.ndarray, radius: float) -> Tuple[np.ndarray, np.ndarray]:
+    """``(counts, det)`` of the detections within ``radius`` of each query point, exactly as
+    ``cKDTree(dets).query_ball_point(query, radius)`` (sorted per query) flattened, without one Python
+    list per query point. The detections are M-band skeleton pixels, so bucketing them by image row is
+    an exact and cheap spatial index."""
+    dets = np.asarray(dets, dtype=np.float64)
+    query = np.asarray(query, dtype=np.float64)
+    rows = np.floor(dets[:, 0]).astype(np.int64)
+    order = np.argsort(rows, kind='stable')
+    row0 = int(rows.min())
+    row_start = np.searchsorted(rows[order], np.arange(row0, int(rows.max()) + 2))
+    return _ball_pairs_sorted(dets[:, 0].copy(), dets[:, 1].copy(), order, row_start, row0, query, float(radius))
+
+
+@njit(cache=True)
+def _find_root(parent, i):
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+
+
+@njit(cache=True)
+def _component_cost_matrices(cost, qp, det, n_qp, n_det, max_component):
+    """Split the bipartite candidate graph into connected components and build each one's dense cost matrix
+    for :func:`_assign_optimal`: rows = its query points ascending, columns = its detections ascending,
+    unmatchable cells = the sentinel ``2 min(k_q, k_d) + 1``, each pair's cell = the lowest cost given for it.
+
+    Returns per component (in order of their first pair): the query ids and detection ids (concatenated, with
+    offsets) and the matrix (flattened row-major, with offsets; empty for components above ``max_component``,
+    which are solved greedily), plus each pair's component."""
+    n_pairs = qp.shape[0]
+    parent = np.arange(n_qp + n_det)
+    for p in range(n_pairs):
+        a, b = _find_root(parent, qp[p]), _find_root(parent, n_qp + det[p])
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+    comp_of_root = np.full(n_qp + n_det, -1, dtype=np.int64)
+    comp = np.empty(n_pairs, dtype=np.int64)
+    n_comp = 0
+    for p in range(n_pairs):
+        r = _find_root(parent, qp[p])
+        if comp_of_root[r] < 0:
+            comp_of_root[r] = n_comp
+            n_comp += 1
+        comp[p] = comp_of_root[r]
+    # pairs grouped by component, original order within a component
+    pair_start = np.zeros(n_comp + 1, dtype=np.int64)
+    for p in range(n_pairs):
+        pair_start[comp[p] + 1] += 1
+    pair_start = np.cumsum(pair_start)
+    fill = pair_start[:-1].copy()
+    by_comp = np.empty(n_pairs, dtype=np.int64)
+    for p in range(n_pairs):
+        by_comp[fill[comp[p]]] = p
+        fill[comp[p]] += 1
+    k_q = np.empty(n_comp, dtype=np.int64)
+    k_d = np.empty(n_comp, dtype=np.int64)
+    for c in range(n_comp):
+        members = by_comp[pair_start[c]:pair_start[c + 1]]
+        k_q[c] = np.unique(qp[members]).shape[0]
+        k_d[c] = np.unique(det[members]).shape[0]
+    q_start = np.zeros(n_comp + 1, dtype=np.int64)
+    d_start = np.zeros(n_comp + 1, dtype=np.int64)
+    m_start = np.zeros(n_comp + 1, dtype=np.int64)
+    for c in range(n_comp):
+        q_start[c + 1] = q_start[c] + k_q[c]
+        d_start[c + 1] = d_start[c] + k_d[c]
+        small = max(k_q[c], k_d[c]) <= max_component
+        m_start[c + 1] = m_start[c] + (k_q[c] * k_d[c] if small else 0)
+    q_ids = np.empty(q_start[-1], dtype=np.int64)
+    d_ids = np.empty(d_start[-1], dtype=np.int64)
+    mats = np.empty(m_start[-1], dtype=np.float64)
+    for c in range(n_comp):
+        members = by_comp[pair_start[c]:pair_start[c + 1]]
+        uq = np.unique(qp[members])
+        ud = np.unique(det[members])
+        q_ids[q_start[c]:q_start[c + 1]] = uq
+        d_ids[d_start[c]:d_start[c + 1]] = ud
+        if max(k_q[c], k_d[c]) > max_component:
+            continue
+        mat = mats[m_start[c]:m_start[c + 1]]
+        mat[:] = 2.0 * min(k_q[c], k_d[c]) + 1.0
+        for p in members:
+            cell = np.searchsorted(uq, qp[p]) * k_d[c] + np.searchsorted(ud, det[p])
+            mat[cell] = min(mat[cell], np.float64(cost[p]))
+    return q_ids, q_start, d_ids, d_start, mats, m_start, comp
+
+
+@njit(cache=True, parallel=True)
+def _nan_skipping_median(values):
+    """``np.nanmedian(values, axis=1)`` for float64 ``(n, k, m)``: per row and channel the middle of the
+    finite values, or ``(low + high) / 2`` for an even count; NaN without any."""
+    n, k, m = values.shape
+    out = np.empty((n, m))
+    for i in prange(n):
+        buf = np.empty(k)
+        for j in range(m):
+            c = 0
+            for q in range(k):
+                v = values[i, q, j]
+                if not np.isnan(v):
+                    buf[c] = v
+                    c += 1
+            if c == 0:
+                out[i, j] = np.nan
+                continue
+            s = np.sort(buf[:c])
+            out[i, j] = s[c // 2] if c % 2 else (s[c // 2 - 1] + s[c // 2]) / 2
+    return out
+
 
 def _median_slen_px(sarcomere_lengths_all, pixelsize: float) -> Optional[float]:
     """Median finite sarcomere length across all frames, converted to pixels.
@@ -177,9 +338,7 @@ def _neighbor_displacement(query_yx: np.ndarray, ref_yx: np.ndarray,
         idx = idx[:, None]
     within = np.isfinite(dist) & (dist <= radius)
     d = np.where(within[:, :, None], np.asarray(ref_disp, dtype=np.float64)[idx], np.nan)
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', category=RuntimeWarning)
-        med = np.nanmedian(d, axis=1)
+    med = _nan_skipping_median(d)
     # Points with no reference inside the radius fall back to the global median
     # (a rigid drift of the whole field is still better than assuming no motion).
     isolated = ~np.isfinite(med).all(axis=1)
@@ -340,21 +499,21 @@ def _assign_optimal(
     """
     if len(qp) == 0:
         return np.empty(0, np.int64), np.empty(0, np.int64)
-    n = n_qp + n_det
-    adj = coo_matrix((np.ones(len(qp)), (qp, det + n_qp)), shape=(n, n))
-    _, labels = connected_components(adj + adj.T, directed=False)
-    order = np.argsort(labels[qp], kind='stable')
-    qp, det, cost = qp[order], det[order], cost[order]
-    bounds = np.flatnonzero(np.diff(labels[qp])) + 1
+    # components and their cost matrices in one compiled pass; scipy solves each matrix
+    q_ids_all, q_start, d_ids_all, d_start, mats, m_start, comp = _component_cost_matrices(
+        np.ascontiguousarray(cost), np.ascontiguousarray(qp, dtype=np.int64),
+        np.ascontiguousarray(det, dtype=np.int64), int(n_qp), int(n_det), _LAP_MAX_COMPONENT)
     out_q: List[np.ndarray] = []
     out_d: List[np.ndarray] = []
-    for sl in np.split(np.arange(len(qp)), bounds):
-        q_ids, q_inv = np.unique(qp[sl], return_inverse=True)
-        d_ids, d_inv = np.unique(det[sl], return_inverse=True)
+    for c in range(len(q_start) - 1):
+        q_ids, d_ids = q_ids_all[q_start[c]:q_start[c + 1]], d_ids_all[d_start[c]:d_start[c + 1]]
         k_q, k_d = len(q_ids), len(d_ids)
         if max(k_q, k_d) > _LAP_MAX_COMPONENT:
             # Safety valve: an unusually large component would make the dense
             # O(k³) solve dominate. Fall back to a greedy claim by cost.
+            sl = np.flatnonzero(comp == c)
+            q_inv = np.searchsorted(q_ids, qp[sl])
+            d_inv = np.searchsorted(d_ids, det[sl])
             claimed_q = np.zeros(k_q, bool)
             claimed_d = np.zeros(k_d, bool)
             for i in np.argsort(cost[sl], kind='stable'):
@@ -369,8 +528,7 @@ def _assign_optimal(
                 f"_LAP_MAX_COMPONENT={_LAP_MAX_COMPONENT}; used greedy fallback.")
             continue
         sentinel = 2.0 * min(k_q, k_d) + 1.0
-        mat = np.full((k_q, k_d), sentinel)
-        np.minimum.at(mat, (q_inv, d_inv), cost[sl])
+        mat = mats[m_start[c]:m_start[c + 1]].reshape(k_q, k_d)
         rows, cols = linear_sum_assignment(mat)
         ok = mat[rows, cols] < sentinel
         out_q.append(q_ids[rows[ok]])
@@ -423,29 +581,31 @@ def _interpolate_short_gaps(
     """
     if n_tracks == 0 or int(max_gap) <= 0:
         return 0
-    filled = 0
-    for i in range(n_tracks):
-        fr = np.flatnonzero(tracks_observed[i])
-        if fr.size < 2:
-            continue
-        gaps = np.diff(fr)
-        for a, b in zip(fr[:-1][gaps > 1], fr[1:][gaps > 1]):
-            span = int(b - a)
-            if span - 1 > int(max_gap):
-                continue
-            w = np.arange(1, span) / float(span)
-            # An observed anchor can still carry a NaN length (its detection had
-            # none), in which case there is nothing to interpolate between.
-            s_a, s_b = tracks_slen[i, a], tracks_slen[i, b]
-            if np.isfinite(s_a) and np.isfinite(s_b):
-                tracks_slen[i, a + 1:b] = (1.0 - w) * s_a + w * s_b
-                filled += span - 1
-            o_a, o_b = tracks_ori[i, a], tracks_ori[i, b]
-            if np.isfinite(o_a) and np.isfinite(o_b):
-                s2 = (1.0 - w) * np.sin(2.0 * o_a) + w * np.sin(2.0 * o_b)
-                c2 = (1.0 - w) * np.cos(2.0 * o_a) + w * np.cos(2.0 * o_b)
-                tracks_ori[i, a + 1:b] = 0.5 * np.arctan2(s2, c2)
-    return filled
+    # every interior gap of every track at once: consecutive observations of one track, 2..max_gap+1 apart
+    track, frame = np.nonzero(tracks_observed[:n_tracks])
+    span = np.diff(frame)
+    is_gap = (track[1:] == track[:-1]) & (span > 1) & (span - 1 <= int(max_gap))
+    i, a, span = track[1:][is_gap], frame[:-1][is_gap], span[is_gap]
+    if i.size == 0:
+        return 0
+    b = a + span
+    # one entry per gap frame: k = 1 .. span - 1, at weight k / span
+    n_fill = span - 1
+    gap = np.repeat(np.arange(i.size), n_fill)
+    k = np.arange(gap.size) - np.repeat(np.cumsum(n_fill) - n_fill, n_fill) + 1
+    w = k / span[gap].astype(np.float64)
+    rows, cols = i[gap], a[gap] + k
+    # An observed anchor can still carry a NaN length (its detection had
+    # none), in which case there is nothing to interpolate between.
+    s_a, s_b = tracks_slen[i, a], tracks_slen[i, b]
+    fill_s = (np.isfinite(s_a) & np.isfinite(s_b))[gap]
+    tracks_slen[rows[fill_s], cols[fill_s]] = ((1.0 - w) * s_a[gap] + w * s_b[gap])[fill_s]
+    o_a, o_b = tracks_ori[i, a], tracks_ori[i, b]
+    fill_o = (np.isfinite(o_a) & np.isfinite(o_b))[gap]
+    s2 = (1.0 - w) * np.sin(2.0 * o_a)[gap] + w * np.sin(2.0 * o_b)[gap]
+    c2 = (1.0 - w) * np.cos(2.0 * o_a)[gap] + w * np.cos(2.0 * o_b)[gap]
+    tracks_ori[rows[fill_o], cols[fill_o]] = (0.5 * np.arctan2(s2, c2))[fill_o]
+    return int(fill_s.sum())
 
 
 def _as_arr_padded(x, n: int, dtype=np.float32, fill=np.nan) -> np.ndarray:
@@ -721,9 +881,7 @@ def track_sarcomere_vectors(
 
     # --- frame-to-frame: advect, match, spawn ---
     logger.info("Tracking frames…")
-    _frames = range(T - 1)
-    if progress_notifier is not None:
-        _frames = progress_notifier.iterator(_frames)
+    _frames = _with_progress(range(T - 1), progress_notifier, 'Tracking')
     for t in _frames:
         # 1. advect unmatched tracks along their sarcomere axis by the median step
         #    of the neighbours observed in both of the last two frames
@@ -790,26 +948,12 @@ def track_sarcomere_vectors(
         # 3. kd-tree + vectorized gate on all (qp, candidate) pairs; the gate does
         #    not widen with gap length (that would trade identity for fragmentation)
         if n_det > 0 and live.size > 0:
-            tree = cKDTree(dets)
             live_pos = np.column_stack((last_y[live], last_x[live]))
-            # kd-tree radius must cover the along gate, the larger axis.
-            neighbors = tree.query_ball_point(live_pos, r=max_radius)
-
-            counts = np.fromiter(
-                (len(n) for n in neighbors),
-                dtype=np.int64,
-                count=len(neighbors),
-            )
-            total = int(counts.sum())
+            # the search radius must cover the along gate, the larger axis.
+            counts, det_flat = _candidate_pairs(dets, live_pos, max_radius)
+            total = int(det_flat.size)
 
             if total > 0:
-                det_flat = np.empty(total, dtype=np.int64)
-                offset = 0
-                for n_list in neighbors:
-                    k = len(n_list)
-                    if k:
-                        det_flat[offset:offset + k] = n_list
-                        offset += k
                 qp_flat_rel = np.repeat(
                     np.arange(live.size, dtype=np.int64), counts,
                 )
@@ -1141,7 +1285,7 @@ def refine_track_lengths(
         :func:`~sarcasm.analysis.sarcomere_vectors.get_sarcomere_vectors` uses for the
         detections. Frames without a valid pair of Z-bands keep their input position.
     """
-    from ..utils import Utils
+    from ..utils import Utils, _profile_lines
     positions_px = np.asarray(positions_px, dtype=float)
     ori_s = track_axis_orientations(orientations, observed, window_frames)
     n, T = ori_s.shape
@@ -1149,7 +1293,7 @@ def refine_track_lengths(
     positions_out = positions_px.copy()
     linewidth_px = max(int(round(linewidth / pixelsize, 0)), 1)
     half_length = (slen_lims[1] * 1.3) / 2 / pixelsize
-    frames = range(T) if progress_notifier is None else progress_notifier.iterator(range(T), total=T)
+    frames = _with_progress(range(T), progress_notifier, 'Refining lengths')
     for k in frames:
         rows = np.flatnonzero(np.isfinite(ori_s[:, k]))
         if rows.size == 0:
@@ -1157,8 +1301,8 @@ def refine_track_lengths(
         theta = ori_s[rows, k]
         centres = positions_px[rows, k].T
         direction = np.stack((np.sin(theta) * half_length, np.cos(theta) * half_length), axis=0)
-        profiles = Utils.fast_profile_lines(np.asarray(read_zbands(k)), centres + direction, centres - direction,
-                                            linewidth=linewidth_px)
+        profiles = _profile_lines(np.asarray(read_zbands(k)), centres + direction, centres - direction,
+                                  linewidth=linewidth_px)
         lengths, offsets = Utils.process_profiles_batch(
             profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
             interpolation_method=interpolation_method, prominence=peak_prominence)

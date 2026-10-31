@@ -146,19 +146,44 @@ def _batched_akima(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarra
     return _cubic_hermite_eval(x, y, _akima_slopes(x, y), x_new, segment)
 
 
-@njit(cache=True, parallel=True)
-def _bilinear_line_samples(image, centres, unit, perp, steps, offsets):
-    """Bilinear samples along many lines: sample (i, s, w) at ``centres[i] + steps[s] * unit[i] + offsets[w] *
-    perp[i]`` (``offsets`` empty: no perpendicular term).
+@njit(cache=True)
+def _pairwise_sum(values, n):
+    """numpy's summation of ``values[:n]`` (``pairwise_sum`` for n <= 128): sequential below 8 values,
+    otherwise 8 interleaved partial sums, combined pairwise, then the remainder. In the values' dtype."""
+    if n < 8:                          # numpy adds to 0.0; starting at values[0] is the same for any value
+        total = values[0]
+        for k in range(1, n):
+            total += values[k]
+        return total
+    r = values[:8].copy()
+    k = 8
+    while k < n - n % 8:
+        for q in range(8):
+            r[q] += values[k + q]
+        k += 8
+    total = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+    while k < n:
+        total += values[k]
+        k += 1
+    return total
 
-    Bit-identical to ``map_coordinates(image, ..., order=1, mode='constant', cval=0)``: points outside
-    ``[0, H-1] x [0, W-1]`` are 0, and each sample sums ``value * w_row * w_col`` over the 2x2 support in
-    row-major order, in float64, cast to the image dtype, with scipy's weights ``1 - t`` and ``1 - (1 - t)``."""
+
+@njit(cache=True, parallel=True)
+def _bilinear_line_profiles(image, centres, unit, perp, steps, offsets, divisor):
+    """Bilinear profiles along many lines: profile ``i`` at step ``s`` is the mean over ``w`` of the image at
+    ``centres[i] + steps[s] * unit[i] + offsets[w] * perp[i]`` (``offsets`` empty: one sample, no mean).
+
+    Bit-identical to ``map_coordinates(image, ..., order=1, mode='constant', cval=0)`` followed by
+    ``.mean(axis=-1)`` over the line width (``divisor`` = ``[n_offsets]`` in the image dtype; at most 128
+    offsets): points outside ``[0, H-1] x [0, W-1]`` are 0, each sample sums ``value * w_row * w_col`` over
+    the 2x2 support in row-major order, in float64, with scipy's weights ``1 - t`` and ``1 - (1 - t)``, and is
+    cast to the image dtype; the mean is numpy's pairwise sum in the image dtype, divided by the count."""
     height, width = image.shape
     n, n_steps = centres.shape[0], steps.shape[0]
     n_off = max(offsets.shape[0], 1)
-    out = np.empty((n, n_steps, n_off), dtype=image.dtype)
+    out = np.empty((n, n_steps), dtype=image.dtype)
     for i in prange(n):
+        out_w = np.empty(n_off, dtype=image.dtype)
         for s in range(n_steps):
             r_line = centres[i, 0] + steps[s] * unit[i, 0]
             c_line = centres[i, 1] + steps[s] * unit[i, 1]
@@ -169,7 +194,7 @@ def _bilinear_line_samples(image, centres, unit, perp, steps, offsets):
                 else:
                     r, c = r_line, c_line
                 if not (r >= 0.0 and r <= height - 1 and c >= 0.0 and c <= width - 1):   # also NaN
-                    out[i, s, w] = 0.0
+                    out_w[w] = 0.0
                     continue
                 r0 = min(int(np.floor(r)), height - 2)
                 c0 = min(int(np.floor(c)), width - 2)
@@ -184,8 +209,70 @@ def _bilinear_line_samples(image, centres, unit, perp, steps, offsets):
                 acc += image[r0, c0 + 1] * wr0 * tc
                 acc += image[r0 + 1, c0] * tr * wc0
                 acc += image[r0 + 1, c0 + 1] * tr * tc
-                out[i, s, w] = acc
+                out_w[w] = acc
+            out[i, s] = _pairwise_sum(out_w, n_off) / divisor[0] if offsets.shape[0] > 0 else out_w[0]
     return out
+
+
+def _profile_lines(image, start_points, end_points, linewidth=3, mode='constant', cval=0.0):
+    """:meth:`Utils.fast_profile_lines`, except that lines of one length come back as one ``(n_lines, L)``
+    array instead of a list of its rows (lines of different lengths still as a list)."""
+    start_points = np.asarray(start_points, dtype=float).T
+    end_points = np.asarray(end_points, dtype=float).T
+    n_lines = len(start_points)
+    if n_lines == 0:
+        return []
+    vectors = end_points - start_points
+    norms = np.sqrt(np.sum(vectors ** 2, axis=1))
+    unit = vectors / np.maximum(norms, 1e-12)[:, None]
+    centres = (start_points + end_points) / 2
+    halves = np.floor(norms / 2).astype(int)            # samples on each side of the midpoint
+    if linewidth > 1:
+        perp = np.stack([-unit[:, 1], unit[:, 0]], axis=1)
+        offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
+
+    # fast path for uniform length: fully vectorized coordinates
+    if int(halves.min()) == int(halves.max()):
+        K = int(halves[0])
+        L = 2 * K + 1
+        s = np.arange(-K, K + 1, dtype=float)
+        image = np.asarray(image)
+        if (mode == 'constant' and cval == 0.0 and image.ndim == 2 and min(image.shape) >= 2
+                and image.dtype in (np.float32, np.float64) and linewidth <= 128):
+            # compiled sampler, bit-identical to the map_coordinates path below
+            return _bilinear_line_profiles(
+                image, np.ascontiguousarray(centres), np.ascontiguousarray(unit),
+                np.ascontiguousarray(perp) if linewidth > 1 else np.zeros((n_lines, 2)),
+                s, offsets if linewidth > 1 else np.empty(0), np.array([linewidth], dtype=image.dtype))
+        line_coords = centres[:, None, :] + s[None, :, None] * unit[:, None, :]      # (n_lines, L, 2)
+        if linewidth > 1:
+            full = line_coords[:, :, None, :] + perp[:, None, None, :] * offsets[None, None, :, None]
+            samples = map_coordinates(image, full.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
+            return samples.reshape(n_lines, L, linewidth).mean(axis=-1)
+        samples = map_coordinates(image, line_coords.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
+        return samples.reshape(n_lines, L)
+
+    # Fallback: variable-length profiles.
+    coords_list, lengths = [], []
+    for i in range(n_lines):
+        K = int(halves[i])
+        s = np.arange(-K, K + 1, dtype=float)
+        line = centres[i][None, :] + s[:, None] * unit[i][None, :]                   # (L_i, 2)
+        if linewidth > 1:
+            line = line[:, None, :] + perp[i][None, None, :] * offsets[None, :, None]   # (L_i, lw, 2)
+        coords_list.append(line.reshape(-1, 2))
+        lengths.append(2 * K + 1)
+    samples = map_coordinates(image, np.concatenate(coords_list, axis=0).T, order=1, mode=mode, cval=cval)
+    result = []
+    start_idx = 0
+    for i in range(n_lines):
+        n = lengths[i] * (linewidth if linewidth > 1 else 1)
+        profile = samples[start_idx:start_idx + n]
+        if linewidth > 1:
+            profile = profile.reshape(lengths[i], linewidth).mean(axis=1)
+        result.append(profile)
+        start_idx += n
+    return result
 
 
 @njit(cache=True, parallel=True)
@@ -496,8 +583,8 @@ class Utils:
 
         Parameters
         ----------
-        profiles : list of np.ndarray
-            List of 1-D intensity profiles.
+        profiles : list of np.ndarray or np.ndarray
+            1-D intensity profiles: a list, or the rows of a 2-D array.
         pixelsize : float
             Physical size per pixel, in µm.
         slen_lims : tuple of float, optional
@@ -545,14 +632,15 @@ class Utils:
         window_size = width_pixels * max(interp_factor, 1)
 
         # fast path for uniform profile length: one interpolator over the (N, L) batch
-        lengths0 = len(profiles[0])
-        uniform_length = all(len(p) == lengths0 for p in profiles)
+        is_matrix = isinstance(profiles, np.ndarray) and profiles.ndim == 2
+        lengths0 = profiles.shape[1] if is_matrix else len(profiles[0])
+        uniform_length = is_matrix or all(len(p) == lengths0 for p in profiles)
 
         if uniform_length and lengths0 >= 2:
             L = lengths0
             # Preserve the caller's dtype through normalization so the batched and
             # per-profile paths agree numerically.
-            y_mat = np.stack(profiles, axis=0)
+            y_mat = profiles if is_matrix else np.stack(profiles, axis=0)
             if y_mat.ndim != 2:
                 y_mat = y_mat.reshape(n_profiles, L)
             pmin = y_mat.min(axis=1)
@@ -887,66 +975,8 @@ class Utils:
             ``2 * floor(|end_i - start_i| / 2) + 1`` samples, the middle one at its
             midpoint.
         """
-        start_points = np.asarray(start_points, dtype=float).T
-        end_points = np.asarray(end_points, dtype=float).T
-        n_lines = len(start_points)
-        if n_lines == 0:
-            return []
-        vectors = end_points - start_points
-        norms = np.sqrt(np.sum(vectors ** 2, axis=1))
-        unit = vectors / np.maximum(norms, 1e-12)[:, None]
-        centres = (start_points + end_points) / 2
-        halves = np.floor(norms / 2).astype(int)            # samples on each side of the midpoint
-        if linewidth > 1:
-            perp = np.stack([-unit[:, 1], unit[:, 0]], axis=1)
-            offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
-
-        # fast path for uniform length: fully vectorized coordinates
-        if int(halves.min()) == int(halves.max()):
-            K = int(halves[0])
-            L = 2 * K + 1
-            s = np.arange(-K, K + 1, dtype=float)
-            image = np.asarray(image)
-            if (mode == 'constant' and cval == 0.0 and image.ndim == 2 and min(image.shape) >= 2
-                    and image.dtype in (np.float32, np.float64)):
-                # compiled sampler, bit-identical to the map_coordinates calls below
-                samples = _bilinear_line_samples(
-                    image, np.ascontiguousarray(centres), np.ascontiguousarray(unit),
-                    np.ascontiguousarray(perp) if linewidth > 1 else np.zeros((n_lines, 2)),
-                    s, offsets if linewidth > 1 else np.empty(0))
-                profiles = samples.mean(axis=-1) if linewidth > 1 else samples[:, :, 0]
-                return [profiles[i] for i in range(n_lines)]
-            line_coords = centres[:, None, :] + s[None, :, None] * unit[:, None, :]      # (n_lines, L, 2)
-            if linewidth > 1:
-                full = line_coords[:, :, None, :] + perp[:, None, None, :] * offsets[None, None, :, None]
-                samples = map_coordinates(image, full.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
-                profiles = samples.reshape(n_lines, L, linewidth).mean(axis=-1)
-            else:
-                samples = map_coordinates(image, line_coords.reshape(-1, 2).T, order=1, mode=mode, cval=cval)
-                profiles = samples.reshape(n_lines, L)
-            return [profiles[i] for i in range(n_lines)]
-
-        # Fallback: variable-length profiles.
-        coords_list, lengths = [], []
-        for i in range(n_lines):
-            K = int(halves[i])
-            s = np.arange(-K, K + 1, dtype=float)
-            line = centres[i][None, :] + s[:, None] * unit[i][None, :]                   # (L_i, 2)
-            if linewidth > 1:
-                line = line[:, None, :] + perp[i][None, None, :] * offsets[None, :, None]   # (L_i, lw, 2)
-            coords_list.append(line.reshape(-1, 2))
-            lengths.append(2 * K + 1)
-        samples = map_coordinates(image, np.concatenate(coords_list, axis=0).T, order=1, mode=mode, cval=cval)
-        result = []
-        start_idx = 0
-        for i in range(n_lines):
-            n = lengths[i] * (linewidth if linewidth > 1 else 1)
-            profile = samples[start_idx:start_idx + n]
-            if linewidth > 1:
-                profile = profile.reshape(lengths[i], linewidth).mean(axis=1)
-            result.append(profile)
-            start_idx += n
-        return result
+        profiles = _profile_lines(image, start_points, end_points, linewidth=linewidth, mode=mode, cval=cval)
+        return list(profiles) if isinstance(profiles, np.ndarray) else profiles
 
     @staticmethod
     @njit(parallel=True)

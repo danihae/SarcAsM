@@ -20,7 +20,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 from skimage.morphology import disk, skeletonize
 
-from sarcasm.utils import Utils
+from sarcasm.utils import Utils, _profile_lines
 
 
 @njit(cache=True, parallel=True)
@@ -525,7 +525,7 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
         ends2 = pos_vectors_px.T - direction_vectors
 
         # Calculate sarcomere lengths by measuring peak-to-peak distance of Z-bands in intensity profile
-        profiles = Utils.fast_profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
+        profiles = _profile_lines(zbands, ends1, ends2, linewidth=linewidth_pixels)
 
         sarcomere_length_vectors, center_offsets = Utils.process_profiles_batch(
             profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,

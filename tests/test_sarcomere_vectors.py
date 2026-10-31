@@ -258,7 +258,7 @@ def test_orientation_at_points_empty_input():
 
 
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
-@pytest.mark.parametrize('linewidth', [1, 5])
+@pytest.mark.parametrize('linewidth', [1, 5, 8, 25])
 def test_profile_sampler_is_bit_identical_to_map_coordinates(dtype, linewidth):
     """The compiled profile sampler must reproduce the former map_coordinates path bit for bit, including
     lines that leave the image (samples outside it are 0)."""

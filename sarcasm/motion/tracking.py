@@ -109,7 +109,7 @@ class TrackingMixin:
         motion_predictor: str = 'none',
         refine_lengths: bool = True,
         orientation_window_s: Optional[float] = None,
-        progress_notifier: Optional[ProgressNotifier] = None,
+        progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm(),
     ) -> None:
         """2D full-field sarcomere-vector tracking.
 
@@ -158,9 +158,10 @@ class TrackingMixin:
             Minimum accumulated real observation time required to keep a track, in
             seconds. Falls back to 5 real observations when frametime is unknown.
             Default is 0.08.
-        progress_notifier : ProgressNotifier, optional
-            Reports per-frame progress, for GUI integration: once for the tracking and once
-            more for the length refinement. Default is None (no reporting).
+        progress_notifier : ProgressNotifier or None, optional
+            Reports per-frame progress: once for the tracking and once more for the length
+            refinement, as two labelled console bars by default. None reports nothing.
+            Default is ProgressNotifier.progress_notifier_tqdm().
         max_gap_interpolation_s : float, optional
             Longest gap, in seconds, whose sarcomere length and orientation are
             filled by interpolating between the real observations on either side,

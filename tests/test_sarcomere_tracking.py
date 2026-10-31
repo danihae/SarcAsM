@@ -561,3 +561,102 @@ def test_orientation_window_warns_about_too_few_frames(caplog, monkeypatch):
     with caplog.at_level(logging.WARNING):
         assert sarc.motion._orientation_window_frames(2.0) is None
     assert 'frametime is unknown' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Compiled kernels: parity with the scipy / numpy code they replaced
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('integer_positions', [True, False])
+def test_candidate_pairs_equal_the_kdtree_ball_query(integer_positions):
+    """Same candidates, in the same order, as cKDTree.query_ball_point (sorted per query point)."""
+    from scipy.spatial import cKDTree
+    rng = np.random.default_rng(2)
+    dets = rng.uniform(0, 120, (3000, 2))
+    if integer_positions:                                     # M-band skeleton pixels, unique
+        dets = np.unique(np.floor(dets), axis=0)
+    dets = dets.astype(np.float32)
+    query = (dets[rng.choice(len(dets), 800)] + rng.normal(0, 2, (800, 2))).astype(np.float32)
+    radius = 16.3
+
+    counts, det = st._candidate_pairs(dets, query, radius)
+
+    ref = cKDTree(dets).query_ball_point(query, r=radius)
+    np.testing.assert_array_equal(counts, [len(r) for r in ref])
+    np.testing.assert_array_equal(det, np.concatenate([np.asarray(r, np.int64) for r in ref]))
+
+
+def _assign_reference(cost, qp, det, n_qp, n_det, max_component):
+    """The former _assign_optimal: scipy connected components, per-component np.unique matrices."""
+    from scipy.optimize import linear_sum_assignment
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = n_qp + n_det
+    adj = coo_matrix((np.ones(len(qp)), (qp, det + n_qp)), shape=(n, n))
+    _, labels = connected_components(adj + adj.T, directed=False)
+    order = np.argsort(labels[qp], kind='stable')
+    qp, det, cost = qp[order], det[order], cost[order]
+    pairs = set()
+    for sl in np.split(np.arange(len(qp)), np.flatnonzero(np.diff(labels[qp])) + 1):
+        q_ids, q_inv = np.unique(qp[sl], return_inverse=True)
+        d_ids, d_inv = np.unique(det[sl], return_inverse=True)
+        if max(len(q_ids), len(d_ids)) > max_component:
+            claimed_q, claimed_d = set(), set()
+            for i in np.argsort(cost[sl], kind='stable'):
+                if q_inv[i] not in claimed_q and d_inv[i] not in claimed_d:
+                    claimed_q.add(q_inv[i]); claimed_d.add(d_inv[i])
+                    pairs.add((q_ids[q_inv[i]], d_ids[d_inv[i]]))
+            continue
+        sentinel = 2.0 * min(len(q_ids), len(d_ids)) + 1.0
+        mat = np.full((len(q_ids), len(d_ids)), sentinel)
+        np.minimum.at(mat, (q_inv, d_inv), cost[sl])
+        rows, cols = linear_sum_assignment(mat)
+        ok = mat[rows, cols] < sentinel
+        pairs.update(zip(q_ids[rows[ok]], d_ids[cols[ok]]))
+    return pairs
+
+
+@pytest.mark.parametrize('max_component', [1500, 6])
+def test_assignment_matches_the_scipy_component_reference(monkeypatch, max_component):
+    """Identical matches to the per-component scipy implementation it replaced, ties and duplicate pairs
+    included; max_component=6 sends the larger components through the greedy fallback."""
+    monkeypatch.setattr(st, '_LAP_MAX_COMPONENT', max_component)
+    rng = np.random.default_rng(4)
+    n_qp, n_det = 400, 380
+    qp = rng.integers(0, n_qp, 1500)
+    det = np.clip(qp + rng.integers(-3, 4, 1500), 0, n_det - 1)            # row-like components
+    cost = rng.choice([0.25, 0.5, 1.0, 1.5], 1500).astype(np.float32)       # many ties
+    qp, det, cost = np.r_[qp, qp[:50]], np.r_[det, det[:50]], np.r_[cost, cost[:50] + 0.5]   # duplicate pairs
+
+    q_acc, d_acc = st._assign_optimal(cost, qp, det, n_qp, n_det)
+
+    assert set(zip(q_acc, d_acc)) == _assign_reference(cost, qp, det, n_qp, n_det, max_component)
+
+
+def test_nan_skipping_median_equals_numpy_nanmedian():
+    rng = np.random.default_rng(6)
+    for k in (1, 4, 7, 16):
+        values = rng.normal(size=(300, k, 2))
+        values[rng.random(values.shape) < 0.4] = np.nan
+        values[0] = np.nan                                                    # nothing in range
+        with np.errstate(all='ignore'), pytest.warns(RuntimeWarning):
+            ref = np.nanmedian(values, axis=1)
+        np.testing.assert_array_equal(st._nan_skipping_median(values), ref)
+
+
+def test_progress_bars_are_labelled_and_on_by_default(capsys):
+    """track() reports progress in API use by default, as two labelled bars (tracking, length refinement)."""
+    import inspect
+    from bio_image_unet.progress import ProgressNotifier
+    from sarcasm.motion.tracking import TrackingMixin
+    assert inspect.signature(TrackingMixin.track).parameters['progress_notifier'].default is not None
+
+    notifier = ProgressNotifier.progress_notifier_tqdm()
+    pos_px_all, slen_all, ori_all = _make_detection_sequence(T=4, n_points=10)
+    st.track_sarcomere_vectors(pos_px_all, [None] * 4, slen_all, ori_all, pixelsize=0.1, frametime=0.01,
+                               min_track_duration_s=0.02, progress_notifier=notifier)
+    pos = np.full((2, 4, 2), 40.0)
+    st.refine_track_lengths(pos, np.zeros((2, 4)), np.ones((2, 4), bool), lambda k: _stripe_zbands(), 0.06,
+                            progress_notifier=notifier)
+    err = capsys.readouterr().err
+    assert 'Tracking' in err and 'Refining lengths' in err
