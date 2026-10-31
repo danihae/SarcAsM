@@ -257,6 +257,85 @@ def test_orientation_at_points_empty_input():
     assert out.shape == (0,)
 
 
+@pytest.mark.parametrize('dtype', [np.float32, np.float64])
+@pytest.mark.parametrize('linewidth', [1, 5])
+def test_profile_sampler_is_bit_identical_to_map_coordinates(dtype, linewidth):
+    """The compiled profile sampler must reproduce the former map_coordinates path bit for bit, including
+    lines that leave the image (samples outside it are 0)."""
+    from scipy.ndimage import map_coordinates
+    rng = np.random.default_rng(3)
+    image = rng.random((40, 70)).astype(dtype)
+    n = 300
+    centres = np.stack([rng.uniform(-5, 45, n), rng.uniform(-5, 75, n)])
+    angle = rng.uniform(0, np.pi, n)
+    half = np.stack([np.sin(angle), np.cos(angle)]) * 12.3
+    starts, ends = centres + half, centres - half
+
+    profiles = np.stack(Utils.fast_profile_lines(image, starts, ends, linewidth=linewidth))
+
+    # reference: the pre-numba implementation of the uniform-length path
+    vec = (ends - starts).T
+    norm = np.sqrt(np.sum(vec ** 2, axis=1))
+    unit = vec / norm[:, None]
+    K = int(np.floor(norm / 2)[0])
+    s = np.arange(-K, K + 1, dtype=float)
+    coords = ((starts + ends).T / 2)[:, None, :] + s[None, :, None] * unit[:, None, :]
+    if linewidth > 1:
+        perp = np.stack([-unit[:, 1], unit[:, 0]], axis=1)
+        offsets = np.linspace(-(linewidth - 1) / 2, (linewidth - 1) / 2, linewidth)
+        coords = coords[:, :, None, :] + perp[:, None, None, :] * offsets[None, None, :, None]
+    ref = map_coordinates(image, coords.reshape(-1, 2).T, order=1, mode='constant', cval=0.0)
+    ref = ref.reshape(n, 2 * K + 1, -1).mean(axis=-1)
+
+    assert profiles.dtype == ref.dtype
+    np.testing.assert_array_equal(profiles, ref)
+
+
+def test_feret_diameters_are_identical_to_skimage():
+    """M-band pixels and lengths must equal regionprops' ``coords`` and ``feret_diameter_max`` exactly,
+    including curved midlines, where skimage's convex-hull image adds pixels outside the region."""
+    from scipy import ndimage
+    from skimage import measure
+    from skimage.morphology import skeletonize
+    rng = np.random.default_rng(11)
+    mask = ndimage.gaussian_filter(rng.random((300, 300)), 3) > 0.52
+    labels = np.zeros((340, 340), dtype=np.int64)
+    labels[:300, :300], n = ndimage.label(skeletonize(mask), np.ones((3, 3)))
+    rr, cc = np.ogrid[:340, :340]
+    for k, region in enumerate([                         # single pixel, line, diagonal, arc, L
+            (rr == 310) & (cc == 10),
+            (rr == 320) & (cc >= 20) & (cc < 60),
+            (rr - cc == 245) & (cc >= 70) & (cc < 85),
+            np.abs(np.hypot(rr - 340, cc - 200) - 25.3) < 0.5,
+            ((rr == 305) & (cc >= 250) & (cc < 270)) | ((cc == 250) & (rr >= 305) & (rr < 320))]):
+        labels[region & (labels == 0)] = n + k + 1
+    n += 5
+
+    coords, starts = sv._region_pixels(labels, n)
+    feret = sv._feret_diameters(coords[:, 0], coords[:, 1], starts)
+
+    props = measure.regionprops_table(labels, properties=['coords', 'feret_diameter_max'])
+    np.testing.assert_array_equal(coords, np.concatenate(props['coords']))
+    assert n > 100
+    np.testing.assert_array_equal(feret, props['feret_diameter_max'])
+
+
+def test_batched_akima_is_bit_identical_to_scipy():
+    """The compiled Akima interpolation must reproduce scipy's, including flat stretches (zero slope
+    weights) and scipy's break threshold, which is taken over the whole batch."""
+    from scipy.interpolate import Akima1DInterpolator
+    from sarcasm.utils import _batched_akima
+    rng = np.random.default_rng(5)
+    x = np.arange(63) * 0.0612
+    y = rng.random((400, 63)).astype(np.float32)
+    y[:50, 20:40] = 0.5                    # plateaus
+    y[50:60] = 0.0                         # flat profiles
+    y[60:70, ::2] = 1.0                    # alternating steps
+    x_new = np.linspace(x[0], x[-1], 63 * 4)
+
+    np.testing.assert_array_equal(_batched_akima(x, y, x_new), Akima1DInterpolator(x, y, axis=1)(x_new))
+
+
 def test_batched_peak_finder_matches_scipy_find_peaks():
     """The numba peak kernel must reproduce scipy's find_peaks selection.
 

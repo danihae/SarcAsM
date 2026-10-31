@@ -64,6 +64,131 @@ def _batched_linear_interp(
 
 
 @njit(cache=True, parallel=True)
+def _akima_slopes(x, y):
+    """Node slopes of scipy's ``Akima1DInterpolator(x, y, axis=1)`` (``method='akima'``), row by row.
+
+    Same operations in the same order as scipy, so the slopes are bit-identical, including scipy's
+    break threshold ``1e-9 * max(f1 + f2)``, which is taken over the whole batch, not per row.
+    ``y`` is float64 ``(N, L)`` with ``L >= 3``."""
+    n, L = y.shape
+    t = np.empty((n, L))
+    f1 = np.empty((n, L))
+    f2 = np.empty((n, L))
+    m = np.empty((n, L + 3))
+    row_max = np.full(n, -np.inf)
+    row_nan = np.zeros(n, dtype=np.bool_)
+    for i in prange(n):
+        for j in range(L - 1):
+            m[i, j + 2] = (y[i, j + 1] - y[i, j]) / (x[j + 1] - x[j])
+        m[i, 1] = 2. * m[i, 2] - m[i, 3]
+        m[i, 0] = 2. * m[i, 1] - m[i, 2]
+        m[i, L + 1] = 2. * m[i, L] - m[i, L - 1]
+        m[i, L + 2] = 2. * m[i, L + 1] - m[i, L]
+        for j in range(L):
+            t[i, j] = .5 * (m[i, j + 3] + m[i, j])
+            f1[i, j] = abs(m[i, j + 3] - m[i, j + 2])
+            f2[i, j] = abs(m[i, j + 1] - m[i, j])
+            f12 = f1[i, j] + f2[i, j]
+            if np.isnan(f12):
+                row_nan[i] = True
+            elif f12 > row_max[i]:
+                row_max[i] = f12
+    if row_nan.any():          # np.max propagates NaN, and nothing compares greater than NaN
+        return t
+    threshold = 1.e-9 * row_max.max()
+    for i in prange(n):
+        for j in range(L):
+            f12 = f1[i, j] + f2[i, j]
+            if f12 > threshold:
+                t[i, j] = m[i, j + 1] + ((f2[i, j] / f12) * (m[i, j + 2] - m[i, j + 1]))
+    return t
+
+
+@njit(cache=True, parallel=True)
+def _cubic_hermite_eval(x, y, t, x_new, segment):
+    """Evaluate the cubic Hermite spline through ``(x, y[i])`` with node slopes ``t[i]`` at ``x_new``, as
+    scipy's ``CubicHermiteSpline`` / ``PPoly`` does (same coefficients, same power-sum evaluation);
+    ``segment`` is the interval index of each ``x_new``."""
+    n = y.shape[0]
+    out = np.empty((n, x_new.shape[0]))
+    for i in prange(n):
+        for q in range(x_new.shape[0]):
+            j = segment[q]
+            dx = x[j + 1] - x[j]
+            slope = (y[i, j + 1] - y[i, j]) / dx
+            c_t = (t[i, j] + t[i, j + 1] - 2 * slope) / dx
+            c0 = c_t / dx
+            c1 = (slope - t[i, j]) / dx - c_t
+            s = x_new[q] - x[j]
+            res = 0.0
+            z = 1.0
+            res = res + y[i, j] * z
+            z *= s
+            res = res + t[i, j] * z
+            z *= s
+            res = res + c1 * z
+            z *= s
+            res = res + c0 * z
+            out[i, q] = res
+    return out
+
+
+def _batched_akima(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarray:
+    """``Akima1DInterpolator(x, y, axis=1)(x_new)``, bit-identical, for ``x_new`` inside ``[x[0], x[-1]]``.
+
+    Compiled and parallel instead of scipy's array passes: about 8x faster on a frame's ~4,500 profiles."""
+    x = np.ascontiguousarray(x, dtype=np.float64)
+    x_new = np.ascontiguousarray(x_new, dtype=np.float64)
+    if x.shape[0] < 3:                       # scipy interpolates two points linearly
+        return Akima1DInterpolator(x, y, axis=1)(x_new)
+    y = np.ascontiguousarray(y, dtype=np.float64)
+    segment = np.clip(np.searchsorted(x, x_new, side='right') - 1, 0, x.shape[0] - 2)
+    return _cubic_hermite_eval(x, y, _akima_slopes(x, y), x_new, segment)
+
+
+@njit(cache=True, parallel=True)
+def _bilinear_line_samples(image, centres, unit, perp, steps, offsets):
+    """Bilinear samples along many lines: sample (i, s, w) at ``centres[i] + steps[s] * unit[i] + offsets[w] *
+    perp[i]`` (``offsets`` empty: no perpendicular term).
+
+    Bit-identical to ``map_coordinates(image, ..., order=1, mode='constant', cval=0)``: points outside
+    ``[0, H-1] x [0, W-1]`` are 0, and each sample sums ``value * w_row * w_col`` over the 2x2 support in
+    row-major order, in float64, cast to the image dtype, with scipy's weights ``1 - t`` and ``1 - (1 - t)``."""
+    height, width = image.shape
+    n, n_steps = centres.shape[0], steps.shape[0]
+    n_off = max(offsets.shape[0], 1)
+    out = np.empty((n, n_steps, n_off), dtype=image.dtype)
+    for i in prange(n):
+        for s in range(n_steps):
+            r_line = centres[i, 0] + steps[s] * unit[i, 0]
+            c_line = centres[i, 1] + steps[s] * unit[i, 1]
+            for w in range(n_off):
+                if offsets.shape[0] > 0:
+                    r = r_line + perp[i, 0] * offsets[w]
+                    c = c_line + perp[i, 1] * offsets[w]
+                else:
+                    r, c = r_line, c_line
+                if not (r >= 0.0 and r <= height - 1 and c >= 0.0 and c <= width - 1):   # also NaN
+                    out[i, s, w] = 0.0
+                    continue
+                r0 = min(int(np.floor(r)), height - 2)
+                c0 = min(int(np.floor(c)), width - 2)
+                # scipy's order-1 weights: w0 = 1 - t, w1 = 1 - w0 (not t, which differs in the last bit
+                # where t carries more precision than 1 - t, i.e. in the first pixel cell)
+                wr0 = 1.0 - (r - r0)
+                wc0 = 1.0 - (c - c0)
+                tr = 1.0 - wr0
+                tc = 1.0 - wc0
+                acc = 0.0
+                acc += image[r0, c0] * wr0 * wc0
+                acc += image[r0, c0 + 1] * wr0 * tc
+                acc += image[r0 + 1, c0] * tr * wc0
+                acc += image[r0 + 1, c0 + 1] * tr * tc
+                out[i, s, w] = acc
+    return out
+
+
+@njit(cache=True, parallel=True)
 def _slen_from_profiles(y_up, x_interp, flat_mask, thres, distance, prominence,
                         window_size, center, slen_min, slen_max):
     """Sarcomere length + center offset for a batch of interpolated profiles.
@@ -441,9 +566,7 @@ class Utils:
                 L_up = L * interp_factor
                 x_interp = np.linspace(pos_array[0], pos_array[-1], num=L_up)
                 if interpolation_method == 'akima':
-                    # One construct on the whole batch (scipy supports axis=).
-                    itp = Akima1DInterpolator(pos_array, y_norm, axis=1)
-                    y_up = itp(x_interp)
+                    y_up = _batched_akima(pos_array, y_norm, x_interp)
                 else:
                     # Batched linear interpolation — equivalent to per-row
                     # ``np.interp`` but without the Python loop.
@@ -783,6 +906,16 @@ class Utils:
             K = int(halves[0])
             L = 2 * K + 1
             s = np.arange(-K, K + 1, dtype=float)
+            image = np.asarray(image)
+            if (mode == 'constant' and cval == 0.0 and image.ndim == 2 and min(image.shape) >= 2
+                    and image.dtype in (np.float32, np.float64)):
+                # compiled sampler, bit-identical to the map_coordinates calls below
+                samples = _bilinear_line_samples(
+                    image, np.ascontiguousarray(centres), np.ascontiguousarray(unit),
+                    np.ascontiguousarray(perp) if linewidth > 1 else np.zeros((n_lines, 2)),
+                    s, offsets if linewidth > 1 else np.empty(0))
+                profiles = samples.mean(axis=-1) if linewidth > 1 else samples[:, :, 0]
+                return [profiles[i] for i in range(n_lines)]
             line_coords = centres[:, None, :] + s[None, :, None] * unit[:, None, :]      # (n_lines, L, 2)
             if linewidth > 1:
                 full = line_coords[:, :, None, :] + perp[:, None, None, :] * offsets[None, None, :, None]

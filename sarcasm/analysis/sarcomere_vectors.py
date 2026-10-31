@@ -15,12 +15,125 @@
 
 from typing import Tuple, Union, List
 import numpy as np
+from numba import njit, prange
 from scipy import ndimage
 from scipy.spatial import cKDTree
-from skimage import measure
 from skimage.morphology import disk, skeletonize
 
 from sarcasm.utils import Utils
+
+
+@njit(cache=True, parallel=True)
+def _row_median(values):
+    """``np.median(values, axis=1)`` for a 2D float array: same dtype, NaN if a row holds a NaN."""
+    n, m = values.shape
+    out = np.empty(n, dtype=values.dtype)
+    for i in prange(n):
+        row = values[i].copy()
+        if np.isnan(row).any():
+            out[i] = np.nan
+            continue
+        row.sort()
+        if m % 2:
+            out[i] = row[m // 2]
+        else:
+            out[i] = (row[m // 2 - 1] + row[m // 2]) / 2
+    return out
+
+
+@njit(cache=True)
+def _diamond_hull(rows, cols):
+    """Convex hull of the pixels' edge midpoints ("diamond" points), in doubled integer coordinates.
+    Returns (hull_rows, hull_cols, h): a closed polygon, vertex h - 1 repeating vertex 0."""
+    m = 4 * rows.shape[0]
+    pr = np.empty(m, dtype=np.int64)
+    pc = np.empty(m, dtype=np.int64)
+    for i in range(rows.shape[0]):
+        pr[4 * i], pc[4 * i] = 2 * rows[i] - 1, 2 * cols[i]
+        pr[4 * i + 1], pc[4 * i + 1] = 2 * rows[i] + 1, 2 * cols[i]
+        pr[4 * i + 2], pc[4 * i + 2] = 2 * rows[i], 2 * cols[i] - 1
+        pr[4 * i + 3], pc[4 * i + 3] = 2 * rows[i], 2 * cols[i] + 1
+    span = pc.max() - pc.min() + 1
+    order = np.argsort((pr - pr.min()) * span + (pc - pc.min()))
+    pr, pc = pr[order], pc[order]
+    # Andrew's monotone chain; collinear points are dropped, which changes neither the polygon nor its diameter
+    hr = np.empty(2 * m, dtype=np.int64)
+    hc = np.empty(2 * m, dtype=np.int64)
+    h = 0
+    for i in range(m):
+        while h >= 2 and ((hr[h - 1] - hr[h - 2]) * (pc[i] - hc[h - 2])
+                          - (hc[h - 1] - hc[h - 2]) * (pr[i] - hr[h - 2])) <= 0:
+            h -= 1
+        hr[h], hc[h] = pr[i], pc[i]
+        h += 1
+    lower = h + 1
+    for i in range(m - 2, -1, -1):
+        while h >= lower and ((hr[h - 1] - hr[h - 2]) * (pc[i] - hc[h - 2])
+                              - (hc[h - 1] - hc[h - 2]) * (pr[i] - hr[h - 2])) <= 0:
+            h -= 1
+        hr[h], hc[h] = pr[i], pc[i]
+        h += 1
+    return hr, hc, h
+
+
+@njit(cache=True, parallel=True)
+def _feret_diameters(rows, cols, starts):
+    """Maximum Feret diameter, in pixels, of each labelled region (pixels ``starts[k]:starts[k+1]``),
+    exactly as skimage's ``regionprops(...).feret_diameter_max``.
+
+    skimage takes the largest distance between the points of the 0.5-level contour of the region's
+    convex-hull *image*: the pixels whose centres lie in (or on) the hull of the region's pixel edge
+    midpoints. Contour points are edge midpoints of those pixels, and only the two ends of each row of the
+    (convex) hull image can be extremal, so the diameter is that of the edge midpoints of the row ends.
+    The hull image can hold pixels outside the region, which lengthens a curved region by up to half a pixel."""
+    n_regions = starts.shape[0] - 1
+    out = np.empty(n_regions)
+    for k in prange(n_regions):
+        r_k, c_k = rows[starts[k]:starts[k + 1]], cols[starts[k]:starts[k + 1]]
+        hr, hc, h = _diamond_hull(r_k, c_k)
+        r_min, r_max = r_k.min(), r_k.max()
+        end_r = np.empty(2 * (r_max - r_min + 1), dtype=np.int64)
+        end_c = np.empty_like(end_r)
+        n_end = 0
+        for r in range(r_min, r_max + 1):
+            row2 = 2 * r                             # this row of pixel centres crosses the hull at [lo, hi]
+            lo, hi = np.inf, -np.inf
+            for i in range(h - 1):
+                r1, c1, r2, c2 = hr[i], hc[i], hr[i + 1], hc[i + 1]
+                if (r1 - row2) * (r2 - row2) > 0:
+                    continue
+                if r1 == r2:
+                    lo, hi = min(lo, c1, c2), max(hi, c1, c2)
+                else:
+                    c = c1 + (row2 - r1) * (c2 - c1) / (r2 - r1)
+                    lo, hi = min(lo, c), max(hi, c)
+            c_lo, c_hi = int(np.ceil(lo / 2)), int(np.floor(hi / 2))
+            if c_lo <= c_hi:
+                end_r[n_end], end_c[n_end] = r, c_lo
+                end_r[n_end + 1], end_c[n_end + 1] = r, c_hi
+                n_end += 2
+        hr, hc, h = _diamond_hull(end_r[:n_end], end_c[:n_end])
+        best = 0
+        for i in range(h):
+            for j in range(i + 1, h):
+                d2 = (hr[i] - hr[j]) ** 2 + (hc[i] - hc[j]) ** 2
+                if d2 > best:
+                    best = d2
+        out[k] = np.sqrt(best / 4.0)
+    return out
+
+
+def _region_pixels(labels: np.ndarray, n_labels: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Pixel coordinates ``(N, 2)`` of labels ``1..n_labels``, grouped by label and row-major within a label
+    (the order of ``regionprops(...).coords``), and the start of each label's block (``n_labels + 1``)."""
+    flat = labels.ravel()
+    index = np.flatnonzero(flat)
+    label_of = flat[index]
+    order = np.argsort(label_of, kind='stable')
+    index, label_of = index[order], label_of[order]
+    coords = np.stack(np.divmod(index, labels.shape[1]), axis=1)
+    starts = np.searchsorted(label_of, np.arange(1, n_labels + 2))
+    return coords, starts
 
 
 def _axial_double_angle_encoding(orientation_field: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -191,14 +304,6 @@ def orientation_at_points(
 
     height, width = orientation_field.shape[1], orientation_field.shape[2]
 
-    # Same encoding as Utils.get_orientation_angle_map: wrap to the axial range,
-    # then double so opposite-sign vectors describing one axis coincide.
-    angles = np.arctan2(orientation_field[1], orientation_field[0])
-    angles = (angles + 2 * np.pi) % (2 * np.pi)
-    angles = np.where(angles > np.pi, angles - np.pi, angles)
-    doubled = 2 * angles
-    comp_x, comp_y = np.cos(doubled), np.sin(doubled)
-
     d_row, d_col = np.nonzero(disk(radius, strict_radius=False))
     d_row = d_row - radius
     d_col = d_col - radius
@@ -206,8 +311,25 @@ def orientation_at_points(
     idx_row = np.clip(rows[:, None] + d_row[None, :], 0, height - 1)
     idx_col = np.clip(np.asarray(cols)[:, None] + d_col[None, :], 0, width - 1)
 
-    x_med = np.median(comp_x[idx_row, idx_col], axis=1)
-    y_med = np.median(comp_y[idx_row, idx_col], axis=1)
+    # Encode only the pixels the footprints touch (a few % of the frame), each once.
+    # Same encoding as Utils.get_orientation_angle_map: wrap to the axial range,
+    # then double so opposite-sign vectors describing one axis coincide.
+    flat = idx_row * width + idx_col
+    touched = np.zeros(height * width, dtype=bool)
+    touched[flat] = True
+    pixels = np.flatnonzero(touched)                 # = np.unique(flat), without sorting N x footprint indices
+    slot = np.empty(height * width, dtype=np.int64)
+    slot[pixels] = np.arange(len(pixels))
+    footprint = slot[flat]
+    pix_row, pix_col = np.divmod(pixels, width)
+    angles = np.arctan2(orientation_field[1][pix_row, pix_col], orientation_field[0][pix_row, pix_col])
+    angles = (angles + 2 * np.pi) % (2 * np.pi)
+    angles = np.where(angles > np.pi, angles - np.pi, angles)
+    doubled = 2 * angles
+    comp_x, comp_y = np.cos(doubled), np.sin(doubled)
+
+    x_med = _row_median(comp_x[footprint])
+    y_med = _row_median(comp_y[footprint])
 
     filtered = np.arctan2(y_med, x_med)
     filtered = (filtered + 2 * np.pi) % (2 * np.pi)
@@ -255,8 +377,18 @@ def extend_midline_ends(
     height, width = midline.shape
     inside = mbands >= stop_level
 
-    n_neighbors = ndimage.convolve(midline.astype(np.uint8), np.ones((3, 3), np.uint8), mode='constant') - 1
-    rows, cols = np.nonzero(midline & (n_neighbors <= 1))
+    # neighbour counts are read only at line pixels, so they are gathered there instead of filtering the frame
+    padded = np.pad(midline, 2)
+
+    def window(r, c, half):                  # (n, (2 half + 1)²) neighbourhood values, row-major
+        offsets = np.arange(-half, half + 1)
+        return padded[r[:, None] + 2 + np.repeat(offsets, offsets.size),
+                      c[:, None] + 2 + np.tile(offsets, offsets.size)]
+
+    line_rows, line_cols = np.nonzero(midline)
+    n_neighbors = window(line_rows, line_cols, 1).sum(axis=1) - 1
+    is_end = n_neighbors <= 1
+    rows, cols, n_neighbors = line_rows[is_end], line_cols[is_end], n_neighbors[is_end]
     if rows.size == 0:
         return out
     theta = orientation_at_points(orientation_field, rows, cols, radius)
@@ -265,13 +397,12 @@ def extend_midline_ends(
 
     # point outwards: away from the mean offset of the line pixels within 2 px
     offsets = np.arange(-2, 3)
-    count = ndimage.correlate(midline.astype(np.float64), np.ones((5, 5)), mode='constant')[rows, cols]
-    back_row = ndimage.correlate(midline.astype(np.float64), np.repeat(offsets, 5).reshape(5, 5),
-                                 mode='constant')[rows, cols] / count
-    back_col = ndimage.correlate(midline.astype(np.float64), np.tile(offsets, 5).reshape(5, 5),
-                                 mode='constant')[rows, cols] / count
+    near = window(rows, cols, 2).astype(np.float64)
+    count = near.sum(axis=1)
+    back_row = near @ np.repeat(offsets, 5).astype(np.float64) / count
+    back_col = near @ np.tile(offsets, 5).astype(np.float64) / count
     dot = back_row * direction[:, 0] + back_col * direction[:, 1]
-    isolated = np.isclose(dot, 0) & (n_neighbors[rows, cols] == 0)
+    isolated = np.isclose(dot, 0) & (n_neighbors == 0)
     sign = np.where(dot > 0, -1.0, 1.0)
     # isolated pixels have no inward side: march both ways
     starts = np.concatenate((np.stack((rows, cols), 1), np.stack((rows[isolated], cols[isolated]), 1)))
@@ -367,32 +498,17 @@ Union[np.ndarray, List], Union[np.ndarray, List], Union[np.ndarray, List], Union
     midline_labels, n_mbands = ndimage.label(mbands_skel,
                                              ndimage.generate_binary_structure(2, 2))
 
-    # iterate mbands and create an additional list with labels and midline length (approx. by max. Feret diameter)
-    props = measure.regionprops_table(midline_labels, properties=['label', 'coords', 'feret_diameter_max'])
-    list_labels, coords_mbands, length_mbands = (props['label'], props['coords'],
-                                                     props['feret_diameter_max'] * pixelsize)
-
     # a frame without M-bands yields empty arrays of the same dimensionality as a frame with them, so the
     # per-frame lists stay homogeneous (the results store writes them as ragged arrays)
     pos_vectors_px, pos_vectors = np.empty((0, 2), dtype=np.int64), np.empty((0, 2))
     midline_id_vectors, midline_length_vectors = np.empty(0), np.empty(0)
     if n_mbands > 0:
-        # Pre-calculate total number of points for efficient pre-allocation
-        total_points = sum(coords.shape[0] for coords in coords_mbands)
-        
-        # Pre-allocate and slice-assign rather than appending per label
-        pos_vectors_px = np.empty((total_points, 2), dtype=coords_mbands[0].dtype)
-        midline_id_vectors = np.empty(total_points, dtype=np.float64)
-        midline_length_vectors = np.empty(total_points, dtype=np.float64)
-        
-        # Fill arrays with vectorized operations
-        idx = 0
-        for label_i, coords_i, length_midline_i in zip(list_labels, coords_mbands, length_mbands):
-            n_coords = coords_i.shape[0]
-            pos_vectors_px[idx:idx + n_coords] = coords_i
-            midline_id_vectors[idx:idx + n_coords] = label_i
-            midline_length_vectors[idx:idx + n_coords] = length_midline_i
-            idx += n_coords
+        # every midline pixel is a vector; it carries its M-band's label and length (max. Feret diameter)
+        pos_vectors_px, starts = _region_pixels(midline_labels, n_mbands)
+        n_pixels = np.diff(starts)
+        length_mbands = _feret_diameters(pos_vectors_px[:, 0], pos_vectors_px[:, 1], starts) * pixelsize
+        midline_id_vectors = np.repeat(np.arange(1, n_mbands + 1, dtype=np.float64), n_pixels)
+        midline_length_vectors = np.repeat(length_mbands, n_pixels)
 
         # Smooth and sample the orientation field at the midline points only.
         sarcomere_orientation_vectors = orientation_at_points(
@@ -479,9 +595,12 @@ def neighbor_orientation_deviation(
     i = valid[np.concatenate([pairs[:, 0], pairs[:, 1]])]
     j = valid[np.concatenate([pairs[:, 1], pairs[:, 0]])]
     # mean axis through the double-angle vector, which is the same point for θ and θ + π
-    mean_vector = np.zeros(n, dtype=complex)
-    np.add.at(mean_vector, i, np.exp(2j * theta[j]))
-    np.add.at(n_neighbors, i, 1)
+    # bincount accumulates each bin in input order, as np.add.at did, but without its per-element overhead
+    double_angle = np.exp(2j * theta[j])
+    mean_vector = np.empty(n, dtype=complex)
+    mean_vector.real = np.bincount(i, weights=double_angle.real, minlength=n)
+    mean_vector.imag = np.bincount(i, weights=double_angle.imag, minlength=n)
+    n_neighbors = np.bincount(i, minlength=n).astype(np.int64)
     has_neighbors = n_neighbors > 0
     mean_theta = np.angle(mean_vector[has_neighbors]) / 2
     deviation[has_neighbors] = np.degrees(
@@ -535,20 +654,40 @@ REGISTRY_LENGTH_RADIUS = 1.0  # µm
 REGISTRY_ROW_WIDTH = 0.5      # µm
 
 
-def _zband_phase_score(pos, orientation, slen, I, J):
-    """Z-disc phase score of the neighbour pairs (I, J): cos(2π x / L_i) of the offset x of each of j's two Z-discs
-    from the nearest Z-disc line of i (i's Z-discs repeated every L_i along its axis), averaged over the two discs.
-    Returns (a, b, dtheta, score): offset of j's centre along i's axis, across it, axial angle between the two."""
+def _pair_offsets(pos, orientation, I, J):
+    """Offset of j's centre along i's axis (a) and across it (b, unsigned) for the neighbour pairs (I, J)."""
     t = np.stack([np.sin(orientation), np.cos(orientation)], axis=1)
     n = np.stack([np.cos(orientation), -np.sin(orientation)], axis=1)
     d = pos[J] - pos[I]
     a = np.einsum('ij,ij->i', d, t[I])
     b = np.abs(np.einsum('ij,ij->i', d, n[I]))
-    dtheta = np.abs(np.angle(np.exp(2j * (orientation[J] - orientation[I])))) / 2   # axial: θ and θ + π agree
-    L_i, L_j = slen[I], slen[J]
+    return a, b
+
+
+def _axial_angle(orientation, I, J):
+    """Axial angle between i and j, in [0, π/2]: θ and θ + π agree."""
+    return np.abs(np.angle(np.exp(2j * (orientation[J] - orientation[I])))) / 2
+
+
+def _zband_phase_score(a, L_i, L_j):
+    """Z-disc phase score of a neighbour pair: cos(2π x / L_i) of the offset x of each of j's two Z-discs from the
+    nearest Z-disc line of i (i's Z-discs repeated every L_i along its axis), averaged over the two discs; ``a`` is
+    the offset of j's centre along i's axis. Computed only for the pairs that count, after the geometric masks."""
     # the discs of j lie at a ± L_j / 2 along i's axis; the lines of i at ± L_i / 2 + k L_i
-    score = -0.5 * (np.cos(2 * np.pi * (a - L_j / 2) / L_i) + np.cos(2 * np.pi * (a + L_j / 2) / L_i))
-    return a, b, dtheta, score
+    return -0.5 * (np.cos(2 * np.pi * (a - L_j / 2) / L_i) + np.cos(2 * np.pi * (a + L_j / 2) / L_i))
+
+
+@njit(cache=True, parallel=True)
+def _grouped_median(values, starts):
+    """Median of each block ``values[starts[k]:starts[k+1]]`` (non-empty, finite), as np.nanmedian computes it:
+    the middle value, or ``(low + high) / 2`` for an even count."""
+    n = starts.shape[0] - 1
+    out = np.empty(n)
+    for k in prange(n):
+        block = np.sort(values[starts[k]:starts[k + 1]])
+        m = block.shape[0]
+        out[k] = block[m // 2] if m % 2 else (block[m // 2 - 1] + block[m // 2]) / 2
+    return out
 
 
 def zband_registry(
@@ -630,17 +769,13 @@ def zband_registry(
         I = np.concatenate([pairs[:, 0], pairs[:, 1], np.arange(n)])
         J = np.concatenate([pairs[:, 1], pairs[:, 0], np.arange(n)])
         order = np.argsort(I, kind='stable')
-        I, J = I[order], J[order]
-        counts = np.bincount(I, minlength=n)
-        start = np.r_[0, np.cumsum(counts)[:-1]]
-        M = np.full((n, int(counts.max())), np.nan)
-        M[I, np.arange(len(I)) - np.repeat(start, counts)] = Ls[J]
-        Ls = np.nanmedian(M, axis=1)
+        starts = np.searchsorted(I[order], np.arange(n + 1))       # every vector is its own neighbour
+        Ls = _grouped_median(np.ascontiguousarray(Ls[J[order]]), starts)
     L_max = float(np.max(Ls))
 
-    def _mean_by_source(I, mask, score):
-        s = np.bincount(I[mask], weights=score[mask], minlength=n)
-        c = np.bincount(I[mask], minlength=n)
+    def _mean_by_source(I, score):
+        s = np.bincount(I, weights=score, minlength=n)
+        c = np.bincount(I, minlength=n)
         return np.where(c > 0, s / np.maximum(c, 1), np.nan)
 
     # lateral: neighbours in the band across the axis and within L / 2 along it
@@ -649,9 +784,10 @@ def zband_registry(
     if len(pairs):
         I = np.concatenate([pairs[:, 0], pairs[:, 1]])
         J = np.concatenate([pairs[:, 1], pairs[:, 0]])
-        a, b, _, score = _zband_phase_score(ps, os_, Ls, I, J)
+        a, b = _pair_offsets(ps, os_, I, J)
         beside = (np.abs(a) <= Ls[I] / 2) & (b >= lateral_band[0]) & (b < lateral_band[1])
-        lat_thin = _mean_by_source(I, beside, score)
+        I, J, a = I[beside], J[beside], a[beside]
+        lat_thin = _mean_by_source(I, _zband_phase_score(a, Ls[I], Ls[J]))
     else:
         lat_thin = np.full(n, np.nan)
 
@@ -667,10 +803,12 @@ def zband_registry(
     keep = I != J
     I, J, K = I[keep], J[keep], K[keep]
     if len(I):
-        a, b, dtheta, score = _zband_phase_score(ps, os_, Ls, I, J)
-        in_row = ((b < REGISTRY_ROW_WIDTH) & (np.rint(np.abs(a) / Ls[I]) == K)
-                  & (dtheta <= np.radians(max_angle)))
-        ax_thin = _mean_by_source(I, in_row, score)
+        a, b = _pair_offsets(ps, os_, I, J)
+        in_row = (b < REGISTRY_ROW_WIDTH) & (np.rint(np.abs(a) / Ls[I]) == K)
+        I, J, a = I[in_row], J[in_row], a[in_row]
+        parallel = _axial_angle(os_, I, J) <= np.radians(max_angle)
+        I, J, a = I[parallel], J[parallel], a[parallel]
+        ax_thin = _mean_by_source(I, _zband_phase_score(a, Ls[I], Ls[J]))
     else:
         ax_thin = np.full(n, np.nan)
 
