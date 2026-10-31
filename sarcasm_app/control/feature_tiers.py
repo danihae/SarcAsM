@@ -110,10 +110,11 @@ MOTION_TIERS: TierSections = {
             'time_to_relax', 'time_contr',
             'time_to_50', 'time_contr_10_90', 'time_relax_50', 'time_relax_90',
         ],
-        'Heterogeneity (serial / mutual correlation across cycles)': [
+        'Heterogeneity (correlation across cycles, popping)': [
             'slen_std', 'equ_std',
             'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
             'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
+            'popping_rate',
         ],
         'Oscillations': [
             'oscill_peak_avg', 'oscill_peak_1_single', 'oscill_peak_2_single',

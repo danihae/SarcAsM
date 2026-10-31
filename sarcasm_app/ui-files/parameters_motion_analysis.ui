@@ -899,7 +899,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_detail_group">
         <property name="toolTip">
-         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Available after grouping, for every kind.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Group</string>
@@ -909,7 +909,7 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_detail_group">
         <property name="toolTip">
-         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Available after grouping, for every kind.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>

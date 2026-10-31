@@ -22,6 +22,7 @@ import numpy as np
 from matplotlib import pyplot as plt, transforms
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from sarcasm.features import MOTION_KIND_LABELS
 from sarcasm.plotting.plot_utils import PlotUtils
@@ -381,15 +382,18 @@ class MotionPlots:
         ax_histy.barh(np.arange(len(rate_member)) + 0.5, np.nan_to_num(rate_member), color='k', alpha=0.4)
         ax.set_xlabel('Contraction cycle [#]')
         ax.set_ylabel('Sarcomere [#]')
-        ax.set_yticks(np.arange(len(rate_member)) + 0.5)
-        ax.set_yticklabels(np.arange(len(rate_member)) + 1)
+        ax.set_xticks(np.arange(n_cycles) + 0.5, np.arange(n_cycles) + 1)
+        step = max(1, int(np.ceil(len(rate_member) / 15)))          # at most ~15 readable labels
+        rows = np.arange(0, len(rate_member), step)
+        ax.set_yticks(rows + 0.5, rows + 1)
         ax_histx.set_ylabel('$f_c(P)$')
         ax_histy.set_xlabel('$f_s(P)$')
-        ax.set_ylim(0, None)
-        ax.set_xlim(0, None)
-        ax.grid()
+        ax_histy.xaxis.set_major_locator(MaxNLocator(2, prune='lower'))
+        ax.set_ylim(0, max(len(rate_member), 1))
+        ax.set_xlim(0, max(n_cycles, 1))
+        ax.grid(axis='x')
         if save_name is not None:
-            fig.savefig(save_name)
+            fig.savefig(save_name, bbox_inches='tight')
         return fig
 
     @staticmethod

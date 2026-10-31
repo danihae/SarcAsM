@@ -59,9 +59,9 @@ Proceed through the collapsible sections in the control panel:
     the contraction of each group. The **Display** group controls how the tracks appear
     in the viewer: **Sarcomeres** (every tracked sarcomere as a dot at its position in
     the current frame, coloured by ΔSL, SL, velocity, group or coverage) and **Groups**
-    (the fibre paths of a myofibril / LOI grouping, labelled by id). Click a sarcomere or
-    a fibre path to select its group: its members are ringed in the viewer, the per-fibre
-    detail points at it, and a **time-series panel** opens below the viewer with the
+    (the paths of a myofibril / LOI grouping, labelled by id). Click a sarcomere or
+    a path to select its group: its members are ringed in the viewer, **Show group detail**
+    points at it, and a **time-series panel** opens below the viewer with the
     group's SL / ΔSL / velocity traces, the group mean and the clicked sarcomere
     highlighted (zoom/pan/save toolbar). The **Group signal** setting of the analysis
     step chooses how the members' lengths are combined into the group's SL(t) —
@@ -69,7 +69,10 @@ Proceed through the collapsible sections in the control panel:
     within-group spread (``slen_std``, quartiles) and the spread of the members'
     resting lengths (``equ_std``) are stored either way. **Plot summary** (Output) draws the coverage map,
     the groups, the per-group SL and ΔSL, a raster of every sarcomere's ΔSL over the
-    averaged contraction cycle sorted by time to peak, and the fibres.
+    averaged contraction cycle sorted by time to peak, and the myofibril / LOI paths.
+    **Show group detail** plots one group of any kind: the length change of each
+    member, a phase-space plot, a map of popping events and, for myofibril and LOI
+    groups, the Z-band positions along the line.
 *   **Batch Processing:** Process multiple files automatically.
 
 **Message Area:**

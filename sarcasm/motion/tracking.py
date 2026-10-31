@@ -501,7 +501,7 @@ class TrackingMixin:
         The equilibrium (resting) length of each track is its median over the
         non-contracting frames of the pooled cell signal when
         ``analyze(by='pool')`` has run, otherwise over all its frames.
-        Feeds the ΔSL views of the napari app and :meth:`Plots.plot_track_heatmap`.
+        Feeds the ΔSL and velocity colourings of the napari app, :meth:`Plots.plot_track_vectors` and :meth:`Plots.plot_track_raster`.
 
         Parameters
         ----------

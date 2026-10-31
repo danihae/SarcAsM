@@ -58,17 +58,11 @@ class CLIInputError(Exception):
 # Parsing helpers
 # --------------------------------------------------------------------------- #
 def parse_frames(text: str) -> Union[str, List[int]]:
-    """``'all'``, one frame, comma-separated frames, or a half-open range ``'a:b'``."""
-    s = str(text).strip()
-    if ':' in s:
-        a, _, b = s.partition(':')
-        if not (a.strip().isdigit() and b.strip().isdigit()) or int(b) <= int(a):
-            raise argparse.ArgumentTypeError(
-                f"{text!r} is not a frame range. Use 'a:b' with a < b (b exclusive), e.g. 0:100.")
-        return list(range(int(a), int(b)))
+    """``'all'``, one frame, frame numbers separated by commas, or a range ``'a-b'`` (both ends included),
+    the same syntax as the GUI's frame fields."""
     from sarcasm._internal.frames import parse_frames_text
     try:
-        frames = parse_frames_text(s)
+        frames = parse_frames_text(text)
     except ValueError as e:
         raise argparse.ArgumentTypeError(str(e))
     return 'all' if frames is None else frames
@@ -265,7 +259,7 @@ def _add_file_args(p: argparse.ArgumentParser) -> None:
 
 def _add_run_args(p: argparse.ArgumentParser) -> None:
     p.add_argument('--frames', type=parse_frames, default='all',
-                   help="'all' (default), one frame '3', a list '0,4,9' or a range '0:100' (end exclusive).")
+                   help="'all' (default), one frame '3', a list '0,4,9' or a range '0-99' (both ends included).")
     p.add_argument('--model', default=None,
                    help="U-Net: 'generalist', 'legacy' or a weights path. Default: generalist.")
     p.add_argument('--restart', action='store_true',

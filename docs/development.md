@@ -86,11 +86,14 @@ pytest -k "test_sarcomere"  # Runs all tests with "sarcomere" in the name
 # Run tests with coverage
 pytest --cov=sarcasm tests/
 
-# Run only fast tests (skip slow integration tests)
-pytest -m "not slow"
+# Tests marked slow (networks on full-size stacks) are skipped by default; include them
+pytest --runslow
 
-# Run only slow tests
-pytest -m "slow"
+# Run only the slow tests
+pytest --runslow -m "slow"
+
+# The GUI tests need no display
+QT_QPA_PLATFORM=offscreen pytest tests/test_app.py
 
 # Stop at first failure (useful when debugging)
 pytest -x
@@ -111,8 +114,8 @@ pytest -vv
 # Debug a single failing test with full output
 pytest tests/test_structure.py::test_failing_function -vv -l
 
-# Run all tests in a file except slow ones
-pytest tests/test_structure.py -m "not slow"
+# Run all tests in a file, slow ones included
+pytest tests/test_structure.py --runslow
 
 # Re-run only failed tests from last run
 pytest --lf  # "last failed"
@@ -123,65 +126,21 @@ pytest --ff  # "failed first"
 
 Test data should be placed in the `test_data/` directory. If test data is missing, tests will be automatically skipped.
 
-### Plot Tests
+### Test Layout
 
-The test suite includes comprehensive tests for all plotting functions in `sarcasm/plots.py`. These tests verify that plots are generated correctly without errors.
+| Area | Test files |
+|------|------------|
+| Recording, store, I/O | `test_core.py`, `test_ome_store.py`, `test_results_store.py`, `test_ngff_input.py`, `test_axes_detection.py`, `test_frame_handling.py` |
+| Structure | `test_structure.py`, `test_z_band_analysis.py`, `test_sarcomere_vectors.py`, `test_myofibril_analysis.py` |
+| Tracking | `test_sarcomere_tracking.py`, `test_tracking_synthetic_gt.py`, `test_tracking_flow_predictor.py`, `test_optical_flow.py` |
+| Grouping and motion | `test_groups.py`, `test_grouped_motion.py`, `test_grouped_motion_multikind.py`, `test_track_motion.py`, `test_heterogeneity.py`, `test_polarity.py`, `test_decoding.py`, `test_contraction_net.py` |
+| Plots and movies | `test_plot_regressions.py`, `test_animation.py`, plot classes in `test_structure.py` |
+| Export, CLI, GUI | `test_export.py`, `test_cli.py`, `test_app.py`, `test_error_logging.py` |
+| Training | `test_training_data_generation.py` |
 
-**Test Classes:**
-
-| Test Class | Location | Marker | Description |
-|------------|----------|--------|-------------|
-| `TestStructureMetadata` | `test_structure.py` | - | Fast metadata tests |
-| `TestStructureTimelapseAnalysis` | `test_structure.py` | `slow` | Time-lapse analysis |
-| `TestStructureSingleImageAnalysis` | `test_structure.py` | `slow` | Single image analysis |
-| `TestStructureErrors` | `test_structure.py` | - | Fast error handling |
-| `TestStructureIntegration` | `test_structure.py` | `slow`, `integration` | Full workflow tests |
-| `TestStructurePlots` | `test_structure.py` | `slow` | Structure plotting (13 tests) |
-| `TestDomainMotionPlots` | `test_structure.py` | `slow` | Domain motion plots (3 tests) |
-| `TestMotion` | `test_motion.py` | `slow` | LOI detection and analysis |
-| `TestMotionIntegration` | `test_motion.py` | `slow`, `integration` | Full motion workflow |
-| `TestMotionPlots` | `test_motion.py` | `slow` | Motion plotting (10 tests) |
-
-**Running Tests by Speed:**
-
-```bash
-# Run only fast tests (unit tests, error handling, metadata)
-pytest -m "not slow" -v
-
-# Run only slow tests (analysis, detection, plotting)
-pytest -m "slow" -v
-
-# Run integration tests only
-pytest -m "integration" -v
-
-# Skip both slow and integration tests
-pytest -m "not slow and not integration" -v
-```
-
-**Running Plot Tests:**
-
-```bash
-# Run all structure plot tests
-pytest tests/test_structure.py::TestStructurePlots -v
-
-# Run all motion plot tests
-pytest tests/test_motion.py::TestMotionPlots -v
-
-# Run domain motion plot tests (slow, uses 30kPa data)
-pytest tests/test_structure.py::TestDomainMotionPlots -v
-
-# Run all plot tests together
-pytest tests/test_structure.py::TestStructurePlots tests/test_structure.py::TestDomainMotionPlots tests/test_motion.py::TestMotionPlots -v
-```
-
-**Test Artifacts:**
-
-Plot tests generate `*_sarcasm/` folders containing analysis results. By default, these are automatically cleaned up after the test session completes.
-
-```bash
-# Keep generated folders for debugging
-pytest --keep-artifacts -v
-```
+`TestDomainMotionPlots` in `test_structure.py` is the one test that runs tracking and ContractionNet on a real
+movie in the default run. Tests that need data from `test_data/` skip when the data are missing or are git-lfs
+pointers.
 
 **Note:** The test suite uses `matplotlib.use('Agg')` to prevent popup windows during testing.
 
@@ -192,7 +151,7 @@ The project uses several tools for code quality:
 * **ruff** for linting and formatting (configuration in `pyproject.toml`)
 * **pytest** for testing (configuration in `pytest.ini`)
 
-Development tools are automatically installed with `uv sync` [web:20].
+Development tools are automatically installed with `uv sync`.
 
 Run linting before committing:
 
@@ -234,7 +193,7 @@ Documentation is built using Sphinx. To build locally:
 
 The documentation is automatically built and deployed to ReadTheDocs on each commit to the main branch.
 
-**Note:** The `pyproject.toml` defines documentation dependencies in the `[project.optional-dependencies.docs]` section [web:20].
+**Note:** The `pyproject.toml` defines documentation dependencies in the `[project.optional-dependencies.docs]` section.
 
 ## Publishing to PyPI
 
@@ -418,7 +377,7 @@ logger = logging.getLogger(__name__)
 
 ### Controlling Log Level
 
-Users can set the log level when initializing `SarcAsM` or `Motion` objects:
+Users can set the log level when opening a recording:
 
 ```python
 from sarcasm import SarcAsM
@@ -462,11 +421,16 @@ def my_function():
 Key directories and files:
 
 * **sarcasm/** - Main package source code
-  * **structure.py** - Structure analysis (sarcomere detection, Z-bands, etc.)
-  * **motion.py** - Motion analysis (tracking, contraction detection)
-  * **plots.py** - Plotting functions
-  * **export.py** - Data export utilities
-  * **analysis/** - Modular structure analysis functions
+  * **core.py** - `SarcAsM`: one recording (I/O, metadata, store, sarcomere detection); `sarc.structure` and `sarc.motion`
+  * **structure.py** - `StructureAnalysis` (`sarc.structure`): cell mask, Z-bands, sarcomere vectors, myofibrils, domains
+  * **motion/** - `MotionAnalysis` (`sarc.motion`): tracking, grouping, LOIs, contraction analysis; `groups.py` holds the `Group` view
+  * **analysis/** - The algorithms as pure functions, called by the two namespaces
+  * **plotting/** - `Plots` (structure, track and motion plots), `PlotUtils`, `Animations`
+  * **features.py** - Definitions and units of every result key
+  * **export.py** - `Export` and `BatchExport` (.xlsx, .csv, .json)
+  * **io/** - The OME-Zarr store and the lazy `sarc.data` results mapping
+  * **training/** - Training-data generation and 3D U-Net retraining
+  * **cli.py** - The `sarcasm` command
 
 * **sarcasm_app/** - GUI application code
   * **control/** - Application controllers

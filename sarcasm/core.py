@@ -1596,8 +1596,8 @@ class SarcAsM:
     # the order it ran rather than alphabetically. Steps not listed sort last.
     _PIPELINE_STEPS = ('detect_sarcomeres', 'motion.detect_z_bands_fast_movie',
                        'structure.analyze_cell_mask', 'structure.analyze_z_bands',
-                       'structure.analyze_vectors', 'structure.analyze_domains',
-                       'structure.analyze_myofibrils', 'motion.detect_lois',
+                       'structure.analyze_vectors', 'structure.analyze_myofibrils',
+                       'structure.analyze_domains', 'motion.detect_lois',
                        'motion.track', 'motion.group_tracks',
                        'motion.analyze')
 

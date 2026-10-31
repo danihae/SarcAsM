@@ -45,7 +45,7 @@ _NON_TABULAR_METADATA_KEYS = frozenset({'time', 'timestamps', 'user_info'})
 
 class BatchExport:
     """
-    Collect already-analyzed features from many recordings into one table (.xlsx/.csv).
+    Collect already-analyzed features from many recordings into one table (.xlsx, .csv or .json).
 
     Parameters
     ----------
@@ -274,6 +274,7 @@ class Export:
                            'slen_std', 'equ_std',
                            'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
                            'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
+                           'popping_rate',
                            'oscill_peak_avg', 'oscill_peak_1_single', 'oscill_peak_2_single']
 
     @staticmethod

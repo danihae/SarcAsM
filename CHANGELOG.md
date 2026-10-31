@@ -115,6 +115,8 @@ All notable changes to SarcAsM are documented here. The format follows
   - Store internals used only by tests: `OmeZarrStore.create`, `.read_image`, `.results`, `write_mask(as_label=)`
     and the OME `labels/` group nothing wrote to, `results_store.write_results` (use `update_results`),
     `Results.set_root_attr`, `ImageMetadata.save_to_file`.
+- **The CLI's `--frames` takes ranges as `0-99`** (both ends included), as the GUI and the library's text fields
+  do; `0:100` (end excluded) is no longer accepted.
 - **Parameter keys follow the call path** of the step that wrote them: `params.structure.analyze_vectors.*`,
   `params.motion.track.*`, … (`params.detect_sarcomeres.*` is unchanged). Stores written by 1.0.0b4 or earlier are
   opened with a warning, and their analysis steps count as not run: run them again, or open the file with
@@ -128,10 +130,17 @@ All notable changes to SarcAsM are documented here. The format follows
   FFT wavelet transform, the group quartiles are computed in one pass, and the length refinement reads the Z-band
   mask in blocks of frames. Every stored motion result is unchanged, except the oscillation spectra, which differ
   by < 1e-15 (rounding).
+- The tutorials are rewritten for the 1.0 API and run top to bottom: the tracking tutorial covers every grouping
+  kind, the `Group` view, popping, the raster plot and the movies; the structure tutorial follows the features
+  over a 12-day time-lapse; the export tutorial shows .xlsx, .csv and .json. The 3D U-Net training tutorial now
+  follows `scripts/retrain_unet3d/`, the pipeline that trained the bundled model, instead of a manual procedure
+  whose label processing no longer ran. The motion feature reference also lists the track, LOI and grouping keys.
 - `TrainingDataGenerator.predict_zbands()` uses the Z-band output of the bundled 2D generalist model when no
   `model_path` is given; a path is still a bio-image-unet Z-band model.
-- `detect_lois` stores only what the grouping and the plots read (`loi_lines`, `len_loi_lines`,
-  `loi_index_lines`), not the grown candidate lines, their Hausdorff distances and clusters.
+- `detect_lois` stores only what the grouping and the plots read (`motion.lois.*`), not the grown candidate lines,
+  their Hausdorff distances and clusters.
+- `Plots.plot_popping_events` numbers the cycles from 1 at their centres and labels at most ~15 sarcomeres, so the
+  labels no longer overlap; with `save_name` the axis labels are no longer cut off.
 
 ### Fixed
 
@@ -146,7 +155,7 @@ All notable changes to SarcAsM are documented here. The format follows
 - `SarcAsM(..., restart=True)` deleted a folder named like the movie (`<name>/`) beside it, a pre-1.0 analysis or
   any folder of yours with that name. It now deletes only the analysis store.
 - `TrainingDataGenerator.create_sarcomere_mask` failed (it called a `SarcAsM.sarcomere_mask` that did not exist).
-- `Plots.plot_lois` had a branch that could never run; a `Motion` object now warns that it has no LOI lines.
+- `Plots.plot_lois` had a branch that could never run.
 
 ## [1.0.0b4] — 2026-10-30
 

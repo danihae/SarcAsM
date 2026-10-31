@@ -718,7 +718,7 @@ structure_feature_dict = {
     'motion.tracks.n_interpolated_gap_frames': {
         'description': 'Number of (track, frame) entries whose sarcomere length / orientation was '
                        'filled by interpolation across a short interior gap '
-                       '(max_gap_interpolation_s). These frames stay False in tracks_observed, so no '
+                       '(max_gap_interpolation_s). These frames stay False in motion.tracks.observed, so no '
                        'coverage or real-observation metric counts them.',
         'data type': int,
         'function': 'sarc.motion.track',

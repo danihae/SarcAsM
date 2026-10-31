@@ -28,9 +28,10 @@ Commands
     a list aligned with ``"frames"``.
 
 ``motion FILE``
-    Detection, sarcomere vectors, :meth:`~sarcasm.motion.MotionAnalysis.track` and
-    :meth:`~sarcasm.motion.MotionAnalysis.analyze`. Prints one record per group (``--by``;
-    default ``pool``), with per-cycle features averaged over cycles.
+    Sarcomere detection followed by :meth:`~sarcasm.motion.MotionAnalysis.full_analysis`:
+    sarcomere vectors, tracking, the structure step the grouping needs, and the analysis.
+    Prints one record per group (``--by``; default ``pool``), with per-cycle features
+    averaged over cycles.
 
 ``results FILE [KEY ...]``
     Without keys: all stored keys with their display names (``--find`` filters).
@@ -47,8 +48,8 @@ Options
     pixel size is an error; ``motion`` also needs a frame time.
 
 ``--frames``
-    ``all`` (default), one frame (``3``), a list (``0,4,9``) or a range (``0:100``, end
-    exclusive).
+    ``all`` (default), one frame (``3``), a list (``0,4,9``) or a range (``0-99``, both ends
+    included), the same syntax as the GUI. In Python, pass a list or ``range``.
 
 ``--restart``
     Delete the stored results for this file first. Required when you change the

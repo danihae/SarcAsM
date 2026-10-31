@@ -2,7 +2,7 @@ import os
 import sys
 # Ensure the sarcasm module is in the PYTHONPATH
 sys.path.insert(0, os.path.abspath('..'))
-from sarcasm.features import structure_feature_dict, motion_feature_dict
+from sarcasm.features import structure_feature_dict, motion_feature_dict, grouping_feature_dict
 
 
 def get_type_name(data_type):
@@ -80,25 +80,47 @@ def generate_rst_content(title, table, intro):
 """
 
 
-table_structure = dict_to_list_table(structure_feature_dict, 'Table of features by key')
-table_motion = dict_to_list_table(motion_feature_dict, 'Table of per-group motion features')
+# The track and LOI keys are registered with the structure features but belong on the motion page.
+structure_only = {k: v for k, v in structure_feature_dict.items() if k.startswith('structure.')}
+tracks_and_lois = {k: v for k, v in structure_feature_dict.items() if k.startswith('motion.')}
+groupings = {f'motion.groups.<kind>.{leaf}': v for leaf, v in grouping_feature_dict.items()}
+
+table_structure = dict_to_list_table(structure_only, 'Table of features by key')
 
 with open('./structure_features.rst', 'w') as file:
     file.write(generate_rst_content(
         "Feature Reference", table_structure,
-        "The following table describes the features analyzed by SarcAsM, keyed by "
+        "The following table describes the structure features analyzed by SarcAsM, keyed by "
         "the path they are stored under. A key is its path, so "
         "``sarc.data['structure.sarcomere.oop']`` and "
         "``sarc.data.structure.sarcomere.oop`` are the same value. Print "
         "``sarc.data`` for an overview, ``sarc.data.find('slen')`` to search and "
-        "``sarc.data.describe(key)`` for the entry below:"))
+        "``sarc.data.describe(key)`` for the entry below. The motion features are listed "
+        "in :ref:`motion_features`:"))
 
 with open('./motion_features.rst', 'w') as file:
     file.write(generate_rst_content(
-        "Motion Features", table_motion,
+        "Motion Features",
+        dict_to_list_table(motion_feature_dict, 'Table of per-group motion features'),
         "The following table describes the per-group motion features analyzed by "
         "SarcAsM. They are computed by :py:meth:`sarcasm.motion.MotionAnalysis.analyze` "
         "and stored under ``motion.<kind>.<feature>``, where ``kind`` is the grouping "
-        "used (``pool``, ``mband``, ``myofibril``, ``domain``, ``loi`` or ``custom``) "
-        "— e.g. ``sarc.data['motion.pool.beating_rate']``, equivalently "
-        "``sarc.data.motion.pool.beating_rate``. Every kind writes the same members:"))
+        "(``pool``, ``mband``, ``myofibril``, ``loi``, ``domain`` or ``custom``), "
+        "e.g. ``sarc.data['motion.pool.beating_rate']``. Every kind writes the same features, "
+        "and a group ``g = sarc.motion.groups(kind)[i]`` reads its row as ``g.beating_rate``:"))
+    file.write("""
+Tracks and lines of interest
+----------------------------
+
+The tracks, one row per tracked sarcomere (``g.tracks.<name>`` reads the members of a group),
+and the lines of interest of the ``loi`` grouping:
+
+""" + dict_to_list_table(tracks_and_lois, 'Table of track and LOI keys') + """
+
+Groupings
+---------
+
+Each grouping kind is stored on its own under ``motion.groups.<kind>.*``, so several groupings
+live side by side:
+
+""" + dict_to_list_table(groupings, 'Table of grouping keys'))

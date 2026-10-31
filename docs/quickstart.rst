@@ -71,14 +71,19 @@ contractions of *groups* of tracks. More detailed instructions see
 
     # ... or group the tracks per myofibril and analyze each group separately
     sarc_obj.structure.analyze_myofibrils(frames=[0])
-    sarc_obj.motion.analyze(by='myofibril', reference_frame=0)
+    myofibrils = sarc_obj.motion.analyze(by='myofibril', reference_frame=0)
 
-Tracks can also be grouped by M-band (``by='mband'``), by myofibril domain
-(``by='domain'``), along automatically detected lines of interest (``by='loi'``),
-or by your own labels (``by='custom'``). Each grouping writes its features under
-``motion.<kind>.<feature>`` keys, e.g. ``sarc_obj.data['motion.pool.beating_rate']`` or
-equivalently ``sarc_obj.data.motion.pool.beating_rate`` — see :ref:`motion_features`
-and :doc:`key_migration` for the mapping from pre-1.0 keys.
+    # one group: its results and its member sarcomeres
+    g = myofibrils[0]
+    print(g.beating_rate, g.slen_avg.shape, g.tracks.slen.shape)
+
+Tracks can also be grouped by M-band (``by='mband'``), by sarcomere domain
+(``by='domain'``), along lines of interest (``by='loi'``, detected or drawn), or by
+your own labels (``by='custom'``). Each grouping is stored on its own and writes its
+features under ``motion.<kind>.<feature>`` keys, e.g.
+``sarc_obj.data['motion.pool.beating_rate']``; ``sarc_obj.motion.groups(kind)`` reads
+any stored grouping back as groups. See :ref:`motion_features` and :doc:`key_migration`
+for the mapping from pre-1.0 keys.
 
 Controlling Log Output
 ======================

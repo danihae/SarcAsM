@@ -74,7 +74,7 @@ A query point's **trailing coast** — the frames after its *last observed* fram
 blanked to NaN (position, slen, orientation) in the output: a lost track does not
 freeze in place at its last position. Interior gaps are anchored on both sides,
 keep their predicted position, and have their slen/orientation interpolated when
-the gap is short (``max_gap_interpolation_s``); ``tracks_observed`` still marks which
+the gap is short (``max_gap_interpolation_s``); ``motion.tracks.observed`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
 """
 
@@ -550,7 +550,7 @@ def track_sarcomere_vectors(
         interpolation between the real observations on either side, so short
         detection flicker does not punch holes in the per-track traces (converted
         via ``frametime``; ``_MAX_GAP_FRAMES_FALLBACK`` frames when ``frametime`` is
-        None). Interior gaps only, and ``tracks_observed`` stays False there, so no
+        None). Interior gaps only, and ``motion.tracks.observed`` stays False there, so no
         real-observation metric is affected. Set to 0 to keep every gap frame NaN.
         Kept deliberately short (default 0.05 s): a longer fill would start to span
         a contraction and invent length dynamics.

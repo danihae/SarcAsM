@@ -37,13 +37,13 @@ def _run(capsys, *argv):
 # frames parsing
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize('text, expected', [
-    ('all', 'all'), ('3', [3]), ('4,0, 4', [0, 4]), ('2:5', [2, 3, 4]),
+    ('all', 'all'), ('3', [3]), ('4,0, 4', [0, 4]), ('2-4', [2, 3, 4]), ('0-2, 5', [0, 1, 2, 5]),
 ])
 def test_parse_frames(text, expected):
     assert parse_frames(text) == expected
 
 
-@pytest.mark.parametrize('text', ['5:2', 'a:3', '-1', '1.5'])
+@pytest.mark.parametrize('text', ['5-2', '0:100', 'a-3', '-1', '1.5'])
 def test_parse_frames_rejects(text):
     with pytest.raises(argparse.ArgumentTypeError):
         parse_frames(text)

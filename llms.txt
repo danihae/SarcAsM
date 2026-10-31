@@ -14,7 +14,7 @@ Install: `pip install sarc-asm` (Python 3.12–3.13). Every command prints one J
 - `sarcasm results FILE [KEY ...] [--find TEXT]`: list or read any stored result, including per-object distributions and time series.
 - `sarcasm features [--registry structure|motion] [--find TEXT]`: name, unit and definition of every feature. No file needed.
 
-Common flags: `--pixelsize` (µm), `--frametime` (s), `--axes` (e.g. `TYX`), `--channel`, `--frames` (`all`, `3`, `0,4,9`, `0:100`), `--restart`, `--device`, `--log-level`.
+Common flags: `--pixelsize` (µm), `--frametime` (s), `--axes` (e.g. `TYX`), `--channel`, `--frames` (`all`, `3`, `0,4,9`, `0-99`, both ends included), `--restart`, `--device`, `--log-level`.
 
 ## Rules that keep results correct
 
@@ -33,8 +33,9 @@ from sarcasm import SarcAsM
 sarc = SarcAsM('movie.tif', pixelsize=0.065, frametime=0.0164)  # calibration optional if in metadata
 sarc.detect_sarcomeres()
 sarc.structure.full_analysis()                 # Z-bands, vectors, myofibrils, domains
-sarc.motion.track()                 # movies only
-sarc.motion.analyze(by='pool')
+sarc.motion.track()                            # movies only
+groups = sarc.motion.analyze('mband')          # or 'pool', 'myofibril', 'loi', 'domain'
+groups[0].beating_rate, groups[0].tracks.slen  # one group's results and its member tracks
 sarc.data['structure.sarcomere.slen_mean']     # results: a key is its dotted path
 sarc.data.find('slen'); sarc.data.describe('motion.pool.beating_rate')
 ```

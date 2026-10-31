@@ -119,6 +119,22 @@ sarc.structure.analyze_domains()
 Export.export_structure_data(sarc, '/path/to/xlsx/file.xlsx')
 ```
 
+```python
+# Example workflow for motion analysis of a movie
+sarc = SarcAsM("path/to/movie.tif")
+sarc.detect_sarcomeres()                    # every frame: the tracker needs M-bands and orientation
+sarc.structure.analyze_vectors()
+sarc.motion.track()                         # every sarcomere through the movie
+
+# group the tracks (pool, mband, myofibril, loi, domain or custom) and analyze each group
+sarc.structure.analyze_myofibrils(frames=0)
+myofibrils = sarc.motion.analyze('myofibril')
+g = myofibrils[0]
+g.beating_rate, g.slen_avg, g.tracks.slen   # the group's results and its member sarcomeres
+
+Export.export_motion_data(sarc, '/path/to/motion.xlsx', kind='myofibril')
+```
+
 **Tip:** Control logging verbosity with the `log_level` parameter:
 ```python
 # Verbose output for troubleshooting
