@@ -59,3 +59,14 @@ def test_wrapper_rejects_an_unknown_predictor(motion_file_path):
     sarc = SarcAsM(motion_file_path, auto_save=False)
     with pytest.raises(ValueError, match='motion_predictor'):
         sarc.motion.track(motion_predictor='bogus')
+
+
+def test_wrapper_runs_the_flow_predictor(motion_file_path):
+    """sarc.motion.track(motion_predictor='flow') must reach ImageFlowPredictor; its import broke unnoticed
+    when tracking moved into sarcasm.motion, because the test above calls the module-level tracker."""
+    sarc = SarcAsM(motion_file_path, auto_save=False)
+    if 'structure.sarcomere.pos_px' not in sarc.data:
+        pytest.skip('reference store has no sarcomere vectors')
+    sarc.motion.track(frames=range(0, 5), motion_predictor='flow', refine_lengths=False)
+    assert sarc.data['params.motion.track.motion_predictor'] == 'flow'
+    assert sarc.data['motion.tracks.n'] > 0

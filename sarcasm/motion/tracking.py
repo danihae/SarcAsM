@@ -276,7 +276,7 @@ class TrackingMixin:
 
         predictor = None
         if motion_predictor == 'flow':
-            from .analysis.optical_flow import ImageFlowPredictor
+            from ..analysis.optical_flow import ImageFlowPredictor
             # tracker step k is list_frames[k] -> list_frames[k + 1]; one frame is read per call
             predictor = ImageFlowPredictor(lambda k: self.read_imgs(frames=int(list_frames[k])))
             logger.info('Tracking with the image-flow motion predictor (raw-image DIS optical flow).')
