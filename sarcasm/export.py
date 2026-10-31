@@ -20,7 +20,7 @@ collects features from many recordings into one table.
 import json
 import logging
 import os.path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import types
 import numpy as np
@@ -31,7 +31,7 @@ from tqdm import tqdm as tqdm
 
 from sarcasm._internal.meta_data_handler import ImageMetadata
 from sarcasm.core import SarcAsM
-from sarcasm.motion import Motion
+from sarcasm.features import motion_feature_dict
 
 logger = logging.getLogger(__name__)
 
@@ -189,44 +189,54 @@ class BatchExport:
             raise FileExistsError(f'{path} does not exist; run get_motion_data() first.')
         self.data = pd.read_pickle(path)
 
-    def export_data(self, file_path, format='.xlsx'):
+    def export_data(self, file_path, fileformat: Optional[str] = None):
         """
-        Export the DataFrame to .xlsx or .csv format, one row per file (or group).
+        Export the collected table, one row per file (structure) or group (motion).
 
         A per-frame feature of a movie becomes one number per cell: the value of the
         analyzed frame, or the mean over the analyzed frames when there are several.
         Every analyzed frame is then also written in long format (one row per file and
-        frame): a ``per_frame`` sheet in the .xlsx, or ``<name>_per_frame.csv`` next to
-        the .csv.
+        frame): a ``per_frame`` sheet in the .xlsx, ``<name>_per_frame.csv`` next to the
+        .csv, or a ``per_frame`` list in the .json. An .xlsx file also gets a ``metrics``
+        sheet with each metric's name, unit and description (:meth:`Export.append_info_sheets`).
 
         Parameters
         ----------
         file_path : str
             Path to the output file.
-        format : {'.xlsx', '.csv'}, optional
-            Format of the output file. Default is '.xlsx'.
+        fileformat : {'.xlsx', '.csv', '.json'} or None, optional
+            Format of the output file; None takes it from the file extension. Default is None.
         """
-        if format not in ('.xlsx', '.csv'):
-            raise ValueError('Unsupported file format')
+        fmt = Export._format_of(file_path, fileformat)
         main, per_frame = Export.split_per_frame(self._require_data())
-        _data = Export.tabular_frame(main)
-        if format == '.xlsx':
+        table = Export.tabular_frame(main)
+        if fmt == 'json':
+            out = {'data': json.loads(table.to_json(orient='records'))}
+            if per_frame is not None:
+                out['per_frame'] = json.loads(per_frame.to_json(orient='records'))
+            with open(file_path, 'w') as f:
+                json.dump(out, f, indent=2)
+        elif fmt == 'xlsx':
             with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                _data.to_excel(writer, index=False)
+                table.to_excel(writer, index=False)
                 if per_frame is not None:
                     per_frame.to_excel(writer, sheet_name='per_frame', index=False)
+            structure = [c for c in table.columns if str(c).startswith('structure.')]
+            if structure:
+                Export.append_info_sheets(str(file_path), None, structure, registry='structure')
+            else:
+                motion = [c for c in table.columns if c in motion_feature_dict]
+                Export.append_info_sheets(str(file_path), None, motion, registry='motion')
         else:
-            _data.to_csv(file_path, index=False)
+            table.to_csv(file_path, index=False)
             if per_frame is not None:
                 root, ext = os.path.splitext(str(file_path))
                 per_frame.to_csv(f'{root}_per_frame{ext}', index=False)
 
 
-
-
 class Export:
     """
-    Export structure and motion data from SarcAsM and Motion objects.
+    Export the structure and motion features of an analyzed recording.
 
     Attributes
     ----------
@@ -273,8 +283,8 @@ class Export:
 
         Parameters
         ----------
-        sarc_obj : SarcAsM or Motion
-            Analyzed object holding metadata and structure features.
+        sarc_obj : SarcAsM
+            Analyzed recording.
         structure_keys : list or None, optional
             Structure keys; uses :attr:`Export.structure_keys_default` when None.
             Default is None.
@@ -303,35 +313,49 @@ class Export:
         return dict_
 
     @staticmethod
-    def export_structure_data(file_path, sarc_obj: Union[SarcAsM, Motion], structure_keys=None,
-                              fileformat='.xlsx', raw: bool = False):
+    def export_structure_data(sarc_obj: SarcAsM, file_path: str, structure_keys=None,
+                              fileformat: Optional[str] = None, raw: bool = False) -> None:
         """
-        Export structure data to a file.
+        Export the structure features of one recording to a file.
 
-        Summary mode (``raw=False``, default) writes one value per metric per
-        frame: multi-frame analyses become a single table with one column per
-        frame (``frame_0``, ``frame_1``, ...), single-frame analyses collapse
-        to a single ``value`` column. Full mode (``raw=True``) preserves
-        per-object distributions and requires ``fileformat='.json'``.
-        See :meth:`Export.write_dict` for the full layout.
+        The GUI's structure export runs this too. Summary mode (``raw=False``, default)
+        writes one value per metric per frame: multi-frame analyses become a single table
+        with one column per frame (``frame_0``, ``frame_1``, ...), single-frame analyses
+        collapse to a single ``value`` column. Full mode (``raw=True``) preserves per-object
+        distributions and requires .json. See :meth:`Export.write_dict` for the full layout.
+        An .xlsx file also gets a ``metadata`` and a ``metrics`` sheet
+        (:meth:`append_info_sheets`).
 
         Parameters
         ----------
+        sarc_obj : SarcAsM
+            Analyzed recording.
         file_path : str
             Path to the output file.
-        sarc_obj : SarcAsM or Motion
-            Analyzed object holding the structure features to export.
         structure_keys : list or None, optional
             Structure keys; uses :attr:`Export.structure_keys_default` when None.
             Default is None.
-        fileformat : {'.xlsx', '.csv', '.json'}, optional
-            Format of the output file. Default is '.xlsx'.
+        fileformat : {'.xlsx', '.csv', '.json'} or None, optional
+            Format of the output file; None takes it from the file extension. Default is None.
         raw : bool, optional
             If True, export raw per-object distributions (JSON only).
             Default is False.
         """
+        fmt = Export._format_of(file_path, fileformat)
+        structure_keys = list(structure_keys) if structure_keys is not None else Export.structure_keys_default
         structure_dict = Export.get_structure_dict(sarc_obj, structure_keys=structure_keys)
-        Export.write_dict(file_path, structure_dict, fileformat, raw=raw)
+        Export.write_dict(file_path, structure_dict, fmt, raw=raw)
+        if fmt == 'xlsx':
+            Export.append_info_sheets(file_path, sarc_obj, structure_keys, registry='structure')
+
+    @staticmethod
+    def _format_of(file_path: str, fileformat: Optional[str]) -> str:
+        """``fileformat`` without its dot, or the extension of ``file_path`` when it is None."""
+        fmt = fileformat if fileformat is not None else os.path.splitext(str(file_path))[1]
+        fmt = fmt.lower().lstrip('.')
+        if fmt not in ('xlsx', 'csv', 'json'):
+            raise ValueError(f"Unsupported file format {fmt!r}: use .xlsx, .csv or .json.")
+        return fmt
 
     @staticmethod
     def append_info_sheets(file_path: str, sarc_obj, keys: List[str], registry: str = 'structure') -> None:
@@ -673,21 +697,37 @@ class Export:
             df.to_csv(file_path, index=False)
 
     @staticmethod
-    def export_motion_data(sarc_obj, file_path, motion_keys=None, fileformat='.xlsx'):
+    def export_motion_data(sarc_obj: SarcAsM, file_path: str, kind: str, motion_keys=None,
+                           fileformat: Optional[str] = None) -> int:
         """
-        Export per-group track-based motion features (one row per group).
+        Export the motion features of one grouping kind, one row per group.
+
+        The GUI's motion export runs this too. Per-cycle arrays are averaged per group. An
+        .xlsx file also gets a ``metadata`` and a ``metrics`` sheet (:meth:`append_info_sheets`).
 
         Parameters
         ----------
         sarc_obj : SarcAsM
-            Analyzed object (must have run sarc.motion.analyze).
+            Analyzed recording (``sarc.motion.analyze(kind)`` has run).
         file_path : str
             Path to the output file.
+        kind : str
+            The grouping kind to export ('pool', 'mband', 'myofibril', ...).
         motion_keys : list or None, optional
             Feature suffixes; uses :attr:`Export.motion_keys_default` when None.
             Default is None.
-        fileformat : {'.xlsx', '.csv', '.json'}, optional
-            Format of the output file. Default is '.xlsx'.
+        fileformat : {'.xlsx', '.csv', '.json'} or None, optional
+            Format of the output file; None takes it from the file extension. Default is None.
+
+        Returns
+        -------
+        int
+            The number of groups written.
         """
-        records = Export.get_motion_dict_per_group(sarc_obj, motion_keys=motion_keys)
-        Export.write_records(file_path, records, fileformat)
+        fmt = Export._format_of(file_path, fileformat)
+        motion_keys = list(motion_keys) if motion_keys is not None else Export.motion_keys_default
+        records = Export.get_motion_dict_per_group(sarc_obj, motion_keys=motion_keys, kind=kind)
+        Export.write_records(file_path, records, fmt)
+        if fmt == 'xlsx':
+            Export.append_info_sheets(file_path, sarc_obj, motion_keys, registry='motion')
+        return len(records)

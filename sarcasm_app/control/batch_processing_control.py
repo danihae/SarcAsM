@@ -23,7 +23,7 @@ import qtutils
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
-from sarcasm import SarcAsM, BatchExport, Export
+from sarcasm import SarcAsM, BatchExport
 from .application_control import ApplicationControl
 from .motion_analysis_control import detect_lois_kwargs
 from ..view.parameters_batch_processing import Ui_Form as BatchProcessingWidget
@@ -151,6 +151,19 @@ def _analyze_sarcomere_domains(sarc_obj: SarcAsM, p, frames, progress_notifier=N
 #: Groupings the motion batch can analyse, in the order they run (the batch tab has one checkbox each).
 _BATCH_GROUPINGS = ('pool', 'mband', 'myofibril', 'domain', 'loi')
 
+
+
+_EXPORT_FILTERS = {'Excel Workbook (*.xlsx)': '.xlsx', 'CSV (*.csv)': '.csv', 'JSON (*.json)': '.json'}
+
+
+def _ask_export_path(caption: str, folder) -> str:
+    """Ask for the file of a batch export (.xlsx, .csv or .json); '' if cancelled. A name without one
+    of these extensions gets the one of the chosen file type."""
+    path, chosen = QFileDialog.getSaveFileName(caption=caption, directory=str(folder),
+                                               filter=';;'.join(_EXPORT_FILTERS))
+    if path and Path(path).suffix.lower() not in _EXPORT_FILTERS.values():
+        path = str(Path(path).with_suffix(_EXPORT_FILTERS.get(chosen, '.xlsx')))
+    return path
 
 class BatchProcessingControl:
 
@@ -326,17 +339,9 @@ class BatchProcessingControl:
         if not self.__batch_files_or_explain():                        # nothing to do
             return
 
-        # let the user pick / create the Excel workbook
-        default = Path(folder)
-        file_export, _ = QFileDialog.getSaveFileName(
-            caption="Save structure measurements",
-            directory=str(default),
-            filter="Excel Workbook (*.xlsx)"
-        )
+        file_export = _ask_export_path('Save structure measurements', folder)
         if not file_export:                                            # user pressed Cancel
             return
-        if not file_export.lower().endswith('.xlsx'):                  # the content is always a workbook
-            file_export = str(Path(file_export).with_suffix('.xlsx'))
 
         # store arguments for the worker and launch it asynchronously
         self.__export_args = (tif_files, Path(file_export))
@@ -361,9 +366,6 @@ class BatchProcessingControl:
                 msa.get_data()
 
             msa.export_data(file_export)
-            if str(file_export).lower().endswith('.xlsx'):
-                Export.append_info_sheets(str(file_export), None,
-                                          [c for c in msa.data.columns if str(c).startswith('structure.')])
             logger.info(f'Exported {len(msa.data)} file(s) to {file_export}')
         except PermissionError as e:
             # re-raised: the worker reports it in a dialog and no "Finished" follows
@@ -378,12 +380,9 @@ class BatchProcessingControl:
             return
         model = self.__main_control.model
         folder = model.parameters.get_parameter(name='batch.root').get_value()
-        file_export, _ = QFileDialog.getSaveFileName(caption='Save motion measurements', directory=str(folder),
-                                                     filter='Excel Workbook (*.xlsx)')
+        file_export = _ask_export_path('Save motion measurements', folder)
         if not file_export:
             return
-        if not file_export.lower().endswith('.xlsx'):
-            file_export = str(Path(file_export).with_suffix('.xlsx'))
         self.__export_args = (self.__get_tiff_files(model), Path(file_export))
         self.__worker = self.__main_control.run_async_new(
             parameters=model, call_lambda=self.__batch_export_motion_async,
@@ -401,8 +400,6 @@ class BatchProcessingControl:
         except PermissionError as e:
             raise PermissionError(f'Could not write {file_export}: {e.strerror or e}. Choose a folder you can '
                                   f'write to, and close the file if it is open in Excel.') from e
-        Export.append_info_sheets(str(file_export), None,
-                                  [c for c in msa.data.columns if c in Export.motion_keys_default], registry='motion')
         logger.info(f'Exported {len(msa.data)} group(s) of {msa.data["tif_name"].nunique()} movie(s) to {file_export}')
 
     def on_btn_batch_processing_motion(self):

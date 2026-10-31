@@ -250,6 +250,10 @@ class ExportPopup(QDialog):
 
     def _on_export(self, fmt: str) -> None:
         keys = self._selected_keys()
+        if self._popup_type == 'motion' and self._cb_kind is None:
+            QMessageBox.warning(self, 'Nothing to export',
+                                'No grouping of this file has been analysed. Run "3. Analyze track motion" first.')
+            return
         if not keys:
             QMessageBox.warning(self, 'No metrics selected',
                                 'Please select at least one metric to export.')
@@ -284,39 +288,24 @@ class ExportPopup(QDialog):
         if not path:
             return
 
-        try:
-            data = self._build_export_dict(keys)
-        except Exception as exc:
-            logger.exception('Failed to assemble export dictionary')
-            QMessageBox.critical(self, 'Export failed',
-                                 f'Could not assemble data for export:\n{exc}')
-            return
-
+        cell = self._model.cell
         try:
             if self._popup_type == 'motion':
-                Export.write_records(path, data, fmt)
-                summary = f'{len(data)} group(s) × {len(keys)} metric(s)'
+                n_groups = Export.export_motion_data(cell, path, self._cb_kind.currentText(), motion_keys=keys,
+                                                     fileformat=fmt)
+                summary = f'{n_groups} group(s) × {len(keys)} metric(s)'
             else:
-                Export.write_dict(path, data, fmt, raw=self._rb_full.isChecked())
+                Export.export_structure_data(cell, path, structure_keys=keys, fileformat=fmt,
+                                             raw=self._rb_full.isChecked())
                 summary = f'{len(keys)} metric(s)'
             if fmt == 'xlsx':
-                Export.append_info_sheets(path, self._model.cell, keys, registry=self._popup_type)
                 summary += '; sheets "metadata" and "metrics" list the file and each metric\'s unit'
         except Exception as exc:
-            logger.exception('Failed to write export file')
-            QMessageBox.critical(self, 'Export failed',
-                                 f'Could not write {path}:\n{exc}')
+            logger.exception('Export failed')
+            QMessageBox.critical(self, 'Export failed', f'Could not export to {path}:\n{exc}')
             return
 
         QMessageBox.information(self, 'Export complete', f'Exported {summary} to\n{path}')
-
-    def _build_export_dict(self, keys: List[str]):
-        if self._popup_type == 'structure':
-            return Export.get_structure_dict(sarc_obj=self._model.cell,
-                                             structure_keys=keys)
-        kind = self._cb_kind.currentText() if self._cb_kind is not None else None
-        return Export.get_motion_dict_per_group(sarc_obj=self._model.cell,
-                                                motion_keys=keys, kind=kind)
 
     # -------------------------------------------------------- public API
 

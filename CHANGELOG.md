@@ -53,6 +53,12 @@ All notable changes to SarcAsM are documented here. The format follows
   its parameters under `params.motion.detect_lois.*`.
 - Removed: `Plots.plot_loi_detection`, `Plots.plot_domain_timeseries` (use `plot_slen_mean(ax, sarc, 'domain')`) and
   `Plots.plot_overlay_domain_timeseries`.
+- **One export path for the library and the GUI.** `Export.export_structure_data(sarc, file_path, ...)` and
+  `Export.export_motion_data(sarc, file_path, kind, ...)` (both now take the recording first) are what the GUI's
+  export dialogs run; `BatchExport.export_data(file_path)` is what the batch tab runs. All three write .xlsx, .csv or
+  .json, take the format from the file extension (`fileformat=` overrides it; `BatchExport.export_data`'s `format=`
+  is renamed `fileformat=`), and add the `metadata` / `metrics` sheets to an .xlsx themselves. The batch export
+  gains .json (`{"data": [...], "per_frame": [...]}`), and the GUI's batch export offers all three formats.
 - **`restart` is keyword-only** (`SarcAsM(file, restart=True)`), so a stray second positional argument can no longer
   delete the analysis store; the type guard that stood in for this is gone.
 - **`sarc.commit()` is the one way to save**; `store_structure_data()` is removed (it did the same).
@@ -66,6 +72,7 @@ All notable changes to SarcAsM are documented here. The format follows
   - `merge_time_max` of `sarc.motion.analyze`, `grouped_motion.run_cycle_engine` and
     `contraction_analysis.detect_contractions` (deprecated and ignored since 1.0.0b1), and its disabled GUI field.
     Parameter files that still hold it load as before.
+  - `sarcasm_app/hooks/` (PyInstaller hooks that `sarcasm.spec` does not use).
   - Store internals used only by tests: `OmeZarrStore.create`, `.read_image`, `.results`, `write_mask(as_label=)`
     and the OME `labels/` group nothing wrote to, `results_store.write_results` (use `update_results`),
     `Results.set_root_attr`, `ImageMetadata.save_to_file`.

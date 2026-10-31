@@ -136,6 +136,34 @@ def test_motion_records_collapse_per_cycle_arrays():
         Export.get_motion_dict_per_group(sarc, kind='loi')
 
 
+def test_export_motion_data_is_the_gui_path(tmp_path):
+    """One recording's motion export: the kind's groups, and in .xlsx the metadata and metrics sheets
+    (the GUI's motion export calls this function)."""
+    sarc = _fake_structure(n_tracks=6)
+    sarc.file_path = 'synthetic.tif'
+    sarc.metadata.to_dict = lambda: {'file_name': 'synthetic.tif', 'frametime': 0.01}
+    sarc.motion.analyze('mband', reference_frame=0)
+    path = tmp_path / 'motion.xlsx'
+    n = Export.export_motion_data(sarc, path, 'mband', motion_keys=['beating_rate', 'contr_max'])
+    assert n == 2
+    sheets = pd.read_excel(path, sheet_name=None)
+    assert set(sheets) == {'data', 'metadata', 'metrics'}
+    assert sheets['data']['group_id'].tolist() == [0, 1]
+    assert sheets['metrics']['metric'].tolist() == ['beating_rate', 'contr_max']
+    with pytest.raises(ValueError, match='Unsupported file format'):
+        Export.export_motion_data(sarc, tmp_path / 'motion.txt', 'mband')
+
+
+def test_export_structure_data_takes_the_format_from_the_extension(tmp_path):
+    sarc = _fake_structure(n_tracks=6)
+    sarc.file_path = 'synthetic.tif'
+    sarc.metadata.to_dict = lambda: {'file_name': 'synthetic.tif', 'pixelsize': 0.1}
+    sarc.data['structure.sarcomere.n_vectors'] = np.array([10, 12])
+    Export.export_structure_data(sarc, tmp_path / 's.csv', structure_keys=['structure.sarcomere.n_vectors'])
+    table = pd.read_csv(tmp_path / 's.csv')
+    assert table.to_dict('records') == [{'metric': 'structure.sarcomere.n_vectors', 'frame_0': 10, 'frame_1': 12}]
+
+
 # ---------------------------------------------------------------------------
 # BatchExport
 # ---------------------------------------------------------------------------
@@ -215,15 +243,19 @@ def test_split_per_frame_gives_numbers_not_array_text():
     assert list(per_frame['structure.sarcomere.slen_mean']) == pytest.approx([1.8, 1.8, 2.0])
 
 
-@pytest.mark.parametrize('fmt', ['.xlsx', '.csv'])
+@pytest.mark.parametrize('fmt', ['.xlsx', '.csv', '.json'])
 def test_batch_export_writes_numbers_and_a_per_frame_table(tmp_path, fmt):
     be = BatchExport([], folder=str(tmp_path))
     be.data = pd.DataFrame.from_records(_batch_rows())
     out = tmp_path / f'batch{fmt}'
-    be.export_data(str(out), fmt)
+    be.export_data(str(out))                              # the format comes from the extension
     if fmt == '.xlsx':
         sheets = pd.read_excel(out, sheet_name=None)
         main, per_frame = sheets[list(sheets)[0]], sheets['per_frame']
+        assert 'structure.sarcomere.slen_mean' in sheets['metrics']['metric'].tolist()
+    elif fmt == '.json':
+        doc = json.loads(out.read_text())
+        main, per_frame = pd.DataFrame(doc['data']), pd.DataFrame(doc['per_frame'])
     else:
         main, per_frame = pd.read_csv(out), pd.read_csv(tmp_path / 'batch_per_frame.csv')
     values = main['structure.sarcomere.slen_mean']

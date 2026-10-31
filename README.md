@@ -116,7 +116,7 @@ sarc.structure.analyze_domains()
 
 # Export data to xlsx file (summary statistics per frame; the full results live in the
 # sibling <name>.ome.zarr store next to the tif)
-Export.export_structure_data('/path/to/xlsx/file.xlsx', sarc)
+Export.export_structure_data(sarc, '/path/to/xlsx/file.xlsx')
 ```
 
 **Tip:** Control logging verbosity with the `log_level` parameter:
