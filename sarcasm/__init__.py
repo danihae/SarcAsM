@@ -21,7 +21,7 @@ from ._version import __version__
 # Public names resolve on first access (PEP 562), so ``import sarcasm`` and the
 # CLI do not pay for torch, numba and matplotlib until they are needed.
 _EXPORTS = {
-    'SarcAsMBase': '.core', 'SarcAsM': '.core', 'Motion': '.motion', 'Utils': '.utils',
+    'SarcAsM': '.core', 'Utils': '.utils',
     'structure_feature_dict': '.features', 'motion_feature_dict': '.features',
     'describe_key': '.features', 'pretty_name': '.features', 'MOTION_KINDS': '.features',
     'IOUtils': '.io.ioutils', 'Plots': '.plotting.plots', 'PlotUtils': '.plotting.plot_utils',

@@ -113,8 +113,7 @@ class TrackingMixin:
     ) -> None:
         """2D full-field sarcomere-vector tracking.
 
-        Complements :meth:`Motion.track_z_bands` (LOI / 1D). Each sarcomere
-        vector in the first analyzed frame seeds a query point. Every frame, the
+        Each sarcomere vector in the first analyzed frame seeds a query point. Every frame, the
         candidate (query point, detection) pairs that pass the anisotropic
         (along-/perpendicular-to-sarcomere) and orientation gates are matched by an
         exact minimum-cost assignment, solved per connected component of the

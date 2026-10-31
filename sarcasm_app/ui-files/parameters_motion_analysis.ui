@@ -266,10 +266,10 @@
       <item row="4" column="0">
        <widget class="QCheckBox" name="chk_display_groups">
         <property name="toolTip">
-         <string>&lt;p&gt;Shows or hides the 'Groups' layer. For the myofibril and LOI groupings it draws one line per fibre through its sarcomeres at the reference frame, coloured and numbered by group (numbers only up to 30 groups). Click a line to select that group: its sarcomeres are ringed in yellow and the group's traces open in a panel below the viewer. Other groupings draw no lines; set 'Colour by' to Group to see them. Default on.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Shows or hides the 'Groups' layer. For the myofibril and LOI groupings it draws one line per group through its sarcomeres at the reference frame, coloured and numbered by group (numbers only up to 30 groups). Click a line to select that group: its sarcomeres are ringed in yellow and the group's traces open in a panel below the viewer. Other groupings draw no lines; set 'Colour by' to Group to see them. Default on.&lt;/p&gt;</string>
         </property>
         <property name="text">
-         <string>Groups (fibre paths)</string>
+         <string>Groups (lines)</string>
         </property>
         <property name="checked">
          <bool>true</bool>
@@ -279,7 +279,7 @@
       <item row="4" column="1">
        <widget class="QLabel" name="label_display_hint">
         <property name="text">
-         <string>Click a sarcomere or a fibre path: its group is highlighted and its SL / ΔSL traces open in a panel below the viewer.</string>
+         <string>Click a sarcomere or a group line: its group is highlighted and its SL / ΔSL traces open in a panel below the viewer.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -298,7 +298,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_group_by">
         <property name="toolTip">
-         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi enable the fibre detail and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
+         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi order the sarcomeres along their line and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Group by</string>
@@ -308,7 +308,7 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cb_group_by">
         <property name="toolTip">
-         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi enable the fibre detail and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
+         <string>&lt;p&gt;How the tracked sarcomeres are combined into groups; step 3 analyses one length trace per group. pool: all tracks in one group (whole field of view). mband: one group per M-band at the reference frame. myofibril: one group per myofibril line from the Structure tab, sarcomeres ordered along it. domain: one group per sarcomere domain from the Structure tab. loi: one group per line of interest, drawn by you or detected automatically, ordered along it.&lt;/p&gt;&lt;p&gt;myofibril and loi order the sarcomeres along their line and leave out tracks that drifted more than one sarcomere length away from their neighbours. Default myofibril.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
@@ -338,7 +338,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_group_cov">
         <property name="toolTip">
-         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a fibre chain should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a chain of sarcomeres should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. coverage</string>
@@ -348,7 +348,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="dsb_group_min_coverage">
         <property name="toolTip">
-         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a fibre chain should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Sarcomeres detected in fewer than this fraction of the tracked frames are left out of all groups. Higher values keep only well-tracked sarcomeres and give cleaner group traces but fewer members; lower values keep more. Whenever 'Group by' changes, it is reset to 0.1 for myofibril and LOI (a chain of sarcomeres should not get holes) and to 0.5 for the other groupings; you can then change it. Frames filled by gap interpolation do not count. Range 0–1.&lt;/p&gt;</string>
         </property>
         <property name="decimals">
          <number>2</number>
@@ -367,7 +367,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="label_group_min_size">
         <property name="toolTip">
-         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the fibre, so e.g. 6 removes fibre fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
+         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the line, so e.g. 6 removes myofibril fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Min. group size</string>
@@ -377,7 +377,7 @@
       <item row="3" column="1">
        <widget class="QSpinBox" name="sb_group_min_group_size">
         <property name="toolTip">
-         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the fibre, so e.g. 6 removes fibre fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
+         <string>&lt;p&gt;Groups with fewer member tracks than this are dissolved; their sarcomeres stay ungrouped and are not analysed. In myofibril and LOI groups a member is one sarcomere along the line, so e.g. 6 removes myofibril fragments of 1–5 sarcomeres whose average trace is too noisy. In the other groupings every tracked M-band point is a member, so counts are much larger. Groups are renumbered afterwards, except domain and LOI groups. Default 1 (keep all).&lt;/p&gt;</string>
         </property>
         <property name="minimum">
          <number>1</number>
@@ -393,7 +393,7 @@
       <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="btn_group_tracks">
         <property name="toolTip">
-         <string>&lt;p&gt;Step 2. Sorts the tracked sarcomeres into groups as set in 'Group by', using the reference frame. With 'Group by = loi' it uses the lines you drew or, if there are none, detects LOIs automatically first. Needs step 1 and, for myofibril or domain, the matching Structure-tab analysis. Takes seconds and does not change the tracks, so you can regroup freely; run step 3 again afterwards. Updates the group colours and fibre lines in the viewer.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Step 2. Sorts the tracked sarcomeres into groups as set in 'Group by', using the reference frame. With 'Group by = loi' it uses the lines you drew or, if there are none, detects LOIs automatically first. Needs step 1 and, for myofibril or domain, the matching Structure-tab analysis. Takes seconds and does not change the tracks, so you can regroup freely; run step 3 again afterwards. Updates the group colours and group lines in the viewer.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>2. Group tracks</string>
@@ -448,7 +448,7 @@
          <item row="1" column="0">
           <widget class="QLabel" name="label_loi_ratio">
            <property name="toolTip">
-            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated fibres. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
+            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated myofibrils. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
            </property>
            <property name="text">
             <string>Seed ratio</string>
@@ -458,7 +458,7 @@
          <item row="1" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_ratio_seeds">
            <property name="toolTip">
-            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated fibres. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
+            <string>&lt;p&gt;Fraction of the sarcomere vectors in the reference frame used as start points for growing candidate lines; the start points are drawn at random. A higher ratio grows more candidate lines, so fewer myofibrils are missed, but takes longer; a lower ratio is faster but can miss short or isolated myofibrils. Because sarcomere vectors are dense points along the M-bands, the default 0.1 (10 %) already gives many start points.&lt;/p&gt;</string>
            </property>
            <property name="decimals"><number>3</number></property>
            <property name="maximum"><double>1.000000000000000</double></property>
@@ -528,7 +528,7 @@
          <item row="5" column="0">
           <widget class="QLabel" name="label_loi_number">
            <property name="toolTip">
-            <string>&lt;p&gt;Minimum and maximum number of sarcomeres a candidate line may have (left and right box); lines outside are discarded before clustering. The minimum is included, the maximum excluded. Raise the minimum to keep only long, well-ordered fibres; raise the maximum for large cells with very long myofibrils. Lines with fewer than 5 sarcomeres are always discarded. Default 10–50.&lt;/p&gt;</string>
+            <string>&lt;p&gt;Minimum and maximum number of sarcomeres a candidate line may have (left and right box); lines outside are discarded before clustering. The minimum is included, the maximum excluded. Raise the minimum to keep only long, well-ordered myofibrils; raise the maximum for large cells with very long myofibrils. Lines with fewer than 5 sarcomeres are always discarded. Default 10–50.&lt;/p&gt;</string>
            </property>
            <property name="text">
             <string>Sarcomere # limits</string>
@@ -568,7 +568,7 @@
          <item row="7" column="0">
           <widget class="QLabel" name="label_loi_cluster">
            <property name="toolTip">
-            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same fibre, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same fibre. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
+            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same myofibril, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same myofibril. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
            </property>
            <property name="text">
             <string>Cluster threshold [µm]</string>
@@ -578,7 +578,7 @@
          <item row="7" column="1">
           <widget class="QDoubleSpinBox" name="dsb_loi_cluster_threshold">
            <property name="toolTip">
-            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same fibre, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same fibre. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
+            <string>&lt;p&gt;Candidate lines that run close together are clustered as copies of the same myofibril, and the LOIs are taken one per cluster. Closeness is the Hausdorff distance: the largest distance from any point of one line to the nearest point of the other. A larger threshold merges lines into fewer, larger clusters, so LOIs lie further apart but neighbouring myofibrils may be merged; a smaller one gives more clusters, and two LOIs may land on the same myofibril. Default 2.5 µm. Not used by random_line.&lt;/p&gt;</string>
            </property>
            <property name="decimals"><number>2</number></property>
            <property name="maximum"><double>100000.000000000000000</double></property>
@@ -897,36 +897,36 @@
      </property>
      <layout class="QFormLayout" name="formLayout_output">
       <item row="0" column="0">
-       <widget class="QLabel" name="label_fibre_group">
+       <widget class="QLabel" name="label_detail_group">
         <property name="toolTip">
-         <string>&lt;p&gt;Which fibre to show with 'Show fibre detail'. The numbers are the group numbers on the fibre lines in the viewer; clicking a fibre line or a sarcomere in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
         </property>
         <property name="text">
-         <string>Fibre group</string>
+         <string>Group</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QComboBox" name="cb_fibre_group">
+       <widget class="QComboBox" name="cb_detail_group">
         <property name="toolTip">
-         <string>&lt;p&gt;Which fibre to show with 'Show fibre detail'. The numbers are the group numbers on the fibre lines in the viewer; clicking a fibre line or a sarcomere in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Which group to show with 'Show group detail'. The numbers are the group numbers in the viewer; clicking a sarcomere or a group line in the viewer selects its group here. Only available after grouping by myofibril or loi.&lt;/p&gt;</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0" colspan="2">
-       <widget class="QPushButton" name="btn_show_fibre_detail">
+       <widget class="QPushButton" name="btn_show_group_detail">
         <property name="toolTip">
-         <string>&lt;p&gt;Analyses the selected fibre like a manually placed line of interest: its sarcomeres, in order along the fibre, give Z-band positions and per-sarcomere length changes. Opens plots of the Z-band positions over time, the length change of each sarcomere, a phase-space plot (length change against velocity) and a map of popping events (a sarcomere lengthening more than 0.25 µm beyond its resting length during a contraction). Uses its own default contraction settings, not those of step 3.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Plots the selected group from the results of step 3: the length change of each of its sarcomeres, a phase-space plot (length change against velocity), a map of popping events (a sarcomere lengthening more than 0.25 µm beyond its resting length during a contraction) and, for myofibril and LOI groups, the Z-band positions along the line over time.&lt;/p&gt;</string>
         </property>
         <property name="text">
-         <string>Show fibre detail</string>
+         <string>Show group detail</string>
         </property>
        </widget>
       </item>
       <item row="2" column="0" colspan="2">
        <widget class="QPushButton" name="btn_plot_summary">
         <property name="toolTip">
-         <string>&lt;p&gt;Opens a summary figure of the last motion analysis (step 3): a map of where sarcomeres were tracked and how completely, a map of the groups, the groups' length and length-change traces, and a raster of every sarcomere's length change, over one averaged beat if the 'pool' grouping has been analysed, otherwise over the whole recording. Fibre groupings add a map of the fibres coloured by beating rate. If you regrouped after step 3, run step 3 again first.&lt;/p&gt;</string>
+         <string>&lt;p&gt;Opens a summary figure of the last motion analysis (step 3): a map of where sarcomeres were tracked and how completely, a map of the groups, the groups' length and length-change traces, and a raster of every sarcomere's length change, over one averaged beat if the 'pool' grouping has been analysed, otherwise over the whole recording. Myofibril and LOI groupings add a map of the groups coloured by beating rate. If you regrouped after step 3, run step 3 again first.&lt;/p&gt;</string>
         </property>
         <property name="text">
          <string>Plot summary</string>

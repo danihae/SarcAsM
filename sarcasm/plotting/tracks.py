@@ -519,11 +519,11 @@ class TrackPlots:
                               cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
                               alpha_image: float = 1, alpha_z_bands: float = 1):
         """
-        Draw each tracked myofibril (fibre) as a connected polyline over the image.
+        Draw each tracked myofibril as a connected polyline over the image.
 
-        The tracker analogue of :meth:`plot_myofibril_lines`: each fibre's member
+        The tracker analogue of :meth:`plot_myofibril_lines`: each group's member
         sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
-        line at ``frame``, so you can see where each analyzed fibre runs and its
+        line at ``frame``, so you can see where each analyzed group runs and its
         shape. Requires a ``'myofibril'`` grouping
         (:meth:`MotionAnalysis.group_tracks` / :meth:`MotionAnalysis.analyze`
         with ``by='myofibril'``).
@@ -539,13 +539,13 @@ class TrackPlots:
         kind : {'myofibril', 'loi'}, optional
             The ordered grouping to draw. Default is 'myofibril'.
         color_by : {'group', 'slen', 'beating_rate'}, optional
-            Per-fibre colour: fibre id, the fibre's median sarcomere length at this
+            Per-group colour: group id, the line's median sarcomere length at this
             frame, or its beating rate (requires ``sarc.motion.analyze(by='myofibril')``).
             Default is 'group'.
         cmap : str, optional
             Colormap. Default is 'gist_rainbow'.
         linewidth : float, optional
-            Width of the fibre polylines. Default is 1.5.
+            Width of the group polylines. Default is 1.5.
         show_points : bool, optional
             Whether to mark the member sarcomeres as points. Default is True.
         markersize : float, optional
@@ -591,7 +591,7 @@ class TrackPlots:
         observed = np.asarray(sarc_obj.data['motion.tracks.observed']).reshape(n_tracks, -1)[:, t].astype(bool)
         slen_t = np.asarray(sarc_obj.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[:, t]
 
-        # Per-fibre colour value.
+        # Per-group colour value.
         metric = None
         clabel = ''
         if color_by == 'beating_rate':
@@ -827,7 +827,7 @@ class TrackPlots:
         sort_by : {'time_to_peak', 'amplitude', 'group'}, optional
             Row order. ``'time_to_peak'`` / ``'amplitude'`` use the cycle average of
             ``delta_slen`` (earliest / largest shortening first); ``'group'`` orders by
-            group id and, for the fibre groupings, head-to-tail. Default is 'time_to_peak'
+            group id and, for the ordered groupings, head-to-tail. Default is 'time_to_peak'
             (``'group'`` when ``cycle_average`` is False).
         kind : str or None, optional
             Grouping whose labels are used (tracks outside its groups are left out, and

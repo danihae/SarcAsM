@@ -108,7 +108,7 @@ class ApplicationControl:
         # layers built, so the tab controls can refresh state read from the store.
         self.file_opened_callbacks: list = []
         # Called with a track id when a sarcomere is clicked in the viewer, and with a
-        # group id when a fibre path of the Groups layer is clicked.
+        # group id when a group line of the Groups layer is clicked.
         self.track_selected_callbacks: list = []
         self.group_selected_callbacks: list = []
         self._track_click_installed = False
@@ -456,7 +456,7 @@ class ApplicationControl:
         layer.face_color = colors[rows]
 
     def init_track_groups_layer(self, visible=True):
-        """Shapes layer 'Groups': one path per fibre for the chain groupings (myofibril /
+        """Shapes layer 'Groups': one path per group for the ordered groupings (myofibril /
         LOI) through its members at the reference frame, coloured by group and labelled
         with the group id. Other groupings show their groups through the Sarcomeres
         dots coloured by group."""
@@ -500,7 +500,7 @@ class ApplicationControl:
             ids.append(g)
         if not paths:
             return
-        # numbers only while they stay readable; with many fibres a click identifies the group
+        # numbers only while they stay readable; with many groups a click identifies the group
         text = ({'string': '{group}', 'size': 8, 'color': 'white', 'anchor': 'upper_left',
                  'translation': (-2, 0)} if len(ids) <= self.MAX_GROUP_LABELS else None)
         layer = self.viewer.add_shapes(paths, name='Groups', shape_type='path',
@@ -510,7 +510,7 @@ class ApplicationControl:
         layer.mouse_drag_callbacks.append(self._on_group_click)
         self.activate_image_layer()
 
-    #: the Groups layer labels its fibre paths only up to this many groups
+    #: the Groups layer labels its group lines only up to this many groups
     MAX_GROUP_LABELS = 30
     #: result layers; show_only_results() hides the ones not named
     RESULT_LAYERS = ('ZbandMask', 'MbandMask', 'CellMask', 'SarcomereMask', 'ZbandLatGroups',
@@ -565,7 +565,7 @@ class ApplicationControl:
         self.activate_image_layer()
 
     def _on_group_click(self, layer, event):
-        """Mouse callback on the Groups layer: a click on a fibre path selects its group."""
+        """Mouse callback on the Groups layer: a click on a group line selects its group."""
         start = np.asarray(event.position)
         yield
         while event.type == 'mouse_move':

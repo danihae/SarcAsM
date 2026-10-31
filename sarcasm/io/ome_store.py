@@ -35,7 +35,7 @@ sharding, part of the zarr v3 core that OME-Zarr 0.5 builds on — so a movie
 costs a few files per array rather than one file per frame.
 
 This module is storage-only: it takes/returns numpy arrays and plain dicts and
-has no dependency on the analysis classes, so ``SarcAsMBase`` can build on it
+has no dependency on the analysis classes, so ``SarcAsM`` can build on it
 without a circular import. It does **not** read or write the legacy
 ``base_dir/`` + ``structure.json`` layout — see :func:`detect_legacy_layout`.
 """

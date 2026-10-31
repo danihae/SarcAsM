@@ -727,7 +727,7 @@ class StructureAnalysis(_Namespace):
 
     def analyze_myofibrils(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
-                           n_min: int = 4, median_filter_radius: float = 0.5,
+                           n_min: int = 4, median_filter_radius: float = 0.5, random_seed: Optional[int] = 42,
                            progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
@@ -753,6 +753,9 @@ class StructureAnalysis(_Namespace):
         median_filter_radius : float, optional
             Filter radius for smoothing the myofibril length map, in µm.
             Default is 0.5.
+        random_seed : int or None, optional
+            Seed of the random choice of the start vectors, so the same image gives the same lines
+            (and the same myofibril groups). None draws new start vectors on every run. Default is 42.
         progress_notifier : ProgressNotifier, optional
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
@@ -794,7 +797,7 @@ class StructureAnalysis(_Namespace):
                                                midline_length_vectors_t=midline_length_vectors_i,
                                                pixelsize=self.metadata.pixelsize, ratio_seeds=ratio_seeds,
                                                persistence=persistence, threshold_distance=threshold_distance,
-                                               n_min=n_min)
+                                               n_min=n_min, random_seed=random_seed)
                 lines_i = line_data_i['lines']
 
                 if len(lines_i) > 0:
@@ -838,7 +841,8 @@ class StructureAnalysis(_Namespace):
                           'params.structure.analyze_myofibrils.frames': list_frames,
                           'params.structure.analyze_myofibrils.n_min': n_min,
                           'params.structure.analyze_myofibrils.ratio_seeds': ratio_seeds,
-                          'params.structure.analyze_myofibrils.median_filter_radius': median_filter_radius
+                          'params.structure.analyze_myofibrils.median_filter_radius': median_filter_radius,
+                          'params.structure.analyze_myofibrils.random_seed': random_seed
                           }
 
         self.data.update(myofibril_data)

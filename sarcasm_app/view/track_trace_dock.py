@@ -307,7 +307,7 @@ class TrackTraceDock(QWidget):
         table = self.traces_table()
         if table is None:
             QMessageBox.information(self, 'Nothing to export', 'Track sarcomeres first, then click a sarcomere '
-                                    'or a fibre path in the viewer.')
+                                    'or a group line in the viewer.')
             return
         series = {'ΔSL': 'delta_slen', 'SL': 'slen', 'Velocity': 'velocity'}[self.cb_series.currentText()]
         part = f'{self._kind or "group"}{self._group}' if self._group is not None else 'all'

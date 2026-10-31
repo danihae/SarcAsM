@@ -16,13 +16,16 @@
 
 import hashlib
 import logging
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from sarcasm.features import MOTION_KINDS
 
 
+
+if TYPE_CHECKING:
+    from sarcasm.motion.groups import GroupSet
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +81,9 @@ class GroupingMixin:
 
     _GROUPING_LEVELS = MOTION_KINDS
 
-    # Groupings that order their members head-to-tail into a 1D fibre thread.
+    # Groupings that order their members head-to-tail into a 1D chain.
     # They represent geometry, not just a set, so they keep partially-tracked
-    # sarcomeres (a dropped member is a hole in the fibre, not removed noise).
+    # sarcomeres (a dropped member is a hole in the line, not removed noise).
     _CHAIN_LEVELS = ('myofibril', 'loi')
 
     _CHAIN_MIN_COVERAGE = 0.1
@@ -122,33 +125,33 @@ class GroupingMixin:
         return line_ids, chains
 
     @staticmethod
-    def _partition_fibre_chains(fibers: List[List[int]], gid: np.ndarray,
+    def _partition_chains(chains: List[List[int]], gid: np.ndarray,
                                 order: np.ndarray,
                                 group_ids: Optional[List[int]] = None) -> None:
         """Greedy longest-first partition of ordered track chains into groups.
 
-        Each track joins only one fibre; ``gid``/``order`` are written in place
-        (group id and rank along the fibre). Shared by 'myofibril' and any other
+        Each track joins only one line; ``gid``/``order`` are written in place
+        (group id and rank along the line). Shared by 'myofibril' and any other
         line-chain grouping that resolves to ordered track index lists.
 
         Parameters
         ----------
-        fibers : list of list of int
-            Ordered track-index chains, head to tail along each fibre.
+        chains : list of list of int
+            Ordered track-index chains, head to tail along each line.
         gid, order : np.ndarray
-            Per-track group id / rank-along-fibre, written in place.
+            Per-track group id / rank-along-line, written in place.
         group_ids : list of int or None, optional
-            Group id to assign to each chain, parallel to ``fibers``. ``None``
-            (default) numbers the surviving fibres sequentially. Pass explicit ids
+            Group id to assign to each chain, parallel to ``chains``. ``None``
+            (default) numbers the surviving chains sequentially. Pass explicit ids
             to preserve a fixed label space (e.g. LOI line *i* -> group *i*), which
             keeps the groups aligned with the lines they came from even when a
             chain is dropped for having too few unclaimed tracks.
         """
-        idx = sorted(range(len(fibers)), key=lambda i: len(fibers[i]), reverse=True)
+        idx = sorted(range(len(chains)), key=lambda i: len(chains[i]), reverse=True)
         claimed: set = set()
         fib_id = 0
         for i in idx:
-            chain = fibers[i]
+            chain = chains[i]
             unclaimed = [tr for tr in chain if tr not in claimed]
             if len(unclaimed) < 2:
                 continue
@@ -223,8 +226,8 @@ class GroupingMixin:
         min_group_size: int = 1,
         max_drift_slen: Optional[float] = 1.0,
         labels: Optional[np.ndarray] = None,
-    ) -> None:
-        """Assign each track to a group (cheap, inspectable, freely re-callable).
+    ) -> "GroupSet":
+        """Assign each track to a group (cheap, inspectable, freely re-callable); returns the groups.
 
         Writes only label arrays — runs no contraction analysis. Prerequisite:
         :meth:`track`.
@@ -235,13 +238,13 @@ class GroupingMixin:
             Grouping level. ``'pool'`` = all eligible tracks in one group;
             ``'mband'`` = group tracks by the M-band (midline) they were matched to at
             ``reference_frame`` (laterally-registered sarcomeres); ``'myofibril'`` =
-            order tracks into fibre chains from the ``reference_frame`` myofibril
-            lines (requires :meth:`~sarcasm.structure.StructureAnalysis.analyze_myofibrils`; sets ``track_group_order``
-            = rank along the fibre, enabling the LOI-style per-fibre analysis via
-            :meth:`get_track_motion`); ``'loi'`` = like ``'myofibril'`` but uses
+            order tracks along the ``reference_frame`` myofibril lines (requires
+            :meth:`~sarcasm.structure.StructureAnalysis.analyze_myofibrils`; sets ``track_group_order``
+            = rank along the line, and each group's ``z_pos``, see :meth:`groups`); ``'loi'`` = like
+            ``'myofibril'`` but uses
             the **curated** lines from :meth:`detect_lois` instead of all myofibril
             lines (the same quality-filtered/clustered subset you would place manual
-            LOIs on — far fewer, cleaner fibre groups; run
+            LOIs on — far fewer, cleaner groups; run
             ``detect_lois(frame=reference_frame)`` first);
             ``'domain'`` = assign each track to the
             Leiden domain its ``reference_frame`` position falls in (requires
@@ -257,7 +260,7 @@ class GroupingMixin:
             Tracks observed in fewer than this fraction of frames are dropped
             (group id ``-1``). ``None`` (default) picks the floor from the
             grouping: 0.1 for the chain kinds ``'myofibril'`` / ``'loi'``, 0.5
-            otherwise. A chain represents the fibre's geometry, so dropping a
+            otherwise. A chain represents the line's geometry, so dropping a
             partially-tracked sarcomere punches a hole into it rather than
             removing noise; for a group *mean* the strict floor is right.
         min_group_size : int, optional
@@ -297,7 +300,7 @@ class GroupingMixin:
             raise ValueError(f"Unknown grouping '{by}'. Valid: {self._GROUPING_LEVELS}.")
         reference_frame = self._canonical_frame(reference_frame, name='reference_frame')
 
-        # A chain must span the whole fibre, so it keeps partially-tracked
+        # A chain must span the whole line, so it keeps partially-tracked
         # sarcomeres that a group *mean* would rather discard (see the parameter
         # docs). Explicit values are always honoured.
         if min_coverage is None:
@@ -384,8 +387,8 @@ class GroupingMixin:
                         f'Myofibril lines not available for reference_frame {reference_frame}. '
                         'Run sarc.structure.analyze_myofibrils first.')
                 lines = myof_lines[reference_frame]  # list of ordered vector-index arrays
-                _, fibers = self._track_chains(lines, eligible, rf_idx)
-                self._partition_fibre_chains(fibers, gid, order)
+                _, chains = self._track_chains(lines, eligible, rf_idx)
+                self._partition_chains(chains, gid, order)
 
             elif by == 'loi':
                 # an LOI is a 1-D thread like a myofibril: prefer the detection-index
@@ -406,9 +409,9 @@ class GroupingMixin:
 
                 if index_lines is not None and len(index_lines) == len(lines_px):
                     # --- chain path: same construction as 'myofibril' -------------
-                    line_ids, fibers = self._track_chains(index_lines, eligible, rf_idx)
+                    line_ids, chains = self._track_chains(index_lines, eligible, rf_idx)
                     # explicit ids keep the LOI label space (line i -> group i)
-                    self._partition_fibre_chains(fibers, gid, order, group_ids=line_ids)
+                    self._partition_chains(chains, gid, order, group_ids=line_ids)
                 else:
                     # --- geometric fallback: hand-drawn / fitted lines ------------
                     pos_px_ref = np.asarray(self.data['motion.tracks.positions_px'],
@@ -505,6 +508,7 @@ class GroupingMixin:
             f"{int((gid >= 0).sum())}/{n_tracks} tracks assigned.")
         if self.auto_save:
             self.commit()
+        return self.groups(by)
 
     def _domain_mask_for(self, reference_frame: int) -> Tuple[np.ndarray, int]:
         """Integer-labelled domain mask + n_domains for a reference frame.
@@ -548,7 +552,7 @@ class GroupingMixin:
                     persistence: int = 8,
                     threshold_distance: float = 0.3,
                     mode: str = 'longest_in_cluster', 
-                    random_seed: Optional[int] = None,
+                    random_seed: Optional[int] = 42,
                     number_lims: Tuple[int, int] = (10, 50), 
                     length_lims: Tuple[float, float] = (0, 200),
                     sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
@@ -568,7 +572,7 @@ class GroupingMixin:
         ``motion.lois.lines`` (px), their lengths as ``motion.lois.lengths`` (µm) and, except
         for fitted straight lines, their sarcomere chains as ``motion.lois.index_lines``;
         they are consumed by :meth:`group_tracks`
-        with ``by='loi'`` to group full-field tracks along the curated fibres.
+        with ``by='loi'`` to group full-field tracks along the curated lines.
 
         Parameters
         ----------
@@ -596,8 +600,8 @@ class GroupingMixin:
             largest clusters; 'random_line' selects random lines passing the filters.
             Default is 'longest_in_cluster'.
         random_seed : int or None, optional
-            Random seed for selecting random starting vectors (reproducibility).
-            If None, results differ each run. Default is None.
+            Seed of the random choice of the start vectors (and of the random line modes), so the same
+            image gives the same LOIs. None draws anew on every run. Default is 42.
         number_lims : tuple of int, optional
             Limits (min, max) for the number of sarcomeres within an LOI.
             Default is (10, 50).

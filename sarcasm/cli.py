@@ -329,7 +329,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _fail('FileNotFoundError', f'No such file: {args.file}', None, EXIT_INPUT)
 
     from sarcasm.exceptions import MetaDataError
-    # not a StreamHandler, so SarcAsMBase._setup_logging leaves it attached
+    # not a StreamHandler, so SarcAsM._setup_logging leaves it attached
     collector = _WarningCollector()
     logging.getLogger('sarcasm').addHandler(collector)
     try:

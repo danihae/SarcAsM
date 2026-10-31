@@ -22,7 +22,6 @@ from matplotlib.axes import Axes
 from matplotlib_scalebar.scalebar import ScaleBar
 
 from sarcasm.features import structure_feature_dict
-from sarcasm.motion import Motion
 from sarcasm.plotting.plot_utils import PlotUtils
 from sarcasm.core import SarcAsM
 from sarcasm.analysis import domain_clustering, myofibril_analysis
@@ -45,7 +44,7 @@ class StructurePlots:
         return int(frame)
 
     @staticmethod
-    def plot_image(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, cmap: str = 'gray',
+    def plot_image(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, cmap: str = 'gray',
                    alpha: float = 1, clip_thrs: Tuple[float, float] = (1, 99), scalebar: bool = True,
                    title: Union[None, str] = None, show_loi: bool = False, invert: bool = False,
                    zoom_region: Tuple[int, int, int, int] = None,
@@ -57,7 +56,7 @@ class StructurePlots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Default is 0.
@@ -119,7 +118,7 @@ class StructurePlots:
                                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def _draw_background(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame: int = 0, *,
+    def _draw_background(ax: Axes, sarc_obj: SarcAsM, frame: int = 0, *,
                          show_image: bool = False, show_z_bands: bool = False,
                          invert_image: bool = False, invert_z_bands: bool = False,
                          cmap_image: str = 'gray', cmap_z_bands: str = 'Greys_r',
@@ -138,7 +137,7 @@ class StructurePlots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the background on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The sarcomere object to read the image/Z-bands from.
         frame : int, optional
             The frame to draw. Default is 0.
@@ -186,7 +185,7 @@ class StructurePlots:
         ax.set_aspect('equal')
 
     @staticmethod
-    def plot_z_bands(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='Greys_r', zero_transparent=False,
+    def plot_z_bands(ax: plt.Axes, sarc_obj: SarcAsM, frame=0, cmap='Greys_r', zero_transparent=False,
                      alpha=1, scalebar=True, title=None, color_scalebar='w',
                      show_loi=False, invert=False,
                      zoom_region: Tuple[int, int, int, int] = None,
@@ -198,7 +197,7 @@ class StructurePlots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Default is 0.
@@ -258,7 +257,7 @@ class StructurePlots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='w')
 
     @staticmethod
-    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, cmap='berlin',
+    def plot_z_bands_midlines(ax: plt.Axes, sarc_obj: SarcAsM, frame=0, cmap='berlin',
                               alpha=1, scalebar=True, title=None, color_scalebar='w',
                               show_loi=True, zoom_region: Tuple[int, int, int, int] = None,
                               inset_bounds=(0.6, 0.6, 0.4, 0.4)):
@@ -269,7 +268,7 @@ class StructurePlots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Default is 0.
@@ -332,7 +331,7 @@ class StructurePlots:
                              font_properties={'size': PlotUtils.fontsize - 1}))
 
     @staticmethod
-    def plot_cell_mask(ax: Axes, sarc_obj: Union[SarcAsM, Motion], frame=0, threshold=0.5, cmap='gray', alpha=1,
+    def plot_cell_mask(ax: Axes, sarc_obj: SarcAsM, frame=0, threshold=0.5, cmap='gray', alpha=1,
                        scalebar=True, title=None):
         """
         Plot the cell mask of the sarcomere object.
@@ -341,7 +340,7 @@ class StructurePlots:
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the plot on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The sarcomere object to plot.
         frame : int, optional
             The frame to plot. Default is 0.
@@ -1203,15 +1202,15 @@ class StructurePlots:
             PlotUtils.plot_box(ax, xlim=(x1, x2), ylim=(y1, y2), c='k')
 
     @staticmethod
-    def plot_lois(ax: Axes, sarc_obj: Union[SarcAsM, Motion], color='darkorange', linewidth=2, alpha=0.5):
+    def plot_lois(ax: Axes, sarc_obj: SarcAsM, color='darkorange', linewidth=2, alpha=0.5):
         """
-        Plot all LOI lines of a SarcAsM or Motion object.
+        Plot the lines of interest of a recording (``motion.lois.lines``).
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes
             The axes to draw the LOI lines on.
-        sarc_obj : SarcAsM or Motion
+        sarc_obj : SarcAsM
             The object to plot.
         color : str, optional
             Color of the lines. Default is 'darkorange'.
@@ -1220,7 +1219,6 @@ class StructurePlots:
         alpha : float, optional
             Opacity of the lines. Default is 0.5.
         """
-        # A track chain viewed as a Motion carries no LOI polyline; only a SarcAsM holds LOI lines.
         loi_lines = None
         if hasattr(sarc_obj, 'data') and 'motion.lois.lines' in sarc_obj.data:
             loi_lines = sarc_obj.data['motion.lois.lines']

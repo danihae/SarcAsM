@@ -18,7 +18,7 @@ from sarcasm._internal.namespace import _Namespace
 from sarcasm.motion.analysis import AnalysisMixin
 from sarcasm.motion.grouping import GroupingMixin
 from sarcasm.motion.tracking import TrackingMixin
-from sarcasm.motion.view import Motion  # noqa: F401  (per-group view; replaced by Group in phase 2)
+from sarcasm.motion.groups import Group, GroupSet  # noqa: F401  (public)
 
 
 class MotionAnalysis(TrackingMixin, GroupingMixin, AnalysisMixin, _Namespace):
@@ -30,6 +30,16 @@ class MotionAnalysis(TrackingMixin, GroupingMixin, AnalysisMixin, _Namespace):
     reads each group's contractions. Results are written to ``sarc.data`` under
     ``motion.*`` and parameters under ``params.motion.*``.
     """
+
+    def groups(self, kind: str) -> GroupSet:
+        """The stored groups of one grouping kind; ``groups[i]`` is a :class:`~sarcasm.motion.groups.Group`.
+
+        Parameters
+        ----------
+        kind : {'pool', 'mband', 'myofibril', 'loi', 'domain', 'custom'}
+            The grouping kind.
+        """
+        return GroupSet(self, kind)
 
     def full_analysis(self, by: str = 'pool', frames='all', reference_frame: int = None,
                       fast_movie: bool = False, motion_predictor: str = 'none') -> None:

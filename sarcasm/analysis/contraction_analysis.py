@@ -324,9 +324,9 @@ def equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
     """Equilibrium (resting) sarcomere length over the non-contracting frames.
 
     The equilibrium is the median sarcomere length wherever the contraction
-    state is ``0`` (the trace is *not* contracting), matching the
-    :meth:`sarcasm.motion.Motion.get_trajectories` semantics and the value stored
-    as ``equ`` by :func:`analyze_contraction_parameters`. Traces with no quiet
+    state is ``0`` (the trace is *not* contracting): the value stored as ``equ`` by
+    :func:`analyze_contraction_parameters`, and the resting length of the members in
+    :func:`sarcasm.analysis.heterogeneity.member_kinematics`. Traces with no quiet
     frame fall back to the median over all frames.
 
     Parameters

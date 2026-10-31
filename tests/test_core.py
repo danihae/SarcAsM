@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from sarcasm import Motion, SarcAsM
+from sarcasm import SarcAsM
 
 
 # synthetic TIFFs carry no calibration; supply it so metadata validation passes
@@ -138,20 +138,6 @@ def test_str_without_store(tmp_path):
     shutil.rmtree(_store_of(p))
     text = str(sarc)
     assert "not created" in text
-
-
-def test_str_on_motion_object(tmp_path):
-    p = _movie(tmp_path)
-    m = Motion(p, **META)
-    assert "movie.tif" in str(m)               # no loi_data yet
-
-    t = np.arange(4) * 0.01
-    m2 = Motion.from_loi_data(p, "loi_0", {
-        "z_pos": np.zeros((3, 4)), "slen": np.full((2, 4), 1.8), "time": t,
-    }, frametime=0.01)
-    text = str(m2)
-    assert "2 sarcomeres × 4 frames" in text
-    assert "synthetic" in text
 
 
 def test_results_property_removed():

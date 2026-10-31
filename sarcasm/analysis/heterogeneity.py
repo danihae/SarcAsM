@@ -13,9 +13,8 @@
 
 """Heterogeneity of sarcomere dynamics within a group of tracked sarcomeres.
 
-Two analyses over a member matrix ``(N, T)`` of per-sarcomere traces, shared by
-:meth:`sarcasm.motion.MotionAnalysis.analyze` (per group, every grouping kind) and
-by :class:`sarcasm.Motion` for a fibre chain:
+Analyses over a member matrix ``(N, T)`` of per-sarcomere traces, run by
+:meth:`sarcasm.motion.MotionAnalysis.analyze` for every group of every grouping kind:
 
 * **Serial / mutual correlation** (Haertter et al., *bioRxiv* 2024, eq. 1).
   ``r(i, j, k, l)`` is the Pearson correlation of sarcomere *i* in contraction
@@ -33,6 +32,7 @@ by :class:`sarcasm.Motion` for a fibre chain:
 
 from __future__ import annotations
 
+import warnings
 from typing import Dict, Optional, Tuple
 
 import numpy as np
@@ -197,7 +197,7 @@ def serial_mutual_correlation(x: np.ndarray, onsets: np.ndarray, cycle_len: int)
     with valid members *V*, ``sum_{i != j} r(i, j, k, k) = (|sum_i Z_ik|² - |V| L) / L``.
 
     ``ratio_mutual_serial`` is NaN when ``serial <= 0``. Read it on groups whose
-    members are distinct sarcomeres (a fibre chain, a domain, the pool): the
+    members are distinct sarcomeres (a chain along a line, a domain, the pool): the
     members of an M-band group are pixel-adjacent vectors of the same few
     sarcomeres, so their shared measurement inflates the mutual correlation.
     """
@@ -349,15 +349,58 @@ GROUP_KEYS = ('equ_std',
               'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial', 'corr_n_cycles',
               'oscill_frequencies', 'oscill_magnitudes_avg', 'oscill_magnitudes_single',
               'oscill_peak_avg', 'oscill_amp_avg', 'oscill_peak_1_single', 'oscill_amp_1_single',
-              'oscill_peak_2_single', 'oscill_amp_2_single')
+              'oscill_peak_2_single', 'oscill_amp_2_single',
+              'popping_rate', 'popping_rate_contr', 'track_popping')
+
+
+def popping_events(delta_slen: np.ndarray, labels_contr: np.ndarray, complete: np.ndarray,
+                   thres_popping: float = 0.25) -> np.ndarray:
+    """Which member sarcomere pops in which contraction cycle.
+
+    A sarcomere pops in a cycle when it lengthens more than ``thres_popping`` beyond its
+    resting length while the group contracts (its ΔSL exceeds the threshold during the cycle).
+    Popping is physiological, not a tracking error.
+
+    Parameters
+    ----------
+    delta_slen : np.ndarray
+        Length change of each member from its resting length (µm), shape ``(n_members, T)``.
+    labels_contr : np.ndarray
+        Contraction cycle labels of the group, shape ``(T,)`` (0 = quiet, k = cycle k).
+    complete : np.ndarray
+        Whether each cycle lies fully inside the recording, shape ``(n_cycles,)``.
+    thres_popping : float, optional
+        Elongation (µm) beyond the resting length above which a sarcomere pops. Default is 0.25.
+
+    Returns
+    -------
+    np.ndarray
+        ``(n_members, n_cycles)``: 1.0 popped, 0.0 did not, NaN where the cycle is incomplete or
+        the member has no length during it.
+    """
+    delta_slen = np.asarray(delta_slen, dtype=float)
+    labels_contr = np.asarray(labels_contr).reshape(-1)
+    n_cycles = len(complete)
+    events = np.full((delta_slen.shape[0], n_cycles), np.nan)
+    for k in range(n_cycles):
+        if not complete[k]:
+            continue
+        in_cycle = labels_contr == k + 1
+        with np.errstate(invalid='ignore'):
+            elong_max = np.nanmax(np.where(in_cycle, delta_slen, np.nan), axis=1) \
+                if in_cycle.any() else np.full(delta_slen.shape[0], np.nan)
+        observed = np.isfinite(elong_max)
+        events[observed, k] = (elong_max[observed] > thres_popping).astype(float)
+    return events
 
 
 def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
                    contr: np.ndarray, labels_contr: np.ndarray, beating_rate: np.ndarray,
                    frametime: float, filter_params: Tuple[int, int] = (13, 5),
                    slen_lims: Tuple[float, float] = (1.2, 3.0), num_scales: int = 60,
+                   contr_complete: Optional[np.ndarray] = None, thres_popping: float = 0.25,
                    **oscillation_kwargs) -> Dict[str, np.ndarray]:
-    """Serial/mutual correlation and oscillation spectrum for every track group.
+    """Serial/mutual correlation, oscillation spectrum and popping for every track group.
 
     Parameters
     ----------
@@ -377,6 +420,12 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
         Forwarded to :func:`member_kinematics`.
     num_scales : int, optional
         Number of wavelet scales. Default is 60.
+    contr_complete : np.ndarray or None, optional
+        Whether each cycle of each group lies fully inside the recording, shape
+        ``(n_groups, max_n_contr)`` (1.0 / 0.0, NaN padding). None counts every cycle as complete.
+        Default is None.
+    thres_popping : float, optional
+        See :func:`popping_events`. Default is 0.25.
     **oscillation_kwargs
         Forwarded to :func:`oscillation_spectrum`.
 
@@ -388,11 +437,18 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
         shared, ``(num_scales,)``. ``equ_std`` is the standard deviation of the
         members' resting lengths (µm): how much the sarcomeres of a group differ
         in resting length, the static counterpart of the correlations.
+        ``track_popping`` ``(n_tracks, max_n_contr)`` holds :func:`popping_events` of each track's
+        group (NaN for unassigned tracks); ``popping_rate_contr`` ``(n_groups, max_n_contr)`` is the
+        fraction of members popping in each cycle and ``popping_rate`` ``(n_groups,)`` over all cycles.
     """
     tracks_slen = np.asarray(tracks_slen, dtype=float)
     group_id = np.asarray(group_id).reshape(-1)
     scalars = {k: np.full(n_groups, np.nan) for k in GROUP_KEYS
-               if not k.startswith('oscill_magnitudes') and k != 'oscill_frequencies'}
+               if not k.startswith('oscill_magnitudes') and k not in ('oscill_frequencies', 'popping_rate_contr',
+                                                                       'track_popping')}
+    n_cycles_max = max(int(np.max(labels_contr)) if np.size(labels_contr) else 0, 1)
+    track_popping = np.full((tracks_slen.shape[0], n_cycles_max), np.nan)
+    popping_rate_contr = np.full((n_groups, n_cycles_max), np.nan)
     mag_avg = np.full((n_groups, num_scales), np.nan)
     mag_single = np.full((n_groups, num_scales), np.nan)
     frequencies = None
@@ -412,6 +468,16 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
             scalars[f'corr_{name}_mutual'][g] = r['mutual']
             scalars[f'ratio_{name}_mutual_serial'][g] = r['ratio_mutual_serial']
         scalars['corr_n_cycles'][g] = onsets.size
+        n_cycles = int(np.max(labels_contr[g])) if np.size(labels_contr[g]) else 0
+        if n_cycles:
+            complete = (np.ones(n_cycles, bool) if contr_complete is None
+                        else np.asarray(contr_complete[g][:n_cycles]) == 1)
+            events = popping_events(kin['delta_slen'], labels_contr[g], complete, thres_popping)
+            track_popping[members, :n_cycles] = events
+            with np.errstate(invalid='ignore'), warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)      # all-NaN cycles stay NaN
+                popping_rate_contr[g, :n_cycles] = np.nanmean(events, axis=0)
+                scalars['popping_rate'][g] = np.nanmean(events)
         osc = oscillation_spectrum(kin['delta_slen'], contr_g, frametime, float(beating_rate[g]),
                                    num_scales=num_scales, **oscillation_kwargs)
         frequencies = osc['frequencies']
@@ -423,4 +489,5 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
     if frequencies is None:
         frequencies = wavelet_spectrum(np.zeros(8), frametime, num_scales=num_scales)[1]
     return {**scalars, 'oscill_frequencies': frequencies,
-            'oscill_magnitudes_avg': mag_avg, 'oscill_magnitudes_single': mag_single}
+            'oscill_magnitudes_avg': mag_avg, 'oscill_magnitudes_single': mag_single,
+            'popping_rate_contr': popping_rate_contr, 'track_popping': track_popping}

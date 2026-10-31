@@ -11,14 +11,13 @@ import tifffile
 import pytest
 
 from sarcasm import SarcAsM
-from sarcasm.core import SarcAsMBase
 
 
 def _detect(path):
     """Run the real detection + validation on a written file."""
     with tifffile.TiffFile(path) as tif:
-        axes = SarcAsMBase._determine_axes(tif.series[0], tif)
-    SarcAsMBase._validate_axes(axes)  # raises on illegal / duplicate letters
+        axes = SarcAsM._determine_axes(tif.series[0], tif)
+    SarcAsM._validate_axes(axes)  # raises on illegal / duplicate letters
     return axes
 
 
@@ -65,6 +64,6 @@ def test_ome_axes_roundtrip(tmp_path, shape, axes):
 
 def test_validate_rejects_raw_generic_letters():
     with pytest.raises(ValueError, match="Invalid axis letter"):
-        SarcAsMBase._validate_axes("IYX")
+        SarcAsM._validate_axes("IYX")
     with pytest.raises(ValueError, match="Invalid axis letter"):
-        SarcAsMBase._validate_axes("QYX")
+        SarcAsM._validate_axes("QYX")

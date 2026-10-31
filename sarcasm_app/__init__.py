@@ -423,7 +423,7 @@ class Application:
              model._set_defaults_structure),
             (widget_motion_analysis,
              'Motion',
-             'Track sarcomeres across frames, group into fibres/domains, and analyze contraction per group.',
+             'Track sarcomeres across frames, group them (M-bands, myofibrils, domains, ...), and analyze contraction per group.',
              model._set_defaults_motion),
             (widget_batch_processing,
              'Batch Processing',

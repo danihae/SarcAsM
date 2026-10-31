@@ -98,7 +98,7 @@ def test_results_suggests_close_keys(tmp_path, capsys):
 
 
 # --------------------------------------------------------------------------- #
-# input checks in SarcAsMBase
+# input checks in SarcAsM
 # --------------------------------------------------------------------------- #
 def test_lfs_pointer_is_rejected(tmp_path):
     f = tmp_path / 'pointer.tif'

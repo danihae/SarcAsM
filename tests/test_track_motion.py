@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
-"""``MotionAnalysis.get_track_motion`` and the LOI plots it feeds.
+"""The plots of one group (``sarc.motion.groups(kind)[i]``) and of the member tracks.
 
-The synthetic-chain ``Motion`` returned by ``sarc.motion.get_track_motion`` is the object behind
-the per-fibre panel of the GUI and every ``Plots.plot_*`` LOI view. Its bugs this
-cycle (cumulative ``z_pos`` blanking a chain, time-median anchoring, coverage holes,
-the negative-index window) were all found by hand; these tests pin the contract.
+A group's plots read its stored results and its members' kinematics (SARC-28). Bugs of the
+per-group view found by hand this cycle (a chain blanked by one undefined member, the negative-index
+window, ...) are pinned here.
 """
 from __future__ import annotations
-
-import types
 
 import matplotlib
 import numpy as np
@@ -18,90 +15,83 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: E402
 
 from sarcasm import SarcAsM  # noqa: E402
-from sarcasm.motion import Motion  # noqa: E402
 from sarcasm.plotting.plots import Plots  # noqa: E402
+from .test_grouped_motion import _fake_structure  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# contraction-centred plot windows (no file IO)
+# contraction-centred plot windows (synthetic beating group, no file IO)
 # ---------------------------------------------------------------------------
 
-def _fake_analyzed_motion(T=120, K=4, frametime=0.01):
-    """A ``Motion`` carrying everything the LOI plots read, with a cycle at frame 0."""
-    m = Motion.__new__(Motion)
-    m.metadata = types.SimpleNamespace(frametime=frametime)
-    t = np.arange(T) * frametime
-    base = 1.9 - 0.2 * np.clip(np.sin(2 * np.pi * t / 0.5), 0, None)
-    slen = np.stack([base + 0.01 * k for k in range(K)])
-    z_pos = np.vstack([np.zeros(T), np.cumsum(slen, axis=0)])
-    delta = slen - np.median(slen, axis=1, keepdims=True)
-    vel = np.gradient(slen, frametime, axis=1)
-    contr = base < 1.85
-    onsets = np.flatnonzero(np.diff(np.r_[0, contr.astype(int)]) == 1)
-    m.loi_data = {
-        'time': t, 'z_pos': z_pos, 'slen': slen, 'synthetic': True,
-        'n_sarcomeres': K, 'delta_slen': delta, 'delta_slen_avg': delta.mean(axis=0),
-        'vel': vel, 'vel_avg': vel.mean(axis=0), 'contr': contr,
-        'start_contr': onsets * frametime, 'start_contr_frame': onsets,
-        'n_contr': int(onsets.size), 'contr_complete': np.ones(onsets.size),
-    }
-    return m
+@pytest.fixture(scope='module')
+def beating_group():
+    """A myofibril group of a synthetic 20 s recording with 25 beats."""
+    sarc = _fake_structure(n_tracks=6, T=400, frametime=0.05)
+    sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2, 3, 4, 5])]]
+    g = sarc.motion.analyze('myofibril', reference_frame=0)[0]
+    assert g.n_contr > 2 and g.ordered
+    return g
 
 
-def test_contr_window_resolves_none_bounds_to_the_recording():
-    m = _fake_analyzed_motion()
-    T = len(m.loi_data['time'])
-    (lo, hi), i0, i1 = Plots._contr_window(m, 0, (None, None))
+def test_contr_window_resolves_none_bounds_to_the_recording(beating_group):
+    g = beating_group
+    T = np.asarray(g.tracks.slen).shape[1]
+    onsets = Plots._series(g)['onsets'] * 0.05
+    (lo, hi), i0, i1 = Plots._contr_window(g, 0, (None, None))
     assert (lo, i0) == (0.0, 0)
-    assert i1 == T and hi == pytest.approx(T * m.metadata.frametime)
-    # a relative lower bound with an open upper bound
-    (lo, hi), i0, i1 = Plots._contr_window(m, 1, (-0.05, None))
-    assert lo == pytest.approx(m.loi_data['start_contr'][1] - 0.05)
+    assert i1 == T and hi == pytest.approx(T * 0.05)
+    (lo, hi), i0, i1 = Plots._contr_window(g, 1, (-0.05, None))
+    assert lo == pytest.approx(onsets[1] - 0.05)
     assert i1 == T and i0 < i1
 
 
-def test_contr_window_clamps_a_negative_lead_in():
-    m = _fake_analyzed_motion()
-    onset = m.loi_data['start_contr'][0]
-    assert onset < 0.1                                   # the first cycle begins near frame 0
-    (lo, hi), i0, i1 = Plots._contr_window(m, 0, (-0.1, 0.3))
+def test_contr_window_clamps_a_negative_lead_in(beating_group):
+    g = beating_group
+    onset = Plots._series(g)['onsets'][0] * 0.05
+    assert onset < 0.3                                   # the first cycle begins near frame 0
+    (lo, hi), i0, i1 = Plots._contr_window(g, 0, (-0.3, 0.3))
     assert lo < 0 and i0 == 0                            # never a negative slice start
-    assert i1 == int((onset + 0.3) / m.metadata.frametime)
 
 
 @pytest.mark.parametrize('plot', [Plots.plot_z_pos, Plots.plot_overlay_delta_slen,
                                   Plots.plot_overlay_velocity, Plots.plot_phase_space])
-def test_centred_views_render_with_default_limits(plot):
-    """``number_contr`` with the default ``t_lim`` used to raise on ``None`` bounds."""
-    m = _fake_analyzed_motion()
+def test_centred_views_render_with_default_limits(plot, beating_group):
     for number_contr in (None, 0, 1):
         ax = plt.figure().gca()
-        plot(ax, m, number_contr=number_contr)
+        plot(ax, beating_group, number_contr=number_contr)
         assert ax.lines, f'{plot.__name__} drew nothing for number_contr={number_contr}'
         plt.close('all')
 
 
-def test_full_recording_is_the_default_time_axis():
-    m = _fake_analyzed_motion(T=300)
+def test_full_recording_is_the_default_time_axis(beating_group):
     ax = plt.figure().gca()
-    Plots.plot_z_pos(ax, m)
+    Plots.plot_z_pos(ax, beating_group)
     x0, x1 = ax.get_xlim()
-    assert x0 == 0 and x1 >= m.loi_data['time'][-1]
+    assert x0 == 0 and x1 >= Plots._series(beating_group)['time'][-1]
     plt.close('all')
 
 
-def test_plot_z_pos_has_no_kymograph_option():
-    m = _fake_analyzed_motion()
-    with pytest.raises(TypeError):
-        Plots.plot_z_pos(plt.figure().gca(), m, show_kymograph=True)
+def test_popping_map_has_one_row_per_member_and_one_column_per_cycle(beating_group):
+    fig = Plots.plot_popping_events(beating_group)
+    ax = fig.axes[0]
+    assert ax.get_ylim()[1] == beating_group.n_members
+    assert ax.get_xlim()[1] == beating_group.n_contr
+    plt.close('all')
+
+
+def test_z_pos_needs_an_ordered_group():
+    sarc = _fake_structure(n_tracks=6)
+    g = sarc.motion.analyze('pool')[0]
+    with pytest.raises(ValueError, match='ordered kinds'):
+        Plots.plot_z_pos(plt.figure().gca(), g)
     plt.close('all')
 
 
 # ---------------------------------------------------------------------------
-# motion.get_track_motion on real tracks (20 kPa reference store)
+# a myofibril group on real tracks (20 kPa reference store)
 # ---------------------------------------------------------------------------
 
-class TestGetTrackMotion:
+class TestGroupOnRealTracks:
 
     @pytest.fixture(scope='class')
     def sarc(self, motion_file_path_class):
@@ -111,65 +101,47 @@ class TestGetTrackMotion:
             pytest.skip('20 kPa store has no tracks')
         if 0 not in list(s.data.get('params.structure.analyze_myofibrils.frames', [])):
             s.structure.analyze_myofibrils(frames=0)                 # the store holds no myofibril lines
-        s.motion.group_tracks(by='myofibril', reference_frame=0)
+        s.motion.analyze('myofibril', reference_frame=0)
         return s
 
     @pytest.fixture(scope='class')
-    def motion(self, sarc):
-        return sarc.motion.get_track_motion(0, analyze=True)
+    def group(self, sarc):
+        return sarc.motion.groups('myofibril')[0]
 
-    @pytest.fixture(scope='class')
-    def raw(self, sarc):
-        """The chain before ``get_trajectories`` replaces ``slen`` by the smoothed lengths."""
-        return sarc.motion.get_track_motion(0)
-
-    def test_requires_a_chain_grouping(self, motion_file_path_class):
-        s = SarcAsM(motion_file_path_class, auto_save=False)
-        s.motion.group_tracks(by='pool')
-        with pytest.raises(ValueError, match='myofibril'):
-            s.motion.get_track_motion(0)
-
-    def test_chain_geometry(self, sarc, raw):
-        ld = raw.loi_data
-        K = int(np.count_nonzero(sarc.data['motion.groups.myofibril.track_group_id'] == 0))
-        T = int(np.asarray(sarc.data['motion.tracks.slen']).shape[1])
-        assert ld['synthetic'] is True
-        assert ld['n_sarcomeres'] == K and K >= 3
-        assert ld['slen'].shape == (K, T)
-        assert ld['z_pos'].shape == (K + 1, T)
-        assert np.nanmin(ld['z_pos']) == pytest.approx(0.0)          # legacy z_pos[0] == 0
-        # member lengths are the tracks' own, not re-derived from z_pos
-        members = np.flatnonzero(sarc.data['motion.groups.myofibril.track_group_id'] == 0)
-        order = np.asarray(sarc.data['motion.groups.myofibril.track_group_order'])[members]
-        tracks_slen = np.asarray(sarc.data['motion.tracks.slen'], float)[members[np.argsort(order)]]
-        assert np.allclose(np.nan_to_num(ld['slen']), np.nan_to_num(tracks_slen), atol=1e-6)
-        # a missing member blanks only its own row: NaN rows never exceed missing members
-        nan_rows = np.isnan(ld['slen']).sum(axis=0)
-        assert nan_rows.max() < K
+    def test_chain_geometry(self, sarc, group):
+        K, T = group.n_members, int(np.asarray(sarc.data['motion.tracks.slen']).shape[1])
+        assert K >= 3
+        z_pos, slen = group.z_pos, np.asarray(group.tracks.slen, float)
+        assert slen.shape == (K, T) and z_pos.shape == (K + 1, T)
+        assert np.nanmin(z_pos) == pytest.approx(0.0)                # z_pos[0] == 0
+        # members are head to tail along the line
+        row_of = {int(t): i for i, t in enumerate(sarc.data['motion.tracks.ids'])}
+        order = np.asarray(sarc.data['motion.groups.myofibril.track_group_order'])
+        assert np.all(np.diff(order[[row_of[int(t)] for t in group.tracks.ids]]) > 0)
+        # a missing member blanks only its own row
+        assert np.isnan(slen).sum(axis=0).max() < K
         # consecutive boundaries advance by ~one sarcomere where both are defined
-        spacing = np.diff(ld['z_pos'], axis=0)
-        ok = np.isfinite(spacing) & np.isfinite(ld['slen'])
-        assert np.nanmedian(np.abs(spacing[ok] - ld['slen'][ok])) < 0.15
+        spacing = np.diff(z_pos, axis=0)
+        ok = np.isfinite(spacing) & np.isfinite(slen)
+        assert np.nanmedian(np.abs(spacing[ok] - slen[ok])) < 0.15
 
-    def test_analysis_keys(self, motion):
-        ld = motion.loi_data
-        for key in ('contr', 'start_contr', 'n_contr', 'n_contr_complete', 'beating_rate',
-                    'delta_slen', 'delta_slen_avg', 'vel', 'vel_avg', 'time_contr'):
-            assert key in ld, key
-        assert ld['n_contr'] >= ld['n_contr_complete'] >= 0
-        assert ld['n_contr'] >= 1
-        assert ld['contr'].shape == ld['time'].shape
+    def test_group_results(self, group):
+        assert group.n_contr >= group.n_contr_complete >= 1
+        assert group.contr.shape == group.slen_avg.shape
+        assert group.track_popping.shape == (group.n_members, group.popping_rate_contr.shape[0])
 
-    def test_summary_figure_renders(self, motion, tmp_path):
-        out = tmp_path / 'summary' / 'summary_loi.png'        # keep the reference store clean
-        Plots.plot_loi_summary_motion(motion, file_path=str(out))
+    def test_summary_figure_renders(self, group, tmp_path):
+        out = tmp_path / 'summary.png'
+        Plots.plot_group_summary(group, file_path=str(out))
         assert out.exists() and out.stat().st_size > 0
         plt.close('all')
 
-    def test_every_loi_plot_accepts_the_synthetic_chain(self, motion):
+    def test_every_group_plot_accepts_the_group(self, group):
         for fn in (Plots.plot_z_pos, Plots.plot_delta_slen, Plots.plot_overlay_delta_slen,
                    Plots.plot_overlay_velocity, Plots.plot_phase_space, Plots.plot_slen):
-            fn(plt.figure().gca(), motion)
+            fn(plt.figure().gca(), group)
+        Plots.plot_delta_slen(plt.figure().gca(), group, stacked=True)
+        Plots.plot_popping_events(group)
         plt.close('all')
 
 

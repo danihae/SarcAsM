@@ -735,15 +735,15 @@ class TestGuiFixes2026_10:
         assert ApplicationModel().parameters.get_parameter('batch.thread_pool_size').get_value() == 1
 
     @pytest.mark.parametrize('aspect', [10.0, 5.0, 2.5, 1.0, 0.8, 0.5, 0.2, 0.05])
-    @pytest.mark.parametrize('is_fibre', [True, False])
-    def test_summary_layout_keeps_map_proportions(self, aspect, is_fibre):
+    @pytest.mark.parametrize('is_ordered', [True, False])
+    def test_summary_layout_keeps_map_proportions(self, aspect, is_ordered):
         """The coverage map's panel has about the image's aspect ratio (within the height limits)."""
         from sarcasm_app.control.motion_analysis_control import summary_layout, SUMMARY_WIDTH_IN
-        layout, heights = summary_layout(aspect, is_fibre)
+        layout, heights = summary_layout(aspect, is_ordered)
         assert len(layout) == len(heights) and len({len(r) for r in layout}) == 1   # rectangular grid
         names = {n for row in layout for n in row}
         assert {'coverage', 'groups', 'slen', 'dslen', 'raster'} <= names
-        assert ('fibrils' in names) == is_fibre
+        assert ('fibrils' in names) == is_ordered
         row = next(i for i, r in enumerate(layout) if 'coverage' in r)
         width = SUMMARY_WIDTH_IN * layout[row].count('coverage') / len(layout[row])
         panel_aspect = width / heights[row]

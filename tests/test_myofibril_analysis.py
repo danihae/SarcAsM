@@ -75,6 +75,26 @@ def test_line_growth_returns_unique_point_lines():
         assert len(line) == len(set(line.tolist())) == 6
 
 
+def test_line_growth_is_reproducible_with_a_seed_and_leaves_the_global_random_state_alone():
+    """The start vectors are drawn at random: a seed gives the same lines (and myofibril groups) every run,
+    without seeding Python's global random generator for the caller."""
+    import random
+    pts = np.column_stack([np.repeat(np.arange(10) * 19.0, 10), np.tile(np.arange(10) * 19.0, 10)])
+    slen, theta = np.full(100, 1.9), np.zeros(100)
+
+    def lines(seed):
+        out = ma.line_growth(pts.T, slen, theta, np.full(100, 1.0), PX, ratio_seeds=0.2, persistence=1,
+                             threshold_distance=0.5, n_min=2, random_seed=seed)
+        return [tuple(line.tolist()) for line in out['lines']]
+
+    random.seed(123)
+    expected_next = random.random()
+    random.seed(123)
+    first = lines(42)
+    assert random.random() == expected_next          # the caller's random sequence is untouched
+    assert len(first) > 0 and lines(42) == first
+
+
 class TestLoiClustering:
     """LOI clustering works on Hausdorff distances in µm, so the result does not depend on the pixel size."""
 

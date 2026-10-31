@@ -359,7 +359,7 @@ def _chain_anchor_positions(member_pos: np.ndarray, ref_idx: int) -> np.ndarray:
 
 def _chain_arc_coordinates(member_pos: np.ndarray, ref_idx: int = 0
                            ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Per-member fibre anchor and unit tangent from ordered member positions.
+    """Per-member anchor and unit tangent from ordered member positions.
 
     Parameters
     ----------
@@ -375,7 +375,7 @@ def _chain_arc_coordinates(member_pos: np.ndarray, ref_idx: int = 0
         ``(K,)`` base arc coordinate of each member: the cumulative distance along
         the polyline through the members' reference-frame positions. Following the
         polyline (rather than projecting on one straight axis) keeps a curved
-        fibre's coordinate monotone.
+        line's coordinate monotone.
     tangent : np.ndarray
         ``(K, 2)`` unit tangent at each member (central difference of the
         neighbouring anchors, one-sided at the ends).
@@ -428,7 +428,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     Parameters
     ----------
     member_slen : np.ndarray
-        ``(K, T)`` member sarcomere lengths ordered head-to-tail along the fibre,
+        ``(K, T)`` member sarcomere lengths ordered head-to-tail along the line,
         NaN on gap frames.
     frametime : float
         Seconds per frame.
@@ -450,7 +450,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     Returns
     -------
     z_pos : np.ndarray
-        ``(K+1, T)`` arc position of the K+1 Z-band boundaries along the fibre
+        ``(K+1, T)`` arc position of the K+1 Z-band boundaries along the line
         (µm). With ``member_pos``, row ``k`` is member ``k``'s leading edge
         (``centre - slen/2``) and the last row is the final member's trailing
         edge, each depending only on that member. Note ``np.diff(z_pos)`` then
@@ -487,15 +487,15 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     if member_pos.shape != (K, T, 2):
         raise ValueError(f'member_pos must have shape {(K, T, 2)}, got {member_pos.shape}.')
     anchor_arc, tangent, anchor_pos = _chain_arc_coordinates(member_pos, ref_idx)
-    # Each member's centre along the fibre: its anchor plus the component of its
-    # measured displacement along the local fibre direction. Both terms use the
+    # Each member's centre along the line: its anchor plus the component of its
+    # measured displacement along the local line direction. Both terms use the
     # same reference-frame anchor, so the chain coordinate matches the order.
     disp = member_pos - anchor_pos[:, None, :]
     centre_arc = anchor_arc[:, None] + np.einsum('ktc,kc->kt', disp, tangent)  # (K, T)
     z_pos = np.full((K + 1, T), np.nan, dtype=float)
     z_pos[:K] = centre_arc - 0.5 * slen          # leading edge of each member
     z_pos[K] = centre_arc[-1] + 0.5 * slen[-1]   # trailing edge of the last member
-    # shift so the fibre starts at 0 (LOI convention; plots assume z_pos >= 0)
+    # shift so the line starts at 0 (LOI convention; plots assume z_pos >= 0)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', category=RuntimeWarning)
         origin = np.nanmin(z_pos)

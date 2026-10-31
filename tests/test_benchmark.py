@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from sarcasm import Motion, SarcAsM
+from sarcasm import SarcAsM
 from sarcasm._version import __version__ as sarcasm_version
 from sarcasm.utils import Utils
 
@@ -215,13 +215,6 @@ class TestStructureBenchmark:
 
         filepath = result.save_json(benchmark_output_dir, prefix="structure_")
         print(f"[bench] saved {filepath.name}  | total {result.total_time:.3f}s")
-
-
-# ---------------------------------------------------------------------------
-# Motion (LOI)
-# ---------------------------------------------------------------------------
-
-
 
 
 class TestDomainMotionBenchmark:

@@ -28,7 +28,7 @@ from scipy.interpolate import Akima1DInterpolator
 
 logger = logging.getLogger(__name__)
 from scipy.ndimage import map_coordinates
-from scipy.signal import savgol_filter, find_peaks
+from scipy.signal import find_peaks
 from skimage.morphology import disk
 
 
@@ -293,92 +293,6 @@ class Utils:
                 rounded_patch_size.append(dim)
         return tuple(rounded_patch_size)
 
-
-    @staticmethod
-    def nan_sav_golay(data: np.ndarray, window_length: int, polyorder: int, axis: int = 0) -> np.ndarray:
-        """
-        Apply a Savitzky-Golay filter to data with NaN values along the specified axis.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            Input data.
-        window_length : int
-            Length of the filter window, must be odd and greater than polyorder.
-        polyorder : int
-            Order of the polynomial used for the filtering.
-        axis : int, optional
-            Axis along which to apply the filter. Default is 0.
-
-        Returns
-        -------
-        np.ndarray
-            Filtered data with NaN values preserved.
-        """
-
-        # Ensure window_length is odd and > polyorder
-        if window_length % 2 == 0:
-            window_length += 1
-
-        # the runs are filtered in place: work on a copy, so the caller's array keeps its values
-        data = np.array(data, copy=True)
-
-        # Placeholder for filtered data
-        filtered_data = np.full(data.shape, np.nan)
-
-        # Function to apply filter on 1D array
-        def filter_1d(segment):
-            not_nan_indices = np.where(~np.isnan(segment))[0]
-            split_indices = np.split(not_nan_indices, np.where(np.diff(not_nan_indices) != 1)[0] + 1)
-            for indices in split_indices:
-                if len(indices) >= window_length:
-                    segment[indices] = savgol_filter(segment[indices], window_length, polyorder)
-            return segment
-
-        # Apply filter along the specified axis
-        if axis == -1 or axis == data.ndim - 1:
-            for i in range(data.shape[axis]):
-                filtered_data[..., i] = filter_1d(data[..., i])
-        else:
-            for i in range(data.shape[axis]):
-                filtered_data[i] = filter_1d(data[i])
-
-        return filtered_data
-
-
-    @staticmethod
-    def custom_diff(x: np.ndarray, dt: float) -> np.ndarray:
-        """
-        Compute the derivative of ``x`` using central differences.
-
-        Central differences are used in the interior; forward and backward
-        differences are used at the edges. ``x`` may be 1-D or 2-D.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Input time-series, must be 1-D or 2-D.
-        dt : float
-            Time interval between points in ``x``, in s.
-
-        Returns
-        -------
-        np.ndarray
-            Derivative of ``x``, same shape as ``x``.
-        """
-
-        v = np.zeros_like(x)
-
-        if len(x.shape) == 1:
-            v[0] = (x[1] - x[0]) / dt
-            v[-1] = (x[-1] - x[-2]) / dt
-            v[1:-1] = (x[2:] - x[:-2]) / (2 * dt)
-        elif len(x.shape) == 2:
-            v[:, 0] = (x[:, 1] - x[:, 0]) / dt
-            v[:, -1] = (x[:, -1] - x[:, -2]) / dt
-            v[:, 1:-1] = (x[:, 2:] - x[:, :-2]) / (2 * dt)
-
-        return v
 
     @staticmethod
     def skeleton_length_igraph(regionmask: np.ndarray, intensity_image=None) -> float:

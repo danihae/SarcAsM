@@ -922,6 +922,25 @@ motion_feature_dict = {
         'data type': np.ndarray,
         'function': 'sarc.motion.analyze',
         'name': 'Resting SL std across members [µm]'},
+    'popping_rate': {
+        'description': 'Fraction of member sarcomeres and complete contraction cycles in which a sarcomere pops: '
+                       'lengthens more than thres_popping (0.25 µm) beyond its resting length while the group '
+                       'contracts. Popping is physiological. np.ndarray with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Popping rate'},
+    'popping_rate_contr': {
+        'description': 'Fraction of member sarcomeres popping in each contraction cycle (NaN for incomplete '
+                       'cycles). np.ndarray with shape (n_groups, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Popping rate per cycle'},
+    'track_popping': {
+        'description': "Popping of each track in each cycle of its group: 1 popped, 0 did not, NaN for "
+                       'incomplete cycles and unassigned tracks. np.ndarray with shape (n_tracks, max_n_contr).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Popping per sarcomere and cycle'},
     'corr_delta_slen_serial': {
         'description': 'Serial correlation r_s of dSL: mean Pearson correlation of the same sarcomere between '
                        'different contraction cycles (cycle-to-cycle consistency), per group.',
@@ -937,7 +956,7 @@ motion_feature_dict = {
     'ratio_delta_slen_mutual_serial': {
         'description': 'R = r_m / r_s of dSL, per group. R < 1: sarcomeres differ consistently (static '
                        'heterogeneity); R ~ 1: they differ randomly from beat to beat (stochastic). NaN when r_s '
-                       '<= 0. Meaningful for groups of distinct sarcomeres (fibre chains, domains, pool).',
+                       '<= 0. Meaningful for groups of distinct sarcomeres (chains along a line, domains, pool).',
         'data type': np.ndarray,
         'function': 'sarc.motion.analyze',
         'name': 'R dSL (mutual/serial)'},

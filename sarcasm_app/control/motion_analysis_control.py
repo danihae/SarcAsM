@@ -15,8 +15,8 @@
 
 Workflow: Track sarcomere vectors -> group tracks (pool / m-band / myofibril /
 domain / loi) -> analyze track motion (ContractionNet per group). Visualization:
-napari track overlays, matplotlib grouped summaries, and a per-fibre LOI-style
-detail panel via :meth:`MotionAnalysis.get_track_motion`.
+napari track overlays, matplotlib grouped summaries, and the plots of one group
+("Show group detail", from :meth:`MotionAnalysis.groups`).
 """
 
 import logging
@@ -30,6 +30,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
+from sarcasm.features import MOTION_KIND_LABELS
 from sarcasm import Plots, SarcAsM
 from sarcasm_app.type_utils import TypeUtils
 from .application_control import ApplicationControl
@@ -42,14 +43,14 @@ from ..view.track_trace_dock import TrackTraceDock
 
 logger = logging.getLogger(__name__)
 
-_FIBRE_KINDS = ('myofibril', 'loi')
+_ORDERED_KINDS = ('myofibril', 'loi')          # groups ordered along a line
 
 
 #: width of the motion summary figure (inches)
 SUMMARY_WIDTH_IN = 12.0
 
 
-def summary_layout(aspect: float, is_fibre: bool):
+def summary_layout(aspect: float, is_ordered: bool):
     """Panel layout and row heights (inches) of the motion summary for an image of width /
     height ``aspect``, so the maps keep their proportions for wide, square and tall movies.
 
@@ -63,14 +64,14 @@ def summary_layout(aspect: float, is_fibre: bool):
     traces = [['slen', 'dslen'], ['raster', 'raster']]
     trace_heights = [4.2, 3.6]
     if aspect > 2:                                   # wide: full-width maps
-        maps = [['coverage', 'coverage'], ['groups', 'groups']] + ([['fibrils', 'fibrils']] if is_fibre else [])
+        maps = [['coverage', 'coverage'], ['groups', 'groups']] + ([['fibrils', 'fibrils']] if is_ordered else [])
         layout = maps[:2] + traces + maps[2:]
         h = height(SUMMARY_WIDTH_IN, 1.5, 5.0)
-        heights = [h, h] + trace_heights + ([h] if is_fibre else [])
-    elif aspect >= 0.8 or not is_fibre:              # square-ish: maps side by side
-        layout = [['coverage', 'groups']] + traces + ([['fibrils', 'fibrils']] if is_fibre else [])
+        heights = [h, h] + trace_heights + ([h] if is_ordered else [])
+    elif aspect >= 0.8 or not is_ordered:              # square-ish: maps side by side
+        layout = [['coverage', 'groups']] + traces + ([['fibrils', 'fibrils']] if is_ordered else [])
         h = height(SUMMARY_WIDTH_IN / 2, 2.5, 8.0)
-        heights = [h] + trace_heights + ([height(SUMMARY_WIDTH_IN, 2.5, 8.0)] if is_fibre else [])
+        heights = [h] + trace_heights + ([height(SUMMARY_WIDTH_IN, 2.5, 8.0)] if is_ordered else [])
     else:                                            # tall: the three maps in one row (6-column grid)
         layout = [['coverage'] * 2 + ['groups'] * 2 + ['fibrils'] * 2,
                   ['slen'] * 3 + ['dslen'] * 3,
@@ -113,8 +114,7 @@ class MotionAnalysisControl:
         self.__main_control = main_control
         self.__worker = None
         self.__export_popup = None
-        self.__fibre_motion = None
-        self.__fibre_group = None
+        self.__detail_group = None
         self.__drawn_lois = None
 
     # ------------------------------------------------------------------ #
@@ -298,78 +298,79 @@ class MotionAnalysisControl:
         self.__main_control.init_track_groups_layer()
         self.__sync_display_visibility()
         self.__refresh_trace_source()
-        self.refresh_fibre_combo()
+        self.refresh_group_combo()
 
-    def refresh_fibre_combo(self):
-        """Fill the per-fibre combo from the grouping in the store (also on file open)."""
+    def refresh_group_combo(self):
+        """Fill the group combo of 'Show group detail' from the grouping in the store (also on file open)."""
         w = self.__motion_analysis_widget
         cell = self.__main_control.model.cell
-        w.cb_fibre_group.clear()
+        w.cb_detail_group.clear()
         kind = self.__main_control.model.group_kind
         grouped = cell is not None and kind in cell.motion._grouped_kinds()
         n_groups = cell.motion._grouping(kind)['n'] if grouped else 0
-        is_fibre = kind in _FIBRE_KINDS and n_groups > 0
-        if is_fibre:
-            w.cb_fibre_group.addItems([str(g) for g in range(n_groups)])
-        w.cb_fibre_group.setEnabled(is_fibre)
-        w.btn_show_fibre_detail.setEnabled(is_fibre)
+        if n_groups:
+            w.cb_detail_group.addItems([str(g) for g in range(n_groups)])
+        w.cb_detail_group.setEnabled(n_groups > 0)
+        w.btn_show_group_detail.setEnabled(n_groups > 0)
 
     # ------------------------------------------------------------------ #
-    # per-fibre detail panel (LOI-style plots via sarc.motion.get_track_motion)
+    # group detail: the plots of one group (sarc.motion.groups(kind)[i])
     # ------------------------------------------------------------------ #
-    def __fibre_call(self, worker, m: ApplicationModel):
+    def __detail_call(self, worker, m: ApplicationModel):
         cell: SarcAsM = TypeUtils.unbox(m.cell)
-        group = int(self.__motion_analysis_widget.cb_fibre_group.currentText())
-        motion = cell.motion.get_track_motion(group, kind=m.group_kind, analyze=True)
-        try:
-            motion.analyze_popping()
-        except Exception as e:
-            logger.debug(f'analyze_popping skipped: {e}')
-        self.__fibre_motion = motion
-        self.__fibre_group = group
+        g = cell.motion.groups(m.group_kind)[int(self.__motion_analysis_widget.cb_detail_group.currentText())]
+        g.tracks.delta_slen                     # compute the members' kinematics off the GUI thread
+        self.__detail_group = g
 
-    def on_btn_show_fibre_detail(self):
+    def on_btn_show_group_detail(self):
         if not self.__chk_initialized():
             return
+        cell = self.__main_control.model.cell
         kind = self.__main_control.model.group_kind
-        if kind not in _FIBRE_KINDS:
-            logger.warning("Per-fibre detail requires a 'myofibril' or 'loi' grouping.")
+        if self.__motion_analysis_widget.cb_detail_group.currentText() == '':
+            logger.warning('No group selected.')
             return
-        if self.__motion_analysis_widget.cb_fibre_group.currentText() == '':
-            logger.warning('No fibre group selected.')
+        try:
+            cell.motion._assert_track_motion_fresh(kind)
+        except ValueError:
+            QMessageBox.information(self.__motion_analysis_widget.btn_show_group_detail, 'Analyze the grouping first',
+                                    f'The {kind} grouping has not been analysed since it was made. Click '
+                                    f'"3. Analyze track motion" (or "Track → Group → Analyze") first.')
             return
         worker = self.__main_control.run_async_new(
             parameters=self.__main_control.model,
-            call_lambda=self.__fibre_call,
-            start_message='Building per-fibre motion…',
-            finished_message='Finished per-fibre motion',
-            finished_action=self.__render_fibre_detail)
+            call_lambda=self.__detail_call,
+            start_message='Preparing the group detail…',
+            finished_message='Group detail ready',
+            finished_action=self.__render_group_detail)
         self.__worker = worker
         return worker
 
-    def __render_fibre_detail(self):
+    def __render_group_detail(self):
         import matplotlib.pyplot as plt
         from sarcasm_app.view.figure_window import show_new_figures
-        motion = self.__fibre_motion
-        if motion is None:
+        g = self.__detail_group
+        if g is None:
             return
         before = plt.get_fignums()
-        kind = self.__main_control.model.group_kind
-        fig, axd = plt.subplot_mosaic([['zpos', 'phase'], ['dslen', 'dslen']],
+        fig, axd = plt.subplot_mosaic([['main', 'phase'], ['dslen', 'dslen']],
                                       figsize=(12, 7), constrained_layout=True)
-        for key, fn in (('zpos', lambda ax: Plots.plot_z_pos(ax, motion)),
-                        ('phase', lambda ax: Plots.plot_phase_space(ax, motion)),
-                        ('dslen', lambda ax: Plots.plot_delta_slen(ax, motion))):
+        main = ((lambda ax: Plots.plot_z_pos(ax, g)) if g.ordered       # Z-bands along the line
+                else (lambda ax: Plots.plot_slen(ax, g)))
+        for key, fn in (('main', main),
+                        ('phase', lambda ax: Plots.plot_phase_space(ax, g)),
+                        ('dslen', lambda ax: Plots.plot_delta_slen(ax, g, stacked=True))):
             try:
                 fn(axd[key])
             except Exception as e:
-                logger.warning(f'fibre-detail {key} plot failed: {e}')
-        fig.suptitle(f'Fibre {self.__fibre_group} ({kind})')
+                logger.warning(f'group detail: the {key} plot failed: {e}')
+        label = f'{MOTION_KIND_LABELS.get(g.kind, g.kind)} {g.id}'
+        fig.suptitle(f'{label} ({g.n_members} sarcomeres)')
         try:
-            Plots.plot_popping_events(motion)  # opens its own figure
+            Plots.plot_popping_events(g)        # its own figure
         except Exception as e:
-            logger.debug(f'plot_popping_events skipped: {e}')
-        show_new_figures(before, f'Fibre {self.__fibre_group}')
+            logger.warning(f'group detail: the popping map failed: {e}')
+        show_new_figures(before, label)
 
     # ------------------------------------------------------------------ #
     # grouped-motion summary
@@ -390,12 +391,12 @@ class MotionAnalysisControl:
                                     f'The {kind} grouping has not been analysed since it was made. Click '
                                     f'"3. Analyze track motion" (or "Track → Group → Analyze"), then plot the summary.')
             return
-        is_fibre = kind in _FIBRE_KINDS
+        is_ordered = kind in _ORDERED_KINDS
         # raster of every sarcomere over one averaged cycle (needs the pooled cycles),
         # else over the full recording
         cycle = 'motion.pool.labels_contr' in cell.data
         H, W = cell.metadata.shape[-2:]
-        layout, heights = summary_layout(W / H, is_fibre)
+        layout, heights = summary_layout(W / H, is_ordered)
         fig, axd = plt.subplot_mosaic(layout, figsize=(SUMMARY_WIDTH_IN, sum(heights)),
                                       height_ratios=heights, constrained_layout=True)
         def raster(ax):
@@ -420,7 +421,7 @@ class MotionAnalysisControl:
                 fn(axd[key])
             except Exception as e:
                 logger.warning(f'summary {key} plot failed: {e}')
-        if is_fibre:
+        if is_ordered:
             try:
                 Plots.plot_track_myofibrils(axd['fibrils'], cell, kind=kind, color_by='beating_rate', colorbar=True)
             except Exception as e:
@@ -502,7 +503,7 @@ class MotionAnalysisControl:
         QTimer.singleShot(0, lambda: self.__show_in_dock(track=track_id))
 
     def __on_group_selected(self, group: int):
-        """A fibre path of the Groups layer was clicked."""
+        """A group line of the Groups layer was clicked."""
         self.__select_group(group)
         QTimer.singleShot(0, lambda: self.__show_in_dock(group=group))
 
@@ -516,16 +517,16 @@ class MotionAnalysisControl:
             dock.show_group(group)
 
     def __select_group(self, group):
-        """Ring the group's members in the viewer and point the per-fibre combo at it."""
+        """Ring the group's members in the viewer and point the group-detail combo at it."""
         try:
             self.__main_control.highlight_group(group)
         except Exception as e:
             logger.debug(f'highlight_group skipped: {e}')
         w = self.__motion_analysis_widget
-        if group is not None and w.cb_fibre_group.isEnabled():
-            idx = w.cb_fibre_group.findText(str(group))
+        if group is not None and w.cb_detail_group.isEnabled():
+            idx = w.cb_detail_group.findText(str(group))
             if idx >= 0:
-                w.cb_fibre_group.setCurrentIndex(idx)
+                w.cb_detail_group.setCurrentIndex(idx)
 
     # ------------------------------------------------------------------ #
     # export
@@ -556,11 +557,11 @@ class MotionAnalysisControl:
         w.btn_draw_lois.clicked.connect(self.on_btn_draw_lois)
         w.btn_analyze_track_motion.clicked.connect(self.on_btn_analyze_track_motion)
         w.btn_analyze_motion.clicked.connect(self.on_analyze_motion)
-        w.btn_show_fibre_detail.clicked.connect(self.on_btn_show_fibre_detail)
+        w.btn_show_group_detail.clicked.connect(self.on_btn_show_group_detail)
         w.btn_plot_summary.clicked.connect(self.__on_btn_plot_summary)
         w.btn_export_motion_data.clicked.connect(self.__on_btn_export_motion_data)
-        w.btn_show_fibre_detail.setEnabled(False)
-        self.__main_control.file_opened_callbacks.append(self.refresh_fibre_combo)
+        w.btn_show_group_detail.setEnabled(False)
+        self.__main_control.file_opened_callbacks.append(self.refresh_group_combo)
         self.__main_control.file_opened_callbacks.append(self.__sync_display_visibility)
         self.__main_control.track_selected_callbacks.append(self.__on_track_selected)
         self.__main_control.group_selected_callbacks.append(self.__on_group_selected)

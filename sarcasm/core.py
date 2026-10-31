@@ -11,7 +11,7 @@
 # **Commercial use is prohibited without a separate license.**
 # Contact MBM ScienceBridge GmbH (https://sciencebridge.de/en/) for licensing.
 
-"""The :class:`SarcAsM` recording: file paths, metadata, the OME-Zarr store and sarcomere detection."""
+"""The :class:`SarcAsM` recording: file, calibration, the OME-Zarr store and sarcomere detection."""
 
 import functools
 import json
@@ -73,70 +73,65 @@ def _is_ome_zarr(path: str) -> bool:
     return p.is_dir() and ((p / '.zattrs').exists() or (p / 'zarr.json').exists())
 
 
-class SarcAsMBase:
+class SarcAsM:
     """
-    Base class for sarcomere structural and functional analysis.
+    One recording: image, calibration, analysis store and sarcomere detection.
+
+    The analyses are reached through two namespaces: ``sarc.structure`` for sarcomere
+    morphology (:class:`~sarcasm.structure.StructureAnalysis`) and ``sarc.motion`` for
+    sarcomere motion from tracked sarcomere vectors (:class:`~sarcasm.motion.MotionAnalysis`).
 
     Parameters
     ----------
     file_path : str or os.PathLike
-        Path to the TIFF file for analysis.
+        Path to the image TIFF file (or OME-Zarr).
     restart : bool, optional
-        If True, deletes the analysis store (``<name>.ome.zarr``) and starts fresh. Nothing
-        else is deleted. Default is False.
+        If True, delete the analysis store and start fresh. Default is False.
     pixelsize : float or None, optional
-        Physical pixel size in micrometres (µm). If None, extracted from file
-        metadata; otherwise provided manually. Default is None.
+        Physical pixel size in µm. If None, taken from file metadata; an
+        explicit value overrides the metadata. Default is None.
     frametime : float or None, optional
-        Time between frames in seconds. If None, extracted from file metadata;
-        otherwise provided manually. Default is None.
+        Time between frames in s. If None, taken from metadata; an explicit
+        value overrides it. Default is None.
     channel : int or None, optional
-        Channel index holding the sarcomere signal in multi-channel stacks.
-        Default is None.
+        Index of the fluorescence channel that shows the sarcomeres. Ignored
+        for single-channel images. Default is None.
     axes : str or None, optional
-        Explicit order of image dimensions (e.g. ``'TXYC'`` or ``'YX'``).
-        If None, auto-detected from OME-XML, ImageJ tags or shape heuristics.
+        Explicit dimension order (e.g. ``'TXYC'``). None auto-detects the order.
         Default is None.
     auto_save : bool, optional
-        Automatically save analysis results when True. Default is True.
+        Write analysis results to disk automatically. Default is True.
     use_gui : bool, optional
-        Enable GUI-mode behaviour. Default is False.
+        Activate GUI mode. Default is False.
     device : torch.device or {'auto', 'mps', 'cuda', 'cpu'}, optional
-        PyTorch computation device. ``'auto'`` selects CUDA/MPS if available.
-        Default is 'auto'.
+        Device on which PyTorch kernels are executed. ``'auto'`` selects CUDA
+        or MPS when available. Default is ``'auto'``.
     log_level : str or int, optional
-        Logging level for the sarcasm package, either a string ('DEBUG',
-        'INFO', 'WARNING', 'ERROR', 'CRITICAL') or an integer (e.g.
-        ``logging.DEBUG``). Default is 'INFO'.
+        Logging level of the sarcasm package ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' or an
+        int such as ``logging.DEBUG``). Default is 'INFO'.
     **info
-        Additional user-supplied metadata key-value pairs
-        (e.g. ``cell_line='wt'``).
+        Additional key-value pairs stored in the metadata file.
 
     Attributes
     ----------
-    file_path : str
-        Absolute path to the input TIFF file.
-    base_dir : str
-        The pre-1.0 analysis folder beside the movie (``<name>/``); read only to carry over the
-        calibration of a pre-1.0 analysis.
-    data_dir : str
-        Its ``data/`` sub-folder.
+    data : Results
+        Lazy, Zarr-backed store of morphology, tracking and motion results
+        (populated after running the respective routines). A key is its path, so
+        ``sarc.data['motion.tracks.slen']`` and ``sarc.data.motion.tracks.slen``
+        are the same value. ``structure.*`` is per-frame morphology, ``motion.*``
+        is everything derived from the tracks, ``params.*`` records what each
+        step ran with. ``print(sarc.data)`` gives an overview,
+        ``sarc.data.find('slen')`` searches, ``sarc.data.describe(key)``
+        explains one. Write with ``sarc.data['key'] = value`` (attributes are
+        read-only) followed by :meth:`commit`.
+    structure : StructureAnalysis
+        Sarcomere morphology: Z-bands, sarcomere vectors, myofibrils, domains.
+    motion : MotionAnalysis
+        Sarcomere motion: tracking, grouping, contraction analysis.
     metadata : ImageMetadata
-        Image metadata.
-    device : torch.device
-        PyTorch device on which computations are performed.
-    zbands : np.ndarray
-        Binary Z-band mask (loaded on demand from the OME-Zarr store).
-    zbands_fast_movie : np.ndarray
-        Binary Z-band mask for the high-temporal-resolution movie (loaded on demand).
-    mbands : np.ndarray
-        Binary M-band mask (loaded on demand).
-    orientation : np.ndarray
-        Sarcomere orientation map (loaded on demand).
-    cell_mask : np.ndarray
-        Binary cell mask (loaded on demand).
-    sarcomere_mask : np.ndarray
-        Binary sarcomere mask (loaded on demand).
+        Image metadata (calibration, shape, axes).
+    zbands, zbands_fast_movie, mbands, orientation, cell_mask, sarcomere_mask : np.ndarray
+        The detection masks, read from the store on access (see :meth:`read_mask`).
     """
 
     def __init__(
@@ -267,6 +262,9 @@ class SarcAsMBase:
                     "Expected torch.device instance or valid device string "
                     f"(e.g., 'cuda', 'cpu', 'mps')"
                 )
+
+        # bind the lazy results store (the sarcasm/ group of the OME-Zarr store)
+        self._load_structure_data()
 
     def _check_explicit_calibration(self, **explicit) -> None:
         """Refuse constructor calibration that contradicts an existing store.
@@ -527,7 +525,7 @@ class SarcAsMBase:
         ]
         return sorted(set(standard_attrs + dynamic_attrs))
 
-    def _summary_rows(self) -> list[tuple[str, str]]:
+    def _file_summary_rows(self) -> list[tuple[str, str]]:
         """Label/value rows for :meth:`__str__`, cheap enough to print freely.
 
         Reads no pixels and materialises no result arrays — only in-memory
@@ -1358,92 +1356,6 @@ class SarcAsMBase:
         for name in names:
             self.store.delete_mask(name)
 
-
-class SarcAsM(SarcAsMBase):
-    """
-    One recording: image, calibration, analysis store and sarcomere detection.
-
-    The analyses are reached through two namespaces: ``sarc.structure`` for sarcomere
-    morphology (:class:`~sarcasm.structure.StructureAnalysis`) and ``sarc.motion`` for
-    sarcomere motion from tracked sarcomere vectors (:class:`~sarcasm.motion.MotionAnalysis`).
-
-    Parameters
-    ----------
-    file_path : str or os.PathLike
-        Path to the image TIFF file (or OME-Zarr).
-    restart : bool, optional
-        If True, delete the analysis store and start fresh. Default is False.
-    pixelsize : float or None, optional
-        Physical pixel size in µm. If None, taken from file metadata; an
-        explicit value overrides the metadata. Default is None.
-    frametime : float or None, optional
-        Time between frames in s. If None, taken from metadata; an explicit
-        value overrides it. Default is None.
-    channel : int or None, optional
-        Index of the fluorescence channel that shows the sarcomeres. Ignored
-        for single-channel images. Default is None.
-    axes : str or None, optional
-        Explicit dimension order (e.g. ``'TXYC'``). None auto-detects the order.
-        Default is None.
-    auto_save : bool, optional
-        Write analysis results to disk automatically. Default is True.
-    use_gui : bool, optional
-        Activate GUI mode. Default is False.
-    device : torch.device or {'auto'}, optional
-        Device on which PyTorch kernels are executed. ``'auto'`` selects CUDA
-        or MPS when available. Default is ``'auto'``.
-    **info
-        Additional key-value pairs stored in the metadata file.
-
-    Attributes
-    ----------
-    data : Results
-        Lazy, Zarr-backed store of morphology, tracking and motion results
-        (populated after running the respective routines). A key is its path, so
-        ``sarc.data['motion.tracks.slen']`` and ``sarc.data.motion.tracks.slen``
-        are the same value. ``structure.*`` is per-frame morphology, ``motion.*``
-        is everything derived from the tracks, ``params.*`` records what each
-        step ran with. ``print(sarc.data)`` gives an overview,
-        ``sarc.data.find('slen')`` searches, ``sarc.data.describe(key)``
-        explains one. Write with ``sarc.data['key'] = value`` (attributes are
-        read-only) followed by :meth:`commit`.
-    structure : StructureAnalysis
-        Sarcomere morphology: Z-bands, sarcomere vectors, myofibrils, domains.
-    motion : MotionAnalysis
-        Sarcomere motion: tracking, grouping, contraction analysis.
-    """
-
-    def __init__(self,
-                 file_path: Union[str, os.PathLike],
-                 *,
-                 restart: bool = False,
-                 pixelsize: Union[float, None] = None,
-                 frametime: Union[float, None] = None,
-                 channel: Union[int, None] = None,
-                 axes: Union[str, None] = None,
-                 auto_save: bool = True,
-                 use_gui: bool = False,
-                 device: Union[torch.device, Literal['auto']] = 'auto',
-                 **info: Any) -> None:
-        """
-        Instantiate a SarcAsM object and initialize the common SarcAsMBase.
-        """
-        super().__init__(
-            file_path=file_path,
-            restart=restart,
-            pixelsize=pixelsize,
-            frametime=frametime,
-            channel=channel,
-            axes=axes,
-            auto_save=auto_save,
-            use_gui=use_gui,
-            device=device,
-            **info
-        )
-
-        # Initialize structure data store (lazy Zarr-backed; migrates legacy JSON)
-        self._load_structure_data()
-
     def __get_store_path(self) -> str:
         """Path to the analysis subgroup of the OME-Zarr store (``<name>.ome.zarr/sarcasm``)."""
         return str(self.store.results_path)
@@ -1455,7 +1367,7 @@ class SarcAsM(SarcAsMBase):
         Reads the manifest and a handful of scalar attrs only — no result array
         is materialised, so ``print(sarc)`` stays cheap on a 1 GB store.
         """
-        rows = super()._summary_rows()
+        rows = self._file_summary_rows()
         data = self.__dict__.get('data')
         if data is None:
             return rows

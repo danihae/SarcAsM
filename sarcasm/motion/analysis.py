@@ -23,7 +23,7 @@ import numpy as np
 
 
 if TYPE_CHECKING:
-    from sarcasm.motion.view import Motion
+    from sarcasm.motion.groups import GroupSet
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +62,13 @@ class AnalysisMixin:
         buffer_frames: int = 3,
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
+        thres_popping: float = 0.25,
         reference_frame: Any = _STORED,
         min_coverage: Any = _STORED,
         min_group_size: Any = _STORED,
         max_drift_slen: Any = _STORED,
-    ) -> None:
-        """Contraction analysis of each group of one grouping kind.
+    ) -> "GroupSet":
+        """Contraction analysis of each group of one grouping kind; returns the groups.
 
         Reads the contraction state of each group with ContractionNet and measures the
         contraction cycles on the member tracks' aggregated ``slen(t)``. By default
@@ -119,6 +120,10 @@ class AnalysisMixin:
             between frames is not read. Default is 0.3.
         model, threshold, contr_time_min, buffer_frames, min_valid_frames, filter_params
             ContractionNet engine knobs (see :func:`grouped_motion.run_cycle_engine`).
+        thres_popping : float, optional
+            A member sarcomere pops in a cycle when it lengthens more than this (µm) beyond its
+            resting length while the group contracts (``popping_rate``, ``popping_rate_contr``,
+            ``track_popping``; see :func:`heterogeneity.popping_events`). Default is 0.25.
         reference_frame, min_coverage, min_group_size, max_drift_slen
             Grouping arguments, see :meth:`group_tracks`. Left out, the stored grouping of
             ``by`` is used; given, ``by`` is grouped again with them (the arguments left out
@@ -193,7 +198,8 @@ class AnalysisMixin:
         het = heterogeneity.analyze_groups(
             tracks_slen, gid, n_groups, engine['contr'], engine['labels_contr'],
             engine['beating_rate'], frametime=self.metadata.frametime,
-            filter_params=filter_params, slen_lims=slen_lims)
+            filter_params=filter_params, slen_lims=slen_lims,
+            contr_complete=engine['contr_complete'], thres_popping=thres_popping)
         # The aggregate, engine and heterogeneity dicts use bare feature names, so
         # the store key is just the path: every kind lands under motion/<kind>/
         # with identical members, with no per-kind special cases.
@@ -214,12 +220,14 @@ class AnalysisMixin:
             'buffer_frames': buffer_frames,
             'min_valid_frames': min_valid_frames,
             'filter_params': filter_params,
+            'thres_popping': thres_popping,
         }
         result.update({f'params.motion.analyze.{kind}.{name}': value for name, value in params.items()})
         self.data.update(result)
         logger.info(f"analyze complete ('{kind}', {n_groups} groups).")
         if self.auto_save:
             self.commit()
+        return self.groups(kind)
 
     def _assert_track_motion_fresh(self, kind: str) -> None:
         """Raise if the analysis of the ``kind`` grouping is missing or stale.
@@ -238,79 +246,3 @@ class AnalysisMixin:
         if not np.array_equal(snapshot_ids, np.asarray(self.data.get('motion.tracks.ids', []))):
             raise ValueError('Tracks changed since grouping. Run sarc.motion.track -> group_tracks -> analyze again.')
 
-    def get_track_motion(self, group: int, *, kind: str = 'myofibril', analyze: bool = False,
-                         persist_loi: bool = False) -> "Motion":
-        """Return a :class:`~sarcasm.motion.Motion` view of one myofibril (fibre).
-
-        The fibre's member tracks (ordered head-to-tail by ``track_group_order``)
-        are turned into a synthesized LOI (``z_pos`` = the edges of the member
-        sarcomeres, from their tracked positions along the fibre) and wrapped in a
-        ``Motion`` object, so the full LOI analysis and **every LOI plot**
-        (``plot_z_pos``, ``plot_delta_slen``, ``plot_phase_space``,
-        ``plot_popping_events``, …) apply to tracker-derived fibres. Requires a ``'myofibril'`` or
-        ``'loi'`` grouping (:meth:`group_tracks` / :meth:`analyze`
-        with ``by='myofibril'`` or ``by='loi'``).
-
-        Parameters
-        ----------
-        group : int
-            Fibre group id (``0 .. n_groups-1``).
-        kind : {'myofibril', 'loi'}, optional
-            The grouping the group belongs to. Default is 'myofibril'.
-        analyze : bool, optional
-            If True, run the standard LOI chain on the view
-            (``detect_analyze_contractions`` -> ``get_trajectories`` ->
-            ``analyze_trajectories`` -> ``analyze_popping`` ->
-            ``analyze_correlations`` -> ``analyze_oscillations``) so it is
-            immediately plot-ready. Default is False.
-        persist_loi : bool, optional
-            If True, persist the synthesized LOI to ``{base}/track_myofibril_{group}/``.
-            Default is False (purely in-memory, keeps the dataset directory clean).
-        """
-        from sarcasm.motion import Motion
-
-        if kind not in self._CHAIN_LEVELS:
-            raise ValueError(f"get_track_motion needs an ordered grouping, {self._CHAIN_LEVELS}, got '{kind}'.")
-        if self._gkey(kind, 'track_group_id') not in self.data:
-            raise ValueError(f"No '{kind}' grouping found. Run sarc.motion.group_tracks(by='{kind}') first.")
-        n_tracks = int(self.data['motion.tracks.n'])
-        gid = np.asarray(self.data[self._gkey(kind, 'track_group_id')]).reshape(-1)
-        order = np.asarray(self.data[self._gkey(kind, 'track_group_order')]).reshape(-1)
-        members = np.flatnonzero(gid == int(group))
-        if members.size == 0:
-            raise ValueError(f"No tracks in {kind} group {group} "
-                             f'(n_groups={self.data.get(self._gkey(kind, "n"))}).')
-        members = members[np.argsort(order[members])]  # head -> tail along the fibre
-
-        slen = np.asarray(self.data['motion.tracks.slen'], dtype=float).reshape(n_tracks, -1)[members]
-        # Pass the members' measured positions so each Z-band boundary is placed from
-        # its own sarcomere. Accumulating the lengths instead would let a single
-        # undefined member blank every boundary below it.
-        pos_um = np.asarray(self.data['motion.tracks.positions_um'],
-                            dtype=float).reshape(n_tracks, -1, 2)[members]
-        # Anchor the chain geometry on the frame the grouping (and hence the
-        # head-to-tail order) was built from.
-        ref_frame = int(self.data.get(f'params.motion.group_tracks.{kind}.reference_frame', 0))
-        try:
-            ref_idx = self._tracked_frame_index(ref_frame)
-        except (ValueError, KeyError):
-            ref_idx = 0
-        z_pos, slen_f, time = grouped_motion.synthesize_loi_chain(
-            slen, self.metadata.frametime, member_pos=pos_um, ref_idx=ref_idx)
-        loi_data = {
-            'z_pos': z_pos, 'z_pos_raw': z_pos.copy(), 'slen': slen_f, 'time': time,
-            'n_sarcomeres': int(members.size),
-            'motion.tracks.ids': np.asarray(self.data['motion.tracks.ids']).reshape(-1)[members],
-            'synthetic': True,
-        }
-        m = Motion.from_loi_data(self.file_path, f'track_{kind}_{int(group)}',
-                                 loi_data, auto_save=persist_loi,
-                                 frametime=self.metadata.frametime)
-        if analyze:
-            m.detect_analyze_contractions()
-            m.get_trajectories()
-            m.analyze_trajectories()
-            m.analyze_popping()
-            m.analyze_correlations()
-            m.analyze_oscillations()
-        return m

@@ -631,7 +631,7 @@ def track_sarcomere_vectors(
     max_radius = float(max_disp_along_px)
 
     # Neighbourhood radius for the local-motion estimate: a few sarcomeres, so the
-    # estimate is local to one fibre bundle yet has enough members to be robust.
+    # estimate is local to one myofibril bundle yet has enough members to be robust.
     neighbor_radius_px = 3.0 * median_slen_px if (
         median_slen_px is not None and median_slen_px > 0) else 3.0 * max_disp_along_px
 

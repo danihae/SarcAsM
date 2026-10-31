@@ -307,16 +307,6 @@ def test_stored_equilibrium_is_the_quiet_frame_median():
     assert out['equ'][0] > np.nanmedian(slen[0])       # the all-frame median is biased low
 
 
-def test_motion_period_durations_nan_at_edges():
-    from sarcasm.motion import Motion
-    m = Motion.__new__(Motion)
-    m.metadata = types.SimpleNamespace(frametime=_FT)
-    labels = _labelled_cycles(60, [(0, 6), (15, 25), (54, 60)])
-    durations = m._period_durations(labels, 3, _BUF)
-    assert np.isnan(durations[0]) and np.isnan(durations[2])
-    assert durations[1] == pytest.approx(10 * _FT)
-
-
 # ---------------------------------------------------------------------------
 # MotionAnalysis.group_tracks / motion.analyze on a synthetic data dict
 # ---------------------------------------------------------------------------
@@ -591,7 +581,7 @@ def test_domain_front_door_and_unknown_level():
 
 
 # ---------------------------------------------------------------------------
-# Phase 3: myofibril grouping (order) + LOI chain synthesis + Motion view
+# Myofibril grouping (order) + chain synthesis
 # ---------------------------------------------------------------------------
 
 def test_synthesize_loi_chain_diff_and_nan():
@@ -633,10 +623,10 @@ def test_synthesize_loi_chain_edge_nan_never_constant():
 
 
 def _straight_chain_pos(K, T, slen=1.9, curve=0.0):
-    """(K, T, 2) positions of K sarcomeres spaced one slen apart along a fibre."""
+    """(K, T, 2) positions of K sarcomeres spaced one slen apart along a line."""
     pos = np.zeros((K, T, 2))
     for k in range(K):
-        pos[k, :, 0] = curve * k ** 2      # 0 -> straight fibre, >0 -> curved
+        pos[k, :, 0] = curve * k ** 2      # 0 -> straight line, >0 -> curved
         pos[k, :, 1] = k * slen
     return pos
 
@@ -650,7 +640,7 @@ def test_synthesize_loi_chain_from_positions_matches_lengths():
     z, slen, _ = grouped_motion.synthesize_loi_chain(member, 0.01, member_pos=pos)
     assert z.shape == (K + 1, T)
     assert np.allclose(np.diff(z, axis=0), slen)
-    assert np.allclose(z[-1] - z[0], K * SL)      # fibre spans K sarcomeres
+    assert np.allclose(z[-1] - z[0], K * SL)      # the chain spans K sarcomeres
 
 
 def test_synthesize_loi_chain_gap_blanks_only_its_own_boundary():
@@ -725,7 +715,7 @@ def test_synthesize_loi_chain_starts_at_zero():
 
 
 def test_group_tracks_chain_keeps_partially_tracked_sarcomeres():
-    """A chain represents the fibre's geometry, so a sarcomere tracked only part of
+    """A chain represents the line's geometry, so a sarcomere tracked only part of
     the time must stay in it — dropping it punches a hole into z_pos. Pooled
     groupings keep the strict floor, where the filter removes noise from a mean."""
     sarc = _fake_structure(n_tracks=4)
@@ -752,157 +742,23 @@ def test_group_tracks_chain_keeps_partially_tracked_sarcomeres():
     assert sarc.data['motion.groups.loi.track_group_id'][2] == -1
 
 
-def test_synthesize_loi_chain_arc_is_monotone_on_a_curved_fibre():
+def test_synthesize_loi_chain_arc_is_monotone_on_a_curved_line():
     K, T, SL = 5, 4, 1.9
     member = np.full((K, T), SL)
-    pos = _straight_chain_pos(K, T, SL, curve=0.4)      # bent fibre
+    pos = _straight_chain_pos(K, T, SL, curve=0.4)      # bent line
     z, _, _ = grouped_motion.synthesize_loi_chain(member, 0.01, member_pos=pos)
     assert np.all(np.diff(z[:, 0]) > 0)                 # arc increases along the chain
 
 
-def _fake_motion(loi_data, frametime=0.01):
-    from sarcasm.motion import Motion
-    m = Motion.__new__(Motion)
-    m.metadata = types.SimpleNamespace(frametime=frametime)
-    m.loi_data = loi_data
-    return m
-
-
-def test_member_slen_prefers_the_stored_series_for_a_synthetic_chain():
-    """A synthesized chain carries the honest per-member lengths; re-deriving them
-    from diff(z_pos) would blank every member below an undefined one."""
-    K, T, SL = 4, 6, 1.9
-    member = np.full((K, T), SL)
-    pos = _straight_chain_pos(K, T, SL)
-    member[0, 4:] = np.nan
-    pos[0, 4:, :] = np.nan
-    z, slen, _ = grouped_motion.synthesize_loi_chain(member, 0.01, member_pos=pos)
-
-    m = _fake_motion({'z_pos': z, 'slen': slen, 'synthetic': True})
-    got = m._member_slen()
-    assert np.array_equal(np.isnan(got), np.isnan(slen))
-    assert np.count_nonzero(~np.isnan(got[:, 5])) == K - 1     # only the lost member is gone
-    got[:] = 0                                                 # must be a copy
-    assert not np.allclose(np.asarray(m.loi_data['slen']), 0)
-
-
-def test_member_slen_falls_back_to_diff_for_a_legacy_loi():
-    z = np.cumsum(np.full((4, 5), 1.8), axis=0)
-    m = _fake_motion({'z_pos': z})                     # no 'synthetic' flag
-    assert np.allclose(m._member_slen(), np.diff(z, axis=0))
-    # a stored slen on a non-synthetic LOI is still ignored (legacy semantics)
-    m2 = _fake_motion({'z_pos': z, 'slen': np.full((3, 5), 99.0)})
-    assert np.allclose(m2._member_slen(), np.diff(z, axis=0))
-
-
-def test_nan_sav_golay_leaves_its_input_unchanged():
-    """The legacy LOI engine smoothed lengths through this helper's side effect on its input."""
-    rng = np.random.default_rng(1)
-    x = 1.9 + 0.05 * rng.standard_normal((3, 60))
-    x[1, 20:23] = np.nan
-    before = x.copy()
-    y = Utils.nan_sav_golay(x, 13, 5, axis=0)
-    assert np.array_equal(x, before, equal_nan=True)
-    assert not np.allclose(y[0], x[0])
-    assert np.array_equal(np.isnan(y), np.isnan(x))
-
-
-def _beating_chain(K=5, T=200, period=40, rise=8, seed=0):
-    """Member lengths of a beating chain with noise: shortening by 0.03 µm/frame for ``rise`` frames, then
-    relaxation by 0.01 µm/frame, one cycle per ``period`` frames starting at frame 2 (truncated first cycle)."""
-    rng = np.random.default_rng(seed)
-    delta = np.zeros(T)
-    for onset in range(2, T, period):
-        k = np.arange(T) - onset
-        cyc = (k >= 0) & (k < period)
-        delta[cyc] = np.where(k[cyc] <= rise, -0.03 * k[cyc], np.minimum(-0.03 * rise + 0.01 * (k[cyc] - rise), 0))
-    member = 1.95 + delta + 0.01 * rng.standard_normal((K, T))
-    labels = np.zeros(T, int)
-    for i, onset in enumerate(range(2, T, period), start=1):
-        labels[onset:min(onset + 30, T)] = i
-    return member, labels
-
-
-def test_get_trajectories_twice_gives_the_result_of_one_call_on_a_chain():
-    """get_trajectories replaces a synthetic chain's 'slen' by the smoothed lengths; a second call used to
-    smooth those again."""
-    member, labels = _beating_chain()
-    z, slen, _ = grouped_motion.synthesize_loi_chain(member, 0.01)
-
-    def run(n_calls):
-        m = _fake_motion({'z_pos': z, 'slen': slen.copy(), 'synthetic': True, 'contr': (labels > 0).astype(int)})
-        m.auto_save = False
-        for _ in range(n_calls):
-            m.get_trajectories()
-        return m.loi_data
-
-    once, twice = run(1), run(2)
-    for key in ('slen', 'vel', 'equ', 'delta_slen'):
-        assert np.array_equal(once[key], twice[key], equal_nan=True), key
-    assert np.array_equal(once['slen_raw'], slen, equal_nan=True)
-
-
-def _trajectory_motion(delta, labels, frametime=_FT):
-    """A Motion holding the get_trajectories output for ΔSL traces ``delta`` (n, T) and cycle ``labels``."""
-    from scipy.ndimage import label
-    delta = np.atleast_2d(np.asarray(delta, float))
-    vel = np.gradient(delta, frametime, axis=1)
-    m = _fake_motion({'delta_slen': delta, 'vel': vel, 'delta_slen_avg': np.nanmean(delta, axis=0),
-                      'vel_avg': np.nanmean(vel, axis=0), 'labels_contr': labels,
-                      'n_contr': int(label(labels > 0)[1]), 'contr': (labels > 0).astype(int)}, frametime)
-    m.auto_save = False
-    return m
-
-
-def test_analyze_trajectories_custom_perc_are_interpolated_first_crossings():
-    slen, labels = _ramp_twitch()                      # peak -0.21 µm 7 frames after the onset
-    m = _trajectory_motion(slen - 1.95, labels)
-    m.analyze_trajectories(custom_perc=[(0, 50), (10, 90), (100, 50), (100, 0)])
-    t = m.loi_data['custom_perc_time'][:, 0, 0] / _FT
-    np.testing.assert_allclose(t, [3.5, 5.6, 10.5, 21.0])
-    assert m.loi_data['time_to_relax'][0, 0] / _FT == pytest.approx(21.0)
-    np.testing.assert_allclose(m.loi_data['custom_perc_time_avg'][:, 0] / _FT, [3.5, 5.6, 10.5, 21.0])
-
-
-def test_analyze_trajectories_custom_perc_with_gaps_gives_nan_instead_of_failing():
-    slen, labels = _ramp_twitch()
-    delta = np.stack([slen - 1.95, slen - 1.95, np.full(slen.size, np.nan)])
-    delta[0, 22] = np.nan                              # a gap before the 50 % point
-    m = _trajectory_motion(delta, labels)
-    m.analyze_trajectories(custom_perc=[(0, 50)])      # used to raise on the all-NaN member
-    t = m.loi_data['custom_perc_time'][0, :, 0] / _FT
-    assert np.isnan(t[0]) and t[1] == pytest.approx(3.5) and np.isnan(t[2])
-    assert np.isnan(m.loi_data['time_to_peak'][0, 0])  # the same rule as for the time to peak
-
-
-def test_analyze_trajectories_edge_cycles_keep_only_what_the_recording_shows():
-    """A cycle starting before the recording has no measurable time to peak; one ending after it has no time to
-    relaxation, and an extremum on the cut edge may continue outside the recording."""
-    T = 60
-    labels = _labelled_cycles(T, [(0, 10), (20, 34), (50, 60)])
-    delta = np.zeros(T)
-    delta[0:10] = -0.2 + 0.02 * np.arange(10)          # relaxing from a peak before frame 0
-    delta[20:34] = -0.2 * (1 - np.abs(np.linspace(-1, 1, 14)))
-    delta[50:60] = -0.01 * np.arange(10)               # still shortening at the last frame
-    m = _trajectory_motion(delta, labels)
-    m.analyze_trajectories(custom_perc=[(0, 50), (100, 50)])
-    d = m.loi_data
-    assert np.isnan(d['contr_max'][0, 0]) and np.isnan(d['time_to_peak'][0, 0])     # peak on the cut start
-    assert d['contr_max'][0, 1] == pytest.approx(delta[20:34].min())               # complete cycle as before
-    assert d['time_to_peak'][0, 1] == pytest.approx(np.argmin(delta[20:34]) * _FT)
-    assert np.isnan(d['contr_max'][0, 2]) and np.isnan(d['time_to_relax'][0, 2])   # peak on the cut end
-    assert np.isnan(d['custom_perc_time'][0, 0, 0]) and np.isnan(d['custom_perc_time'][1, 0, 2])
-
-
 def test_group_tracks_myofibril_ordering():
     sarc = _fake_structure(n_tracks=6)
-    # two fibres; fibre A lists vectors in reversed order [2,1,0]
+    # two lines; line A lists vectors in reversed order [2,1,0]
     sarc.data['structure.myofibril.lines'] = [[np.array([2, 1, 0]), np.array([3, 4, 5])]]
     sarc.motion.group_tracks(by='myofibril', reference_frame=0)
     gid = sarc.data['motion.groups.myofibril.track_group_id']
     order = sarc.data['motion.groups.myofibril.track_group_order']
     assert sarc.data['motion.groups.myofibril.n'] == 2
-    # fibre A: tracks {0,1,2} share a group; ordering follows the vector order [2,1,0]
+    # line A: tracks {0,1,2} share a group; ordering follows the vector order [2,1,0]
     assert gid[0] == gid[1] == gid[2]
     assert gid[3] == gid[4] == gid[5]
     assert gid[0] != gid[3]
@@ -1034,36 +890,12 @@ def test_plot_track_coverage_smoke():
         plt.close('all')
 
 
-def test_motion_from_loi_data_runs_loi_engine(motion_file_path):
-    """Motion.from_loi_data + the LOI engine on a synthesized fibre (needs a cell tif)."""
-    from sarcasm.motion import Motion
-    fp = motion_file_path
-    T = 80
-    t = np.arange(T)
-    base = 1.95 - 0.2 * np.clip(np.sin(2 * np.pi * t / 16.0), 0, None)
-    member = np.stack([base + 0.01 * np.sin(t / 3.0 + k) for k in range(4)])
-    # the chain must share the movie's frame time: a different one contradicts the store
-    frametime = SarcAsM(str(fp)).metadata.frametime or 0.01
-    z, slen, time = grouped_motion.synthesize_loi_chain(member, frametime=frametime)
-    m = Motion.from_loi_data(
-        str(fp), 'track_myofibril_test',
-        {'z_pos': z, 'z_pos_raw': z.copy(), 'slen': slen, 'time': time, 'n_sarcomeres': 4},
-        auto_save=False, frametime=frametime)
-    assert m.loi_data['synthetic'] is True
-    assert m.metadata.frametime == pytest.approx(frametime)
-    # the battle-tested LOI engine runs unchanged on the synthesized chain
-    m.detect_analyze_contractions()
-    m.get_trajectories()
-    assert m.loi_data['slen'].shape[0] == 4
-    assert 'delta_slen' in m.loi_data
-
-
 # ---------------------------------------------------------------------------
-# motion.group_tracks(by='loi') — curated fibre lines from motion.detect_lois
+# motion.group_tracks(by='loi') — curated lines from motion.detect_lois
 # ---------------------------------------------------------------------------
 
 # A sarcomere is ~1.95 µm at pixelsize 0.1 in _fake_structure -> ~19.5 px. Consecutive
-# sarcomeres along a fibre are therefore ~20 px apart, not adjacent pixels.
+# sarcomeres along a line are therefore ~20 px apart, not adjacent pixels.
 _SLEN_PX = 19.5
 
 

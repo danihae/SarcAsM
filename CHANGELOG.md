@@ -13,6 +13,14 @@ All notable changes to SarcAsM are documented here. The format follows
   detection) and the analysis, after `sarc.detect_sarcomeres`, with one store write at the end. `sarcasm motion` runs
   it, which also makes `sarcasm motion --by loi` work (it never detected the LOIs).
 - `sarc.motion.set_lois(lines)` for hand-drawn lines of interest.
+- **Groups**: `sarc.motion.groups(kind)` gives the groups of one grouping kind, and `group_tracks` and `analyze`
+  return them. A `Group` is the same class for every kind: `g.<name>` is its row of `motion.<kind>.<name>`
+  (`g.contr`, `g.slen_avg`, `g.beating_rate`, ...), `g.tracks.<name>` its members' slice of `motion.tracks.*` plus their
+  `delta_slen`, `vel` and `equ` against the group's own contractions, and `g.z_pos` the Z-bands along the line of a
+  myofibril or LOI group. `g.sarc` is the recording.
+- **Popping in the analysis of every grouping**: `motion.<kind>.popping_rate`, `popping_rate_contr` and
+  `track_popping` (a sarcomere pops in a cycle when it lengthens more than `thres_popping`, 0.25 µm, beyond its resting
+  length while its group contracts).
 
 ### Changed (breaking)
 
@@ -75,6 +83,21 @@ All notable changes to SarcAsM are documented here. The format follows
 - `sarc.read_mask(name, frames=None)` and `sarc.mask_exists(name)` are public (were `_read_mask` / `_mask_exists`).
 - `contraction_analysis.analyze_contraction_parameters(group_n_contr=...)` (was `domain_n_contr=`): the engine is
   shared by every grouping kind, so its names say "group", not "domain".
+- **`Motion` is removed**, with `sarc.motion.get_track_motion`. It was the manual-LOI engine of 0.5 kept as a
+  per-myofibril view, and computed contractions (with a two-channel LOI rule that ignored frames with fewer than 4
+  sarcomeres), smoothed ΔSL, cycle metrics, correlations and oscillations a second time, with different numbers than
+  the group's analysis. Use `sarc.motion.groups(kind)[i]`: its contractions are the group's own. Removed with it:
+  `detect_analyze_contractions`, `predict_contractions`, `get_trajectories`, `analyze_trajectories`,
+  `calculate_surplus_motion_index`, `analyze_popping`, `analyze_correlations`, `analyze_oscillations`, the
+  `<name>_loi_data.json` files, `Utils.nan_sav_golay` and `Utils.custom_diff`.
+- The plots of one group take a `Group`: `Plots.plot_z_pos` (myofibril and LOI groups), `plot_phase_space`,
+  `plot_overlay_delta_slen`, `plot_overlay_velocity`, `plot_popping_events` (which always failed before),
+  `plot_slen(ax, g)` and `plot_delta_slen(ax, g, stacked=False)` (`stacked=True`: one row per sarcomere).
+  `plot_loi_summary_motion` is `plot_group_summary(g)`; it returns the figure and saves it only when given a
+  `file_path`. Their ΔSL and velocity are no longer smoothed for display.
+- GUI: "Show fibre detail" is "Show group detail", for every grouping kind; it shows the group's own contractions.
+- `SarcAsMBase` is merged into `SarcAsM` (it had no other subclass left). `SarcAsM(..., log_level=...)` is honoured;
+  before, it was stored as user metadata.
 - **`restart` is keyword-only** (`SarcAsM(file, restart=True)`), so a stray second positional argument can no longer
   delete the analysis store; the type guard that stood in for this is gone.
 - **`sarc.commit()` is the one way to save**; `store_structure_data()` is removed (it did the same).
@@ -111,6 +134,11 @@ All notable changes to SarcAsM are documented here. The format follows
   `loi_index_lines`), not the grown candidate lines, their Hausdorff distances and clusters.
 
 ### Fixed
+
+- `sarc.structure.analyze_myofibrils` drew its start vectors without a seed, so every run gave different myofibril
+  lines and different myofibril groups. It takes `random_seed` (default 42, recorded in the params), as do
+  `sarc.motion.detect_lois` (was None) and the domain analysis. Line growth no longer seeds Python's global random
+  generator.
 
 - `detect_lois` saved only the grown candidate lines: the later steps changed the stored dict in place, which was
   not written to the store. After reopening a file, `group_tracks(by='loi')` failed with "LOI lines not available".
