@@ -54,6 +54,7 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- `detect_sarcomeres` suggests `model_path='legacy'` when the generalist runs below 0.08 µm/px: at high magnification the legacy 2D model finds more sarcomeres (2,250 vs 1,929 sarcomere vectors per frame on a 0.06-µm/px high-speed movie, 17.5 % more tracks per movie at 0.076 µm/px), and a `rescale_factor` does not close the gap. The default stays `generalist`. `detection.model_pixelsize_advice`.
 - `analyze_track_motion` reads the contraction state from the member tracks (`reading='tracks'`, the new default):
   ContractionNet reads each continuous, plausible member track (length inside `slen_lims`, measured in at least
   `min_valid_frames` of the frames, no jump above `max_step_slen` = 0.3 µm; the `max_tracks` = 100 least noisy) and

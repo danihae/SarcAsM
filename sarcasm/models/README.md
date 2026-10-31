@@ -14,6 +14,8 @@ single-cell movies), because v1 fragmented the Z- and M-band lines there: on the
 +0.02 µm), so it is the default there too. Set `model_path='legacy'` to reproduce
 high-magnification results of earlier versions, including the paper's high-speed movies.
 
+**Below 0.08 µm/px, `detect_sarcomeres` suggests `model_path='legacy'`.** At this magnification the legacy model still finds more sarcomeres. On the 0.0605 µm/px high-speed movie of the paper (Series095, 3D Z-band generalist, frames 0–1000) it gives 2,250 sarcomere vectors per frame against 1,929 for v2 (−14 %), and 2,272 against 1,949 tracks covering at least half of the movie. On the acute drug panel (0.076 µm/px) v2 gives a median 17.5 % fewer tracks per movie. A `rescale_factor` does not close the gap (v2 at 0.75 / 0.6 / 0.5: 1,592 / 1,821 / 1,846 vectors per frame). The default stays `generalist`, so that one model serves all data unless you choose otherwise.
+
 ```python
 sarc.detect_sarcomeres(frames=0)                          # generalist (v2)
 sarc.detect_sarcomeres(frames=0, model_path='generalist')  # force v2

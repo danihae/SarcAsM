@@ -15,7 +15,7 @@
 
 import logging
 import os
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 from bio_image_unet import multi_output_unet3d as unet3d
@@ -35,6 +35,12 @@ GENERALIST_MODELS = {
     'generalist':    ('model_sarcomeres_generalist_v2.pt', (0.06, 0.45)),
     'legacy':        ('model_sarcomeres_generalist.pt',    (0.06, 0.35)),
 }
+
+# Below this pixel size (high magnification, e.g. high-speed single-cell movies) the 'legacy' 2D model finds more
+# sarcomeres than the generalist: about 14 % more sarcomere vectors per frame at 0.06 um/px, 17 % more tracks per movie
+# at 0.076 um/px, and no rescale_factor closes the gap (sarcasm/models/README.md). The default stays 'generalist';
+# detect_sarcomeres suggests 'legacy' there.
+LEGACY_SUGGESTED_BELOW_UM = 0.08
 
 # Named 3D Z-band checkpoints for high-speed movies: alias -> filename; see sarcasm/models/README.md.
 Z_BANDS_3D_MODELS = {
@@ -307,17 +313,8 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
     if info is not None:
         info['model'] = key or model_path
     if key is not None:
-        px_lo, px_hi = GENERALIST_MODELS[key][1]
-        if pixelsize is not None and pixelsize < px_lo:
-            logger.warning(
-                f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the validated range "
-                f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too small. "
-                f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
-        elif pixelsize is not None and pixelsize > px_hi:
-            logger.warning(
-                f"Pixel size ({round(pixelsize, 3)} µm) is larger than the validated range "
-                f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too large. "
-                f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
+        for message in model_pixelsize_advice(key, pixelsize):
+            logger.warning(message)
         logger.info(f"Using model '{key}' (pixel size {pixelsize} µm): {model_path}")
 
     # block size from the whole working set (~12 float32 planes per frame)
@@ -393,6 +390,32 @@ def detect_sarcomeres_unet(images, model_path: str, model_dir: str,
         torch.cuda.empty_cache()
 
     return sinks
+
+
+def model_pixelsize_advice(key: str, pixelsize: Optional[float]) -> list:
+    """Warnings for a bundled 2D model at this pixel size (empty when there is nothing to say).
+
+    Outside the model's validated range a rescale_factor is suggested. With the 'generalist' model below
+    ``LEGACY_SUGGESTED_BELOW_UM`` the 'legacy' model is suggested: it finds more sarcomeres at high magnification.
+    """
+    if pixelsize is None or key not in GENERALIST_MODELS:
+        return []
+    px_lo, px_hi = GENERALIST_MODELS[key][1]
+    out = []
+    if pixelsize < px_lo:
+        out.append(f"Pixel size ({round(pixelsize, 3)} µm) is smaller than the validated range "
+                   f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too small. "
+                   f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
+    elif pixelsize > px_hi:
+        out.append(f"Pixel size ({round(pixelsize, 3)} µm) is larger than the validated range "
+                   f"({px_lo}-{px_hi} µm) for the '{key}' model. Pixelsize might be too large. "
+                   f"Consider rescale_factor={_suggested_rescale(pixelsize)} for optimal results.")
+    if key == 'generalist' and pixelsize < LEGACY_SUGGESTED_BELOW_UM:
+        out.append(f"Pixel size ({round(pixelsize, 3)} µm) is below {LEGACY_SUGGESTED_BELOW_UM} µm: at this magnification "
+                   f"the 'legacy' 2D model usually finds more sarcomeres than the generalist (about 14 % more "
+                   f"sarcomere vectors at 0.06 µm/px; a rescale_factor does not close the gap). Consider "
+                   f"model_path='legacy'.")
+    return out
 
 
 def _suggested_rescale(pixelsize: float, target: float = 0.2) -> float:

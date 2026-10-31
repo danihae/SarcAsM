@@ -693,6 +693,18 @@ def test_bundled_model_is_the_generalist_unless_named(model_path, pixelsize, exp
     assert resolve_generalist_model('/somewhere/custom.pt', 0.061, '/models') == (None, '/somewhere/custom.pt')
 
 
+@pytest.mark.parametrize('key, pixelsize, suggests_legacy', [
+    ('generalist', 0.061, True), ('generalist', 0.076, True), ('generalist', 0.08, False),
+    ('generalist', 0.11, False), ('legacy', 0.061, False), ('generalist', None, False),
+])
+def test_generalist_below_0_08_um_suggests_the_legacy_model(key, pixelsize, suggests_legacy):
+    """At high magnification the legacy 2D model finds more sarcomeres (14 % more vectors at 0.06 µm/px), so the
+    default generalist suggests it there; a run with 'legacy' or at a coarser pixel size gets no such advice."""
+    from sarcasm.analysis.detection import model_pixelsize_advice
+    advice = model_pixelsize_advice(key, pixelsize)
+    assert any("model_path='legacy'" in m for m in advice) == suggests_legacy
+
+
 def test_unbundled_beta_model_says_how_to_restore_it():
     from sarcasm.analysis.detection import resolve_generalist_model
     with pytest.raises(ValueError, match='git show v1.0.0b3'):
