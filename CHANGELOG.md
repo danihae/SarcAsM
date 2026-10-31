@@ -14,6 +14,20 @@ All notable changes to SarcAsM are documented here. The format follows
   FFT wavelet transform, the group quartiles are computed in one pass, and the length refinement reads the Z-band
   mask in blocks of frames. Every stored motion result is unchanged, except the oscillation spectra, which differ
   by < 1e-15 (rounding).
+- `TrainingDataGenerator.predict_zbands()` uses the Z-band output of the bundled 2D generalist model when no
+  `model_path` is given; a path is still a bio-image-unet Z-band model.
+- `detect_lois` stores only what the grouping and the plots read (`loi_lines`, `len_loi_lines`,
+  `loi_index_lines`), not the grown candidate lines, their Hausdorff distances and clusters.
+
+### Fixed
+
+- `detect_lois` saved only the grown candidate lines: the later steps changed the stored dict in place, which was
+  not written to the store. After reopening a file, `group_tracks(by='loi')` failed with "LOI lines not available".
+  Run `detect_lois` again on files analysed with 1.0.0b4 or earlier.
+- `SarcAsM(..., restart=True)` deleted a folder named like the movie (`<name>/`) beside it, a pre-1.0 analysis or
+  any folder of yours with that name. It now deletes only the analysis store.
+- `TrainingDataGenerator.create_sarcomere_mask` failed (it called a `SarcAsM.sarcomere_mask` that did not exist).
+- `Plots.plot_lois` had a branch that could never run; a `Motion` object now warns that it has no LOI lines.
 
 ## [1.0.0b4] — 2026-10-30
 

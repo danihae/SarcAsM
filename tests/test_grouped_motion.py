@@ -1153,6 +1153,37 @@ def test_group_tracks_loi_far_tracks_unassigned():
     assert gid[2] == -1            # > 0.5*slen from the line -> dropped
 
 
+def test_detect_lois_selection_survives_reopening(motion_file_path, tmp_path):
+    """detect_lois must store the selected lines, not only the grown ones (SARC-26).
+
+    The steps used to change the stored dict in place after the first save, which does
+    not mark it changed, so a reopened store had no loi_lines and group_tracks(by='loi')
+    failed. Real frame-0 vectors of the 20 kPa movie, saved to a temporary store.
+    """
+    from pathlib import Path
+    from sarcasm.io.results_store import Results
+    src_path = Path(motion_file_path).with_suffix('.ome.zarr') / 'sarcasm'
+    keys = ['structure.sarcomere.pos_px', 'structure.sarcomere.pos', 'structure.sarcomere.slen',
+            'structure.sarcomere.orientation', 'structure.sarcomere.midline_length']
+    src = Results(src_path)
+    if not all(k in src for k in keys):
+        pytest.skip('20 kPa store has no sarcomere vectors')
+    store = tmp_path / 'loi.ome.zarr'
+    sarc = SarcAsM.__new__(SarcAsM)
+    sarc.auto_save = True
+    sarc.metadata = types.SimpleNamespace(pixelsize=0.065, n_stack=10, frametime=0.01)
+    sarc.save_metadata = lambda: None
+    sarc.data = Results(store, initial={k: [src[k][0]] for k in keys})
+    sarc.data.flush()
+
+    sarc.detect_lois(frame=0, n_lois=3, random_seed=0, number_lims=(5, 50))
+    saved = Results(store)['motion.loi.data']
+    assert len(saved['loi_lines']) == len(sarc.data['motion.loi.data']['loi_lines']) == 3
+    assert len(saved['loi_index_lines']) == 3
+    for line, chain in zip(saved['loi_lines'], saved['loi_index_lines']):
+        assert np.asarray(line).shape == (len(chain), 2)
+
+
 def test_group_tracks_loi_missing_prereq_raises():
     sarc = _fake_structure()
     with pytest.raises(ValueError, match='LOI lines not available'):

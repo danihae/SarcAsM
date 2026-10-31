@@ -30,7 +30,8 @@ from scipy.ndimage import label
 from skimage.draw import line
 from skimage.morphology import skeletonize
 
-from sarcasm import PlotUtils, SarcAsM, Utils
+from sarcasm import PlotUtils, Utils
+from sarcasm.analysis import domain_clustering
 
 
 class TrainingDataGenerator:
@@ -91,7 +92,8 @@ class TrainingDataGenerator:
         """Include dynamic attributes in autocompletion"""
         return super().__dir__() + list(self.output_dirs.keys())
 
-    def predict_zbands(self, model_path: str, network: str = 'Unet_v0', patch_size: tuple[int, int] = (1024, 1024)):
+    def predict_zbands(self, model_path: Union[str, None] = None, network: str = 'Unet_v0',
+                       patch_size: tuple[int, int] = (1024, 1024)):
         """
         Predict sarcomere Z-bands using a pre-trained U-Net model.
 
@@ -100,17 +102,25 @@ class TrainingDataGenerator:
 
         Parameters
         ----------
-        model_path : str
-            Path of U-Net model for sarcomere Z-band detection.
+        model_path : str or None, optional
+            None uses the Z-band output of SarcAsM's bundled 2D generalist model. A path is a
+            Z-band model trained with the bio-image-unet package (as in the tutorial), run with
+            ``network``. Default is None.
         network : str, optional
-            Model type, chosen from models in the bio-image-unet package.
-            Default is 'Unet_v0'.
+            Model type of a bio-image-unet model given by ``model_path``. Default is 'Unet_v0'.
         patch_size : tuple of int, optional
             Patch size ``(height, width)`` for prediction; should be multiples
             of 16. Default is (1024, 1024).
         """
-        Predict(self.image, result_name=self.output_dirs['zbands'] + self.basename, model_params=model_path,
-                network=network, resize_dim=patch_size)
+        result_name = self.output_dirs['zbands'] + self.basename
+        if model_path is None:
+            from sarcasm.analysis.detection import detect_sarcomeres_unet
+            masks = detect_sarcomeres_unet(self.image[None], model_path=None, model_dir=Utils.get_models_dir(),
+                                           pixelsize=self.pixelsize, max_patch_size=patch_size)
+            tifffile.imwrite(result_name, np.asarray(masks['zbands'][0], dtype=np.float32))
+        else:
+            Predict(self.image, result_name=result_name, model_params=model_path,
+                    network=network, resize_dim=patch_size)
 
     def wavelet_analysis(self, kernel: str = 'half_gaussian', size: float = 3.0, minor: float = 0.33,
                          major: float = 1.0, len_lims: tuple[float, float] = (1.45, 2.7),
@@ -259,12 +269,12 @@ class TrainingDataGenerator:
 
         # calculate sarcomere mask
         if len(pos_vectors_px) > 0:
-            sarcomere_mask = SarcAsM.sarcomere_mask(pos_vectors_px * self.pixelsize,
-                                                      -sarcomere_orientation_vectors,
-                                                      sarcomere_length_vectors,
-                                                      shape=self.shape,
-                                                      pixelsize=self.pixelsize,
-                                                      dilation_radius=dilation_radius)
+            sarcomere_mask = domain_clustering.sarcomere_mask(pos_vectors_px * self.pixelsize,
+                                                              -sarcomere_orientation_vectors,
+                                                              sarcomere_length_vectors,
+                                                              shape=self.shape,
+                                                              pixelsize=self.pixelsize,
+                                                              dilation_radius=dilation_radius)
         else:
             sarcomere_mask = np.zeros(self.shape, dtype='bool')
 

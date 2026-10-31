@@ -2745,229 +2745,6 @@ class SarcAsM(SarcAsMBase):
             m.analyze_oscillations()
         return m
 
-    def _grow_lois(self, frame: int = 0, ratio_seeds: float = 0.1, persistence: int = 2,
-                   threshold_distance: float = 0.3, random_seed: Union[None, int] = None) -> None:
-        """
-        Find LOIs (lines of interest) using a line-growth algorithm.
-
-        Parameters
-        ----------
-        frame : int, optional
-            Index of the frame to analyze (i-th frame of the sarcomere-vector
-            analysis frames). Default is 0.
-        ratio_seeds : float, optional
-            Ratio of sarcomere vectors used as seeds for line growth.
-            Default is 0.1.
-        persistence : int, optional
-            Persistence of line (averaged vector length and orientation for prior
-            estimation). Default is 2.
-        threshold_distance : float, optional
-            Maximal distance for nearest-neighbor estimation, in µm.
-            Default is 0.3.
-        random_seed : int or None, optional
-            Random seed for reproducibility. Default is None.
-        """
-        # select midline point data at frame
-        (pos_vectors, sarcomere_length_vectors,
-         sarcomere_orientation_vectors, midline_length_vectors) = self.data['structure.sarcomere.pos_px'][frame], \
-            self.data['structure.sarcomere.slen'][frame], \
-            self.data['structure.sarcomere.orientation'][frame], \
-            self.data['structure.sarcomere.midline_length'][frame]
-        # Delegate to myofibril_analysis module
-        loi_data = myofibril_analysis.line_growth(points_t=pos_vectors, sarcomere_length_vectors_t=sarcomere_length_vectors,
-                                    sarcomere_orientation_vectors_t=sarcomere_orientation_vectors,
-                                    midline_length_vectors_t=midline_length_vectors,
-                                    pixelsize=self.metadata.pixelsize,
-                                    ratio_seeds=ratio_seeds, persistence=persistence,
-                                    threshold_distance=threshold_distance, random_seed=random_seed)
-        self.data['motion.loi.data'] = loi_data
-        lois_vectors = [self.data['structure.sarcomere.pos_px'][frame][loi_i] for loi_i in self.data['motion.loi.data']['lines']]
-        self.data['motion.loi.data']['lines_vectors'] = lois_vectors
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _filter_lois(self, number_lims: Tuple[int, int] = (10, 100), length_lims: Tuple[float, float] = (0, 200),
-                     sarcomere_mean_length_lims: Tuple[float, float] = (1, 3),
-                     sarcomere_std_length_lims: Tuple[float, float] = (0, 1),
-                     midline_mean_length_lims: Tuple[float, float] = (0, 50),
-                     midline_std_length_lims: Tuple[float, float] = (0, 50),
-                     midline_min_length_lims: Tuple[float, float] = (0, 50),
-                     ) -> None:
-        """
-        Filter Lines of Interest (LOIs) by geometric and morphological criteria.
-
-        Parameters
-        ----------
-        number_lims : tuple of int, optional
-            Limits (min, max) of sarcomere number in an LOI. Default is (10, 100).
-        length_lims : tuple of float, optional
-            Limits (min, max) for LOI length in µm. Default is (0, 200).
-        sarcomere_mean_length_lims : tuple of float, optional
-            Limits (min, max) for mean sarcomere length in an LOI.
-            Default is (1, 3).
-        sarcomere_std_length_lims : tuple of float, optional
-            Limits (min, max) for the std of sarcomere lengths in an LOI.
-            Default is (0, 1).
-        midline_mean_length_lims : tuple of float, optional
-            Limits (min, max) for mean midline length in an LOI.
-            Default is (0, 50).
-        midline_std_length_lims : tuple of float, optional
-            Limits (min, max) for the std of midline length in an LOI.
-            Default is (0, 50).
-        midline_min_length_lims : tuple of float, optional
-            Limits (min, max) for minimum midline length in an LOI.
-            Default is (0, 50).
-        """
-        # Delegate to loi_detection module
-        (filtered_lois, filtered_lois_vectors,
-         filtered_features) = loi_detection.filter_lois(
-            lois=self.data['motion.loi.data']['lines'],
-            loi_features=self.data['motion.loi.data']['line_features'],
-            lois_vectors=self.data['motion.loi.data']['lines_vectors'],
-            number_lims=number_lims,
-            length_lims=length_lims,
-            sarcomere_mean_length_lims=sarcomere_mean_length_lims,
-            sarcomere_std_length_lims=sarcomere_std_length_lims,
-            midline_mean_length_lims=midline_mean_length_lims,
-            midline_std_length_lims=midline_std_length_lims,
-            midline_min_length_lims=midline_min_length_lims
-        )
-
-        self.data['motion.loi.data']['lines'] = filtered_lois
-        self.data['motion.loi.data']['lines_vectors'] = filtered_lois_vectors
-        self.data['motion.loi.data']['line_features'] = filtered_features
-
-    def _hausdorff_distance_lois(self, symmetry_mode: str = 'max') -> None:
-        """
-        Compute Hausdorff distances (µm) between all good LOIs.
-
-        Parameters
-        ----------
-        symmetry_mode : {'min', 'max'}, optional
-            Whether to take min or max of ``H(loi_i, loi_j)`` and
-            ``H(loi_j, loi_i)``. Default is 'max'.
-        """
-        # Delegate to loi_detection module
-        hausdorff_dist_matrix = loi_detection.hausdorff_distance_lois(
-            lines_vectors=[np.asarray(v, dtype=float) * self.metadata.pixelsize
-                           for v in self.data['motion.loi.data']['lines_vectors']],
-            symmetry_mode=symmetry_mode
-        )
-
-        self.data['motion.loi.data']['hausdorff_dist_matrix'] = hausdorff_dist_matrix
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _cluster_lois(self, distance_threshold_lois: float = 2.5, linkage: str = 'single') -> None:
-        """
-        Agglomerative clustering of good LOIs using predefined Hausdorff distance matrix using scikit-learn.
-
-        Parameters
-        ----------
-        distance_threshold_lois : float, optional
-            Hausdorff distance (µm) above which clusters are not merged. Default is 2.5.
-        linkage : {'complete', 'average', 'single'}, optional
-            Linkage criterion determining the inter-cluster distance to minimize
-            when merging: 'average' uses the mean pairwise distance, 'complete'
-            the maximum pairwise distance, 'single' the minimum pairwise distance.
-            Default is 'single'.
-        """
-        # Delegate to loi_detection module
-        cluster_labels, n_clusters = loi_detection.cluster_lois(
-            hausdorff_dist_matrix=self.data['motion.loi.data']['hausdorff_dist_matrix'],
-            distance_threshold=distance_threshold_lois,
-            linkage=linkage
-        )
-
-        self.data['motion.loi.data']['line_cluster'] = cluster_labels
-        self.data['motion.loi.data']['n_lines_clusters'] = n_clusters
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _fit_straight_line(self, add_length=1, n_lois=None):
-        """Fit straight lines to cluster points.
-
-        Parameters
-        ----------
-        add_length : float, optional
-            Elongate each fitted line at its end by this amount, in µm.
-            Default is 1.
-        n_lois : int or None, optional
-            If int, only the n longest LOIs are saved; if None, all are saved.
-            Default is None.
-        """
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines = loi_detection.fit_straight_line_to_clusters(
-            lines_vectors=self.data['motion.loi.data']['lines_vectors'],
-            cluster_labels=self.data['motion.loi.data']['line_cluster'],
-            n_clusters=self.data['motion.loi.data']['n_lines_clusters'],
-            pixelsize=self.metadata.pixelsize,
-            add_length=add_length,
-            n_lois=n_lois
-        )
-
-        self.data['motion.loi.data']['loi_lines'] = np.asarray(loi_lines, dtype=object)
-        self.data['motion.loi.data']['len_loi_lines'] = np.asarray(len_loi_lines)
-        # a fitted line has no detection chain: clear any stale one
-        self.data['motion.loi.data']['loi_index_lines'] = None
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _longest_in_cluster(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_longest_in_cluster(
-            lines=self.data['motion.loi.data']['lines'],
-            pos_vectors=self.data['structure.sarcomere.pos_px'][frame],
-            cluster_labels=self.data['motion.loi.data']['line_cluster'],
-            n_clusters=self.data['motion.loi.data']['n_lines_clusters'],
-            n_lois=n_lois
-        )
-
-        self.data['motion.loi.data']['loi_lines'] = loi_lines
-        self.data['motion.loi.data']['len_loi_lines'] = len_loi_lines
-        # Keep the ordered detection-index chain of each selected LOI, so
-        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
-        # sarcomeres instead of re-deriving membership from geometric proximity.
-        self.data['motion.loi.data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _random_from_cluster(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_random_from_cluster(
-            lines=self.data['motion.loi.data']['lines'],
-            pos_vectors=self.data['structure.sarcomere.pos_px'][frame],
-            cluster_labels=self.data['motion.loi.data']['line_cluster'],
-            n_clusters=self.data['motion.loi.data']['n_lines_clusters'],
-            n_lois=n_lois
-        )
-
-        self.data['motion.loi.data']['loi_lines'] = loi_lines
-        self.data['motion.loi.data']['len_loi_lines'] = len_loi_lines
-        # Keep the ordered detection-index chain of each selected LOI, so
-        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
-        # sarcomeres instead of re-deriving membership from geometric proximity.
-        self.data['motion.loi.data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
-        if self.auto_save:
-            self.store_structure_data()
-
-    def _random_lois(self, n_lois, frame):
-        # Delegate to loi_detection module
-        loi_lines, len_loi_lines, loi_index_lines = loi_detection.select_random_lois(
-            lines=self.data['motion.loi.data']['lines'],
-            pos_vectors=self.data['structure.sarcomere.pos_px'][frame],
-            n_lois=n_lois
-        )
-
-        self.data['motion.loi.data']['loi_lines'] = loi_lines
-        self.data['motion.loi.data']['len_loi_lines'] = len_loi_lines
-        # Keep the ordered detection-index chain of each selected LOI, so
-        # group_tracks(by='loi') can rebuild it as a 1D head-to-tail thread of
-        # sarcomeres instead of re-deriving membership from geometric proximity.
-        self.data['motion.loi.data']['loi_index_lines'] = np.asarray(loi_index_lines, dtype=object)
-        if self.auto_save:
-            self.store_structure_data()
-
     def detect_lois(self, frame: int = 0, 
                     n_lois: int = 4, 
                     ratio_seeds: float = 0.1, 
@@ -3050,40 +2827,64 @@ class SarcAsM(SarcAsMBase):
         """
         if 'structure.sarcomere.pos' not in self.data:
             raise ValueError('Sarcomere length and orientation not yet analyzed. Run analyze_sarcomere_vectors first.')
+        modes = ('fit_straight_line', 'longest_in_cluster', 'random_from_cluster', 'random_line')
+        if mode not in modes:
+            raise ValueError(f'mode must be one of {modes}, got {mode!r}.')
 
         frame = self._canonical_frame(frame)
         if self.metadata.n_stack == 1:
             raise ValueError('LOI detection not possible in single images. '
                              'Sarcomere motion tracking is only possible in high-speed movies; (t, x, y) stacks.')
 
-        # Grow LOIs based on seed vectors and specified parameters
-        self._grow_lois(frame=frame, ratio_seeds=ratio_seeds, random_seed=random_seed, persistence=persistence,
-                        threshold_distance=threshold_distance)
-        # Filter LOIs based on geometric and morphological criteria
-        self._filter_lois(number_lims=number_lims, length_lims=length_lims,
-                          sarcomere_mean_length_lims=sarcomere_mean_length_lims,
-                          sarcomere_std_length_lims=sarcomere_std_length_lims,
-                          midline_mean_length_lims=midline_mean_length_lims,
-                          midline_std_length_lims=midline_std_length_lims,
-                          midline_min_length_lims=midline_min_length_lims)
-        if mode == 'fit_straight_line' or mode == 'longest_in_cluster' or mode == 'random_from_cluster':
-            # Calculate Hausdorff distance between LOIs and perform clustering
-            self._hausdorff_distance_lois()
-            self._cluster_lois(distance_threshold_lois=distance_threshold_lois, linkage=linkage)
-            # Fit lines to LOIs clusters and select LOIs for analysis
-            if mode == 'fit_straight_line':
-                self._fit_straight_line(add_length=2, n_lois=n_lois)
-            elif mode == 'longest_in_cluster':
-                self._longest_in_cluster(n_lois=n_lois, frame=frame)
-            elif mode == 'random_from_cluster':
-                self._random_from_cluster(n_lois=n_lois, frame=frame)
-        elif mode == 'random_line':
-            self._random_lois(n_lois=n_lois, frame=frame)
-        else:
-            raise ValueError(f'mode {mode} not valid.')
+        pos_px = self.data['structure.sarcomere.pos_px'][frame]
+        grown = myofibril_analysis.line_growth(
+            points_t=pos_px, sarcomere_length_vectors_t=self.data['structure.sarcomere.slen'][frame],
+            sarcomere_orientation_vectors_t=self.data['structure.sarcomere.orientation'][frame],
+            midline_length_vectors_t=self.data['structure.sarcomere.midline_length'][frame],
+            pixelsize=self.metadata.pixelsize, ratio_seeds=ratio_seeds, persistence=persistence,
+            threshold_distance=threshold_distance, random_seed=random_seed)
+        lines, lines_vectors, _ = loi_detection.filter_lois(
+            lois=grown['lines'], loi_features=grown['line_features'],
+            lois_vectors=[pos_px[line] for line in grown['lines']],
+            number_lims=number_lims, length_lims=length_lims,
+            sarcomere_mean_length_lims=sarcomere_mean_length_lims,
+            sarcomere_std_length_lims=sarcomere_std_length_lims,
+            midline_mean_length_lims=midline_mean_length_lims,
+            midline_std_length_lims=midline_std_length_lims,
+            midline_min_length_lims=midline_min_length_lims)
 
-        logger.info(
-            f"detect_lois: selected {len(self.data['motion.loi.data']['loi_lines'])} LOI line(s).")
+        index_lines = None              # a fitted straight line has no detection chain
+        if mode == 'random_line':
+            loi_lines, len_loi_lines, index_lines = loi_detection.select_random_lois(
+                lines=lines, pos_vectors=pos_px, n_lois=n_lois)
+        else:
+            # Hausdorff distances (µm) between the remaining lines, then clustering
+            dist = loi_detection.hausdorff_distance_lois(
+                lines_vectors=[np.asarray(v, dtype=float) * self.metadata.pixelsize for v in lines_vectors],
+                symmetry_mode='max')
+            cluster, n_clusters = loi_detection.cluster_lois(
+                hausdorff_dist_matrix=dist, distance_threshold=distance_threshold_lois, linkage=linkage)
+            if mode == 'fit_straight_line':
+                loi_lines, len_loi_lines = loi_detection.fit_straight_line_to_clusters(
+                    lines_vectors=lines_vectors, cluster_labels=cluster, n_clusters=n_clusters,
+                    pixelsize=self.metadata.pixelsize, add_length=2, n_lois=n_lois)
+            else:
+                select = (loi_detection.select_longest_in_cluster if mode == 'longest_in_cluster'
+                          else loi_detection.select_random_from_cluster)
+                loi_lines, len_loi_lines, index_lines = select(
+                    lines=lines, pos_vectors=pos_px, cluster_labels=cluster, n_clusters=n_clusters, n_lois=n_lois)
+        # Only what group_tracks(by='loi') and the plots read is stored. loi_index_lines is the
+        # ordered detection-index chain of each line, so the grouping follows it head to tail.
+        # Plain lists: the store writes this dict as JSON, which takes lists of arrays but not
+        # object arrays.
+        loi = {'loi_lines': [np.asarray(line, dtype=float) for line in loi_lines],
+               'len_loi_lines': np.asarray(len_loi_lines, dtype=float),
+               'loi_index_lines': (None if index_lines is None
+                                   else [np.asarray(c, dtype=int) for c in index_lines])}
+        self.data['motion.loi.data'] = loi
+        if self.auto_save:
+            self.store_structure_data()
+        logger.info(f"detect_lois: selected {len(loi['loi_lines'])} LOI line(s).")
 
     def full_analysis_structure(self, frames='all'):
         """

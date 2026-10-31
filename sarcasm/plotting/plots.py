@@ -1451,15 +1451,9 @@ class Plots:
         alpha : float, optional
             Opacity of the lines. Default is 0.5.
         """
+        # A track chain viewed as a Motion carries no LOI polyline; only a SarcAsM holds LOI lines.
         loi_lines = None
-
-        if hasattr(sarc_obj, 'motion.loi.data'):
-            # Extract line data directly from sarc_obj.loi_data. Chains synthesized by
-            # SarcAsM.get_track_motion carry no 'line' polyline, so this must not raise.
-            line = sarc_obj.loi_data.get('line')
-            loi_lines = None if line is None else [line]
-        elif hasattr(sarc_obj, 'data') and 'motion.loi.data' in sarc_obj.data:
-            # Extract lines from sarc_obj.data['motion.loi.data']
+        if hasattr(sarc_obj, 'data') and 'motion.loi.data' in sarc_obj.data:
             loi_lines = sarc_obj.data['motion.loi.data'].get('loi_lines', [])
 
         if loi_lines is not None:

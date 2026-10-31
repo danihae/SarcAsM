@@ -84,7 +84,8 @@ class SarcAsMBase:
     file_path : str or os.PathLike
         Path to the TIFF file for analysis.
     restart : bool, optional
-        If True, deletes existing analysis and starts fresh. Default is False.
+        If True, deletes the analysis store (``<name>.ome.zarr``) and starts fresh. Nothing
+        else is deleted. Default is False.
     pixelsize : float or None, optional
         Physical pixel size in micrometres (µm). If None, extracted from file
         metadata; otherwise provided manually. Default is None.
@@ -203,10 +204,6 @@ class SarcAsMBase:
         self.base_dir = base_name + '/'  # This is a directory path as a string.
         self.data_dir = os.path.join(self.base_dir, "data/")
         self.analysis_dir = os.path.join(self.base_dir, "analysis/")
-
-        # Handle restart: if restart is True and a legacy base_dir exists, remove it
-        if restart and os.path.exists(self.base_dir):
-            remove_tree(self.base_dir)
 
         # base_dir/data_dir/analysis_dir are created on demand by their few consumers;
         # everything else lives in the sibling <name>.ome.zarr store

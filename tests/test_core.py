@@ -84,6 +84,22 @@ def test_restart_true_still_recreates_the_store(tmp_path):
     assert not marker.exists(), "restart=True must clear the previous store contents"
 
 
+def test_restart_leaves_the_folder_named_after_the_movie(tmp_path):
+    """restart=True deletes only the store, not a ``<name>/`` folder beside the movie (SARC-26).
+
+    That folder may be a pre-1.0 analysis, which the warning promises to leave in place, or an
+    unrelated folder of the user's that happens to share the name.
+    """
+    p = _movie(tmp_path)
+    folder = tmp_path / "movie"
+    (folder / "data").mkdir(parents=True)
+    (folder / "data" / "notes.txt").write_text("keep me")
+
+    SarcAsM(p, restart=True, **META)
+
+    assert (folder / "data" / "notes.txt").read_text() == "keep me"
+
+
 # --------------------------------------------------------------------------- #
 # object summary: repr / str
 # --------------------------------------------------------------------------- #
