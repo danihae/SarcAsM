@@ -1699,9 +1699,20 @@ class SarcAsM(SarcAsMBase):
         observed = np.asarray(out['motion.tracks.observed'], dtype=bool)
         logger.info('Refining track lengths along ' + ('one sarcomere axis per track' if window_frames is None
                     else f'the running median orientation over {window_frames} frames') + '...')
+        # frames are read in order, so read ~64 MB of pages at a time instead of one store access per frame
+        height, width = self.metadata.size
+        block = max(1, (64 * 2 ** 20) // (4 * int(height) * int(width)))
+        pages = {'start': None, 'data': None}
+
+        def read_zbands(k):
+            start = k - k % block
+            if pages['start'] != start:
+                pages['start'] = start
+                pages['data'] = self._read_mask(zbands_name, frames=[int(f) for f in list_frames[start:start + block]])
+            return pages['data'][k - start]
+
         slen, ori, pos_px = sarcomere_tracking.refine_track_lengths(
-            out['motion.tracks.positions_px'], raw_ori, observed,
-            lambda k: self._read_mask(zbands_name, frames=int(list_frames[k])),
+            out['motion.tracks.positions_px'], raw_ori, observed, read_zbands,
             pixelsize=self.metadata.pixelsize, window_frames=window_frames, progress_notifier=progress_notifier,
             **settings)
         # a frame whose axis finds no pair of Z-bands keeps its detection measurement

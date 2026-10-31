@@ -36,6 +36,7 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
+from contraction_net.prediction import predict_contractions_batch
 from sarcasm.analysis import contraction_analysis
 from sarcasm.analysis.contraction_analysis import equilibrium_over_quiet  # noqa: F401  (public here too)
 
@@ -109,8 +110,7 @@ def aggregate_group_slen(
             slen_ts[g] = agg_fn(sub, axis=0)
             median_ts[g] = np.nanmedian(sub, axis=0)
             std_ts[g] = np.nanstd(sub, axis=0)
-            q25_ts[g] = np.nanpercentile(sub, 25, axis=0)
-            q75_ts[g] = np.nanpercentile(sub, 75, axis=0)
+            q25_ts[g], q75_ts[g] = np.nanpercentile(sub, [25, 75], axis=0)
 
     return {
         'slen': slen_ts,
@@ -208,19 +208,15 @@ def track_contraction_prob(
         if members.size == 0:
             continue
         members = members[np.argsort(noise[members], kind='stable')][:max_tracks]
-        probs, scores = [], []
-        for t in members:
-            trace = tracks_slen[t]
-            p, decision = contraction_analysis.predict_contractions(
-                contraction_analysis._interpolate_nans(trace), model_path, frametime=frametime,
-                return_decision=True, **declared)
-            too_short = too_short or decision.reason == 'too_short'
-            probs.append(np.where(finite[t], p[0], np.nan))
-            scores.append(decision.score)
+        traces = [contraction_analysis._interpolate_nans(tracks_slen[t]) for t in members]
+        p, decisions = predict_contractions_batch(traces, model_path, frametime=frametime,
+                                                  **declared)
+        too_short = too_short or any(d.reason == 'too_short' for d in decisions)
+        probs = np.where(finite[members], p[:, 0], np.nan)
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', category=RuntimeWarning)
-            prob[g] = np.nanmedian(np.asarray(probs), axis=0)
-            score[g] = np.nanmedian(np.asarray(scores, dtype=float))
+            prob[g] = np.nanmedian(probs, axis=0)
+            score[g] = np.nanmedian(np.asarray([d.score for d in decisions], dtype=float))
         n_read[g] = members.size
     return {'prob': prob, 'n_tracks_read': n_read, 'polarity_score': score, 'too_short': too_short}
 

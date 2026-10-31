@@ -4,6 +4,17 @@ All notable changes to SarcAsM are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Faster motion analysis, same results: `analyze_track_motion(by='myofibril')` takes half the time (30 → 15 s on
+  the 500-frame 20 kPa test movie, M1 Pro) and tracking 6 % less (46 → 43 s). ContractionNet reads a group's
+  tracks 8 at a time (`contraction_net.prediction.predict_contractions_batch`), the oscillation spectrum uses the
+  FFT wavelet transform, the group quartiles are computed in one pass, and the length refinement reads the Z-band
+  mask in blocks of frames. Every stored motion result is unchanged, except the oscillation spectra, which differ
+  by < 1e-15 (rounding).
+
 ## [1.0.0b4] — 2026-10-30
 
 ### Added

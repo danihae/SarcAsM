@@ -8,7 +8,7 @@ import torch
 from scipy.signal import savgol_filter
 
 from .contraction_net import ContractionNet, SymmetrizedContractionNet
-from .padding import pad_for_inference
+from .padding import INFERENCE_PAD, pad_for_inference
 from .polarity import PolarityDecision, PolarityRule, decide_polarity
 
 #: Device inference runs on. The CPU by default: ``predict_contractions(-x)`` equals
@@ -218,14 +218,90 @@ def predict_contractions(data, model, network=ContractionNet, *, frametime=None,
     mode.
     """
     net = _load_model(model, network)
+    data = _validated_trace(data)
+    frametime = _resolve_frametime(net, frametime, 'predict_contractions')
+    prepared, decision = _condition(net, data, frametime, polarity, margin)
+    if prepared is None:
+        probs = np.zeros((_out_channels(net), data.shape[0]), dtype=np.float32)
+    else:
+        probs = _network_output(net, [prepared], data.shape[0])[0]
+    return (probs, decision) if return_decision else probs
 
+
+def predict_contractions_batch(traces, model, network=ContractionNet, *, frametime=None,
+                               polarity=None, margin=None):
+    """:func:`predict_contractions` for several traces of one length, in batched network calls.
+
+    Parameters
+    ----------
+    traces : array_like
+        Time-series of shape ``(n_traces, n_frames)``.
+    model, network, frametime, polarity, margin
+        As for :func:`predict_contractions`; they apply to every trace.
+
+    Returns
+    -------
+    ndarray
+        Array of shape ``(n_traces, out_channels, n_frames)``, row *i* equal to
+        ``predict_contractions(traces[i], ...)`` up to float32 rounding (~1e-6).
+    list of PolarityDecision
+        One per trace, identical to the single call's.
+
+    Notes
+    -----
+    Each trace is decided and conditioned on its own, and the network treats the traces of
+    a batch independently (its normalization and attention act per trace), so batching
+    changes only the speed and the last float32 bits: the CPU kernels sum in a different
+    order for a batch. Batches hold at most 8 traces, fewer if their attention maps would
+    exceed ~256 MB. On an M1 Pro, 8 traces per call were 1.4-2x faster than one at a time
+    for 150-3000 frames, and 16 per call 5-15x slower.
+    """
+    net = _load_model(model, network)
+    traces = [_validated_trace(t) for t in np.atleast_2d(np.asarray(traces, dtype=np.float64))]
+    n_frames = traces[0].shape[0]
+    frametime = _resolve_frametime(net, frametime, 'predict_contractions_batch')
+    probs = np.zeros((len(traces), _out_channels(net), n_frames), dtype=np.float32)
+    conditioned = [_condition(net, t, frametime, polarity, margin) for t in traces]
+    decisions = [decision for _, decision in conditioned]
+    run = [i for i, (prepared, _) in enumerate(conditioned) if prepared is not None]
+
+    padded = n_frames + 2 * INFERENCE_PAD
+    batch_size = max(1, min(_MAX_BATCH, _ATTENTION_BUDGET // (16 * padded * padded)))
+    for start in range(0, len(run), batch_size):
+        chunk = run[start:start + batch_size]
+        probs[chunk] = _network_output(net, [conditioned[i][0] for i in chunk], n_frames)
+    return probs, decisions
+
+
+#: Traces per batched network call; larger batches were several times slower on the CPU.
+_MAX_BATCH = 8
+#: Bytes the attention maps of one batched network call may take (float32, 4 heads).
+_ATTENTION_BUDGET = 256 * 2 ** 20
+
+
+def _validated_trace(data):
     data = np.array(data, dtype=np.float64).ravel()
-    len_data = data.shape[0]
-    if len_data == 0:
+    if data.shape[0] == 0:
         raise ValueError('Cannot predict contractions for an empty time-series.')
     if not np.isfinite(data).all():
         raise ValueError('Time-series contains NaN or infinite values; fill gaps first.')
+    return data
 
+
+def _resolve_frametime(net, frametime, caller):
+    """The frametime the polarity rule decides with; warns (at the caller's caller) if none."""
+    if frametime is None and getattr(net, 'input_convention', 'q90') == 'q90':
+        warnings.warn(f'{caller} was given no frametime; the polarity rule assumes 1/30 s. '
+                      f'Pass the frametime of the recording.', stacklevel=3)
+        return _DEFAULT_FRAMETIME
+    return frametime
+
+
+def _condition(net, data, frametime, polarity, margin):
+    """Decide a trace's polarity and condition it for ``net``: ``(input or None, decision)``.
+
+    The input is None when the polarity rule cannot decide; the prediction is then zeros.
+    """
     convention = getattr(net, 'input_convention', 'q90')
     if convention != 'q90':
         if polarity is not None:
@@ -233,37 +309,29 @@ def predict_contractions(data, model, network=ContractionNet, *, frametime=None,
                              f"polarity rule ('q90'); this one uses {convention!r}.")
         decision = PolarityDecision(1, math.nan, math.nan,
                                     f'rule not used: {convention!r} checkpoint')
-        probs = _network_output(net, prepare_robust_input(data, convention=convention),
-                                len_data)
-        return (probs, decision) if return_decision else probs
+        return prepare_robust_input(data, convention=convention), decision
 
-    if frametime is None:
-        warnings.warn('predict_contractions was given no frametime; the polarity rule '
-                      'assumes 1/30 s. Pass the frametime of the recording.', stacklevel=2)
-        frametime = _DEFAULT_FRAMETIME
     decision = decide_polarity(data, frametime, polarity=polarity, margin=margin,
                                rule=polarity_rule(net))
     if decision.sign == 0:
-        probs = np.zeros((_out_channels(net), len_data), dtype=np.float32)
-    else:
-        probs = _network_output(
-            net, prepare_robust_input(decision.sign * data, convention='q90'), len_data)
-    return (probs, decision) if return_decision else probs
+        return None, decision
+    return prepare_robust_input(decision.sign * data, convention='q90'), decision
 
 
 def _network_output(net, prepared, len_data):
-    """Run ``net`` on a conditioned trace, batch of one, and crop the padding off again."""
+    """Run ``net`` on conditioned traces of one length as one batch, and crop the padding off again."""
     # a model trained on the level alone must not be handed the difference channel
-    want = int(getattr(net, 'expected_in_channels', prepared.shape[0]))
+    want = int(getattr(net, 'expected_in_channels', prepared[0].shape[0]))
     # pad so the edge frames are inferred from context, not from a truncated window
-    prepared, pad = pad_for_inference(prepared[:want])
+    padded = [pad_for_inference(p[:want]) for p in prepared]
+    pad = padded[0][1]
 
-    tensor = torch.from_numpy(prepared).unsqueeze(0).to(device)
+    tensor = torch.from_numpy(np.stack([p for p, _ in padded])).to(device)
     with torch.no_grad():
-        res = net(tensor)[0][0]
+        res = net(tensor)[0]
     res = res.detach().cpu().numpy()
 
-    return res[:, pad:pad + len_data]
+    return res[:, :, pad:pad + len_data]
 
 
 def _out_channels(net):

@@ -261,7 +261,7 @@ def wavelet_spectrum(data: np.ndarray, frametime: float, min_scale: float = 6,
     """
     scales = np.geomspace(min_scale, max_scale, num=num_scales)
     cfs, frequencies = cwt(np.asarray(data, dtype=float), scales, wavelet,
-                           sampling_period=frametime, axis=-1)
+                           sampling_period=frametime, axis=-1, method='fft')
     return cfs, frequencies
 
 

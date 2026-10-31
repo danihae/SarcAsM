@@ -611,6 +611,30 @@ class TestMirrorInvariance:
                     assert (db.sign, db.reason, db.declared) == (-da.sign, da.reason, -p)
 
 
+class TestBatchedPrediction:
+    """``predict_contractions_batch`` gives each trace the single call's reading, over several
+    batches and with an undecided trace among them."""
+
+    def test_rows_equal_single_calls(self):
+        rng = np.random.default_rng(3)
+        n_frames, ft = 300, 0.0164
+        t = np.arange(n_frames) * ft
+        traces = [1.9 - 0.1 * np.clip(np.sin(2 * np.pi * f * t), 0, None) ** 3
+                  + rng.normal(0, 0.02, n_frames) for f in rng.uniform(0.5, 2, 19)]
+        traces.insert(7, np.full(n_frames, 1.9))     # flat: the rule abstains, zeros
+        for kwargs in ({}, {'polarity': 1}):
+            batch, decisions = prediction.predict_contractions_batch(
+                traces, SHIPPED_MODEL, frametime=ft, **kwargs)
+            assert batch.shape[0] == len(traces) > prediction._MAX_BATCH
+            for x, row, d in zip(traces, batch, decisions):
+                single, ds = predict_contractions(x, SHIPPED_MODEL, frametime=ft,
+                                                  return_decision=True, **kwargs)
+                np.testing.assert_allclose(row, single, rtol=0, atol=1e-5)
+                assert (d.sign, d.reason) == (ds.sign, ds.reason)
+                assert _same_score(d.score, ds.score)
+            assert not batch[7].any() and decisions[7].sign == 0
+
+
 class TestOrientedReading:
     """What the network reads on the 'q90' path. The mirror tests hold for any mistake made
     the same way at both signs, such as reading the complement or padding differently, so
