@@ -15,8 +15,21 @@
 """SarcAsM: sarcomere analysis of cardiomyocytes (public API re-exports)."""
 
 from importlib import import_module as _import_module
+from typing import TYPE_CHECKING
 
 from ._version import __version__
+
+if TYPE_CHECKING:  # static view of _EXPORTS for IDEs and type checkers; never runs
+    from .core import SarcAsM
+    from .utils import Utils
+    from .features import (structure_feature_dict, motion_feature_dict, describe_key,
+                           pretty_name, MOTION_KINDS)
+    from .io.ioutils import IOUtils
+    from .plotting.plots import Plots
+    from .plotting.plot_utils import PlotUtils
+    from .plotting.animation import Animations
+    from .export import Export, BatchExport
+    from .training.data_generation import TrainingDataGenerator
 
 # Public names resolve on first access (PEP 562), so ``import sarcasm`` and the
 # CLI do not pay for torch, numba and matplotlib until they are needed.
