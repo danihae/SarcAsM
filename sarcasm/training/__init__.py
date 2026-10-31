@@ -13,11 +13,13 @@
 
 
 
-"""Tools to (re)train the 3D U-Net for Z-bands in high-speed movies.
+"""Tools to make training data and (re)train the networks.
 
+* :mod:`~sarcasm.training.data_generation` -- targets for the 2D U-Net from images
+  (:class:`~sarcasm.training.data_generation.TrainingDataGenerator`, see the training-data tutorial)
 * :mod:`~sarcasm.training.synthetic_motion` -- synthetic movies from 2D training images
 * :mod:`~sarcasm.training.teacher_labels` -- labelled clips from real movies via the 2D model
-* :mod:`~sarcasm.training.unet3d_trainer` -- the training loop
+* :mod:`~sarcasm.training.unet3d_trainer` -- the 3D U-Net training loop
 
-The step-by-step recipe is in ``scripts/retrain_unet3d/README.md``.
+The step-by-step recipe for the 3D U-Net is in ``scripts/retrain_unet3d/README.md``.
 """

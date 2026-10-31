@@ -488,12 +488,12 @@ class BatchProcessingControl:
             return done is not None and len(done) >= n_stack
 
         source = data.get('params.structure.analyze_vectors.zbands_source')
-        run_fast = fast and (redo or not sarc_obj._mask_exists('zbands_fast_movie'))
+        run_fast = fast and (redo or not sarc_obj.mask_exists('zbands_fast_movie'))
         run_vectors = (redo or run_fast or not _all_frames('structure.analyze_vectors')
                        or fast != (source == 'fast_movie_3d'))
         # the vectors read the detection masks, which 'Delete intermediate masks' may have removed
         run_detect = redo or not _all_frames('detect_sarcomeres') or (run_vectors and not all(
-            sarc_obj._mask_exists(m) for m in ('zbands', 'mbands', 'orientation', 'sarcomere_mask')))
+            sarc_obj.mask_exists(m) for m in ('zbands', 'mbands', 'orientation', 'sarcomere_mask')))
         run_vectors = run_vectors or run_detect
         if run_detect:
             _detect_sarcomeres(sarc_obj, model.parameters, 'all', progress_notifier)

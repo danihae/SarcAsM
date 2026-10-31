@@ -100,7 +100,7 @@ def detect_contractions(
     contr_time_min: float = 0.2,
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
-    group_label: str = "Domain",
+    group_label: str = "Group",
     id_offset: int = 0,
     group_prob: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
@@ -126,7 +126,7 @@ def detect_contractions(
     Parameters
     ----------
     group_slen : np.ndarray
-        Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
+        Per-group mean sarcomere length time-series, shape ``(n_groups, n_frames)`` (µm).
     frametime : float
         Time between frames in s.
     model_path : str
@@ -145,13 +145,13 @@ def detect_contractions(
         **incomplete**: its onset (or offset) lies outside the recorded window.
         Such cycles are *kept* in the mask — so they are plotted, excluded from the
         quiet/equilibrium baseline and contribute their onset to the beating rate —
-        but are flagged via ``domain_contr_complete`` so that
+        but are flagged via ``group_contr_complete`` so that
         :func:`analyze_contraction_parameters` can NaN the metrics they cannot
         support. Default is 3.
     min_valid_frames : float, optional
         Minimum fraction of valid (non-NaN) frames required to analyze a group. Default is 0.5.
     group_label : str, optional
-        Label used to name rows in log messages. Default is "Domain".
+        Label used to name rows in log messages. Default is "Group".
     id_offset : int, optional
         Offset added to the row index when naming rows in log messages. Default is 0.
     group_prob : dict or None, optional
@@ -167,17 +167,17 @@ def detect_contractions(
         Per-group contraction detection results (``max_n_contr`` is the max cycle
         count across groups):
 
-        - 'contr' : np.ndarray ``(n_domains, n_frames)``, binary contraction state
-        - 'n_contr' : np.ndarray ``(n_domains,)``, number of contraction cycles
+        - 'contr' : np.ndarray ``(n_groups, n_frames)``, binary contraction state
+        - 'n_contr' : np.ndarray ``(n_groups,)``, number of contraction cycles
           detected per group, **including** incomplete ones at the recording edges
-        - 'n_contr_complete' : np.ndarray ``(n_domains,)``, number of complete cycles
-        - 'contr_complete' : np.ndarray ``(n_domains, max_n_contr)``, 1.0 for a
+        - 'n_contr_complete' : np.ndarray ``(n_groups,)``, number of complete cycles
+        - 'contr_complete' : np.ndarray ``(n_groups, max_n_contr)``, 1.0 for a
           complete cycle, 0.0 for an incomplete one, NaN padding. Its per-group mean is
           the fraction of complete cycles.
-        - 'labels_contr' : np.ndarray ``(n_domains, n_frames)``, contraction cycle labels
-        - 'beating_rate' : np.ndarray ``(n_domains,)``, beating rate (Hz)
-        - 'beating_rate_variability' : np.ndarray ``(n_domains,)``, std of inter-beat interval (s)
-        - 'polarity_score' : np.ndarray ``(n_domains,)``, polarity score of the group's sarcomere
+        - 'labels_contr' : np.ndarray ``(n_groups, n_frames)``, contraction cycle labels
+        - 'beating_rate' : np.ndarray ``(n_groups,)``, beating rate (Hz)
+        - 'beating_rate_variability' : np.ndarray ``(n_groups,)``, std of inter-beat interval (s)
+        - 'polarity_score' : np.ndarray ``(n_groups,)``, polarity score of the group's sarcomere
           length (:func:`contraction_net.polarity.polarity_score`), positive when it rests at its
           long side; below -0.1, the rule's margin, it dwells at its short side. NaN where the row
           was not read (too few valid frames, a flat trace, or a recording too short for the rule)
@@ -186,17 +186,17 @@ def detect_contractions(
     if threshold is not None:
         decoding['threshold'] = float(threshold)
 
-    n_domains, n_frames = group_slen.shape
+    n_groups, n_frames = group_slen.shape
     
     # Initialize output arrays
-    domain_contr = np.zeros((n_domains, n_frames), dtype=bool)
-    domain_n_contr = np.zeros(n_domains, dtype=np.int32)
-    group_labels_contr = np.zeros((n_domains, n_frames), dtype=np.int32)
-    domain_n_contr_complete = np.zeros(n_domains, dtype=np.int32)
-    domain_beating_rate = np.full(n_domains, np.nan)
-    domain_beating_rate_var = np.full(n_domains, np.nan)
-    domain_polarity_score = np.full(n_domains, np.nan)
-    complete_per_domain: List[Optional[np.ndarray]] = [None] * n_domains
+    group_contr = np.zeros((n_groups, n_frames), dtype=bool)
+    group_n_contr = np.zeros(n_groups, dtype=np.int32)
+    group_labels_contr = np.zeros((n_groups, n_frames), dtype=np.int32)
+    group_n_contr_complete = np.zeros(n_groups, dtype=np.int32)
+    group_beating_rate = np.full(n_groups, np.nan)
+    group_beating_rate_var = np.full(n_groups, np.nan)
+    group_polarity_score = np.full(n_groups, np.nan)
+    complete_per_group: List[Optional[np.ndarray]] = [None] * n_groups
 
     declared = _length_polarity(model_path)
     margin = polarity_rule(model_path).margin if group_prob is not None else None
@@ -204,27 +204,27 @@ def detect_contractions(
     rests_short = []                 # ids of groups with contractions whose length dwells at its short side
     too_short = bool(group_prob['too_short']) if group_prob is not None else False
 
-    # Process each domain
-    for domain_idx in range(n_domains):
+    # Process each group
+    for group_idx in range(n_groups):
         if group_prob is not None:
             # per-track median probability: decoded as it is, frames without a track count as quiet
-            row = np.asarray(group_prob['prob'][domain_idx], dtype=float)
+            row = np.asarray(group_prob['prob'][group_idx], dtype=float)
             valid_fraction = np.sum(~np.isnan(row)) / n_frames
             if valid_fraction < min_valid_frames:
-                logger.debug(f"{group_label} {domain_idx + id_offset} has too few frames with a readable "
+                logger.debug(f"{group_label} {group_idx + id_offset} has too few frames with a readable "
                              f"track ({valid_fraction:.1%}), skipping.")
                 continue
             prob = np.nan_to_num(row, nan=0.0)
-            score = float(group_prob['polarity_score'][domain_idx])
-            domain_polarity_score[domain_idx] = score
+            score = float(group_prob['polarity_score'][group_idx])
+            group_polarity_score[group_idx] = score
             disagree = score < -margin
         else:
-            slen_timeseries = group_slen[domain_idx]
+            slen_timeseries = group_slen[group_idx]
 
-            # Check if domain has enough valid data
+            # Check if the group has enough valid data
             valid_fraction = np.sum(~np.isnan(slen_timeseries)) / n_frames
             if valid_fraction < min_valid_frames:
-                logger.debug(f"{group_label} {domain_idx + id_offset} has insufficient valid data ({valid_fraction:.1%}), skipping.")
+                logger.debug(f"{group_label} {group_idx + id_offset} has insufficient valid data ({valid_fraction:.1%}), skipping.")
                 continue
 
             # Interpolate NaN values for prediction
@@ -239,9 +239,9 @@ def detect_contractions(
                 contr_pred, decision = predict_contractions(slen_interp, model_path, frametime=frametime,
                                                             return_decision=True, **declared)
             except Exception as e:
-                logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {domain_idx + id_offset}: {e}")
+                logger.warning(f"ContractionNet prediction failed for {group_label.lower()} {group_idx + id_offset}: {e}")
                 continue
-            domain_polarity_score[domain_idx] = decision.score
+            group_polarity_score[group_idx] = decision.score
             too_short = too_short or decision.reason == 'too_short'
             prob = contr_pred[0]
             disagree = decision.reason == 'declared, data disagree'
@@ -249,28 +249,28 @@ def detect_contractions(
         # cycles at the recording edges are kept and flagged incomplete below
         contr = intervals_to_mask(decode_contractions(prob, frametime, min_duration_s=contr_time_min,
                                                       border_frames=0, **decoding), n_frames)
-        domain_contr[domain_idx] = contr
+        group_contr[group_idx] = contr
         if disagree and contr.any():
-            rests_short.append(domain_idx + id_offset)
+            rests_short.append(group_idx + id_offset)
 
         # Label contraction cycles and flag the incomplete ones
         labels, n_contr = label(contr)
-        group_labels_contr[domain_idx] = labels
-        domain_n_contr[domain_idx] = n_contr
+        group_labels_contr[group_idx] = labels
+        group_n_contr[group_idx] = n_contr
         trunc_start, trunc_end = cycle_truncation_flags(labels, n_contr, buffer_frames)
         complete = ~(trunc_start | trunc_end)
-        complete_per_domain[domain_idx] = complete
-        domain_n_contr_complete[domain_idx] = int(complete.sum())
+        complete_per_group[group_idx] = complete
+        group_n_contr_complete[group_idx] = int(complete.sum())
 
         # Calculate beating rate
         if n_contr > 1:
             start_frames = np.where(np.diff(contr.astype('float32')) > 0.5)[0]
             if len(start_frames) > 1:
                 inter_beat_intervals = np.diff(start_frames) * frametime
-                domain_beating_rate[domain_idx] = 1 / np.mean(inter_beat_intervals)
-                domain_beating_rate_var[domain_idx] = np.std(inter_beat_intervals)
+                group_beating_rate[group_idx] = 1 / np.mean(inter_beat_intervals)
+                group_beating_rate_var[group_idx] = np.std(inter_beat_intervals)
         else:
-            few_cycles.append((domain_idx + id_offset, n_contr))
+            few_cycles.append((group_idx + id_offset, n_contr))
 
     # one line for all groups, not one per group (a movie has hundreds of myofibrils)
     if len(few_cycles) == 1:
@@ -279,7 +279,7 @@ def detect_contractions(
                        f"(it needs at least 2 cycles).")
     elif few_cycles:
         ids = ', '.join(str(g) for g, _ in few_cycles[:10]) + (', …' if len(few_cycles) > 10 else '')
-        logger.warning(f"No beating rate for {len(few_cycles)} of {n_domains} groups ({group_label.lower()} "
+        logger.warning(f"No beating rate for {len(few_cycles)} of {n_groups} groups ({group_label.lower()} "
                        f"{ids}): fewer than 2 contraction cycles detected.")
     if too_short:
         rule = polarity_rule(model_path)
@@ -288,35 +288,35 @@ def detect_contractions(
                        f"and {rule.min_seconds:g} s.")
     if rests_short:
         ids = ', '.join(str(g) for g in rests_short[:10]) + (', …' if len(rests_short) > 10 else '')
-        logger.warning(f"{len(rests_short)} of {n_domains} groups ({group_label.lower()} {ids}): the sarcomere "
+        logger.warning(f"{len(rests_short)} of {n_groups} groups ({group_label.lower()} {ids}): the sarcomere "
                        f"length dwells at its short side, as when it is contracted most of the time or noisy. The "
                        f"contractions are read with rest at the long side, as for every sarcomere length; check "
                        f"these groups.")
     
     # Per-cycle completeness, NaN-padded to the widest group (like every other
     # per-cycle array). Float, so its per-group nanmean is the complete fraction.
-    max_n_contr = int(domain_n_contr.max()) if domain_n_contr.size and domain_n_contr.max() > 0 else 1
-    domain_contr_complete = np.full((n_domains, max_n_contr), np.nan)
-    for domain_idx, complete in enumerate(complete_per_domain):
+    max_n_contr = int(group_n_contr.max()) if group_n_contr.size and group_n_contr.max() > 0 else 1
+    group_contr_complete = np.full((n_groups, max_n_contr), np.nan)
+    for group_idx, complete in enumerate(complete_per_group):
         if complete is not None and complete.size:
-            domain_contr_complete[domain_idx, :complete.size] = complete.astype(float)
+            group_contr_complete[group_idx, :complete.size] = complete.astype(float)
 
-    n_incomplete = int(domain_n_contr.sum() - domain_n_contr_complete.sum())
+    n_incomplete = int(group_n_contr.sum() - group_n_contr_complete.sum())
     if n_incomplete:
         logger.info(
-            f"{n_incomplete}/{int(domain_n_contr.sum())} contraction cycles are incomplete "
+            f"{n_incomplete}/{int(group_n_contr.sum())} contraction cycles are incomplete "
             f"(within {buffer_frames} frames of the recording start/end); they are kept in the "
             f"contraction mask but their duration-dependent metrics are NaN.")
 
     return {
-        'contr': domain_contr,
-        'n_contr': domain_n_contr,
-        'n_contr_complete': domain_n_contr_complete,
-        'contr_complete': domain_contr_complete,
+        'contr': group_contr,
+        'n_contr': group_n_contr,
+        'n_contr_complete': group_n_contr_complete,
+        'contr_complete': group_contr_complete,
         'labels_contr': group_labels_contr,
-        'beating_rate': domain_beating_rate,
-        'beating_rate_variability': domain_beating_rate_var,
-        'polarity_score': domain_polarity_score,
+        'beating_rate': group_beating_rate,
+        'beating_rate_variability': group_beating_rate_var,
+        'polarity_score': group_polarity_score,
     }
 
 
@@ -366,7 +366,7 @@ def equilibrium_over_quiet(slen: np.ndarray, contr: np.ndarray) -> np.ndarray:
 def analyze_contraction_parameters(
     group_slen: np.ndarray,
     group_labels_contr: np.ndarray,
-    domain_n_contr: np.ndarray,
+    group_n_contr: np.ndarray,
     frametime: float,
     filter_params: Tuple[int, int] = (13, 5),
     buffer_frames: int = 3,
@@ -380,11 +380,11 @@ def analyze_contraction_parameters(
     Parameters
     ----------
     group_slen : np.ndarray
-        Per-group mean sarcomere length time-series, shape ``(n_domains, n_frames)`` (µm).
+        Per-group mean sarcomere length time-series, shape ``(n_groups, n_frames)`` (µm).
     group_labels_contr : np.ndarray
-        Per-group contraction cycle labels, shape ``(n_domains, n_frames)``.
-    domain_n_contr : np.ndarray
-        Number of contractions per group, shape ``(n_domains,)``.
+        Per-group contraction cycle labels, shape ``(n_groups, n_frames)``.
+    group_n_contr : np.ndarray
+        Number of contractions per group, shape ``(n_groups,)``.
     frametime : float
         Time between frames in s.
     filter_params : tuple of int, optional
@@ -406,56 +406,56 @@ def analyze_contraction_parameters(
         Per-group contraction parameters (``max_n_contr`` is the max cycle count
         across groups). Entries for cycles that cannot support a given metric are NaN:
 
-        - 'equ' : np.ndarray ``(n_domains,)``, equilibrium/resting sarcomere length (µm),
+        - 'equ' : np.ndarray ``(n_groups,)``, equilibrium/resting sarcomere length (µm),
           the median over the non-contracting frames
-        - 'contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max contraction per cycle (µm)
-        - 'elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation per cycle (µm)
-        - 'vel_contr_max' : np.ndarray ``(n_domains, max_n_contr)``, max shortening velocity (µm/s)
-        - 'vel_elong_max' : np.ndarray ``(n_domains, max_n_contr)``, max elongation velocity (µm/s)
-        - 'time_to_peak' : np.ndarray ``(n_domains, max_n_contr)``, time to maximal contraction (s)
-        - 'time_to_relax' : np.ndarray ``(n_domains, max_n_contr)``, time from peak to relaxation (s)
-        - 'time_contr' : np.ndarray ``(n_domains, max_n_contr)``, contraction duration (s)
-        - 'time_to_50' : np.ndarray ``(n_domains, max_n_contr)``, time from the onset of the cycle to 50 %
+        - 'contr_max' : np.ndarray ``(n_groups, max_n_contr)``, max contraction per cycle (µm)
+        - 'elong_max' : np.ndarray ``(n_groups, max_n_contr)``, max elongation per cycle (µm)
+        - 'vel_contr_max' : np.ndarray ``(n_groups, max_n_contr)``, max shortening velocity (µm/s)
+        - 'vel_elong_max' : np.ndarray ``(n_groups, max_n_contr)``, max elongation velocity (µm/s)
+        - 'time_to_peak' : np.ndarray ``(n_groups, max_n_contr)``, time to maximal contraction (s)
+        - 'time_to_relax' : np.ndarray ``(n_groups, max_n_contr)``, time from peak to relaxation (s)
+        - 'time_contr' : np.ndarray ``(n_groups, max_n_contr)``, contraction duration (s)
+        - 'time_to_50' : np.ndarray ``(n_groups, max_n_contr)``, time from the onset of the cycle to 50 %
           of the shortening (s)
-        - 'time_contr_10_90' : np.ndarray ``(n_domains, max_n_contr)``, time from 10 % to 90 % of the
+        - 'time_contr_10_90' : np.ndarray ``(n_groups, max_n_contr)``, time from 10 % to 90 % of the
           shortening (s)
-        - 'time_relax_50' : np.ndarray ``(n_domains, max_n_contr)``, time from the peak to 50 % relaxation (s)
-        - 'time_relax_90' : np.ndarray ``(n_domains, max_n_contr)``, time from the peak to 90 % relaxation (s)
+        - 'time_relax_50' : np.ndarray ``(n_groups, max_n_contr)``, time from the peak to 50 % relaxation (s)
+        - 'time_relax_90' : np.ndarray ``(n_groups, max_n_contr)``, time from the peak to 90 % relaxation (s)
 
         The percentile times are measured at the first crossing of the fraction of the cycle's peak
         shortening ``contr_max`` (relative to ``equ``), interpolated linearly between frames. Relaxation is
         followed past the end of the contraction window up to the onset of the next cycle; a cycle without
         shortening, or whose trace never reaches the level, gives NaN.
     """
-    n_domains = group_slen.shape[0]
-    max_n_contr = int(np.max(domain_n_contr)) if np.max(domain_n_contr) > 0 else 1
+    n_groups = group_slen.shape[0]
+    max_n_contr = int(np.max(group_n_contr)) if np.max(group_n_contr) > 0 else 1
     
     # Initialize output arrays
-    domain_equ = np.full(n_domains, np.nan)
-    domain_contr_max = np.full((n_domains, max_n_contr), np.nan)
-    domain_elong_max = np.full((n_domains, max_n_contr), np.nan)
-    domain_vel_contr_max = np.full((n_domains, max_n_contr), np.nan)
-    domain_vel_elong_max = np.full((n_domains, max_n_contr), np.nan)
-    domain_time_to_peak = np.full((n_domains, max_n_contr), np.nan)
-    domain_time_to_relax = np.full((n_domains, max_n_contr), np.nan)
-    domain_time_contr = np.full((n_domains, max_n_contr), np.nan)
-    domain_time_to_50, domain_time_contr_10_90, domain_time_relax_50, domain_time_relax_90 = (
-        np.full((n_domains, max_n_contr), np.nan) for _ in range(4))
+    group_equ = np.full(n_groups, np.nan)
+    group_contr_max = np.full((n_groups, max_n_contr), np.nan)
+    group_elong_max = np.full((n_groups, max_n_contr), np.nan)
+    group_vel_contr_max = np.full((n_groups, max_n_contr), np.nan)
+    group_vel_elong_max = np.full((n_groups, max_n_contr), np.nan)
+    group_time_to_peak = np.full((n_groups, max_n_contr), np.nan)
+    group_time_to_relax = np.full((n_groups, max_n_contr), np.nan)
+    group_time_contr = np.full((n_groups, max_n_contr), np.nan)
+    group_time_to_50, group_time_contr_10_90, group_time_relax_50, group_time_relax_90 = (
+        np.full((n_groups, max_n_contr), np.nan) for _ in range(4))
     
     window_length, polyorder = filter_params
     
-    for domain_idx in range(n_domains):
-        slen = group_slen[domain_idx]
-        labels = group_labels_contr[domain_idx]
-        n_contr = domain_n_contr[domain_idx]
+    for group_idx in range(n_groups):
+        slen = group_slen[group_idx]
+        labels = group_labels_contr[group_idx]
+        n_contr = group_n_contr[group_idx]
         
         if n_contr == 0 or np.all(np.isnan(slen)):
             continue
         
         # Equilibrium = median over the non-contracting frames, so it is not pulled
         # down by the contracted frames (the plots use the same definition).
-        domain_equ[domain_idx] = equilibrium_over_quiet(slen, labels != 0)
-        if not np.isfinite(domain_equ[domain_idx]):
+        group_equ[group_idx] = equilibrium_over_quiet(slen, labels != 0)
+        if not np.isfinite(group_equ[group_idx]):
             continue
         
         # Calculate velocity using Savitzky-Golay filter
@@ -466,7 +466,7 @@ def analyze_contraction_parameters(
             vel = np.gradient(slen_interp, frametime)
         
         # Calculate delta (change from equilibrium)
-        delta_slen = slen_interp - domain_equ[domain_idx]
+        delta_slen = slen_interp - group_equ[group_idx]
         
         # Cycles touching the recording edges are incomplete: their onset/offset
         # happened outside the window, so the metrics that need it stay NaN.
@@ -490,7 +490,7 @@ def analyze_contraction_parameters(
 
             # Contraction duration — needs both the onset and the offset
             if not (cut_start or cut_end):
-                domain_time_contr[domain_idx, contr_idx] = np.sum(cycle_mask) * frametime
+                group_time_contr[group_idx, contr_idx] = np.sum(cycle_mask) * frametime
 
             # Max contraction (most negative delta) and elongation (most positive delta)
             if len(delta_cycle) > 0 and not np.all(np.isnan(delta_cycle)):
@@ -499,25 +499,25 @@ def analyze_contraction_parameters(
                 elong_idx = int(np.nanargmax(delta_cycle))
                 peak_observed = _extremum_observed(peak_idx, n_cyc)
                 if peak_observed:
-                    domain_contr_max[domain_idx, contr_idx] = np.nanmin(delta_cycle)
+                    group_contr_max[group_idx, contr_idx] = np.nanmin(delta_cycle)
                 if _extremum_observed(elong_idx, n_cyc):
-                    domain_elong_max[domain_idx, contr_idx] = np.nanmax(delta_cycle)
+                    group_elong_max[group_idx, contr_idx] = np.nanmax(delta_cycle)
 
                 # Max velocities — tested against their own arg-extremum, which need
                 # not coincide with the length extremum.
                 if not np.all(np.isnan(vel_cycle)):
                     if _extremum_observed(int(np.nanargmin(vel_cycle)), n_cyc):
-                        domain_vel_contr_max[domain_idx, contr_idx] = np.nanmin(vel_cycle)
+                        group_vel_contr_max[group_idx, contr_idx] = np.nanmin(vel_cycle)
                     if _extremum_observed(int(np.nanargmax(vel_cycle)), n_cyc):
-                        domain_vel_elong_max[domain_idx, contr_idx] = np.nanmax(vel_cycle)
+                        group_vel_elong_max[group_idx, contr_idx] = np.nanmax(vel_cycle)
 
                 # Timing relative to the peak: onset->peak needs the onset,
                 # peak->offset needs the offset, and both need an observed peak.
                 if peak_observed:
                     if not cut_start:
-                        domain_time_to_peak[domain_idx, contr_idx] = peak_idx * frametime
+                        group_time_to_peak[group_idx, contr_idx] = peak_idx * frametime
                     if not cut_end:
-                        domain_time_to_relax[domain_idx, contr_idx] = (n_cyc - peak_idx) * frametime
+                        group_time_to_relax[group_idx, contr_idx] = (n_cyc - peak_idx) * frametime
 
                     # percentile times: first crossings of fractions of the peak shortening
                     amp = delta_cycle[peak_idx]
@@ -525,32 +525,32 @@ def analyze_contraction_parameters(
                         if not cut_start:
                             rise = delta_cycle[:peak_idx + 1]
                             t10, t50, t90 = (_first_crossing(rise, p * amp, falling=True) for p in (0.1, 0.5, 0.9))
-                            domain_time_to_50[domain_idx, contr_idx] = t50 * frametime
-                            domain_time_contr_10_90[domain_idx, contr_idx] = (t90 - t10) * frametime
+                            group_time_to_50[group_idx, contr_idx] = t50 * frametime
+                            group_time_contr_10_90[group_idx, contr_idx] = (t90 - t10) * frametime
                         # relaxation runs on past the end of the window, up to the onset of the next cycle
                         frames_cycle = np.flatnonzero(cycle_mask)
                         later = np.flatnonzero((labels > 0) & (labels != contr_idx + 1))
                         later = later[later > frames_cycle[-1]]
                         stop = int(later[0]) if later.size else len(delta_slen)
                         decay = delta_slen[frames_cycle[peak_idx]:stop]
-                        domain_time_relax_50[domain_idx, contr_idx] = _first_crossing(
+                        group_time_relax_50[group_idx, contr_idx] = _first_crossing(
                             decay, 0.5 * amp, falling=False) * frametime
-                        domain_time_relax_90[domain_idx, contr_idx] = _first_crossing(
+                        group_time_relax_90[group_idx, contr_idx] = _first_crossing(
                             decay, 0.1 * amp, falling=False) * frametime
     
     return {
-        'equ': domain_equ,
-        'contr_max': domain_contr_max,
-        'elong_max': domain_elong_max,
-        'vel_contr_max': domain_vel_contr_max,
-        'vel_elong_max': domain_vel_elong_max,
-        'time_to_peak': domain_time_to_peak,
-        'time_to_relax': domain_time_to_relax,
-        'time_contr': domain_time_contr,
-        'time_to_50': domain_time_to_50,
-        'time_contr_10_90': domain_time_contr_10_90,
-        'time_relax_50': domain_time_relax_50,
-        'time_relax_90': domain_time_relax_90,
+        'equ': group_equ,
+        'contr_max': group_contr_max,
+        'elong_max': group_elong_max,
+        'vel_contr_max': group_vel_contr_max,
+        'vel_elong_max': group_vel_elong_max,
+        'time_to_peak': group_time_to_peak,
+        'time_to_relax': group_time_to_relax,
+        'time_contr': group_time_contr,
+        'time_to_50': group_time_to_50,
+        'time_contr_10_90': group_time_contr_10_90,
+        'time_relax_50': group_time_relax_50,
+        'time_relax_90': group_time_relax_90,
     }
 
 

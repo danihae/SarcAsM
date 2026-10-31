@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 from sarcasm import Utils
-from sarcasm.type_utils import TypeUtils
+from sarcasm_app.type_utils import TypeUtils
 from sarcasm.analysis.domain_clustering import analyze_domains
 
 import napari
@@ -727,7 +727,7 @@ class ApplicationControl:
         self.viewer.layers.move(current_index, 0)
 
     def init_z_band_stack(self, visible=True, fastmovie=False):
-        if fastmovie and not self.model.cell._mask_exists('zbands_fast_movie'):
+        if fastmovie and not self.model.cell.mask_exists('zbands_fast_movie'):
             fastmovie = False
         if self.model.cell is not None:
             tmp = self.model.cell.load_mask_full_stack(

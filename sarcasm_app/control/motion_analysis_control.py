@@ -31,7 +31,7 @@ from PyQt5.QtWidgets import QMessageBox
 from bio_image_unet.progress import ProgressNotifier
 
 from sarcasm import Plots, SarcAsM
-from sarcasm.type_utils import TypeUtils
+from sarcasm_app.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from .chain_execution import ChainExecution
 from .popup_export import ExportPopup

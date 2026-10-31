@@ -23,24 +23,22 @@ class TypeUtils:
     T = TypeVar('T')
 
     @staticmethod
-    def unbox(optional: Optional[T], throw_exception=True) -> T:
+    def unbox(optional: Optional[T]) -> T:
         """
-        Return the value of an optional, optionally raising if it is None.
+        Return the value of an optional, raising ValueError if it is None.
 
         Parameters
         ----------
         optional : T or None
             Value to unbox.
-        throw_exception : bool, optional
-            If True, raise ValueError when ``optional`` is None. Default is True.
 
         Returns
         -------
         T
             The unboxed value.
         """
-        if optional is None and throw_exception:
-            raise ValueError('Variable of type' + type(optional).__name__ + ' is None')
+        if optional is None:
+            raise ValueError('Expected a value, got None (is a file open?).')
         return cast(TypeUtils.T, optional)
 
     @staticmethod

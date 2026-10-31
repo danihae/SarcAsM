@@ -94,10 +94,10 @@ class StructureAnalysis(_Namespace):
             Threshold for binarizing the cell mask; pixels above it are cell.
             Default is 0.1.
         """
-        if not self._mask_exists('cell_mask'):
+        if not self.mask_exists('cell_mask'):
             raise FileNotFoundError("Cell mask not found. Please run detect_sarcomeres first.")
         list_frames = self._plan_frames(frames, 'analyze_cell_mask')
-        cell_mask = self._read_mask('cell_mask', frames=list_frames)
+        cell_mask = self.read_mask('cell_mask', frames=list_frames)
         images = self._read_raw_frames(list_frames)
 
         # per-frame arrays indexed by frame number (NaN for frames not analyzed), like every other
@@ -134,7 +134,7 @@ class StructureAnalysis(_Namespace):
         frames = sorted(set(self._detected_frames() or range(self.metadata.n_stack or 1)))
         picks = np.linspace(0, len(frames) - 1, min(n_frames, len(frames))).round().astype(int)
         frames = sorted({frames[i] for i in picks})
-        masks = self._read_mask('cell_mask', frames=frames) > self.data.get('params.structure.analyze_cell_mask.threshold', 0.1)
+        masks = self.read_mask('cell_mask', frames=frames) > self.data.get('params.structure.analyze_cell_mask.threshold', 0.1)
         images = self._read_raw_frames(frames)
         values = np.array([z_band_analysis.estimate_background(image, mask) for image, mask in zip(images, masks)])
         return float(np.nanmedian(values)) if np.isfinite(values).any() else np.nan
@@ -193,17 +193,17 @@ class StructureAnalysis(_Namespace):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        if not self._mask_exists('zbands'):
+        if not self.mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
         list_frames = self._plan_frames(frames, 'analyze_z_bands')
-        zbands = self._read_mask('zbands', frames=list_frames)
+        zbands = self.read_mask('zbands', frames=list_frames)
         # orientation is stored (frames, 2, H, W) — read by frame like zbands.
-        orientation_field = self._read_mask('orientation', frames=list_frames)
+        orientation_field = self.read_mask('orientation', frames=list_frames)
         images = self._read_raw_frames(list_frames)
         # the cell mask sets the background of the Z-band contrast; binarized like analyze_cell_mask
         cell_mask = None
-        if self._mask_exists('cell_mask'):
-            cell_mask = (self._read_mask('cell_mask', frames=list_frames)
+        if self.mask_exists('cell_mask'):
+            cell_mask = (self.read_mask('cell_mask', frames=list_frames)
                          > self.data.get('params.structure.analyze_cell_mask.threshold', 0.1))
         # One mask page per detected frame — see the same guard in
         # analyze_vectors.
@@ -484,11 +484,11 @@ class StructureAnalysis(_Namespace):
             Progress notifier for inclusion in the GUI. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
-        if not self._mask_exists('zbands'):
+        if not self.mask_exists('zbands'):
             raise FileNotFoundError("Z-band mask not found. Please run detect_sarcomeres first.")
 
         # Decide which Z-band stack to use (fast-movie 3D U-Net vs per-frame 2D).
-        if use_fast_movie_zbands and self._mask_exists('zbands_fast_movie'):
+        if use_fast_movie_zbands and self.mask_exists('zbands_fast_movie'):
             zbands_name = 'zbands_fast_movie'
             zbands_source = 'fast_movie_3d'
         else:
@@ -510,10 +510,10 @@ class StructureAnalysis(_Namespace):
         # All inputs are read by frame number: the 2D masks map it to their pages, the fast-movie Z-bands (one
         # page per movie frame) are read at the frame itself, so every input of a frame comes from that frame.
         list_frames = self._plan_frames(frames, 'analyze_vectors')
-        z_bands = self._read_mask(zbands_name, frames=list_frames)
-        mbands = self._read_mask('mbands', frames=list_frames)
-        orientation_field = self._read_mask('orientation', frames=list_frames)
-        sarcomere_mask = self._read_mask('sarcomere_mask', frames=list_frames)
+        z_bands = self.read_mask(zbands_name, frames=list_frames)
+        mbands = self.read_mask('mbands', frames=list_frames)
+        orientation_field = self.read_mask('orientation', frames=list_frames)
+        sarcomere_mask = self.read_mask('sarcomere_mask', frames=list_frames)
 
         # a partial detection has fewer mask pages than frames requested; refuse
         # rather than let zip() silently truncate the analysis

@@ -26,7 +26,7 @@ _EXPORTS = {
     'describe_key': '.features', 'pretty_name': '.features', 'MOTION_KINDS': '.features',
     'IOUtils': '.io.ioutils', 'Plots': '.plotting.plots', 'PlotUtils': '.plotting.plot_utils',
     'Animations': '.plotting.animation', 'Export': '.export', 'BatchExport': '.export',
-    'TypeUtils': '.type_utils', 'TrainingDataGenerator': '.training_data_generation',
+    'TrainingDataGenerator': '.training.data_generation',
 }
 __all__ = ['__version__', *_EXPORTS]
 

@@ -62,8 +62,8 @@ class _ImageLayer:
             if self.layer == 'image':
                 self._cache[frame] = np.asarray(self.sarc.read_imgs(frames=movie_frame), dtype=float)
             else:
-                name = 'zbands_fast_movie' if self.sarc._mask_exists('zbands_fast_movie') else 'zbands'
-                self._cache[frame] = np.asarray(self.sarc._read_mask(name, frames=movie_frame), dtype=float)
+                name = 'zbands_fast_movie' if self.sarc.mask_exists('zbands_fast_movie') else 'zbands'
+                self._cache[frame] = np.asarray(self.sarc.read_mask(name, frames=movie_frame), dtype=float)
         return self._cache[frame]
 
     def preload(self, max_bytes: float = 1.5e9) -> None:
@@ -75,8 +75,8 @@ class _ImageLayer:
         if self.layer == 'image':
             arr = np.asarray(self.sarc.read_imgs(frames=movie_frames), dtype=float)
         else:
-            name = 'zbands_fast_movie' if self.sarc._mask_exists('zbands_fast_movie') else 'zbands'
-            arr = np.asarray(self.sarc._read_mask(name, frames=movie_frames), dtype=float)
+            name = 'zbands_fast_movie' if self.sarc.mask_exists('zbands_fast_movie') else 'zbands'
+            arr = np.asarray(self.sarc.read_mask(name, frames=movie_frames), dtype=float)
         arr = arr.reshape(self.frames.size, h, w)
         self._cache = {int(f): arr[i] for i, f in enumerate(self.frames)}
 

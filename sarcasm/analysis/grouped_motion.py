@@ -230,7 +230,7 @@ def run_cycle_engine(
     buffer_frames: int = 3,
     min_valid_frames: float = 0.5,
     filter_params: Tuple[int, int] = (13, 5),
-    group_label: str = "Domain",
+    group_label: str = "Group",
     id_offset: int = 0,
     group_prob: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
@@ -239,7 +239,7 @@ def run_cycle_engine(
     Thin wrapper that runs the ContractionNet engine
     (:func:`contraction_analysis.detect_contractions` and
     :func:`contraction_analysis.analyze_contraction_parameters`) and returns
-    their combined output dict (keys prefixed ``domain_*`` — the caller remaps
+    their combined output dict (keys are bare feature names — the caller stores them under
     the prefix to the grouping kind).
 
     Parameters
@@ -267,7 +267,7 @@ def run_cycle_engine(
         Savitzky-Golay (window_length, polyorder) for the velocity filter.
         Default is (13, 5).
     group_label : str, optional
-        Label used only in the engine's per-group log messages. Default is "Domain".
+        Label used only in the engine's per-group log messages. Default is "Group".
     id_offset : int, optional
         Offset added to group ids in the engine's per-group log messages.
         Default is 0.
@@ -279,7 +279,7 @@ def run_cycle_engine(
     Returns
     -------
     dict
-        Combined ContractionNet output (keys prefixed ``domain_*``). Empty
+        Combined ContractionNet output (keys are bare feature names). Empty
         ``(0, T)`` / ``(0,)`` arrays when ``n_groups == 0``.
     """
     group_slen = np.asarray(group_slen, dtype=float)
@@ -323,7 +323,7 @@ def run_cycle_engine(
     params = contraction_analysis.analyze_contraction_parameters(
         group_slen=group_slen,
         group_labels_contr=contr['labels_contr'],
-        domain_n_contr=contr['n_contr'],
+        group_n_contr=contr['n_contr'],
         frametime=frametime,
         filter_params=filter_params,
         buffer_frames=buffer_frames,

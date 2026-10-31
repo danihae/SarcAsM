@@ -378,7 +378,7 @@ class SarcAsMBase:
 
         raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
 
-    def _mask_exists(self, name: str) -> bool:
+    def mask_exists(self, name: str) -> bool:
         """True if mask ``name`` is present in the store."""
         store = self.__dict__.get('store')
         return store is not None and store.has_mask(name)
@@ -452,7 +452,7 @@ class SarcAsMBase:
             raise MetaDataError(message)
         self._warn_once(message)
 
-    def _read_mask(self, name: str, frames=None) -> np.ndarray:
+    def read_mask(self, name: str, frames=None) -> np.ndarray:
         """Read a mask from the store, optionally selecting movie ``frames``, like ``read_imgs``.
 
         ``frames`` is a frame number (int, numpy integer, 0-d array) -> one frame, ``(H, W)`` (``(2, H, W)``
@@ -462,7 +462,7 @@ class SarcAsMBase:
         frame) or a single frame without one (``(H, W)``, single images and stores written before the frame
         axis was kept). None returns the stored array unchanged.
         """
-        if not self._mask_exists(name):
+        if not self.mask_exists(name):
             raise FileNotFoundError(
                 f"Required analysis mask '{name}' not found in the store.\n"
                 f"Run 'detect_sarcomeres' to create it.")
@@ -491,7 +491,7 @@ class SarcAsMBase:
     def _mask_pages(self, name: str, frames, n_pages: Optional[int] = None) -> List[int]:
         """Translate movie-frame numbers into page indices of a stored mask.
 
-        ``detect_sarcomeres(frames=[32, 33])`` stores two pages; ``_read_mask('zbands', frames=33)``
+        ``detect_sarcomeres(frames=[32, 33])`` stores two pages; ``read_mask('zbands', frames=33)``
         must then read page 1. Masks covering every frame (all frames detected, the 3D fast-movie
         Z-bands, optical flow) have one page per frame.
 
@@ -1663,9 +1663,9 @@ class SarcAsM(SarcAsMBase):
         (e.g. ``'zbands'``, ``'mbands'``, ``'cell_mask'``, ``'zbands_fast_movie'``). Returns
         None if the mask is not present.
         """
-        if not self._mask_exists(name):
+        if not self.mask_exists(name):
             return None
-        arr = self._read_mask(name)
+        arr = self.read_mask(name)
         n_stack = self.metadata.n_stack or 1
         # only the detection masks are stored sparsely; the fast-movie Z-bands cover every frame
         detected = self._detected_frames() if name in self._DETECTION_MASKS else None

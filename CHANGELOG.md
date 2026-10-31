@@ -59,6 +59,14 @@ All notable changes to SarcAsM are documented here. The format follows
   .json, take the format from the file extension (`fileformat=` overrides it; `BatchExport.export_data`'s `format=`
   is renamed `fileformat=`), and add the `metadata` / `metrics` sheets to an .xlsx themselves. The batch export
   gains .json (`{"data": [...], "per_frame": [...]}`), and the GUI's batch export offers all three formats.
+- **Layout.** `Plots` is now a facade over `sarcasm.plotting.structure` (`StructurePlots`), `.tracks`
+  (`TrackPlots`) and `.motion` (`MotionPlots`); every `Plots.plot_*` call is unchanged. `TrainingDataGenerator`
+  moved to `sarcasm.training.data_generation` (`from sarcasm import TrainingDataGenerator` still works).
+  `TypeUtils` moved into the GUI package (`sarcasm_app.type_utils`) and is no longer exported by `sarcasm`.
+  `features.MOTION_KIND_LABELS` holds the display name of each grouping kind.
+- `sarc.read_mask(name, frames=None)` and `sarc.mask_exists(name)` are public (were `_read_mask` / `_mask_exists`).
+- `contraction_analysis.analyze_contraction_parameters(group_n_contr=...)` (was `domain_n_contr=`): the engine is
+  shared by every grouping kind, so its names say "group", not "domain".
 - **`restart` is keyword-only** (`SarcAsM(file, restart=True)`), so a stray second positional argument can no longer
   delete the analysis store; the type guard that stood in for this is gone.
 - **`sarc.commit()` is the one way to save**; `store_structure_data()` is removed (it did the same).

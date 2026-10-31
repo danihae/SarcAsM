@@ -299,7 +299,7 @@ class TestUtilityFunctions:
 
     def test_type_utils_unbox(self):
         """Test TypeUtils unbox function."""
-        from sarcasm.type_utils import TypeUtils
+        from sarcasm_app.type_utils import TypeUtils
         
         # Test with actual value
         assert TypeUtils.unbox(42) == 42
@@ -307,7 +307,7 @@ class TestUtilityFunctions:
 
     def test_type_utils_if_present(self):
         """Test TypeUtils if_present function."""
-        from sarcasm.type_utils import TypeUtils
+        from sarcasm_app.type_utils import TypeUtils
         
         # With value
         result = []
@@ -452,7 +452,7 @@ class TestBatchProcessingParameters:
         sarc.data = data
         sarc.metadata = SimpleNamespace(n_stack=3, frametime=0.01)
         # 'Delete intermediate masks' keeps only the Z-bands: the vectors then need a new detection
-        sarc._mask_exists.side_effect = lambda m: (source == 'fast_movie_3d' if m == 'zbands_fast_movie'
+        sarc.mask_exists.side_effect = lambda m: (source == 'fast_movie_3d' if m == 'zbands_fast_movie'
                                                    else masks_kept or m == 'zbands')
         model.parameters.get_parameter('batch.recalculate.for.motion').set_value(recalc)
         model.parameters.get_parameter('batch.motion.fast_movie').set_value(fast)

@@ -393,7 +393,7 @@ class TrackingMixin:
             start = k - k % block
             if pages['start'] != start:
                 pages['start'] = start
-                pages['data'] = self._read_mask(zbands_name, frames=[int(f) for f in list_frames[start:start + block]])
+                pages['data'] = self.read_mask(zbands_name, frames=[int(f) for f in list_frames[start:start + block]])
             return pages['data'][k - start]
 
         slen, ori, pos_px = sarcomere_tracking.refine_track_lengths(

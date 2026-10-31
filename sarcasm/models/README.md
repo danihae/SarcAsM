@@ -66,7 +66,7 @@ real Z-band training labels, which were never restricted to sarcomeres.
 
 ## What changed in v1.0.0
 
-**The orientation labels were mirrored.** `training_data_generation.create_orientation_map`
+**The orientation labels were mirrored.** `sarcasm.training.data_generation.TrainingDataGenerator.create_orientation_map`
 wrote the sarcomere angle in the convention the wavelet analysis uses — the axis for a
 stored angle `o` is `(sin o, -cos o)` in `(row, col)` — while
 `analysis/sarcomere_vectors.get_sarcomere_vectors` reads a predicted angle as

@@ -130,13 +130,13 @@ class TestStructureErrors:
         sarc.detect_sarcomeres()
 
         # Serve a 1-frame mbands stack while the movie has 2 frames.
-        real_read_mask = sarc._read_mask
+        real_read_mask = sarc.read_mask
 
         def short_mbands(name, *args, **kwargs):
             out = real_read_mask(name, *args, **kwargs)
             return out[:1] if name == 'mbands' else out
 
-        sarc._read_mask = short_mbands
+        sarc.read_mask = short_mbands
 
         # The sarcasm loggers do not propagate to root, so caplog misses them.
         records = []
@@ -537,7 +537,7 @@ class TestDomainMotionPlots:
         assert np.percentile(along, 95) < 1.5            # by the sub-pixel midpoint offset, not more
         again, _, _ = st.refine_track_lengths(
             pos_raw, d['motion.tracks.orientations_raw'], observed,
-            lambda k: sarc._read_mask(zbands, frames=int(frames[k])), sarc.metadata.pixelsize, window_frames=1,
+            lambda k: sarc.read_mask(zbands, frames=int(frames[k])), sarc.metadata.pixelsize, window_frames=1,
             slen_lims=tuple(d['params.structure.analyze_vectors.slen_lims']),
             interp_factor=int(d['params.structure.analyze_vectors.interp_factor']),
             linewidth=float(d['params.structure.analyze_vectors.linewidth']), interpolation_method='akima',

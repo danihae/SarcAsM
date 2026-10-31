@@ -74,11 +74,11 @@ class _Namespace:
     def commit(self):
         return self._sarc.commit()
 
-    def _read_mask(self, *args, **kwargs):
-        return self._sarc._read_mask(*args, **kwargs)
+    def read_mask(self, *args, **kwargs):
+        return self._sarc.read_mask(*args, **kwargs)
 
-    def _mask_exists(self, *args, **kwargs):
-        return self._sarc._mask_exists(*args, **kwargs)
+    def mask_exists(self, *args, **kwargs):
+        return self._sarc.mask_exists(*args, **kwargs)
 
     def _canonical_frame(self, *args, **kwargs):
         return self._sarc._canonical_frame(*args, **kwargs)

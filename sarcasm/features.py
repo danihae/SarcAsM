@@ -1021,6 +1021,10 @@ motion_feature_dict = {
 #: :data:`grouping_feature_dict`.
 MOTION_KINDS = ('pool', 'mband', 'myofibril', 'loi', 'domain', 'custom')
 
+#: Display name of each grouping kind (plot labels, the GUI).
+MOTION_KIND_LABELS = {'pool': 'Pool', 'mband': 'M-band', 'myofibril': 'Myofibril', 'loi': 'LOI', 'domain': 'Domain',
+                      'custom': 'Group'}
+
 #: The grouping of one kind, written by ``sarc.motion.group_tracks`` as ``motion.groups.<kind>.<leaf>``.
 grouping_feature_dict = {
     'track_group_id': {

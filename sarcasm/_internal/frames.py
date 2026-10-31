@@ -18,7 +18,7 @@ The analysis steps take ``frames`` as ``'all'``, one frame number or any sequenc
 and reject everything else with an error that says what is valid, so that ``k``, ``np.int64(k)``, ``[k]``,
 ``(k,)``, ``range(k, k + 1)``, ``np.array([k])`` and ``np.array(k)`` select the same frame everywhere.
 
-Reading primitives (``read_imgs``, ``_read_mask``) keep the caller's order and do not use them.
+Reading primitives (``read_imgs``, ``read_mask``) keep the caller's order and do not use them.
 """
 import operator
 from typing import List, Union

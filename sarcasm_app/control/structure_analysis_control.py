@@ -28,7 +28,7 @@ from .popup_export import ExportPopup
 from ..view.collapsible import make_collapsible
 from ..view.parameters_structure_analysis import Ui_Form as StructureAnalysisWidget
 from ..model import ApplicationModel, patch_size_from_parameters
-from sarcasm.type_utils import TypeUtils
+from sarcasm_app.type_utils import TypeUtils
 
 logger = logging.getLogger(__name__)
 

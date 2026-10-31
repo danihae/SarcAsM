@@ -929,10 +929,11 @@ def test_plot_track_myofibrils_smoke():
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     from sarcasm.plotting.plots import Plots
-    # stub the image background (needs file IO)
-    orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
-    Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
-    Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
+    from sarcasm.plotting.structure import StructurePlots
+    # stub the image background (needs file IO; drawn by StructurePlots)
+    orig_z, orig_img = StructurePlots.plot_z_bands, StructurePlots.plot_image
+    StructurePlots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
+    StructurePlots.plot_image = staticmethod(lambda ax, *a, **k: None)
     try:
         sarc = _fake_structure(n_tracks=6)
         sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
@@ -944,7 +945,7 @@ def test_plot_track_myofibrils_smoke():
         with pytest.raises(ValueError, match='ordered grouping'):
             Plots.plot_track_myofibrils(plt.figure().gca(), sarc, kind='pool')
     finally:
-        Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
+        StructurePlots.plot_z_bands, StructurePlots.plot_image = orig_z, orig_img
         plt.close('all')
 
 
@@ -954,10 +955,11 @@ def test_plot_tracks_lines_smoke():
     import matplotlib.pyplot as plt
     from matplotlib.collections import LineCollection
     from sarcasm.plotting.plots import Plots
-    # stub the image background (needs file IO)
-    orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
-    Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
-    Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
+    from sarcasm.plotting.structure import StructurePlots
+    # stub the image background (needs file IO; drawn by StructurePlots)
+    orig_z, orig_img = StructurePlots.plot_z_bands, StructurePlots.plot_image
+    StructurePlots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
+    StructurePlots.plot_image = staticmethod(lambda ax, *a, **k: None)
     try:
         sarc = _fake_structure(n_tracks=6)
         # give the trajectories a little motion so the lines are non-degenerate
@@ -980,7 +982,7 @@ def test_plot_tracks_lines_smoke():
         Plots.plot_tracks(ax, sarc, color_by='group', kind='pool', scalebar=False)
         assert any(isinstance(c, LineCollection) for c in ax.collections)
     finally:
-        Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
+        StructurePlots.plot_z_bands, StructurePlots.plot_image = orig_z, orig_img
         plt.close('all')
 
 
@@ -991,10 +993,11 @@ def test_plot_track_coverage_smoke():
     import matplotlib.pyplot as plt
     from matplotlib.collections import LineCollection
     from sarcasm.plotting.plots import Plots
-    # stub the image background (needs file IO)
-    orig_z, orig_img = Plots.plot_z_bands, Plots.plot_image
-    Plots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
-    Plots.plot_image = staticmethod(lambda ax, *a, **k: None)
+    from sarcasm.plotting.structure import StructurePlots
+    # stub the image background (needs file IO; drawn by StructurePlots)
+    orig_z, orig_img = StructurePlots.plot_z_bands, StructurePlots.plot_image
+    StructurePlots.plot_z_bands = staticmethod(lambda ax, *a, **k: None)
+    StructurePlots.plot_image = staticmethod(lambda ax, *a, **k: None)
     try:
         sarc = _fake_structure(n_tracks=6)
         T = sarc.data['motion.tracks.slen'].shape[1]
@@ -1027,7 +1030,7 @@ def test_plot_track_coverage_smoke():
         with pytest.raises(ValueError):
             Plots.plot_track_coverage_histogram(plt.figure().gca(), sarc)
     finally:
-        Plots.plot_z_bands, Plots.plot_image = orig_z, orig_img
+        StructurePlots.plot_z_bands, StructurePlots.plot_image = orig_z, orig_img
         plt.close('all')
 
 

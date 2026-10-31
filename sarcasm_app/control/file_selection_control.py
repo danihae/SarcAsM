@@ -22,7 +22,7 @@ import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
 from sarcasm.core import _is_ome_zarr
-from sarcasm.type_utils import TypeUtils
+from sarcasm_app.type_utils import TypeUtils
 from .application_control import ApplicationControl
 from ..view.file_selection import Ui_Form as FileSelectionWidget
 

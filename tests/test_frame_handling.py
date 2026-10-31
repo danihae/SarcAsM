@@ -1,7 +1,7 @@
 """Frame selection is spelling-independent and results stay paired with their own frame.
 
 ``detect_sarcomeres(frames=[k])`` used to store ``(1, H, W)`` masks while ``frames=k`` stored ``(H, W)``;
-``_read_mask`` then returned ``(1, 1, H, W)`` and ``sarc.structure.analyze_cell_mask`` crashed. Around it: an explicit frame
+``read_mask`` then returned ``(1, 1, H, W)`` and ``sarc.structure.analyze_cell_mask`` crashed. Around it: an explicit frame
 number after a single-frame detection was filed under position 0 (so ``sarc.structure.analyze_myofibrils(frames=k)`` failed),
 ratios divided by the cell area of another frame, the fast-movie Z-bands of frame 0 were paired with the
 M-bands of the detected frame, invalid frames ran silently or failed deep inside zarr, and the app's frame
@@ -119,27 +119,27 @@ class TestReadMaskIsRankAware:
         sarc.store.write_mask('orientation', o[None] if paged else o)
         sarc.data.update({'params.detect_sarcomeres.frames': [2]})
         for spelling in (2, np.int64(2), np.array(2)):
-            assert sarc._read_mask('zbands', frames=spelling).shape == (32, 32)
-            assert sarc._read_mask('orientation', frames=spelling).shape == (2, 32, 32)
+            assert sarc.read_mask('zbands', frames=spelling).shape == (32, 32)
+            assert sarc.read_mask('orientation', frames=spelling).shape == (2, 32, 32)
         for spelling in ([2], (2,), range(2, 3), np.array([2])):
-            assert sarc._read_mask('zbands', frames=spelling).shape == (1, 32, 32)
-            assert sarc._read_mask('orientation', frames=spelling).shape == (1, 2, 32, 32)
+            assert sarc.read_mask('zbands', frames=spelling).shape == (1, 32, 32)
+            assert sarc.read_mask('orientation', frames=spelling).shape == (1, 2, 32, 32)
         # frame 0 was not detected: no position reading
         for frame in (0, 1):
             with pytest.raises(ValueError, match=r'not detected \(detected frames: \[2\]\)'):
-                sarc._read_mask('zbands', frames=frame)
+                sarc.read_mask('zbands', frames=frame)
         with pytest.raises(ValueError, match='not detected'):
-            sarc._read_mask('zbands', frames=[0, 2])
+            sarc.read_mask('zbands', frames=[0, 2])
 
     def test_partial_detection_maps_frames_to_pages(self, synthetic_movie):
         sarc = synthetic_movie
         pages = np.stack([np.full((32, 32), v, np.float32) for v in (10, 30)])
         sarc.store.write_mask('zbands', pages)
         sarc.data.update({'params.detect_sarcomeres.frames': [1, 2]})
-        assert sarc._read_mask('zbands', frames=2)[0, 0] == 30
-        assert list(sarc._read_mask('zbands', frames=[2, 1])[:, 0, 0]) == [30, 10]
+        assert sarc.read_mask('zbands', frames=2)[0, 0] == 30
+        assert list(sarc.read_mask('zbands', frames=[2, 1])[:, 0, 0]) == [30, 10]
         with pytest.raises(ValueError, match='not detected'):
-            sarc._read_mask('zbands', frames=0)
+            sarc.read_mask('zbands', frames=0)
 
     def test_load_mask_full_stack_places_every_rank_at_its_frame(self, synthetic_movie):
         sarc = synthetic_movie
@@ -309,9 +309,9 @@ def test_fast_movie_z_bands_are_paired_with_their_own_frame(crop_copy):
     sarc.motion.detect_z_bands_fast_movie()
     sarc.detect_sarcomeres(frames=1, **DETECT)
     sarc.structure.analyze_vectors(frames='all')
-    z = sarc._read_mask('zbands_fast_movie', frames=1)
-    m = sarc._read_mask('mbands', frames=1)
-    o = sarc._read_mask('orientation', frames=1)
+    z = sarc.read_mask('zbands_fast_movie', frames=1)
+    m = sarc.read_mask('mbands', frames=1)
+    o = sarc.read_mask('orientation', frames=1)
     out = sv.get_sarcomere_vectors(z, m, o, pixelsize=sarc.metadata.pixelsize, interpolation_method='akima')
     keep = sv.filter_vectors_by_neighbors(out[1], out[5], neighbor_radius=1.0, max_neighbor_deviation=30.0)
     assert _finite_at(sarc, 'structure.sarcomere.n_vectors') == [1]
