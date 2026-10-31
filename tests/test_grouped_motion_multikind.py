@@ -218,3 +218,43 @@ def test_retracking_clears_every_grouping_and_its_analysis():
         ('motion.groups.', 'motion.pool.', 'motion.mband.', 'params.motion.group_tracks.', 'params.motion.analyze.'))]
     assert leftovers == []
     assert 'motion.lois.lines' in sarc.data        # LOI lines are input, not a grouping
+
+
+# ---------------------------------------------------------------------------
+# full_analysis: the motion pipeline after detection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('by, prerequisite', [('pool', None), ('mband', None), ('myofibril', 'analyze_myofibrils'),
+                                              ('domain', 'analyze_domains'), ('loi', 'detect_lois')])
+def test_full_analysis_runs_the_steps_the_grouping_needs(monkeypatch, by, prerequisite):
+    sarc = _fake_structure(n_tracks=6)
+    calls = []
+    structure, motion = sarc.structure, sarc.motion
+    monkeypatch.setattr(sarc, 'commit', lambda: calls.append('commit'), raising=False)
+    monkeypatch.setattr(structure, 'analyze_vectors', lambda frames: calls.append('analyze_vectors'))
+    monkeypatch.setattr(motion, 'track', lambda frames, motion_predictor: calls.append('track'))
+
+    def myofibrils(frames):
+        calls.append('analyze_myofibrils')
+        sarc.data['structure.myofibril.lines'] = [[np.array([0, 1, 2]), np.array([3, 4, 5])]]
+
+    def domains(frames):
+        calls.append('analyze_domains')
+        sarc.data['structure.domain.mask'] = [np.ones((128, 128), np.uint8)]
+        sarc.data['structure.domain.n'] = np.array([1])
+        sarc.data['structure.domain.members'] = [None]
+        sarc.data['params.structure.analyze_domains.frames'] = [0]
+
+    def lois(frame):
+        calls.append('detect_lois')
+        motion.set_lois([np.array([[0.0, 20.0], [60.0, 20.0]])])
+
+    monkeypatch.setattr(structure, 'analyze_myofibrils', myofibrils)
+    monkeypatch.setattr(structure, 'analyze_domains', domains)
+    monkeypatch.setattr(motion, 'detect_lois', lois)
+    monkeypatch.setattr(motion, 'commit', lambda: calls.append('commit'))
+
+    motion.full_analysis(by=by, frames='all', reference_frame=0)
+    expected = ['analyze_vectors', 'track'] + ([prerequisite] if prerequisite else []) + ['commit']
+    assert calls == expected
+    assert motion._analyzed_kinds() == [by]

@@ -192,18 +192,8 @@ def cmd_motion(args) -> Dict[str, Any]:
     frames = _frames_used(sarc, args.frames)
     sel = 'all' if args.frames == 'all' else frames
     sarc.detect_sarcomeres(frames=sel, model_path=args.model)
-    if args.fast_movie:
-        sarc.motion.detect_z_bands_fast_movie()
-    sarc.structure.analyze_vectors(frames=sel)
-    sarc.motion.track(frames=sel, motion_predictor=args.motion_predictor)
-    if args.by in ('myofibril', 'domain'):
-        ref = frames[0]
-        sarc.structure.analyze_myofibrils(frames=[ref])
-        if args.by == 'domain':
-            sarc.structure.analyze_domains(frames=[ref])
-        sarc.motion.analyze(by=args.by, reference_frame=ref)
-    else:
-        sarc.motion.analyze(by=args.by)
+    sarc.motion.full_analysis(by=args.by, frames=sel, reference_frame=frames[0], fast_movie=args.fast_movie,
+                              motion_predictor=args.motion_predictor)
     meta_keys = set(sarc.metadata.to_dict())
     groups = [{k: v for k, v in rec.items() if k not in meta_keys and k != 'tif_name'}
               for rec in Export.get_motion_dict_per_group(sarc, kind=args.by)]

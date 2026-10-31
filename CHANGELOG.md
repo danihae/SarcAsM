@@ -6,6 +6,14 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `sarc.motion.full_analysis(by=..., frames=..., reference_frame=None, fast_movie=False, motion_predictor='none')`:
+  vectors, tracking, the structure step the grouping needs at the reference frame (myofibrils, domains or LOI
+  detection) and the analysis, after `sarc.detect_sarcomeres`, with one store write at the end. `sarcasm motion` runs
+  it, which also makes `sarcasm motion --by loi` work (it never detected the LOIs).
+- `sarc.motion.set_lois(lines)` for hand-drawn lines of interest.
+
 ### Changed (breaking)
 
 - **The analyses moved into two namespaces of the recording**: `sarc.structure.*` for sarcomere morphology and
