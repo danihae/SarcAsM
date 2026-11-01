@@ -168,6 +168,9 @@ def test_tracks_have_one_group_column_per_kind():
     assert set(tracks['group_mband']) == {0, 1}
     assert set(tracks['group_pool']) == {0}
     assert 'order_mband' not in tracks          # only the ordered kinds (myofibril, loi) have an order
+    T = sarc.data['motion.tracks.slen'].shape[1]
+    sarc.data['motion.tracks.rest_frames'] = np.zeros(T, bool)
+    assert sarc.motion.groups('mband')[0].tracks.rest_frames.shape == (T,)      # per frame, not per track
 
 
 # ---------------------------------------------------------------------------

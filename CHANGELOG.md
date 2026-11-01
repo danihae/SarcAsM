@@ -124,6 +124,11 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Changed
 
+- **`sarc.motion.track` keeps a track on its sarcomere across beats.** During a fast beat the stripes can shift by
+  about a sarcomere within a few frames, and tracks landed on a neighbouring sarcomere, which also caused most jumps
+  in a track's rest length. On rest frames, found from the detections, a track now returns to its rest position, unless
+  far fewer detections lie at the rest positions than at the current ones because the tissue did not return, and a
+  narrower along-axis gate applies (`max_disp_along_rest_um=0.8`; None restores the old behaviour). `motion.tracks.rest_frames` holds the rest frames found afterwards from the tracked lengths. Track identities change on low-magnification movies, so stored groupings need `group_tracks` again.
 - Faster motion analysis, same results: `analyze_track_motion(by='myofibril')` takes half the time (30 → 15 s on
   the 500-frame 20 kPa test movie, M1 Pro) and tracking 6 % less (46 → 43 s). ContractionNet reads a group's
   tracks 8 at a time (`contraction_net.prediction.predict_contractions_batch`), the oscillation spectrum uses the

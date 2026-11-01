@@ -584,10 +584,10 @@ class MotionPlots:
             ax.text(0.5, 0.5, 'No members', ha='center', va='center', transform=ax.transAxes)
             return
         member_y = np.asarray(g.tracks.delta_slen if mode == 'delta' else g.tracks.slen, dtype=float)
+        n_total = len(member_y)
         avg = np.asarray(g.slen_avg, dtype=float)
         mean_y = avg - grouped_motion.equilibrium_over_quiet(avg, contr) if mode == 'delta' else avg
-        n_total = len(member_y)
-        if max_lines is not None and n_total > max_lines:
+        if max_lines is not None and len(member_y) > max_lines:
             keep = np.argsort(np.isfinite(member_y).sum(axis=1))[::-1][:max_lines]
             member_y = member_y[keep]
         n_shown = len(member_y)

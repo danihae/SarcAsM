@@ -76,6 +76,16 @@ freeze in place at its last position. Interior gaps are anchored on both sides,
 keep their predicted position, and have their slen/orientation interpolated when
 the gap is short (``max_gap_interpolation_s``); ``motion.tracks.observed`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
+
+5. **Rest position.** Between beats the tissue mostly returns to where it was, but during
+   a fast beat the stripes can shift by about a sarcomere within a few frames, and a
+   track then lands on a neighbouring sarcomere. So on rest frames
+   (:func:`rest_frames_from_trace`) a track is predicted at the position it holds at
+   rest, a running mean of its earlier rest positions, and its along-axis gate narrows
+   to at most half a sarcomere (``max_disp_along_rest_um``). So a track returns to its
+   sarcomere at the next rest. If the tissue did not return, far fewer detections lie at the
+   rest positions than where the tracks are now: then the tracks keep following, and
+   their rest positions catch up.
 """
 
 from __future__ import annotations
@@ -92,9 +102,19 @@ from scipy.spatial import cKDTree
 logger = logging.getLogger(__name__)
 
 # Match gates are capped at these fractions of the median sarcomere length so a
-# single-frame match can never reach a neighbouring sarcomere at any pixel size.
+# match can never reach a neighbouring sarcomere from the track's prediction, at any pixel size.
 _ALONG_SLEN_FRAC = 0.6
 _PERP_SLEN_FRAC = 0.25
+# On rest frames the along-axis gate stays within half a sarcomere, so a track cannot reach the next M-band.
+_ALONG_REST_SLEN_FRAC = 0.5
+# Time constant of a track's rest position: slow enough to ignore pixel jitter, fast enough to follow slow drift.
+_REST_POSITION_TAU_S = 0.2
+# A position is occupied if a detection lies within this distance of it, in µm (at least 1 px).
+_REST_DETECTION_RADIUS_UM = 0.4
+# Rest frames: the cell trace stays within this fraction of its largest excursion from the rest level ...
+_REST_BAND_FRAC = 0.15
+# ... and rest is only told from beats if the beat amplitude exceeds this many times the frame-to-frame noise.
+_REST_MIN_SNR = 15.0
 
 # Components above this size use a greedy claim instead of the O(k³) exact solve.
 _LAP_MAX_COMPONENT = 1500
@@ -443,6 +463,46 @@ def compute_track_drift(positions_px: np.ndarray, observed: np.ndarray,
     return out
 
 
+def rest_frames_from_trace(trace: np.ndarray) -> np.ndarray:
+    """Frames in which a cell is at rest, from its average sarcomere length over time.
+
+    The rest level is the most occupied level of the trace, not its median: a cell that
+    contracts for half of each cycle has its median between rest and peak contraction.
+    A frame is at rest if the trace and both neighbouring frames stay within
+    15 % of the excursion from that level (its 99.5th percentile), and within at least twice the noise.
+    If the beat amplitude is below 15 times the frame-to-frame noise, read from the lower quartile of the
+    steps, rest cannot be told from beats and no frame counts as rest. The most occupied level can be
+    the contracted end, if a cell spends most of its time contracted.
+
+    Parameters
+    ----------
+    trace : np.ndarray
+        ``(T,)`` average sarcomere length per frame; NaN where unknown.
+
+    Returns
+    -------
+    np.ndarray
+        ``(T,)`` bool.
+    """
+    trace = np.asarray(trace, dtype=float)
+    finite = trace[np.isfinite(trace)]
+    rest = np.zeros(trace.shape, dtype=bool)
+    if finite.size < 3:
+        return rest
+    amplitude = float(finite.max() - finite.min())
+    # the lower quartile reads the quiet steps, even if beats fill most frames; 0.4506 for Gaussian noise
+    noise = np.nanpercentile(np.abs(np.diff(trace)), 25) / 0.4506
+    if not np.isfinite(noise) or amplitude <= 0 or amplitude < _REST_MIN_SNR * noise:
+        return rest
+    width = max(noise, amplitude / 60)
+    counts, edges = np.histogram(finite, np.arange(finite.min() - width, finite.max() + 2 * width, width))
+    k = int(np.convolve(counts, [1, 2, 1], 'same').argmax())
+    deviation = np.abs(trace - (edges[k] + edges[k + 1]) / 2)
+    with np.errstate(invalid='ignore'):
+        rest = deviation < max(_REST_BAND_FRAC * np.nanpercentile(deviation, 99.5), 2 * noise)
+    return rest & np.r_[rest[1:], True] & np.r_[True, rest[:-1]]
+
+
 def _median_detections_per_frame(pos_vectors_px_all) -> float:
     """Median number of sarcomere vectors per frame.
 
@@ -637,6 +697,7 @@ def track_sarcomere_vectors(
     max_gap_interpolation_s: float = 0.05,
     progress_notifier=None,
     predictor: Optional[Callable[[int, np.ndarray], np.ndarray]] = None,
+    max_disp_along_rest_um: Optional[float] = 0.8,
 ) -> Dict[str, object]:
     """Run the 2D full-field sarcomere-vector tracker on a detection sequence.
 
@@ -683,10 +744,9 @@ def track_sarcomere_vectors(
         Frame time in s; converts the seconds-valued horizons below to frames.
         Default is None.
     max_disp_along_um : float, optional
-        Match gate along the sarcomere axis, in µm — i.e. the maximum distance a
-        track may move along its axis between consecutive frames. This is the
-        per-frame "max step": at the default 1.0 µm a track can never jump more
-        than ~1 µm regardless of pixel size. Default is 1.0.
+        Match gate along the sarcomere axis, in µm, measured from the track's prediction,
+        regardless of pixel size. On a rest frame the prediction can be the rest position, so
+        the step from the previous frame can be larger. Default is 1.0.
     max_disp_perp_um : float, optional
         Match gate perpendicular to the sarcomere axis, in µm; kept far tighter
         than the along gate (perpendicular jumps onto a neighbouring myofibril
@@ -724,6 +784,13 @@ def track_sarcomere_vectors(
         perpendicular gate). None (default) keeps the hold-position / neighbour-advection
         prediction. Use it when the per-frame motion is a sizeable fraction of a
         sarcomere length (coarse frame rates); at ≥ ~30 fps it changes nothing.
+    max_disp_along_rest_um : float or None, optional
+        Match gate along the sarcomere axis on rest frames, in µm, capped at half a sarcomere
+        length. On these frames a track is also predicted at its rest position, so that a beat
+        cannot move it to another sarcomere for good, unless under half as many rest positions as
+        current positions hold a detection: then the tissue did not return, and the tracks keep
+        following. None switches both off. A movie in which no rest can be detected tracks as with
+        None. Default is 0.8.
 
     Returns
     -------
@@ -737,7 +804,10 @@ def track_sarcomere_vectors(
         1.0 — the headline continuity QC number) and ``'motion.tracks.n_retired'``.
         Track arrays are dense ``(n_tracks, T)`` (positions ``(n_tracks, T, 2)``).
         ``'motion.tracks.n_interpolated_gap_frames'`` counts the entries filled by
-        ``max_gap_interpolation_s``.
+        ``max_gap_interpolation_s``, and ``'motion.tracks.rest_frames'`` holds the ``(T,)`` rest
+        frames found from the median length of the tracks observed in at least 30 % of the frames, or
+        from the detections if no track reaches that, and none if the level found is the contracted end.
+        The tracker itself uses those from the detections.
     """
     T = len(pos_vectors_px_all)
     if T < 2:
@@ -788,6 +858,21 @@ def track_sarcomere_vectors(
 
     max_along2 = float(max_disp_along_px * max_disp_along_px)
     max_perp2 = float(max_disp_perp_px * max_disp_perp_px)
+
+    # Rest frames for the tracker itself come from the detections: no tracks exist yet.
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)
+        rest_frames = rest_frames_from_trace(np.array(
+            [np.nanmedian(s) if s is not None and len(s) > 0 else np.nan for s in sarcomere_lengths_all]))
+    anchor_at_rest = max_disp_along_rest_um is not None and bool(rest_frames.any())
+    rest_along2 = max_along2
+    if anchor_at_rest:
+        rest_along_px = float(max_disp_along_rest_um) / px
+        if median_slen_px is not None and median_slen_px > 0:
+            rest_along_px = min(rest_along_px, _ALONG_REST_SLEN_FRAC * median_slen_px)
+        rest_along2 = min(max_along2, rest_along_px * rest_along_px)
+    rest_alpha = min(1.0, float(frametime) / _REST_POSITION_TAU_S) if frametime and frametime > 0 else 0.05
+    rest_radius_px = max(_REST_DETECTION_RADIUS_UM / px, 1.0)
     max_radius = float(max_disp_along_px)
 
     # Neighbourhood radius for the local-motion estimate: a few sarcomeres, so the
@@ -815,12 +900,14 @@ def track_sarcomere_vectors(
     last_ori = np.zeros(capacity, dtype=np.float32)
     frames_since_observation = np.zeros(capacity, dtype=np.int32)
     alive = np.zeros(capacity, dtype=bool)
+    rest_y = np.full(capacity, np.nan, dtype=np.float32)
+    rest_x = np.full(capacity, np.nan, dtype=np.float32)
 
     def _grow(needed: int):
         """Double capacity until >= ``needed`` and resize all SoA arrays."""
         nonlocal capacity, positions_px, tracks_slen, tracks_ori, tracks_observed
         nonlocal tracks_detection_id, tracks_midline_id
-        nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_observation, alive
+        nonlocal start_frame_arr, last_y, last_x, last_ori, frames_since_observation, alive, rest_y, rest_x
         if needed <= capacity:
             return
         new_cap = capacity
@@ -845,6 +932,8 @@ def track_sarcomere_vectors(
         last_ori = _resize(last_ori, 0.0)
         frames_since_observation = _resize(frames_since_observation, 0)
         alive = _resize(alive, False)
+        rest_y = _resize(rest_y, np.nan)
+        rest_x = _resize(rest_x, np.nan)
         capacity = new_cap
 
     n_tracks = 0
@@ -878,6 +967,9 @@ def track_sarcomere_vectors(
         last_ori[sl] = ori0
         alive[sl] = True
         n_tracks = n0
+        if anchor_at_rest and rest_frames[0]:
+            rest_y[sl] = pos0[:, 0]
+            rest_x[sl] = pos0[:, 1]
 
     # --- frame-to-frame: advect, match, spawn ---
     logger.info("Tracking frames…")
@@ -926,6 +1018,8 @@ def track_sarcomere_vectors(
                 last_y[ci] = ys[coasting] + along_live * s_live
                 last_x[ci] = xs[coasting] + along_live * c_live
 
+        at_rest = anchor_at_rest and bool(rest_frames[t + 1])
+
         # 2. prepare detections for frame t+1
         dets_raw = pos_vectors_px_all[t + 1]
         dets = np.asarray(
@@ -939,6 +1033,18 @@ def track_sarcomere_vectors(
             midline_ids_all[t + 1] if (midline_ids_all is not None and (t + 1) < len(midline_ids_all))
             else None, n_det, np.int32, -1,
         )
+
+        # on a rest frame the tracks go back to their rest positions, whatever the last beat did to them. If far fewer
+        # detections lie there than where the tracks are now, the tissue did not return: the tracks keep following.
+        # Flicker empties both alike, so it does not count.
+        known = live[np.isfinite(rest_y[live])] if at_rest and n_det > 0 else live[:0]
+        if known.size > 0:
+            tree = cKDTree(dets)
+            at_home = tree.query(np.column_stack((rest_y[known], rest_x[known])), distance_upper_bound=rest_radius_px)[0]
+            at_now = tree.query(np.column_stack((last_y[known], last_x[known])), distance_upper_bound=rest_radius_px)[0]
+            if np.isfinite(at_home).sum() >= 0.5 * np.isfinite(at_now).sum():
+                last_y[known] = rest_y[known]
+                last_x[known] = rest_x[known]
 
         # Bool masks over the current track slots / detections so we can do
         # claim bookkeeping in pure numpy without Python sets.
@@ -958,7 +1064,7 @@ def track_sarcomere_vectors(
                     np.arange(live.size, dtype=np.int64), counts,
                 )
                 qp_abs = live[qp_flat_rel]
-                along_budget = max_along2
+                along_budget = rest_along2 if at_rest else max_along2
                 perp_budget = max_perp2
 
                 qy = last_y[qp_abs]
@@ -1024,6 +1130,10 @@ def track_sarcomere_vectors(
                     if finite_det.any():
                         last_ori[qp_acc[finite_det]] = co_acc[finite_det]
                     frames_since_observation[qp_acc] = 0
+                    if at_rest:
+                        first = ~np.isfinite(rest_y[qp_acc])
+                        rest_y[qp_acc] = np.where(first, cy_acc, rest_y[qp_acc] + rest_alpha * (cy_acc - rest_y[qp_acc]))
+                        rest_x[qp_acc] = np.where(first, cx_acc, rest_x[qp_acc] + rest_alpha * (cx_acc - rest_x[qp_acc]))
 
         # 5. unmatched live tracks → gap frame
         if live.size > 0:
@@ -1067,6 +1177,9 @@ def track_sarcomere_vectors(
                 last_ori[new_slots] = new_ori
                 frames_since_observation[new_slots] = 0
                 alive[new_slots] = True
+                if at_rest:
+                    rest_y[new_slots] = new_y
+                    rest_x[new_slots] = new_x
                 n_tracks += n_new
 
     # blank the trailing coast after a track's last observation (interior gaps stay)
@@ -1125,6 +1238,20 @@ def track_sarcomere_vectors(
         f"{n} tracks for ~{med_det:.0f} detections/frame "
         f"(fragmentation ratio {frag_ratio:.2f}, ideal 1.0).")
 
+    # The stored rest frames come from the tracked lengths: all detections, including the
+    # flickering ones, can split a rest period into short runs on noisy movies.
+    covered = out_tracks_observed.mean(axis=1) >= 0.3
+    if covered.any():
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            trace = np.nanmedian(np.where(out_tracks_observed[covered], out_tracks_slen[covered], np.nan), axis=0)
+            rest_frames = rest_frames_from_trace(trace)
+            # Far more other frames above that level than below it: it is the contracted end, not rest.
+            # Detection medians cannot tell: low-count movies read long in a beat.
+            offset = trace[~rest_frames] - np.nanmedian(trace[rest_frames])
+            if rest_frames.any() and np.count_nonzero(offset > 0) > 3 * np.count_nonzero(offset < 0):
+                rest_frames = np.zeros_like(rest_frames)
+
     track_drift_um = compute_track_drift(
         out_positions_px, out_tracks_observed, median_slen_px, pixelsize)
     n_drifted = int(np.count_nonzero(
@@ -1151,6 +1278,7 @@ def track_sarcomere_vectors(
         'motion.tracks.fragmentation_ratio': frag_ratio,
         'motion.tracks.n_retired': int(np.count_nonzero(~alive[:n_tracks])),
         'motion.tracks.n_interpolated_gap_frames': int(n_interpolated),
+        'motion.tracks.rest_frames': rest_frames,
     }
 
     return result

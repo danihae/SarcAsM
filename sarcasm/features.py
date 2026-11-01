@@ -724,6 +724,17 @@ structure_feature_dict = {
         'function': 'sarc.motion.track',
         'name': 'Number of interpolated gap frames'
     },
+    'motion.tracks.rest_frames': {
+        'description': 'Boolean mask of the frames in which the cell is at rest, from the median length of the '
+                       'tracks observed in at least 30 % of the frames, or of the detections if no track reaches '
+                       'that (rest_frames_from_trace). The tracker itself uses '
+                       'rest frames from the detections, which can differ. np.ndarray, shape (T,). All False if the '
+                       'beat amplitude is below 15 times the frame-to-frame noise of that trace, or if far more of '
+                       'the other frames lie above its most occupied level than below it, the contracted end.',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Rest frames'
+    },
     'motion.tracks.n_retired': {
         'description': 'Number of tracks closed because they went unmatched for longer than '
                        'retire_after_s (0 with the default, where tracks never retire).',

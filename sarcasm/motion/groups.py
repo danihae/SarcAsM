@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 
 #: Results stored once per grouping, not once per group.
 _SHARED = ('oscill_frequencies',)
+# motion.tracks.* results with one value per frame, not per track: no member slice.
+_PER_FRAME = ('rest_frames',)
 #: Member quantities computed from the lengths (not stored): see :class:`GroupTracks`.
 _KINEMATICS = ('delta_slen', 'vel', 'equ')
 
@@ -147,7 +149,7 @@ class GroupTracks:
         key = f'motion.tracks.{name}'
         if key not in data:
             raise AttributeError(f"'{name}' is neither a track result (motion.tracks.*) nor one of {_KINEMATICS}.")
-        return np.asarray(data[key])[self._group._members]
+        return np.asarray(data[key]) if name in _PER_FRAME else np.asarray(data[key])[self._group._members]
 
     def _member_kinematics(self) -> Dict[str, np.ndarray]:
         """ΔSL, velocity and resting length of the members, against the group's own contractions."""

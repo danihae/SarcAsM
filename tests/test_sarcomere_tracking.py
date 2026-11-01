@@ -660,3 +660,131 @@ def test_progress_bars_are_labelled_and_on_by_default(capsys):
                             progress_notifier=notifier)
     err = capsys.readouterr().err
     assert 'Tracking' in err and 'Refining lengths' in err
+
+
+# ---------------------------------------------------------------------------
+# Rest frames, rest position
+# ---------------------------------------------------------------------------
+
+def _beating_trace(T=400, period=100, contraction=60):
+    """Length trace that contracts for most of each cycle, so its median lies between rest and peak."""
+    phase = np.arange(T) % period
+    return 1.9 - 0.3 * np.sin(np.pi * np.minimum(phase, contraction) / contraction)
+
+
+def test_rest_frames_use_the_most_occupied_level():
+    trace = _beating_trace()
+    rest = st.rest_frames_from_trace(trace)
+    plateau = (np.arange(400) % 100) >= 62
+    assert abs(float(np.median(trace)) - 1.9) > 0.01      # the median misses the plateau
+    assert rest[plateau].mean() > 0.9
+    assert not rest[(np.arange(400) % 100 > 5) & (np.arange(400) % 100 < 55)].any()
+
+
+@pytest.mark.parametrize('trace', [np.random.default_rng(0).normal(1.8, 0.01, 200), np.full(50, np.nan), np.full(50, 1.8),
+                                   np.where(np.arange(50) % 2, np.arange(50) * 0.01, np.nan)])
+def test_no_rest_frames_without_a_beat_above_the_noise(trace):
+    assert not st.rest_frames_from_trace(trace).any()
+
+
+@pytest.mark.parametrize('fps', [10, 25, 50, 100])
+def test_rest_frames_do_not_depend_on_the_frame_rate(fps):
+    t = np.arange(20 * fps) / fps
+    phase = t % 1.0
+    trace = 1.9 - 0.3 * np.sin(np.pi * np.minimum(phase, 0.6) / 0.6) + np.random.default_rng(0).normal(0, 0.005, t.size)
+    rest = st.rest_frames_from_trace(trace)
+    assert rest[phase >= 0.65].mean() > 0.8
+    assert not rest[(phase > 0.15) & (phase < 0.45)].any()
+
+
+def test_rest_frames_with_a_single_beat_in_a_long_movie():
+    trace = 1.8 + np.random.default_rng(0).normal(0, 0.002, 6000)
+    trace[3000:3030] -= 0.3 * np.sin(np.pi * np.arange(30) / 30)
+    assert st.rest_frames_from_trace(trace).mean() > 0.7
+
+
+def _hopping_beats(T=80, pitch=30.0, jump=20.0, relax=5.0, px=0.06):
+    """M-bands one pitch apart along x. Each beat throws them by ``jump`` in one frame, nearer to the
+    neighbour's position than to their own, and they relax in small steps: the bare tracker follows the neighbour."""
+    columns = np.arange(40.0, 200.0, pitch)
+    rows = np.arange(40.0, 60.0)
+    base = np.array([(r, c) for c in columns for r in rows], dtype=np.float32)
+    rng = np.random.default_rng(0)
+    pos_all, slen_all, ori_all, mid_all = [], [], [], []
+    for t in range(T):
+        since = (t - 20) % 40
+        shift = jump - relax * since if since * relax < jump else 0.0
+        pos_all.append(np.round(base + np.array([0.0, shift], dtype=np.float32)))
+        length = 1.8 - (0.25 if shift > 0 else 0.0) + rng.normal(0, 0.002)
+        slen_all.append(np.full(len(base), length, dtype=np.float32))
+        ori_all.append(np.zeros(len(base), dtype=np.float32))
+        mid_all.append(np.zeros(len(base), dtype=np.int32))
+    return pos_all, mid_all, slen_all, ori_all, px
+
+
+def test_track_returns_to_its_sarcomere_after_a_beat():
+    pos_all, mid_all, slen_all, ori_all, px = _hopping_beats()
+    kwargs = dict(pixelsize=px, frametime=0.02, min_track_duration_s=0.0)
+    anchored = st.track_sarcomere_vectors(pos_all, mid_all, slen_all, ori_all, **kwargs)
+    bare = st.track_sarcomere_vectors(pos_all, mid_all, slen_all, ori_all, max_disp_along_rest_um=None, **kwargs)
+
+    def moved(out):
+        p, o = out['motion.tracks.positions_px'], out['motion.tracks.observed']
+        both = o[:, 15] & o[:, 75]
+        return np.abs(p[both, 75, 1] - p[both, 15, 1])
+    rest = anchored['motion.tracks.rest_frames']
+    assert rest[:19].all() and not rest[19:24].any()     # a frame next to a beat is not at rest
+    assert moved(bare).max() >= 25                       # the bare tracker has changed sarcomere for good
+    assert moved(anchored).max() <= 1
+
+
+def _lattice(px, shift_px, T=80):
+    """Six M-bands 1.8 um apart with a beat every 40 frames from frame 20; ``shift_px(t)`` moves all of them along the axis."""
+    base = np.array([(r, 40 + c * 1.8 / px) for c in range(6) for r in np.arange(40.0, 60.0)], dtype=np.float32)
+    rng = np.random.default_rng(0)
+    lengths = [1.8 - (0.25 if (t - 20) % 40 < 5 else 0.0) + rng.normal(0, 0.002) for t in range(T)]
+    return ([np.round(base + np.array([0.0, shift_px(t)], dtype=np.float32)) for t in range(T)],
+            [np.zeros(len(base), dtype=np.int32) for _ in range(T)],
+            [np.full(len(base), length, dtype=np.float32) for length in lengths],
+            [np.zeros(len(base), dtype=np.float32) for _ in range(T)])
+
+
+@pytest.mark.parametrize('px', [0.06, 0.12])
+def test_rest_gate_limits_a_step_on_a_rest_frame(px):
+    def thrown(jump_um, gate_um):
+        pos, mid, slen, ori = _lattice(px, lambda t: jump_um / px if t == 50 else 0.0)
+        out = st.track_sarcomere_vectors(pos, mid, slen, ori, pixelsize=px, frametime=0.02,
+                                         max_disp_along_rest_um=gate_um, min_track_duration_s=0.0)
+        seed = out['motion.tracks.start_frame'] == 0
+        return out['motion.tracks.observed'][seed, 50], out['motion.tracks.positions_px'][seed]
+    assert thrown(0.3, 0.5)[0].all()
+    assert not thrown(0.7, 0.5)[0].any()
+    observed, p = thrown(0.95, 5.0)                      # the half-sarcomere cap binds: the neighbour is 0.85 um away
+    assert (np.abs(p[observed, 50, 1] - p[observed, 49, 1]) * px <= 0.9).all()
+
+
+def test_stored_rest_frames_are_not_the_contracted_end():
+    px, T = 0.06, 400
+    phase = np.arange(T) % 100
+    rng = np.random.default_rng(0)
+
+    def stored_rest(trace):
+        pos, mid, _, ori = _lattice(px, lambda t: 0.0, T=T)
+        slen = [np.full(len(pos[0]), trace[t] + rng.normal(0, 0.002), dtype=np.float32) for t in range(T)]
+        return st.track_sarcomere_vectors(pos, mid, slen, ori, pixelsize=px, frametime=0.02,
+                                          min_track_duration_s=0.0)['motion.tracks.rest_frames']
+    # 70 frames contracted, 20 relaxed: the most occupied level is the contracted one
+    assert not stored_rest(1.8 - 0.3 * np.clip(np.minimum(phase, 80 - phase) / 5, 0, 1)).any()
+    # readings below rest, then above it, as on low-count movies: the level is rest
+    rest = stored_rest(1.8 - 0.1 * (phase < 12) + 0.25 * ((phase >= 12) & (phase < 21)))
+    assert rest[phase >= 25].mean() > 0.9 and not rest[phase < 21].any()
+
+
+def test_track_keeps_following_tissue_that_does_not_return():
+    px = 0.06
+    pos, mid, slen, ori = _lattice(px, lambda t: 22.0 * np.clip((t - 20) / 4, 0, 1))       # 1.3 um during the first beat, for good
+    out = st.track_sarcomere_vectors(pos, mid, slen, ori, pixelsize=px, frametime=0.02, min_track_duration_s=0.0)
+    p, o = out['motion.tracks.positions_px'], out['motion.tracks.observed']
+    assert out['motion.tracks.n'] == len(pos[0])
+    assert o.mean() > 0.99
+    np.testing.assert_allclose(p[:, 75, 1] - p[:, 15, 1], 22.0, atol=1.0)
