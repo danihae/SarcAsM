@@ -142,7 +142,7 @@ class StructureAnalysis(_Namespace):
     def analyze_z_bands(self, frames: Union[str, int, Sequence[int]] = 'all', threshold: float = 0.5,
                         min_length: float = 0.2, median_filter_radius: float = 0.2, theta_phi_min: float = 0.4, 
                         a_min: float = 0.3, d_max: float = 3.0, d_min: float = 0.0, max_axial_offset: float = 0.9,
-                        progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+                        progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Segment and analyze sarcomere z-bands.
 
@@ -189,8 +189,8 @@ class StructureAnalysis(_Namespace):
             (perpendicular to the z-bands); a connection offset by about half a
             sarcomere or more reaches the next z-band of the neighbouring myofibril.
             None disables the limit. Default is 0.9.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
+        progress_notifier : ProgressNotifier or None, optional
+            Progress notifier for inclusion in the GUI. None reports nothing. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
         if not self.mask_exists('zbands'):
@@ -246,8 +246,10 @@ class StructureAnalysis(_Namespace):
 
         # iterate images
         logger.info('Starting Z-band analysis...')
-        for i, (frame_i, zbands_i, image_i, orientation_field_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, zbands, images, orientation_field), total=n_imgs)):
+        items = zip(list_frames, zbands, images, orientation_field)
+        if progress_notifier is not None:
+            items = progress_notifier.iterator(items, total=n_imgs)
+        for i, (frame_i, zbands_i, image_i, orientation_field_i) in enumerate(items):
 
             # Delegate to z_band_analysis module
             labels_i, labels_skel_i = z_band_analysis.segment_z_bands(zbands_i, threshold=threshold)
@@ -340,7 +342,7 @@ class StructureAnalysis(_Namespace):
                                   registry_axial_range: int = 3,
                                   registry_max_angle: float = 20.0,
                                   use_fast_movie_zbands: bool = True,
-                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+                                  progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Extract sarcomere orientation and length vectors, and the Z-band registry of every vector.
 
@@ -381,7 +383,21 @@ class StructureAnalysis(_Namespace):
             are not comparable between analyses run at different ``linewidth``.
             Runtime scales ~4.6× from 0.2 to 1.5 µm.
 
-            In short, treat it as a detection-rate knob with an accuracy cost, not
+            The exception is a coarse pixel size. The width is rounded to whole
+            pixels, so 0.3 µm is 5 px at 0.06 µm/px but a single pixel at
+            0.2 µm/px: no lateral averaging at all. A one-pixel line reads the
+            Z-band map at one lateral spot, and the M-band pixel that a track
+            follows shifts sideways by a pixel from frame to frame, so the length
+            flips between two levels. On a 0.2167 µm/px movie with 3D Z-bands,
+            1.0 µm (5 px) cut the frame-to-frame noise at rest from 12.3 to
+            8.6 nm and the steps larger than 50 nm four-fold (19.6 → 4.7 per 1000
+            frame pairs) without reducing the cell-average shortening; 0.65 µm
+            (3 px) gave most of that. At 0.108 µm/px, where 0.3 µm is already
+            3 px, widening gained little. When 0.3 µm is less than ~3 px, set
+            ``linewidth`` to about 1 µm; :meth:`~sarcasm.motion.MotionAnalysis.track`
+            re-measures the track lengths with the value used here.
+
+            Otherwise, treat it as a detection-rate knob with an accuracy cost, not
             as a noise filter. To actually reduce frame-to-frame length noise on
             high-speed recordings, run :meth:`~sarcasm.motion.MotionAnalysis.detect_z_bands_fast_movie` — the 3D
             U-Net cuts it ~4× (32 → 8 nm) by integrating over a temporal window
@@ -480,8 +496,8 @@ class StructureAnalysis(_Namespace):
             carries through to the measured lengths. Falls back to the 2D mask when
             unavailable; the choice is stored in
             ``params.structure.analyze_vectors.zbands_source``. Default is True.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
+        progress_notifier : ProgressNotifier or None, optional
+            Progress notifier for inclusion in the GUI. None reports nothing. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
         if not self.mask_exists('zbands'):
@@ -566,9 +582,10 @@ class StructureAnalysis(_Namespace):
 
         # iterate images
         logger.info('Starting sarcomere length and orientation analysis...')
-        for i, (frame_i, zbands_i, mbands_i, orientation_field_i, sarcomere_mask_i) in enumerate(
-                progress_notifier.iterator(zip(list_frames, z_bands, mbands, orientation_field, sarcomere_mask),
-                                           total=n_frames)):
+        items = zip(list_frames, z_bands, mbands, orientation_field, sarcomere_mask)
+        if progress_notifier is not None:
+            items = progress_notifier.iterator(items, total=n_frames)
+        for i, (frame_i, zbands_i, mbands_i, orientation_field_i, sarcomere_mask_i) in enumerate(items):
 
             # Delegate to sarcomere_vectors module
             (
@@ -728,7 +745,7 @@ class StructureAnalysis(_Namespace):
     def analyze_myofibrils(self, frames: Optional[Union[str, int, Sequence[int]]] = None,
                            ratio_seeds: float = 0.1, persistence: int = 3, threshold_distance: float = 0.5,
                            n_min: int = 4, median_filter_radius: float = 0.5, random_seed: Optional[int] = 42,
-                           progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+                           progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Estimate myofibril lines by line growth algorithm and analyze length and curvature.
 
@@ -756,8 +773,8 @@ class StructureAnalysis(_Namespace):
         random_seed : int or None, optional
             Seed of the random choice of the start vectors, so the same image gives the same lines
             (and the same myofibril groups). None draws new start vectors on every run. Default is 42.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
+        progress_notifier : ProgressNotifier or None, optional
+            Progress notifier for inclusion in the GUI. None reports nothing. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
         if 'structure.sarcomere.pos_px' not in self.data:
@@ -781,13 +798,13 @@ class StructureAnalysis(_Namespace):
 
         # iterate frames
         logger.info('Starting myofibril line analysis...')
+        items = zip(list_frames, pos_vectors_px, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
+                    midline_length_vectors)
+        if progress_notifier is not None:
+            items = progress_notifier.iterator(items, total=len(pos_vectors_px))
         for i, (
                 frame_i, pos_vectors_px_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
-                midline_length_vectors_i) in enumerate(
-            progress_notifier.iterator(
-                zip(list_frames, pos_vectors_px, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
-                    midline_length_vectors),
-                total=len(pos_vectors_px))):
+                midline_length_vectors_i) in enumerate(items):
             if pos_vectors_px_i is None:
                 continue
             if len(np.asarray(pos_vectors_px_i).T) > 0:
@@ -853,7 +870,7 @@ class StructureAnalysis(_Namespace):
                                   d_max: float = 3, cosine_min: float = 0.65, leiden_resolution: float = 0.06,
                                   random_seed: int = 42, area_min: float = 20.0, dilation_radius: float = 0.3,
                                   store_mask: bool = False,
-                                  progress_notifier: ProgressNotifier = ProgressNotifier.progress_notifier_tqdm()) -> None:
+                                  progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm()) -> None:
         """
         Cluster sarcomeres into domains based on their spatial and orientational properties using the Leiden algorithm
         for community detection.
@@ -883,8 +900,8 @@ class StructureAnalysis(_Namespace):
         store_mask : bool, optional
             If True, store the integer-labeled domain mask in ``self.data``
             (memory-intensive for large time-series). Default is False.
-        progress_notifier : ProgressNotifier, optional
-            Progress notifier for inclusion in the GUI. Default is
+        progress_notifier : ProgressNotifier or None, optional
+            Progress notifier for inclusion in the GUI. None reports nothing. Default is
             ProgressNotifier.progress_notifier_tqdm().
         """
         if 'structure.sarcomere.pos' not in self.data:
@@ -921,12 +938,12 @@ class StructureAnalysis(_Namespace):
 
         # iterate frames
         logger.info('Starting sarcomere domain analysis...')
+        items = zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
+                    midline_id_vectors)
+        if progress_notifier is not None:
+            items = progress_notifier.iterator(items, total=len(pos_vectors))
         for i, (frame_i, pos_vectors_i, sarcomere_length_vectors_i, sarcomere_orientation_vectors_i,
-                midline_id_vectors_i) in enumerate(
-            progress_notifier.iterator(
-                zip(list_frames, pos_vectors, sarcomere_length_vectors, sarcomere_orientation_vectors,
-                    midline_id_vectors),
-                total=len(pos_vectors))):
+                midline_id_vectors_i) in enumerate(items):
             if pos_vectors_i.ndim == 0:
                 continue
             # Delegate to domain_clustering module

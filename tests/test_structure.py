@@ -635,6 +635,17 @@ def test_vectors_on_a_frame_without_m_bands(structure_crop_file_path):
         assert np.isnan(d[f'structure.sarcomere.{key}'][0]), key
 
 
+def test_structure_steps_accept_no_progress_notifier(structure_crop_file_path):
+    """progress_notifier=None reports nothing, as in motion.track; it used to raise AttributeError."""
+    sarc = SarcAsM(structure_crop_file_path, restart=True)
+    sarc.detect_sarcomeres(frames=0)
+    sarc.structure.analyze_z_bands(frames=0, progress_notifier=None)
+    sarc.structure.analyze_vectors(frames=0, progress_notifier=None)
+    sarc.structure.analyze_myofibrils(frames=0, progress_notifier=None)
+    sarc.structure.analyze_domains(frames=0, progress_notifier=None)
+    assert sarc.data['structure.sarcomere.n_vectors'][0] > 0
+
+
 def test_contrast_background_of_a_covered_frame_does_not_depend_on_the_call(structure_crop_file_path):
     """A frame fully covered by cells has no free background and takes the background of the recording, so its
     Z-band contrast is the same whether it is analyzed alone or together with other frames."""
