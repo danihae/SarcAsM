@@ -663,7 +663,7 @@ def test_progress_bars_are_labelled_and_on_by_default(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Rest frames, rest position
+# Rest frames, rest position, gap filling
 # ---------------------------------------------------------------------------
 
 def _beating_trace(T=400, period=100, contraction=60):
@@ -788,3 +788,114 @@ def test_track_keeps_following_tissue_that_does_not_return():
     assert out['motion.tracks.n'] == len(pos[0])
     assert o.mean() > 0.99
     np.testing.assert_allclose(p[:, 75, 1] - p[:, 15, 1], 22.0, atol=1.0)
+
+
+def _pair_profile(heights=(1.0, 1.0), third=None, length=120, px=0.06, spacing=30):
+    x = np.arange(length, dtype=float)
+    centre = (length - 1) / 2
+    y = heights[0] * np.exp(-0.5 * ((x - centre + spacing / 2) / 2.5) ** 2)
+    y += heights[1] * np.exp(-0.5 * ((x - centre - spacing / 2) / 2.5) ** 2)
+    if third is not None:
+        y += third[1] * np.exp(-0.5 * ((x - centre - third[0]) / 2.5) ** 2)
+    return y
+
+
+def test_grade_profile_pairs_reads_symmetry_and_a_third_peak():
+    from sarcasm.utils import Utils
+    px = 0.06
+    profiles = np.stack([_pair_profile(), _pair_profile((1.0, 0.4)), _pair_profile(third=(30.0, 0.8)),
+                         _pair_profile(third=(0.0, 0.7)), np.zeros(120), _pair_profile(third=(45.0, 0.8))])
+    lengths, offsets = np.full(6, 30 * px), np.zeros(6)
+    lengths[4] = np.nan
+    asymmetry, third = Utils.grade_profile_pairs(profiles, px, lengths, offsets)
+    assert asymmetry[0] == pytest.approx(0, abs=0.01) and third[0] == 0
+    assert asymmetry[1] == pytest.approx(0.6 / 1.4, abs=0.02) and third[1] == 0
+    assert third[2] > 0.5                                   # too close outside the pair for a regular lattice
+    assert third[3] == pytest.approx(0.7, abs=0.05)         # between the pair
+    assert np.isnan(asymmetry[4]) and np.isnan(third[4])
+    assert third[5] == 0                                    # one length outside the pair: the next Z-band
+
+
+def test_grade_profile_pairs_does_not_read_a_broad_band_as_a_third_peak():
+    from sarcasm.utils import Utils
+    px, x = 0.05, np.arange(120.0)
+    band = lambda at, height=1.0: height * np.exp(-0.5 * ((x - at) / 1.5) ** 2)
+    profile = (band(42) + band(46, 0.9) + band(78))[None]    # one band with two tops 0.2 um apart
+    lengths, offsets = Utils.process_profiles_batch(profile, px, slen_lims=(1, 3), interp_factor=4)
+    assert Utils.grade_profile_pairs(profile, px, lengths, offsets)[1][0] == 0
+    assert np.isfinite(Utils.grade_profile_pairs(profile, px, lengths, offsets, interp_factor=0)[0][0])
+
+
+def _fill_scene(third_at=None):
+    """One sarcomere between two stripes 30 px apart, three tracks: observed except a gap, sparse, and complete."""
+    T, px = 12, 0.06
+    obs = np.ones((3, T), bool)
+    obs[0, 4:7] = False
+    obs[1, 2:11] = False
+    pos = np.full((3, T, 2), 0.0, dtype=np.float32)
+    pos[:, :, 0] = 40.0
+    pos[:, :, 1] = 55.0                                     # the midpoint of the stripes
+    pos[0, 4:7, 1] = 58.0                                   # predictions drift off on the gap frames ...
+    slen = np.where(obs, 1.8, np.nan).astype(np.float32)
+    axis = np.where(obs, 0.0, np.nan)
+
+    def read(k):
+        stripes = _stripe_zbands(period_px=30.0, x0=10.0)
+        if third_at == k:
+            stripes = stripes + 0.8 * np.exp(-0.5 * ((np.arange(stripes.shape[1]) - 55.0) / 2.5) ** 2)[None]
+        return stripes
+    return pos, axis, obs, slen, read, px
+
+
+def test_fill_measures_gaps_at_the_track_position_and_leaves_real_frames_alone():
+    pos, axis, obs, slen, read, px = _fill_scene()
+    filled_slen, filled, out_pos = st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), read, px)
+    assert filled[0, 4:7].all() and filled.sum() == 3       # the sparse track is left alone
+    assert np.isfinite(filled_slen[0]).all()
+    assert filled_slen[0, 5] == pytest.approx(1.8, abs=0.02)
+    np.testing.assert_array_equal(filled_slen[0, obs[0]], slen[0, obs[0]])
+    assert not np.isfinite(filled_slen[1, 2:11]).any()
+    assert abs(out_pos[0, 5, 1] - 55.0) < 1.0               # measured midpoint, not the prediction
+
+
+def test_fill_where_the_line_lengths_round_differently():
+    px, n = 0.065, 30                                       # half a line is exactly 30 px, so rounding decides its samples
+    obs = np.ones((n, 4), bool)
+    obs[:, 1] = False
+    pos = np.full((n, 4, 2), 0.0, dtype=np.float32)
+    pos[:, :, 0] = 40.0
+    pos[:, :, 1] = 55.0
+    slen = np.where(obs, 1.95, np.nan).astype(np.float32)
+    axis = np.where(obs, np.random.default_rng(0).normal(0, 0.02, n)[:, None], np.nan)
+    read = lambda k: _stripe_zbands(period_px=30.0, x0=10.0)
+    filled = st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(4, bool), read, px)[1]
+    assert filled[:, 1].all()
+
+
+def test_fill_corrects_the_prediction_and_fills_interior_gaps_only():
+    pos, axis, obs, slen, read, px = _fill_scene()
+    pos[0, 4:7, 1] = [66.0, 72.0, 78.0]                     # far from the track's next observation at 55
+    obs[2, :3] = obs[2, 9:] = obs[2, 5:7] = False
+    slen = np.where(obs, slen, np.nan)
+    filled_slen, filled, out_pos = st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), read, px, min_coverage=0.3)
+    np.testing.assert_allclose(out_pos[0, 4:7, 1], 55.0, atol=1.0)
+    np.testing.assert_allclose(filled_slen[0, 4:7], 1.8, atol=0.02)
+    assert np.flatnonzero(filled[2]).tolist() == [5, 6]
+
+
+def test_fill_rejects_asymmetric_bands():
+    pos, axis, obs, slen, read, px = _fill_scene()
+    dim = lambda k: read(k) * np.where(np.arange(read(k).shape[1]) > 55, 0.45, 1.0)[None]
+    assert not st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), dim, px)[1].any()
+
+
+def test_fill_rejects_a_third_peak_and_a_length_off_the_rest_level():
+    pos, axis, obs, slen, read, px = _fill_scene(third_at=5)
+    _, filled, _ = st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), read, px)
+    assert filled[0, 4] and not filled[0, 5] and filled[0, 6]
+
+    pos, axis, obs, slen, read, px = _fill_scene()
+    slen = slen - 0.5                                       # real frames 0.5 um shorter than the map
+    rest = np.ones(12, bool)
+    assert not st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), rest, read, px)[1].any()
+    assert st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), read, px)[1][0, 4:7].all()

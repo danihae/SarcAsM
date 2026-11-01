@@ -639,13 +639,14 @@ structure_feature_dict = {
     },
     'motion.tracks.positions_um': {
         'description': 'Per-track sarcomere-centre positions (y, x) in µm. np.ndarray, shape (n_tracks, T, 2); '
-                       'NaN before start / after close.',
+                       'NaN before start / after close. On filled frames the measured Z-band midpoint.',
         'data type': np.ndarray,
         'function': 'sarc.motion.track',
         'name': 'Track positions [µm]'
     },
     'motion.tracks.positions_px': {
-        'description': 'Per-track sarcomere-centre positions (y, x) in pixels. np.ndarray, shape (n_tracks, T, 2).',
+        'description': 'Per-track sarcomere-centre positions (y, x) in pixels. np.ndarray, shape (n_tracks, T, 2). '
+                       'On filled frames the measured Z-band midpoint.',
         'data type': np.ndarray,
         'function': 'sarc.motion.track',
         'name': 'Track positions [px]'
@@ -727,13 +728,30 @@ structure_feature_dict = {
     'motion.tracks.rest_frames': {
         'description': 'Boolean mask of the frames in which the cell is at rest, from the median length of the '
                        'tracks observed in at least 30 % of the frames, or of the detections if no track reaches '
-                       'that (rest_frames_from_trace). The tracker itself uses '
+                       'that (rest_frames_from_trace). Filling reads it; the tracker itself uses '
                        'rest frames from the detections, which can differ. np.ndarray, shape (T,). All False if the '
                        'beat amplitude is below 15 times the frame-to-frame noise of that trace, or if far more of '
                        'the other frames lie above its most occupied level than below it, the contracted end.',
         'data type': np.ndarray,
         'function': 'sarc.motion.track',
         'name': 'Rest frames'
+    },
+    'motion.tracks.slen_filled': {
+        'description': 'Per-track sarcomere length in µm with the gaps of well-covered tracks measured at the '
+                       "track's own position (fill_gaps). np.ndarray, shape (n_tracks, T); NaN on frames without a "
+                       'length. For display and coverage: filled frames follow a contraction less reliably than real '
+                       'ones, so no analysis reads these lengths; motion.tracks.slen holds the lengths the analyses '
+                       'read, filled frames excluded.',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track sarcomere length, gaps filled [µm]'
+    },
+    'motion.tracks.filled': {
+        'description': 'Boolean mask, True where motion.tracks.slen_filled holds a filled frame. np.ndarray, '
+                       'shape (n_tracks, T). These frames stay False in motion.tracks.observed.',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track filled mask'
     },
     'motion.tracks.n_retired': {
         'description': 'Number of tracks closed because they went unmatched for longer than '

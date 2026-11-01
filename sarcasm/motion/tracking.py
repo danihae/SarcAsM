@@ -110,6 +110,8 @@ class TrackingMixin:
         refine_lengths: bool = True,
         orientation_window_s: Optional[float] = None,
         max_disp_along_rest_um: Optional[float] = 0.8,
+        fill_gaps: bool = True,
+        fill_min_coverage: float = 0.5,
         progress_notifier: Optional[ProgressNotifier] = ProgressNotifier.progress_notifier_tqdm(),
     ) -> None:
         """2D full-field sarcomere-vector tracking.
@@ -220,7 +222,18 @@ class TrackingMixin:
             from up to 33 % to below 2 %, with no loss of tracks on high-magnification movies. A
             movie without a detectable rest tracks as with None, which switches this off.
             ``motion.tracks.rest_frames`` holds the rest frames found afterwards from the tracked
-            lengths, so it can differ from those used here. Default is 0.8.
+            lengths, for filling, so it can differ from those used here. Default is 0.8.
+        fill_gaps : bool, optional
+            With ``refine_lengths``, measure the interior gap frames of well-covered tracks at the
+            track's own position (:func:`~sarcasm.analysis.sarcomere_tracking.fill_track_gaps`). Filled
+            frames go to ``motion.tracks.slen_filled``, marked in ``motion.tracks.filled``. They follow a
+            contraction less reliably than real frames, so ``motion.tracks.slen``,
+            ``motion.tracks.observed`` and every analysis of them stay as they are. The position of a filled
+            frame does change, to the measured Z-band midpoint, which ``group_tracks`` at a reference frame and
+            ``g.z_pos`` read. Default is True.
+        fill_min_coverage : float, optional
+            Tracks with fewer real observations than this fraction of the frames are not filled;
+            they are mostly flickering M-band ends. Default is 0.5.
         """
         if motion_predictor not in ('none', 'flow'):
             raise ValueError(f"motion_predictor must be 'none' or 'flow', got {motion_predictor!r}.")
@@ -309,7 +322,12 @@ class TrackingMixin:
             max_disp_along_rest_um=max_disp_along_rest_um,
         )
         refined = refine_lengths and self._refine_track_lengths(
-            out, list_frames, orientation_window_s, max_gap_interpolation_s, progress_notifier)
+            out, list_frames, orientation_window_s, max_gap_interpolation_s, progress_notifier,
+            fill_min_coverage if fill_gaps else None)
+        observed = np.asarray(out['motion.tracks.observed'], dtype=bool)
+        if 'motion.tracks.filled' not in out:
+            out['motion.tracks.slen_filled'] = np.where(observed, out['motion.tracks.slen'], np.nan).astype(np.float32)
+            out['motion.tracks.filled'] = np.zeros_like(observed)
 
         tracking_data = {
             'motion.tracks.n': out['motion.tracks.n'],
@@ -328,6 +346,8 @@ class TrackingMixin:
             'motion.tracks.n_retired': out['motion.tracks.n_retired'],
             'motion.tracks.n_interpolated_gap_frames': out['motion.tracks.n_interpolated_gap_frames'],
             'motion.tracks.rest_frames': out['motion.tracks.rest_frames'],
+            'motion.tracks.slen_filled': out['motion.tracks.slen_filled'],
+            'motion.tracks.filled': out['motion.tracks.filled'],
             'params.motion.track.frames': list_frames,
             'params.motion.track.max_disp_along_um': max_disp_along_um,
             'params.motion.track.max_disp_perp_um': max_disp_perp_um,
@@ -339,6 +359,8 @@ class TrackingMixin:
             'params.motion.track.refine_lengths': refine_lengths,
             'params.motion.track.orientation_window_s': orientation_window_s,
             'params.motion.track.max_disp_along_rest_um': max_disp_along_rest_um,
+            'params.motion.track.fill_gaps': fill_gaps,
+            'params.motion.track.fill_min_coverage': fill_min_coverage,
         }
         raw_keys = ('motion.tracks.slen_raw', 'motion.tracks.orientations_raw')
         if refined:
@@ -378,10 +400,12 @@ class TrackingMixin:
 
     def _refine_track_lengths(self, out: dict, list_frames: Sequence[int], orientation_window_s: Optional[float],
                               max_gap_interpolation_s: float,
-                              progress_notifier: Optional[ProgressNotifier] = None) -> bool:
+                              progress_notifier: Optional[ProgressNotifier] = None,
+                              fill_min_coverage: Optional[float] = None) -> bool:
         """Replace the tracks' detection lengths/orientations in ``out`` by lengths re-measured along each
         track's sarcomere axis and move the tracked positions to the Z-band midpoints (see ``refine_lengths``);
-        the detection lengths and orientations go to the ``*_raw`` keys. Returns True."""
+        the detection lengths and orientations go to the ``*_raw`` keys. With ``fill_min_coverage`` also fill
+        the gaps of the tracks with that coverage (see ``fill_gaps``). Returns True."""
         frametime = self.metadata.frametime
         window_frames = self._orientation_window_frames(orientation_window_s)
         p = self.data
@@ -415,6 +439,7 @@ class TrackingMixin:
             out['motion.tracks.positions_px'], raw_ori, observed, read_zbands,
             pixelsize=self.metadata.pixelsize, window_frames=window_frames, progress_notifier=progress_notifier,
             **settings)
+        axis = ori.copy()
         # a frame whose axis finds no pair of Z-bands keeps its detection measurement
         keep = observed & ~np.isfinite(slen) & np.isfinite(raw_slen)
         slen[keep], ori[keep] = raw_slen[keep], raw_ori[keep]
@@ -423,6 +448,14 @@ class TrackingMixin:
                    or frametime <= 0 else max(1, int(round(float(max_gap_interpolation_s) / float(frametime)))))
         n_filled = sarcomere_tracking._interpolate_short_gaps(len(slen), slen, ori, observed, max_gap)
         pos_px = np.asarray(pos_px, dtype=np.float32)
+        if fill_min_coverage is not None:
+            slen_filled, filled, pos_px = sarcomere_tracking.fill_track_gaps(
+                out['motion.tracks.positions_px'], axis, observed, slen, pos_px, out['motion.tracks.rest_frames'],
+                read_zbands, pixelsize=self.metadata.pixelsize, min_coverage=fill_min_coverage,
+                progress_notifier=progress_notifier, **settings)
+            logger.info(f'Filled {int(filled.sum())} gap frames at the tracks\' own positions, in '
+                        "'motion.tracks.slen_filled'.")
+            out.update({'motion.tracks.slen_filled': slen_filled, 'motion.tracks.filled': filled})
         out.update({'motion.tracks.slen_raw': raw_slen, 'motion.tracks.orientations_raw': raw_ori,
                     'motion.tracks.slen': slen, 'motion.tracks.orientations': ori,
                     'motion.tracks.positions_px': pos_px,

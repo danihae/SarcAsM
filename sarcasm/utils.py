@@ -276,6 +276,53 @@ def _profile_lines(image, start_points, end_points, linewidth=3, mode='constant'
 
 
 @njit(cache=True, parallel=True)
+def _grade_pairs(y_up, x_interp, left, right, exclude):
+    """Peak-height asymmetry and strongest third peak of a batch of normalised profiles; see
+    :meth:`Utils.grade_profile_pairs`. A local maximum counts as a peak from a prominence of 0.2 and is
+    ignored within ``exclude`` samples of the pair."""
+    n, length = y_up.shape
+    asymmetry = np.full(n, np.nan)
+    third = np.full(n, np.nan)
+    step = x_interp[1] - x_interp[0]
+    for i in prange(n):
+        if np.isnan(left[i]) or np.isnan(right[i]):
+            continue
+        y = y_up[i]
+        il = min(max(int(round((left[i] - x_interp[0]) / step)), 0), length - 1)
+        ir = min(max(int(round((right[i] - x_interp[0]) / step)), 0), length - 1)
+        hl = np.max(y[max(il - exclude, 0):min(il + exclude + 1, length)])
+        hr = np.max(y[max(ir - exclude, 0):min(ir + exclude + 1, length)])
+        if hl + hr <= 0:
+            continue
+        asymmetry[i] = abs(hl - hr) / (hl + hr)
+        spacing = right[i] - left[i]
+        strongest = 0.0
+        for j in range(1, length - 1):
+            h = y[j]
+            if not (y[j - 1] < h and h >= y[j + 1]) or h <= strongest:
+                continue
+            if abs(j - il) <= exclude or abs(j - ir) <= exclude:
+                continue
+            if x_interp[j] <= left[i] - 0.75 * spacing or x_interp[j] >= right[i] + 0.75 * spacing:
+                continue
+            low_left = h
+            t = j
+            while t >= 0 and y[t] <= h:
+                low_left = min(low_left, y[t])
+                t -= 1
+            low_right = h
+            t = j
+            while t < length and y[t] <= h:
+                low_right = min(low_right, y[t])
+                t += 1
+            if h - max(low_left, low_right) >= 0.2:
+                strongest = h
+        weaker = min(hl, hr)
+        third[i] = strongest / weaker if weaker > 0 else np.inf
+    return asymmetry, third
+
+
+@njit(cache=True, parallel=True)
 def _slen_from_profiles(y_up, x_interp, flat_mask, thres, distance, prominence,
                         window_size, center, slen_min, slen_max):
     """Sarcomere length + center offset for a batch of interpolated profiles.
@@ -749,6 +796,47 @@ class Utils:
 
         return sarcomere_lengths, center_offsets
 
+
+    @staticmethod
+    def grade_profile_pairs(profiles: np.ndarray, pixelsize: float, sarcomere_lengths: np.ndarray,
+                            center_offsets: np.ndarray, interp_factor: int = 4) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        How clean is the Z-band pair that :meth:`process_profiles_batch` read from each profile?
+
+        Parameters
+        ----------
+        profiles : np.ndarray
+            ``(N, L)`` profiles, as passed to :meth:`process_profiles_batch`.
+        pixelsize : float
+            Physical size per sample, in µm.
+        sarcomere_lengths, center_offsets : np.ndarray
+            ``(N,)`` output of :meth:`process_profiles_batch`.
+        interp_factor : int, optional
+            Upsampling factor. Default is 4.
+
+        Returns
+        -------
+        asymmetry : np.ndarray
+            ``(N,)``: ``|h1 - h2| / (h1 + h2)`` of the heights of the two peaks; 0 for equal peaks.
+        third_peak : np.ndarray
+            ``(N,)``: height of the strongest other peak where a regular row of Z-bands has none, between
+            the pair or closer than 0.75 lengths outside it, relative to the weaker peak of the pair; 0 if
+            there is none. Peaks within 0.25 µm of a band of the pair belong to it. Both are NaN where the
+            profile has no pair.
+        """
+        interp_factor = max(int(interp_factor), 1)
+        profiles = np.asarray(profiles, dtype=np.float64)
+        low = profiles.min(axis=1, keepdims=True)
+        span = profiles.max(axis=1, keepdims=True) - low
+        normalised = (profiles - low) / np.where(span > 0, span, 1.0)
+        positions = np.arange(profiles.shape[1]) * pixelsize
+        upsampled = np.linspace(positions[0], positions[-1], num=profiles.shape[1] * interp_factor)
+        centre = (positions[0] + positions[-1]) * 0.5
+        lengths = np.asarray(sarcomere_lengths, dtype=np.float64)
+        offsets = np.asarray(center_offsets, dtype=np.float64)
+        return _grade_pairs(np.ascontiguousarray(_batched_linear_interp(positions, normalised, upsampled)), upsampled,
+                            centre + offsets - lengths / 2, centre + offsets + lengths / 2,
+                            max(interp_factor, int(round(0.25 / pixelsize * interp_factor))))
 
     @staticmethod
     def analyze_orientations(orientations: np.ndarray):

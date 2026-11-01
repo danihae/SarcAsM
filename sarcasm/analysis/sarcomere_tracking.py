@@ -73,7 +73,7 @@ and is carried forward as follows:
 A query point's **trailing coast** — the frames after its *last observed* frame — is
 blanked to NaN (position, slen, orientation) in the output: a lost track does not
 freeze in place at its last position. Interior gaps are anchored on both sides,
-keep their predicted position, and have their slen/orientation interpolated when
+keep their predicted position (unless :func:`fill_track_gaps` measured the frame), and have their slen/orientation interpolated when
 the gap is short (``max_gap_interpolation_s``); ``motion.tracks.observed`` still marks which
 frames are real observations, so no metric counts an interpolated frame.
 
@@ -86,6 +86,9 @@ frames are real observations, so no metric counts an interpolated frame.
    sarcomere at the next rest. If the tissue did not return, far fewer detections lie at the
    rest positions than where the tracks are now: then the tracks keep following, and
    their rest positions catch up.
+
+:func:`fill_track_gaps` works on the finished tracks: it measures the gap frames of well-covered
+tracks at the track's own position, in a separate array.
 """
 
 from __future__ import annotations
@@ -115,6 +118,12 @@ _REST_DETECTION_RADIUS_UM = 0.4
 _REST_BAND_FRAC = 0.15
 # ... and rest is only told from beats if the beat amplitude exceeds this many times the frame-to-frame noise.
 _REST_MIN_SNR = 15.0
+
+# A filled frame is kept only for a clean Z-band pair (see Utils.grade_profile_pairs), and at rest only
+# within this distance of the length interpolated from the track's real frames.
+_FILL_MAX_ASYMMETRY = 0.3
+_FILL_MAX_THIRD_PEAK = 0.5
+_FILL_REST_TOL_UM = 0.2
 
 # Components above this size use a greedy claim instead of the O(k³) exact solve.
 _LAP_MAX_COMPONENT = 1500
@@ -1238,7 +1247,7 @@ def track_sarcomere_vectors(
         f"{n} tracks for ~{med_det:.0f} detections/frame "
         f"(fragmentation ratio {frag_ratio:.2f}, ideal 1.0).")
 
-    # The stored rest frames come from the tracked lengths: all detections, including the
+    # Everything after tracking reads rest from the tracked lengths: all detections, including the
     # flickering ones, can split a rest period into short runs on noisy movies.
     covered = out_tracks_observed.mean(axis=1) >= 0.3
     if covered.any():
@@ -1441,3 +1450,130 @@ def refine_track_lengths(
         shift = (offsets[ok] / pixelsize)[:, None] * np.stack((np.sin(theta[ok]), np.cos(theta[ok])), axis=1)
         positions_out[rows[ok], k] -= shift
     return slen, ori_s, positions_out
+
+
+def fill_track_gaps(
+    positions_px: np.ndarray,
+    axis: np.ndarray,
+    observed: np.ndarray,
+    slen: np.ndarray,
+    positions_refined_px: np.ndarray,
+    rest_frames: np.ndarray,
+    read_zbands: Callable[[int], np.ndarray],
+    pixelsize: float,
+    min_coverage: float = 0.5,
+    slen_lims: Tuple[float, float] = (1, 3),
+    interp_factor: int = 4,
+    linewidth: float = 0.3,
+    interpolation_method: str = 'akima',
+    peak_prominence: float = 0.4,
+    progress_notifier=None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Measure the interior gap frames of well-covered tracks at the track's own position.
+
+    A gap mostly means that the M-band pixel flickered, often at the end of an M-band, not that
+    the sarcomere left: its Z-bands are usually still in the map. The position in a gap is the tracker's
+    prediction (the rest position on rest frames, otherwise carried with the neighbouring tracks or by image
+    flow), corrected linearly so that it meets the track's next observation. A fill never feeds back into
+    the tracker; only the stored position of a kept frame changes, to the measured Z-band midpoint.
+
+    A measured frame is kept if its Z-band profile is clean
+    (:meth:`sarcasm.utils.Utils.grade_profile_pairs`), and on rest frames only if it also lies
+    within 0.2 µm of the length interpolated from the track's real frames.
+
+    Filled frames follow a contraction less reliably than real ones (against the real frames, slope
+    0.6-1.1 on all but one of 14 recordings with a detectable rest), so their lengths are returned apart from
+    the real ones, for display and coverage only.
+
+    Parameters
+    ----------
+    positions_px : np.ndarray
+        ``(n_tracks, T, 2)`` tracker positions before refinement: detection pixels on observed frames,
+        predictions on gap frames.
+    axis : np.ndarray
+        ``(n_tracks, T)`` sarcomere axes from :func:`refine_track_lengths`; NaN on unobserved frames.
+    observed : np.ndarray
+        ``(n_tracks, T)`` real observations.
+    slen : np.ndarray
+        ``(n_tracks, T)`` lengths in µm; only observed frames are read.
+    positions_refined_px : np.ndarray
+        ``(n_tracks, T, 2)`` refined positions. Kept frames get their measured Z-band midpoint here.
+    rest_frames : np.ndarray
+        ``(T,)`` rest frames.
+    read_zbands : callable
+        ``read_zbands(k)`` returns the 2D Z-band map of tracker frame ``k``.
+    pixelsize : float
+        Pixel size in µm.
+    min_coverage : float, optional
+        Tracks with fewer real observations than this fraction of the frames are left alone.
+        Default is 0.5.
+    slen_lims, interp_factor, linewidth, interpolation_method, peak_prominence
+        Length-estimator settings, as in :func:`refine_track_lengths`.
+    progress_notifier : ProgressNotifier, optional
+        Reports per-frame progress.
+
+    Returns
+    -------
+    slen_filled : np.ndarray
+        ``(n_tracks, T)`` real lengths plus kept filled frames, NaN elsewhere.
+    filled : np.ndarray
+        ``(n_tracks, T)`` bool, the kept filled frames.
+    positions_out_px : np.ndarray
+        ``positions_refined_px`` with the Z-band midpoints of the kept frames.
+    """
+    from ..utils import Utils, _profile_lines
+    observed = np.asarray(observed, dtype=bool)
+    n, T = observed.shape
+    real = np.where(observed, np.asarray(slen, dtype=float), np.nan)
+    slen_filled = real.astype(np.float32)
+    filled = np.zeros((n, T), dtype=bool)
+    positions_out = np.array(positions_refined_px, dtype=np.float32)
+    rows = np.flatnonzero(observed.mean(axis=1) >= min_coverage)
+    if rows.size == 0:
+        return slen_filled, filled, positions_out
+
+    positions_px = np.asarray(positions_px, dtype=float)
+    measured = np.isfinite(real[rows])
+    frame_ids = np.arange(T)
+    before = np.maximum.accumulate(np.where(measured, frame_ids, -1), axis=1)
+    after = np.minimum.accumulate(np.where(measured, frame_ids, T)[:, ::-1], axis=1)[:, ::-1]
+    row_rel, frame = np.nonzero(~observed[rows] & (before >= 0) & (after < T))
+    if frame.size == 0:
+        return slen_filled, filled, positions_out
+    a, b, track = before[row_rel, frame], after[row_rel, frame], rows[row_rel]
+    weight = (frame - a) / (b - a)
+    reference = positions_px[track, frame] + weight[:, None] * (positions_px[track, b] - positions_px[track, b - 1])
+    expected = real[track, a] + weight * (real[track, b] - real[track, a])
+    theta = np.asarray(axis, dtype=float)[track, a]
+
+    order = np.argsort(frame, kind='stable')
+    starts = np.searchsorted(frame[order], frame_ids)
+    stops = np.searchsorted(frame[order], frame_ids, side='right')
+    linewidth_px = max(int(round(linewidth / pixelsize, 0)), 1)
+    # half-integer, so that rounding cannot make the lines differ in samples: the profiles have to stack
+    half_length = np.floor((slen_lims[1] * 1.3) / 2 / pixelsize) + 0.5
+    for k in _with_progress(range(T), progress_notifier, 'Filling gaps'):
+        idx = order[starts[k]:stops[k]]
+        if idx.size == 0:
+            continue
+        ok_axis = np.isfinite(theta[idx])
+        idx = idx[ok_axis]
+        if idx.size == 0:
+            continue
+        centres = reference[idx].T
+        direction = np.stack((np.sin(theta[idx]) * half_length, np.cos(theta[idx]) * half_length), axis=0)
+        profiles = np.asarray(_profile_lines(np.asarray(read_zbands(k)), centres + direction, centres - direction,
+                                             linewidth=linewidth_px))
+        lengths, offsets = Utils.process_profiles_batch(
+            profiles, pixelsize, slen_lims=slen_lims, interp_factor=interp_factor,
+            interpolation_method=interpolation_method, prominence=peak_prominence)
+        asymmetry, third = Utils.grade_profile_pairs(profiles, pixelsize, lengths, offsets, interp_factor=interp_factor)
+        keep = np.isfinite(lengths) & (asymmetry <= _FILL_MAX_ASYMMETRY) & (third <= _FILL_MAX_THIRD_PEAK)
+        if rest_frames[k]:
+            keep &= np.abs(lengths - expected[idx]) <= _FILL_REST_TOL_UM
+        chosen = idx[keep]
+        slen_filled[track[chosen], k] = lengths[keep]
+        filled[track[chosen], k] = True
+        shift = (offsets[keep] / pixelsize)[:, None] * np.stack((np.sin(theta[chosen]), np.cos(theta[chosen])), axis=1)
+        positions_out[track[chosen], k] = reference[chosen] - shift
+    return slen_filled, filled, positions_out

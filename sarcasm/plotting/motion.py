@@ -583,7 +583,10 @@ class MotionPlots:
         if g.n_members == 0:
             ax.text(0.5, 0.5, 'No members', ha='center', va='center', transform=ax.transAxes)
             return
-        member_y = np.asarray(g.tracks.delta_slen if mode == 'delta' else g.tracks.slen, dtype=float)
+        # ΔSL comes from motion.tracks.slen, without filled frames; the lengths are shown with filled frames too
+        lengths = (np.where(np.isfinite(g.tracks.slen_filled), g.tracks.slen_filled, g.tracks.slen)
+                   if 'motion.tracks.slen_filled' in g.sarc.data else g.tracks.slen)
+        member_y = np.asarray(g.tracks.delta_slen if mode == 'delta' else lengths, dtype=float)
         n_total = len(member_y)
         avg = np.asarray(g.slen_avg, dtype=float)
         mean_y = avg - grouped_motion.equilibrium_over_quiet(avg, contr) if mode == 'delta' else avg
@@ -613,7 +616,8 @@ class MotionPlots:
                   y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True, show_mean: bool = True,
                   max_lines: Optional[int] = 300, color: Optional[str] = None, mean_color: str = 'k'):
         """
-        Plot the sarcomere lengths of the members of one group, with the group average ``slen_avg`` bold.
+        Plot the sarcomere lengths of the members of one group, with their gaps filled
+        (``motion.tracks.slen_filled``), and the group average ``slen_avg`` bold.
 
         Parameters
         ----------
