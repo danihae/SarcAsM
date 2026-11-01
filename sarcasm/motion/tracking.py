@@ -222,7 +222,7 @@ class TrackingMixin:
             from up to 33 % to below 2 %, with no loss of tracks on high-magnification movies. A
             movie without a detectable rest tracks as with None, which switches this off.
             ``motion.tracks.rest_frames`` holds the rest frames found afterwards from the tracked
-            lengths, for filling, so it can differ from those used here. Default is 0.8.
+            lengths, for filling and the quality rules, so it can differ from those used here. Default is 0.8.
         fill_gaps : bool, optional
             With ``refine_lengths``, measure the interior gap frames of well-covered tracks at the
             track's own position (:func:`~sarcasm.analysis.sarcomere_tracking.fill_track_gaps`). Filled
@@ -230,7 +230,8 @@ class TrackingMixin:
             contraction less reliably than real frames, so ``motion.tracks.slen``,
             ``motion.tracks.observed`` and every analysis of them stay as they are. The position of a filled
             frame does change, to the measured Z-band midpoint, which ``group_tracks`` at a reference frame and
-            ``g.z_pos`` read. Default is True.
+            ``g.z_pos`` read. Without filling, the 80 % coverage limit of ``qc_pass`` applies to real frames.
+            Default is True.
         fill_min_coverage : float, optional
             Tracks with fewer real observations than this fraction of the frames are not filled;
             they are mostly flickering M-band ends. Default is 0.5.
@@ -328,6 +329,9 @@ class TrackingMixin:
         if 'motion.tracks.filled' not in out:
             out['motion.tracks.slen_filled'] = np.where(observed, out['motion.tracks.slen'], np.nan).astype(np.float32)
             out['motion.tracks.filled'] = np.zeros_like(observed)
+        quality = sarcomere_tracking.assess_tracks(
+            out['motion.tracks.slen'], observed, out['motion.tracks.slen_filled'], out['motion.tracks.rest_frames'],
+            frametime=self.metadata.frametime)
 
         tracking_data = {
             'motion.tracks.n': out['motion.tracks.n'],
@@ -348,6 +352,11 @@ class TrackingMixin:
             'motion.tracks.rest_frames': out['motion.tracks.rest_frames'],
             'motion.tracks.slen_filled': out['motion.tracks.slen_filled'],
             'motion.tracks.filled': out['motion.tracks.filled'],
+            'motion.tracks.coverage_filled': quality['coverage_filled'],
+            'motion.tracks.qc_judged': quality['judged'],
+            'motion.tracks.qc_rest_flicker': quality['rest_flicker'],
+            'motion.tracks.qc_level_shift': quality['level_shift'],
+            'motion.tracks.qc_pass': quality['passed'],
             'params.motion.track.frames': list_frames,
             'params.motion.track.max_disp_along_um': max_disp_along_um,
             'params.motion.track.max_disp_perp_um': max_disp_perp_um,
@@ -465,7 +474,7 @@ class TrackingMixin:
                     'kept their detection length.')
         return True
 
-    def tracks(self, min_coverage: float = 0.0) -> pd.DataFrame:
+    def tracks(self, min_coverage: float = 0.0, qc_only: bool = False) -> pd.DataFrame:
         """Tidy per-track summary of the 2D tracker output (one row per track).
 
         Discoverable accessor over the dense ``tracks_*`` arrays written by
@@ -477,6 +486,8 @@ class TrackingMixin:
         min_coverage : float, optional
             Only return tracks whose coverage (observed frames / n_frames)
             is at least this value. Default 0.0 (all kept tracks).
+        qc_only : bool, optional
+            Only return tracks that pass the quality rules (``qc_pass``). Default False.
 
         Returns
         -------
@@ -489,15 +500,20 @@ class TrackingMixin:
             ``start_y_um``, ``start_x_um``, ``ref_midline_id`` (the M-band id at
             the start frame), and per stored grouping ``group_<kind>`` (the track's group
             in that grouping, -1 if unassigned), plus ``order_<kind>`` (rank along the line)
-            for the ordered kinds myofibril and loi.
+            for the ordered kinds myofibril and loi. The quality rules add ``coverage_filled`` (share of
+            frames with a length after filling), ``qc_judged`` (False where the track has too few rest
+            periods for the two rules to read it), ``qc_rest_flicker``, ``qc_level_shift`` and ``qc_pass``
+            (see :func:`~sarcasm.analysis.sarcomere_tracking.assess_tracks`).
         """
         if 'motion.tracks.slen' not in self.data:   # zero tracks give an empty table
             raise ValueError('No tracks found. Run sarc.motion.track() first.')
+        if qc_only and 'motion.tracks.qc_pass' not in self.data:
+            raise ValueError('This store has no quality rules. Run sarc.motion.track() again.')
 
         n_tracks = int(self.data.get('motion.tracks.n', 0))
         columns = ['track_id', 'start_frame', 'length', 'n_frames', 'coverage',
                    'mean_slen', 'std_slen', 'drift_um', 'start_y_um', 'start_x_um',
-                   'ref_midline_id']
+                   'ref_midline_id', 'coverage_filled', 'qc_judged', 'qc_rest_flicker', 'qc_level_shift', 'qc_pass']
         if n_tracks == 0:
             return pd.DataFrame(columns=columns)
 
@@ -533,6 +549,10 @@ class TrackingMixin:
             'start_x_um': start_pos[:, 1],
             'ref_midline_id': ref_mid,
         })
+        for name, dtype in (('coverage_filled', float), ('qc_judged', bool), ('qc_rest_flicker', bool),
+                            ('qc_level_shift', bool), ('qc_pass', bool)):
+            if f'motion.tracks.{name}' in self.data:
+                df[name] = np.asarray(self.data[f'motion.tracks.{name}']).astype(dtype).reshape(-1)
         for kind in self._grouped_kinds():
             df[f'group_{kind}'] = np.asarray(self.data[self._gkey(kind, 'track_group_id')]).reshape(-1)[:n_tracks]
             if kind in self._CHAIN_LEVELS:
@@ -541,6 +561,8 @@ class TrackingMixin:
 
         if min_coverage > 0.0:
             df = df[df['coverage'] >= min_coverage].reset_index(drop=True)
+        if qc_only:
+            df = df[df['qc_pass']].reset_index(drop=True)
         return df
 
     def kinematics(self, filter_params: Tuple[int, int] = (13, 5),

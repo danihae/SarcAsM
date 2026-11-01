@@ -567,7 +567,7 @@ class MotionPlots:
                                   readable_labels=readable_labels)
 
     @staticmethod
-    def _plot_members(ax, g: "Group", *, mode, t_lim=(0, None), y_lim=None, show_contr=True, show_mean=True,
+    def _plot_members(ax, g: "Group", *, mode, t_lim=(0, None), y_lim=None, show_contr=True, show_mean=True, qc_only=False,
                       max_lines=300, color=None, mean_color='k'):
         """Overlay the members of one group (grey) and the group (bold).
 
@@ -588,6 +588,8 @@ class MotionPlots:
                    if 'motion.tracks.slen_filled' in g.sarc.data else g.tracks.slen)
         member_y = np.asarray(g.tracks.delta_slen if mode == 'delta' else lengths, dtype=float)
         n_total = len(member_y)
+        if qc_only:
+            member_y = member_y[np.asarray(g.tracks.qc_pass, dtype=bool)]
         avg = np.asarray(g.slen_avg, dtype=float)
         mean_y = avg - grouped_motion.equilibrium_over_quiet(avg, contr) if mode == 'delta' else avg
         if max_lines is not None and len(member_y) > max_lines:
@@ -614,7 +616,8 @@ class MotionPlots:
     @staticmethod
     def plot_slen(ax: Axes, g: "Group", *, t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
                   y_lim: Tuple[float, float] = (1.4, 2.2), show_contr: bool = True, show_mean: bool = True,
-                  max_lines: Optional[int] = 300, color: Optional[str] = None, mean_color: str = 'k'):
+                  max_lines: Optional[int] = 300, color: Optional[str] = None, mean_color: str = 'k',
+                  qc_only: bool = False):
         """
         Plot the sarcomere lengths of the members of one group, with their gaps filled
         (``motion.tracks.slen_filled``), and the group average ``slen_avg`` bold.
@@ -640,16 +643,20 @@ class MotionPlots:
             Colour of the member traces; None is grey. Default is None.
         mean_color : str, optional
             Colour of the group average. Default is 'k'.
+        qc_only : bool, optional
+            Draw only members that pass the quality rules (``motion.tracks.qc_pass``). The bold line
+            stays the average of all members. Default is False.
         """
         MotionPlots._plot_members(ax, g, mode='slen', t_lim=t_lim, y_lim=y_lim, show_contr=show_contr,
-                                  show_mean=show_mean, max_lines=max_lines, color=color, mean_color=mean_color)
+                                  show_mean=show_mean, max_lines=max_lines, color=color, mean_color=mean_color,
+                                  qc_only=qc_only)
 
     @staticmethod
     def plot_delta_slen(ax: Axes, g: "Group", *, stacked: bool = False,
                         t_lim: Tuple[Optional[float], Optional[float]] = (0, None),
                         y_lim: Tuple[float, float] = (-0.4, 0.4), show_contr: bool = True, show_mean: bool = True,
                         max_lines: Optional[int] = 300, color: Optional[str] = None, mean_color: str = 'k',
-                        frame: Optional[int] = None, n_rows: int = 6, n_start: int = 0):
+                        frame: Optional[int] = None, n_rows: int = 6, n_start: int = 0, qc_only: bool = False):
         """
         Plot the length change ΔSL of the members of one group.
 
@@ -677,6 +684,9 @@ class MotionPlots:
             Overlay: whether to draw the group's ΔSL. Default is True.
         max_lines : int, optional
             Overlay: draw at most this many members; None draws all. Default is 300.
+        qc_only : bool, optional
+            Overlay: draw only members that pass the quality rules. The group's ΔSL stays that of
+            all members. Default is False.
         color : str, optional
             Overlay: colour of the member traces; None is grey. Default is None.
         mean_color : str, optional
@@ -691,5 +701,5 @@ class MotionPlots:
         if stacked:
             return MotionPlots._plot_delta_slen_stacked(ax, g, frame=frame, t_lim=t_lim, y_lim=y_lim,
                                                         n_rows=n_rows, n_start=n_start, show_contr=show_contr)
-        MotionPlots._plot_members(ax, g, mode='delta', t_lim=t_lim, y_lim=y_lim, show_contr=show_contr,
+        MotionPlots._plot_members(ax, g, mode='delta', t_lim=t_lim, y_lim=y_lim, show_contr=show_contr, qc_only=qc_only,
                                   show_mean=show_mean, max_lines=max_lines, color=color, mean_color=mean_color)

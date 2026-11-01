@@ -728,7 +728,7 @@ structure_feature_dict = {
     'motion.tracks.rest_frames': {
         'description': 'Boolean mask of the frames in which the cell is at rest, from the median length of the '
                        'tracks observed in at least 30 % of the frames, or of the detections if no track reaches '
-                       'that (rest_frames_from_trace). Filling reads it; the tracker itself uses '
+                       'that (rest_frames_from_trace). Filling and the quality rules read it; the tracker itself uses '
                        'rest frames from the detections, which can differ. np.ndarray, shape (T,). All False if the '
                        'beat amplitude is below 15 times the frame-to-frame noise of that trace, or if far more of '
                        'the other frames lie above its most occupied level than below it, the contracted end.',
@@ -752,6 +752,45 @@ structure_feature_dict = {
         'data type': np.ndarray,
         'function': 'sarc.motion.track',
         'name': 'Track filled mask'
+    },
+    'motion.tracks.coverage_filled': {
+        'description': 'Share of frames with a length in motion.tracks.slen_filled. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track coverage after filling'
+    },
+    'motion.tracks.qc_judged': {
+        'description': 'True where a track has at least two rest periods with a level, so that the rest-flicker '
+                       'and level-shift rules could read it. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track quality rules applicable'
+    },
+    'motion.tracks.qc_rest_flicker': {
+        'description': 'True where at least 3 and more than 2 % of the real frames in the middle half of the rest '
+                       'periods lie more than 0.15 µm from the level of their rest period. The rest frames are one '
+                       'mask for the field, so a second cell beating out of step reads as flicker. np.ndarray, '
+                       'shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track rest flicker'
+    },
+    'motion.tracks.qc_level_shift': {
+        'description': "True where a track's median length changes by more than 0.25 µm between consecutive rest "
+                       'periods. np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track level shift'
+    },
+    'motion.tracks.qc_pass': {
+        'description': 'True where neither rule fired, at least 50 % of the frames are real observations and at '
+                       'least 80 % have a length after filling. Of traces from the rest-anchored tracker with filling '
+                       'that passed, 38 of 41 (93 %) were called sound in a blind test on 16 recordings. A track with '
+                       'qc_judged False passes on its coverage alone. '
+                       'np.ndarray, shape (n_tracks,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.track',
+        'name': 'Track passes quality rules'
     },
     'motion.tracks.n_retired': {
         'description': 'Number of tracks closed because they went unmatched for longer than '

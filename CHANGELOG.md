@@ -13,6 +13,9 @@ All notable changes to SarcAsM are documented here. The format follows
   `motion.tracks.filled`. Gaps are mostly flickering M-band pixels, not missing sarcomeres. `motion.tracks.slen`,
   `motion.tracks.observed` and every analysis of them stay as they were without filling. The position of a filled frame
   becomes its measured Z-band midpoint. `MotionPlots.plot_slen` shows the filled lengths.
+- Track quality rules, `motion.tracks.qc_pass` and its parts, also as columns of `sarc.motion.tracks()`, with
+  `qc_only=True`, and `qc_only` on `MotionPlots.plot_slen` and `plot_delta_slen`: no rest flicker, no level shift between rest periods, at least
+  50 % real coverage and 80 % coverage after filling. Limits from 384 blind labels of traces from 16 recordings.
 - `Utils.grade_profile_pairs`: peak asymmetry and third peak of a Z-band profile.
 - `sarc.motion.full_analysis(by=..., frames=..., reference_frame=None, fast_movie=False, motion_predictor='none')`:
   vectors, tracking, the structure step the grouping needs at the reference frame (myofibrils, domains or LOI
@@ -134,7 +137,8 @@ All notable changes to SarcAsM are documented here. The format follows
   about a sarcomere within a few frames, and tracks landed on a neighbouring sarcomere, which also caused most jumps
   in a track's rest length. On rest frames, found from the detections, a track now returns to its rest position, unless
   far fewer detections lie at the rest positions than at the current ones because the tissue did not return, and a
-  narrower along-axis gate applies (`max_disp_along_rest_um=0.8`; None restores the old behaviour). `motion.tracks.rest_frames` holds the rest frames found afterwards from the tracked lengths, for filling. Track identities change on low-magnification movies, so stored groupings need `group_tracks` again.
+  narrower along-axis gate applies (`max_disp_along_rest_um=0.8`; None restores the old behaviour). `motion.tracks.rest_frames` holds the rest frames found afterwards from the tracked lengths, for filling
+  and the quality rules. Track identities change on low-magnification movies, so stored groupings need `group_tracks` again.
 - Faster motion analysis, same results: `analyze_track_motion(by='myofibril')` takes half the time (30 → 15 s on
   the 500-frame 20 kPa test movie, M1 Pro) and tracking 6 % less (46 → 43 s). ContractionNet reads a group's
   tracks 8 at a time (`contraction_net.prediction.predict_contractions_batch`), the oscillation spectrum uses the

@@ -87,8 +87,9 @@ frames are real observations, so no metric counts an interpolated frame.
    rest positions than where the tracks are now: then the tracks keep following, and
    their rest positions catch up.
 
-:func:`fill_track_gaps` works on the finished tracks: it measures the gap frames of well-covered
-tracks at the track's own position, in a separate array.
+:func:`fill_track_gaps` and :func:`assess_tracks` work on the finished tracks: the first
+measures the gap frames of well-covered tracks at the track's own position, in a separate
+array, the second grades each track.
 """
 
 from __future__ import annotations
@@ -124,6 +125,14 @@ _REST_MIN_SNR = 15.0
 _FILL_MAX_ASYMMETRY = 0.3
 _FILL_MAX_THIRD_PEAK = 0.5
 _FILL_REST_TOL_UM = 0.2
+
+# assess_tracks: a rest period lasts at least this long, in s; its level needs this many observed frames.
+_QC_MIN_REST_S = 0.16
+_QC_MIN_LEVEL_FRAMES = 5
+# The rest-flicker rule reads the middle half of each rest period, at least this many frames: off-level frames
+# pile up at the edges, where the onset of a contraction and its relaxation tail differ per sarcomere.
+_QC_REST_EDGE_FRAC = 0.25
+_QC_MIN_INNER_FRAMES = 5
 
 # Components above this size use a greedy claim instead of the O(k³) exact solve.
 _LAP_MAX_COMPONENT = 1500
@@ -1255,8 +1264,8 @@ def track_sarcomere_vectors(
             warnings.simplefilter('ignore', category=RuntimeWarning)
             trace = np.nanmedian(np.where(out_tracks_observed[covered], out_tracks_slen[covered], np.nan), axis=0)
             rest_frames = rest_frames_from_trace(trace)
-            # Far more other frames above that level than below it: it is the contracted end, not rest.
-            # Detection medians cannot tell: low-count movies read long in a beat.
+            # Far more other frames above that level than below it: it is the contracted end, and the quality rules
+            # would read popping there as flicker. Detection medians cannot tell: low-count movies read long in a beat.
             offset = trace[~rest_frames] - np.nanmedian(trace[rest_frames])
             if rest_frames.any() and np.count_nonzero(offset > 0) > 3 * np.count_nonzero(offset < 0):
                 rest_frames = np.zeros_like(rest_frames)
@@ -1577,3 +1586,91 @@ def fill_track_gaps(
         shift = (offsets[keep] / pixelsize)[:, None] * np.stack((np.sin(theta[chosen]), np.cos(theta[chosen])), axis=1)
         positions_out[track[chosen], k] = reference[chosen] - shift
     return slen_filled, filled, positions_out
+
+
+def assess_tracks(
+    slen: np.ndarray,
+    observed: np.ndarray,
+    slen_filled: np.ndarray,
+    rest_frames: np.ndarray,
+    frametime: Optional[float] = None,
+    rest_off_um: float = 0.15,
+    rest_off_frac: float = 0.02,
+    rest_off_min_frames: int = 3,
+    level_shift_um: float = 0.25,
+    min_coverage: float = 0.5,
+    min_coverage_filled: float = 0.8,
+) -> Dict[str, np.ndarray]:
+    """Grade each track, from its real frames and its coverage.
+
+    A rest period is a run of rest frames of at least 0.16 s; its level is the track's median length
+    there, from at least 5 observed frames. A track with at least two such levels can be judged:
+
+    * rest flicker: at least ``rest_off_min_frames`` and more than ``rest_off_frac`` of the observed
+      frames in the middle half of the rest periods lie more than ``rest_off_um`` from the level;
+    * level shift: the level changes by more than ``level_shift_um``
+      between consecutive rest periods.
+
+    Limits chosen on 384 blind labels of traces from 16 recordings (see the changelog).
+    Frames outside the rest periods are not read, so popping in a contraction is not held against a
+    track. The rest frames are one mask for the whole field: in a second cell beating out of step
+    with the majority, contractions fall on rest frames and read as flicker.
+
+    Parameters
+    ----------
+    slen : np.ndarray
+        ``(n_tracks, T)`` lengths in µm; only observed frames are read.
+    observed : np.ndarray
+        ``(n_tracks, T)`` real observations.
+    slen_filled : np.ndarray
+        ``(n_tracks, T)`` real plus filled lengths (:func:`fill_track_gaps`), for the coverage after filling.
+    rest_frames : np.ndarray
+        ``(T,)`` rest frames.
+    frametime : float, optional
+        Frame time in s, for the shortest rest period. Without it, any run with enough frames for a level counts.
+    rest_off_um, rest_off_frac, rest_off_min_frames, level_shift_um
+        Limits of the two rules above.
+    min_coverage : float, optional
+        Lowest share of frames with a real observation. Default is 0.5.
+    min_coverage_filled : float, optional
+        Lowest share of frames with a length after filling. Default is 0.8.
+
+    Returns
+    -------
+    dict
+        ``(n_tracks,)`` arrays: ``'coverage_filled'``, and the bools ``'judged'`` (False where no two rest
+        levels exist, so that neither rule could look at the track), ``'rest_flicker'``, ``'level_shift'``
+        and ``'passed'`` (neither rule fired and both coverages reached).
+    """
+    observed = np.asarray(observed, dtype=bool)
+    n, T = observed.shape
+    values = np.where(observed, np.asarray(slen, dtype=np.float32), np.nan)
+    edges = np.flatnonzero(np.diff(np.r_[0, np.asarray(rest_frames, dtype=int), 0]))
+    min_run = max(_QC_MIN_LEVEL_FRAMES, int(round(_QC_MIN_REST_S / frametime))) if frametime else _QC_MIN_LEVEL_FRAMES
+    runs = [(a, b) for a, b in zip(edges[::2], edges[1::2]) if b - a >= min_run]
+    n_levels = np.zeros(n, dtype=int)
+    n_read = np.zeros(n, dtype=int)
+    n_off = np.zeros(n, dtype=int)
+    shift = np.zeros(n)
+    last_level = np.full(n, np.nan)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', category=RuntimeWarning)
+        for a, b in runs:
+            window = values[:, a:b]
+            level = np.nanmedian(window, axis=1)
+            level[np.isfinite(window).sum(axis=1) < _QC_MIN_LEVEL_FRAMES] = np.nan
+            cut = min(int(np.ceil(_QC_REST_EDGE_FRAC * (b - a))), (b - a - _QC_MIN_INNER_FRAMES) // 2)
+            deviation = np.abs(values[:, a + cut:b - cut] - level[:, None])
+            n_read += np.isfinite(deviation).sum(axis=1)
+            n_off += (deviation > rest_off_um).sum(axis=1)
+            usable = np.isfinite(level)
+            n_levels += usable
+            shift = np.fmax(shift, np.abs(level - last_level))
+            last_level = np.where(usable, level, last_level)
+    judged = n_levels >= 2
+    rest_flicker = judged & (n_off >= rest_off_min_frames) & (n_off > rest_off_frac * n_read)
+    level_shift = judged & (shift > level_shift_um)
+    coverage_filled = np.isfinite(np.asarray(slen_filled, dtype=float)).mean(axis=1)
+    enough = (observed.mean(axis=1) >= min_coverage) & (coverage_filled >= min_coverage_filled)
+    return {'coverage_filled': coverage_filled.astype(np.float32), 'judged': judged, 'rest_flicker': rest_flicker,
+            'level_shift': level_shift, 'passed': enough & ~rest_flicker & ~level_shift}

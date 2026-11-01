@@ -663,7 +663,7 @@ def test_progress_bars_are_labelled_and_on_by_default(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Rest frames, rest position, gap filling
+# Rest frames, rest position, gap filling, quality rules
 # ---------------------------------------------------------------------------
 
 def _beating_trace(T=400, period=100, contraction=60):
@@ -899,3 +899,66 @@ def test_fill_rejects_a_third_peak_and_a_length_off_the_rest_level():
     rest = np.ones(12, bool)
     assert not st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), rest, read, px)[1].any()
     assert st.fill_track_gaps(pos, axis, obs, slen, pos.copy(), np.zeros(12, bool), read, px)[1][0, 4:7].all()
+
+
+def test_assess_tracks_applies_each_rule_on_real_frames():
+    T = 200
+    rest = (np.arange(T) % 50) >= 10                        # four rest periods of 40 frames, beats in between
+    rng = np.random.default_rng(0)
+    slen = 1.8 + rng.normal(0, 0.005, (6, T))
+    obs = np.ones((6, T), bool)
+    slen[1, np.arange(T) % 50 == 30] += 0.4                 # flicker in the middle of each rest period
+    slen[2, 100:] += 0.3                                    # level shift
+    slen[3, ~rest] += 0.8                                   # large excursions during beats: popping is not read
+    obs[4, 40:] = False                                     # too few real frames
+    obs[5, :] = False
+    obs[5, 10:19] = True                                    # never two rest levels
+    filled = np.where(obs, slen, np.nan)
+    q = st.assess_tracks(slen, obs, filled, rest)
+    assert q['rest_flicker'].tolist() == [False, True, False, False, False, False]
+    assert q['level_shift'].tolist() == [False, False, True, False, False, False]
+    assert q['judged'].tolist() == [True, True, True, True, False, False]
+    assert q['passed'].tolist() == [True, False, False, True, False, False]
+    # the same sparse track passes once its gaps are filled, if it has enough real frames
+    obs2 = obs.copy()
+    obs2[4] = np.arange(T) % 5 != 0
+    obs2[4, 100:] = np.arange(100, T) % 2 == 0
+    q2 = st.assess_tracks(slen, obs2, np.where(obs2, slen, np.nan), rest)
+    assert not q2['passed'][4]
+    assert st.assess_tracks(slen, obs2, slen, rest)['passed'][4]
+
+
+def test_assess_tracks_ignores_filled_values_edges_of_rest_and_slow_change():
+    T = 200
+    rest = (np.arange(T) % 50) >= 10
+    slen = 1.8 + np.random.default_rng(0).normal(0, 0.005, (5, T))
+    obs = np.ones((5, T), bool)
+    filled = slen.copy()
+    gap = np.isin(np.arange(T) % 50, [29, 30, 31, 32])
+    obs[1, gap] = False
+    filled[1, gap] += 0.4                                   # off level, but filled
+    slen[2, np.isin(np.arange(T) % 50, [10, 11, 12, 13])] += 0.4       # at the start of each rest period
+    filled[2] = slen[2]
+    obs[3] = np.arange(T) % 5 < 2                           # 40 % real, 100 % after filling
+    slen[4] += 0.15 * (np.arange(T) // 50)                  # small steps add up, but each stays under the limit
+    filled[4] = slen[4]
+    q = st.assess_tracks(slen, obs, filled, rest)
+    assert not q['rest_flicker'].any() and not q['level_shift'].any()
+    assert q['passed'].tolist() == [True, True, True, False, True]
+
+
+def test_assess_tracks_reads_the_shortest_rest_period_in_seconds():
+    rest = (np.arange(200) % 20) >= 14                      # rest runs of 6 frames
+    slen = np.full((1, 200), 1.8)
+    slen[0, 100:] += 0.4
+    obs = np.ones((1, 200), bool)
+    assert st.assess_tracks(slen, obs, slen, rest, frametime=0.05)['level_shift'][0]       # 0.3 s of rest at 20 fps
+    assert not st.assess_tracks(slen, obs, slen, rest, frametime=0.01)['judged'][0]        # 0.06 s at 100 fps
+
+
+def test_assess_tracks_without_rest_judges_nothing():
+    slen = np.full((2, 50), 1.8)
+    obs = np.ones((2, 50), bool)
+    q = st.assess_tracks(slen, obs, slen, np.zeros(50, bool))
+    assert not q['judged'].any() and q['passed'].all()
+
