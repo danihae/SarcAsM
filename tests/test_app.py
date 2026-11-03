@@ -636,6 +636,21 @@ class TestTrackLayers:
             assert np.isfinite(layers['Sarcomeres'].face_color).all()
             assert layers['Sarcomeres'].face_color.shape[0] == dots.data.shape[0]
 
+    def test_dots_shown_then_hidden_survive_a_frame_with_fewer_dots(self, control):
+        table = control.track_layer_table()
+        counts = np.bincount(table['t'])
+        many, few = int(counts.argmax()), int(counts.argmin())
+        assert counts[few] < counts[many]
+        control.viewer.dims.current_step = (many, 0, 0)
+        control.init_sarcomere_dots()
+        dots = control.viewer.layers['Sarcomeres']
+        dots.set_view_slice()                                # shown once: the layer holds this frame's indices
+        dots._face.events.colors.connect(lambda: dots._view_data)   # what the vispy layer reads on a colour change
+        dots.visible = False
+        control.viewer.dims.current_step = (few, 0, 0)
+        control.update_sarcomere_dots()
+        assert dots.data.shape[0] == dots.face_color.shape[0] == counts[few]
+
     def test_nearest_track_hit_test(self, control):
         table = control.track_layer_table()
         cell = control.model.cell

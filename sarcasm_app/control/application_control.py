@@ -453,6 +453,7 @@ class ApplicationControl:
         rows = self._frame_rows(table, self._current_frame())
         layer = self.viewer.layers['Sarcomeres']
         layer.data = np.column_stack([table['y'][rows], table['x'][rows]]).astype(float)
+        layer.set_view_slice()          # napari re-slices only visible layers; hidden ones keep the old frame's indices
         layer.face_color = colors[rows]
 
     def init_track_groups_layer(self, visible=True):
