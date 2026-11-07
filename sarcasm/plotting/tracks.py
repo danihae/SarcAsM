@@ -522,7 +522,7 @@ class TrackPlots:
         Draw each tracked myofibril as a connected polyline over the image.
 
         The tracker analogue of :meth:`plot_myofibril_lines`: each group's member
-        sarcomeres — ordered head-to-tail by ``track_group_order`` — are linked by a
+        sarcomeres — ordered start-to-end by ``track_group_order`` — are linked by a
         line at ``frame``, so you can see where each analyzed group runs and its
         shape. Requires a ``'myofibril'`` grouping
         (:meth:`MotionAnalysis.group_tracks` / :meth:`MotionAnalysis.analyze`
@@ -827,7 +827,7 @@ class TrackPlots:
         sort_by : {'time_to_peak', 'amplitude', 'group'}, optional
             Row order. ``'time_to_peak'`` / ``'amplitude'`` use the cycle average of
             ``delta_slen`` (earliest / largest shortening first); ``'group'`` orders by
-            group id and, for the ordered groupings, head-to-tail. Default is 'time_to_peak'
+            group id and, for the ordered groupings, start-to-end. Default is 'time_to_peak'
             (``'group'`` when ``cycle_average`` is False).
         kind : str or None, optional
             Grouping whose labels are used (tracks outside its groups are left out, and

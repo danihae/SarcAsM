@@ -81,7 +81,7 @@ class GroupingMixin:
 
     _GROUPING_LEVELS = MOTION_KINDS
 
-    # Groupings that order their members head-to-tail into a 1D chain.
+    # Groupings that order their members start-to-end into a 1D chain.
     # They represent geometry, not just a set, so they keep partially-tracked
     # sarcomeres (a dropped member is a hole in the line, not removed noise).
     _CHAIN_LEVELS = ('myofibril', 'loi')
@@ -137,7 +137,7 @@ class GroupingMixin:
         Parameters
         ----------
         chains : list of list of int
-            Ordered track-index chains, head to tail along each line.
+            Ordered track-index chains, start to end along each line.
         gid, order : np.ndarray
             Per-track group id / rank-along-line, written in place.
         group_ids : list of int or None, optional
@@ -278,7 +278,7 @@ class GroupingMixin:
             lengths — they have wandered away from the coherent motion of their
             neighbours and most likely changed identity. Applied **only** to the
             chain groupings ``'myofibril'`` and ``'loi'``, where such a track
-            breaks the head-to-tail order and can place the same physical
+            breaks the start-to-end order and can place the same physical
             sarcomere in one chain twice; a drifting track still contributes a
             valid length to a pooled/mband/domain group, so those are left
             untouched. ``None`` disables the filter. Default is 1.0.
@@ -329,7 +329,7 @@ class GroupingMixin:
             coverage = length / float(T) if T else np.zeros(n_tracks)
             eligible = coverage >= min_coverage
 
-            # a drifted track would corrupt a head-to-tail chain (duplicate sarcomere);
+            # a drifted track would corrupt a start-to-end chain (duplicate sarcomere);
             # unordered groupings keep it
             if max_drift_slen is not None and by in self._CHAIN_LEVELS:
                 drift = self.data.get('motion.tracks.drift_um')
@@ -677,7 +677,7 @@ class GroupingMixin:
                 loi_lines, _, index_lines = select(
                     lines=lines, pos_vectors=pos_px, cluster_labels=cluster, n_clusters=n_clusters, n_lois=n_lois)
         # index_lines is the ordered detection-index chain of each line, so
-        # group_tracks(by='loi') follows it head to tail.
+        # group_tracks(by='loi') follows it start to end.
         self._store_lois(loi_lines, index_lines)
         self.data.update({f'params.motion.detect_lois.{name}': value for name, value in dict(
             frame=frame, n_lois=n_lois, ratio_seeds=ratio_seeds, persistence=persistence,

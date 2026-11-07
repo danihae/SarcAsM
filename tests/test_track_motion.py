@@ -114,7 +114,7 @@ class TestGroupOnRealTracks:
         z_pos, slen = group.z_pos, np.asarray(group.tracks.slen, float)
         assert slen.shape == (K, T) and z_pos.shape == (K + 1, T)
         assert np.nanmin(z_pos) == pytest.approx(0.0)                # z_pos[0] == 0
-        # members are head to tail along the line
+        # members are start to end along the line
         row_of = {int(t): i for i, t in enumerate(sarc.data['motion.tracks.ids'])}
         order = np.asarray(sarc.data['motion.groups.myofibril.track_group_order'])
         assert np.all(np.diff(order[[row_of[int(t)] for t in group.tracks.ids]]) > 0)

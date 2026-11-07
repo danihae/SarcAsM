@@ -321,7 +321,7 @@ def select_longest_in_cluster(
     loi_index_lines : list of np.ndarray
         The selected LOIs as ordered **detection-index** chains (indices into
         ``pos_vectors``), parallel to ``loi_lines``. Keeping the chain — not just
-        its geometry — lets a consumer rebuild the LOI as a 1D head-to-tail thread
+        its geometry — lets a consumer rebuild the LOI as a 1D start-to-end thread
         of sarcomeres instead of re-deriving membership from proximity.
     """
     longest = []   # (index chain, positions) per cluster, largest cluster first

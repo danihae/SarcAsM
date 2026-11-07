@@ -235,7 +235,7 @@
          <item row="3" column="0">
           <widget class="QCheckBox" name="chk_do_myofibrils">
            <property name="toolTip">
-            <string>&lt;p&gt;For each file, traces myofibrils by linking sarcomere vectors that line up head to tail, and measures myofibril length (mean, maximum, spread) and bending. Uses the myofibril settings of the Structure tab. Needs sarcomere vectors, so keep 'Analyse Vectors' on unless the files already have them. Default on.&lt;/p&gt;</string>
+            <string>&lt;p&gt;For each file, traces myofibrils by linking sarcomere vectors that line up start to end, and measures myofibril length (mean, maximum, spread) and bending. Uses the myofibril settings of the Structure tab. Needs sarcomere vectors, so keep 'Analyse Vectors' on unless the files already have them. Default on.&lt;/p&gt;</string>
            </property>
            <property name="text">
             <string>Analyze Myofibrils</string>

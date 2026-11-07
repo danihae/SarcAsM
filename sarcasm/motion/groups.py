@@ -24,7 +24,7 @@ its own; its attributes are views of the stored ones, under the same names:
   ``equ``, computed against the group's own contractions as ``sarc.motion.analyze`` does.
 * ``g.z_pos``: the Z-band positions along the line, for the ordered kinds (myofibril, loi).
 
-Members are in track order, or head to tail along the line for the ordered kinds.
+Members are in track order, or start to end along the line for the ordered kinds.
 """
 
 from collections.abc import Sequence

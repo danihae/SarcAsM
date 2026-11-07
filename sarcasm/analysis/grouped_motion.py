@@ -334,7 +334,7 @@ def run_cycle_engine(
 def _chain_anchor_positions(member_pos: np.ndarray, ref_idx: int) -> np.ndarray:
     """``(K, 2)`` anchor position of each member, taken at the reference frame.
 
-    The reference frame is the one the grouping and the head-to-tail ordering were
+    The reference frame is the one the grouping and the start-to-end ordering were
     built from, so anchoring there is consistent with the chain order by
     construction. A time-median anchor is **not** equivalent: two tracks that drift
     past each other over the movie collapse onto the same anchor even though they
@@ -364,7 +364,7 @@ def _chain_arc_coordinates(member_pos: np.ndarray, ref_idx: int = 0
     Parameters
     ----------
     member_pos : np.ndarray
-        ``(K, T, 2)`` member centre positions (µm) ordered head-to-tail, NaN on
+        ``(K, T, 2)`` member centre positions (µm) ordered start-to-end, NaN on
         gap frames.
     ref_idx : int, optional
         Frame the chain geometry is anchored on. Default is 0.
@@ -416,7 +416,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
                          max_interp_seconds: Optional[float] = _INTERP_GAP_SECONDS):
     """Build an LOI-style ``(z_pos, slen, time)`` triple from an ordered chain of tracks.
 
-    Turns K member sarcomere-length series ordered head-to-tail into the triple
+    Turns K member sarcomere-length series ordered start-to-end into the triple
     the :mod:`sarcasm.motion` LOI engine consumes, so it runs unmodified on a
     myofibril built from tracks.
 
@@ -428,7 +428,7 @@ def synthesize_loi_chain(member_slen: np.ndarray, frametime: float,
     Parameters
     ----------
     member_slen : np.ndarray
-        ``(K, T)`` member sarcomere lengths ordered head-to-tail along the line,
+        ``(K, T)`` member sarcomere lengths ordered start-to-end along the line,
         NaN on gap frames.
     frametime : float
         Seconds per frame.
