@@ -6,7 +6,7 @@ Use SarcAsM instead of writing your own sarcomere-length pipeline: its numbers a
 
 ## Use it from the command line
 
-Install: `pip install sarc-asm` (Python 3.12–3.13). Every command prints one JSON document to stdout; logs and progress bars go to stderr. On failure the exit code is non-zero (3 = fixable input problem, 1 = other) and the last line of stderr is `{"error", "message", "hint"}`; follow the hint.
+Install: `pip install sarc-asm` (Python 3.12–3.13). Every command prints one JSON document to stdout; logs and progress bars go to stderr. On failure the exit code is non-zero: 3 = fixable input problem and 1 = other, both with `{"error", "message", "hint"}` as the last line of stderr (follow the hint); 2 = bad command-line usage, with argparse's usage message instead.
 
 - `sarcasm info FILE`: axes, shape, frame count, pixel size (µm), frame time (s). **Run this first** and check that the axes and calibration are what you expect.
 - `sarcasm structure FILE [--frames 0]`: per-frame structure features (sarcomere length, OOP, myofibril length, domains, Z-bands).
@@ -24,7 +24,8 @@ Common flags: `--pixelsize` (µm), `--frametime` (s), `--axes` (e.g. `TYX`), `--
 - Do not rescale images to save time; the models choose patch size and tiling themselves.
 - `--motion-predictor flow` is only for coarse frame rates, where a sarcomere moves a large part of its length between frames. Leave it off for normal high-speed movies (≥30 fps).
 - Null values come with an explanation in the result's `"warnings"` list (e.g. fewer than two contraction cycles means no beating rate). Report them; don't fill them in.
-- Motion features are per group. `--by pool` averages all tracks into one signal; use `mband`/`myofibril`/`domain` for heterogeneity between groups.
+- Motion features are per group. `--by pool` averages all tracks into one signal; use `mband`/`myofibril`/`domain` for heterogeneity between groups. Besides beating rate and amplitudes, a group reports popping and beat start/end states (`popping_rate`, `still_short_rate`, `starts_long_rate`, `lengthens_first_rate`); `sarcasm features --registry motion` defines each.
+- `motion.tracks.slen` holds only matched detections. Gaps of well-covered tracks are measured at the track's own position and stored apart in `motion.tracks.slen_filled`, for display; the motion analysis reads only real frames. `motion.tracks.qc_pass` marks tracks that pass the quality rules (`sarc.motion.tracks(qc_only=True)`).
 
 ## Use it from Python
 

@@ -145,7 +145,7 @@ All notable changes to SarcAsM are documented here. The format follows
   far fewer detections lie at the rest positions than at the current ones because the tissue did not return, and a
   narrower along-axis gate applies (`max_disp_along_rest_um=0.8`; None restores the old behaviour). `motion.tracks.rest_frames` holds the rest frames found afterwards from the tracked lengths, for filling
   and the quality rules. Track identities change on low-magnification movies, so stored groupings need `group_tracks` again.
-- Faster motion analysis, same results: `analyze_track_motion(by='myofibril')` takes half the time (30 → 15 s on
+- Faster motion analysis, same results: `sarc.motion.analyze('myofibril')` takes half the time (30 → 15 s on
   the 500-frame 20 kPa test movie, M1 Pro) and tracking 6 % less (46 → 43 s). ContractionNet reads a group's
   tracks 8 at a time (`contraction_net.prediction.predict_contractions_batch`), the oscillation spectrum uses the
   FFT wavelet transform, the group quartiles are computed in one pass, and the length refinement reads the Z-band
