@@ -28,6 +28,9 @@ Analyses over a member matrix ``(N, T)`` of per-sarcomere traces, run by
 * **Oscillation spectrum**: continuous-wavelet magnitude spectrum of the group's
   mean ΔSL and of the individual sarcomeres over the contracting frames, and
   the low-frequency (beating) and high-frequency (single-sarcomere) peaks.
+* **Popping and beat start/end states**: which sarcomeres pop, which are still short
+  when the group's cycle ends, start a cycle still lengthened, or lengthen first
+  (:func:`popping_events`, :func:`window_states`).
 """
 
 from __future__ import annotations
@@ -350,7 +353,8 @@ GROUP_KEYS = ('equ_std',
               'oscill_frequencies', 'oscill_magnitudes_avg', 'oscill_magnitudes_single',
               'oscill_peak_avg', 'oscill_amp_avg', 'oscill_peak_1_single', 'oscill_amp_1_single',
               'oscill_peak_2_single', 'oscill_amp_2_single',
-              'popping_rate', 'popping_rate_contr', 'track_popping')
+              'popping_rate', 'popping_rate_contr', 'track_popping',
+              'still_short_rate', 'starts_long_rate', 'lengthens_first_rate')
 
 
 def popping_events(delta_slen: np.ndarray, labels_contr: np.ndarray, complete: np.ndarray,
@@ -394,13 +398,100 @@ def popping_events(delta_slen: np.ndarray, labels_contr: np.ndarray, complete: n
     return events
 
 
+def window_states(delta_slen: np.ndarray, labels_contr: np.ndarray, complete: np.ndarray,
+                  thres_shift: float = 0.10, min_observed: float = 0.9) -> Dict[str, float]:
+    """What the member sarcomeres do at the start and end of the group's contraction cycles.
+
+    Three fractions over member sarcomeres and single-beat cycles:
+
+    * ``still_short_rate``: at the last frame of the cycle the sarcomere is still at least
+      ``thres_shift`` shorter than its resting length; it has not relaxed when the group has.
+    * ``starts_long_rate``: at the first frame of the cycle it is at least ``thres_shift`` longer
+      than its resting length, still lengthened from the previous beat.
+    * ``lengthens_first_rate``: its first move of at least ``thres_shift`` away from its length at
+      the first frame of the cycle is a lengthening and comes in the first half of the cycle, so a
+      small shortening followed by a late pop does not count.
+
+    Only cycles that hold one beat are scored: the group's mean ΔSL has a single dip (between the
+    first and last frame within 10 % of its deepest point it does not rise back above half that
+    depth), and the cycle lasts at most 1.5 x the median complete cycle. A sarcomere counts in a
+    cycle when it has a length in at least ``min_observed`` of the cycle's frames; first and last
+    frame mean its first and last measured one.
+
+    Parameters
+    ----------
+    delta_slen : np.ndarray
+        Length change of each member from its resting length (µm), shape ``(n_members, T)``.
+    labels_contr : np.ndarray
+        Contraction cycle labels of the group, shape ``(T,)`` (0 = quiet, k = cycle k).
+    complete : np.ndarray
+        Whether each cycle lies fully inside the recording, shape ``(n_cycles,)``.
+    thres_shift : float, optional
+        Length change (µm) from rest, or from the cycle's first frame, that counts. Default is 0.10.
+    min_observed : float, optional
+        Fraction of a cycle's frames a member must be measured in. Default is 0.9.
+
+    Returns
+    -------
+    dict
+        ``'still_short_rate'``, ``'starts_long_rate'``, ``'lengthens_first_rate'``; NaN when no
+        single-beat cycle has a measured member.
+    """
+    delta_slen = np.asarray(delta_slen, dtype=float)
+    labels_contr = np.asarray(labels_contr).reshape(-1)
+    out = {'still_short_rate': np.nan, 'starts_long_rate': np.nan, 'lengthens_first_rate': np.nan}
+    spans = []
+    for k in range(len(complete)):
+        idx = np.flatnonzero(labels_contr == k + 1)
+        if complete[k] and idx.size >= 5:
+            spans.append((int(idx[0]), int(idx[-1]) + 1))
+    if not spans or delta_slen.shape[0] == 0:
+        return out
+    max_len = 1.5 * np.median([b - a for a, b in spans])
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)      # frames without any member
+        mean = np.nanmean(delta_slen, axis=0)
+    short = starts_long = first_long = n = 0
+    for a, b in spans:
+        L = b - a
+        if L > max_len:
+            continue
+        m = mean[a:b]
+        if np.isfinite(m).sum() >= 5 and np.nanmin(m) < 0:
+            depth = np.nanmin(m)
+            near = np.flatnonzero(m <= 0.9 * depth)
+            if np.nanmax(m[near[0]:near[-1] + 1]) > 0.5 * depth:
+                continue                                      # two dips: more than one beat
+        x = delta_slen[:, a:b]
+        obs = np.isfinite(x)
+        use = obs.sum(axis=1) >= min_observed * L
+        if not use.any():
+            continue
+        x, obs = x[use], obs[use]
+        rows = np.arange(x.shape[0])
+        first = x[rows, obs.argmax(axis=1)]
+        last = x[rows, L - 1 - obs[:, ::-1].argmax(axis=1)]
+        with np.errstate(invalid='ignore'):
+            moved = np.abs(x - first[:, None]) >= thres_shift
+        j = moved.argmax(axis=1)
+        lengthens = moved.any(axis=1) & (j / max(L - 1, 1) < 0.5) & (x[rows, j] > first)
+        short += int(np.sum(last <= -thres_shift))
+        starts_long += int(np.sum(first >= thres_shift))
+        first_long += int(np.sum(lengthens))
+        n += x.shape[0]
+    if n:
+        out = {'still_short_rate': short / n, 'starts_long_rate': starts_long / n,
+               'lengthens_first_rate': first_long / n}
+    return out
+
+
 def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
                    contr: np.ndarray, labels_contr: np.ndarray, beating_rate: np.ndarray,
                    frametime: float, filter_params: Tuple[int, int] = (13, 5),
                    slen_lims: Tuple[float, float] = (1.2, 3.0), num_scales: int = 60,
                    contr_complete: Optional[np.ndarray] = None, thres_popping: float = 0.25,
-                   **oscillation_kwargs) -> Dict[str, np.ndarray]:
-    """Serial/mutual correlation, oscillation spectrum and popping for every track group.
+                   thres_shift: float = 0.10, **oscillation_kwargs) -> Dict[str, np.ndarray]:
+    """Serial/mutual correlation, oscillation spectrum, popping and beat start/end states for every track group.
 
     Parameters
     ----------
@@ -426,6 +517,8 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
         Default is None.
     thres_popping : float, optional
         See :func:`popping_events`. Default is 0.25.
+    thres_shift : float, optional
+        See :func:`window_states`. Default is 0.10.
     **oscillation_kwargs
         Forwarded to :func:`oscillation_spectrum`.
 
@@ -440,6 +533,8 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
         ``track_popping`` ``(n_tracks, max_n_contr)`` holds :func:`popping_events` of each track's
         group (NaN for unassigned tracks); ``popping_rate_contr`` ``(n_groups, max_n_contr)`` is the
         fraction of members popping in each cycle and ``popping_rate`` ``(n_groups,)`` over all cycles.
+        ``still_short_rate``, ``starts_long_rate`` and ``lengthens_first_rate`` ``(n_groups,)`` are
+        :func:`window_states` of each group.
     """
     tracks_slen = np.asarray(tracks_slen, dtype=float)
     group_id = np.asarray(group_id).reshape(-1)
@@ -478,6 +573,8 @@ def analyze_groups(tracks_slen: np.ndarray, group_id: np.ndarray, n_groups: int,
                 warnings.simplefilter('ignore', RuntimeWarning)      # all-NaN cycles stay NaN
                 popping_rate_contr[g, :n_cycles] = np.nanmean(events, axis=0)
                 scalars['popping_rate'][g] = np.nanmean(events)
+            for key, value in window_states(kin['delta_slen'], labels_contr[g], complete, thres_shift).items():
+                scalars[key][g] = value
         osc = oscillation_spectrum(kin['delta_slen'], contr_g, frametime, float(beating_rate[g]),
                                    num_scales=num_scales, **oscillation_kwargs)
         frequencies = osc['frequencies']

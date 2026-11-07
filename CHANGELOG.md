@@ -8,6 +8,12 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ### Added
 
+- Beat start and end states of single sarcomeres, per group (`heterogeneity.window_states`, `sarc.motion.analyze(
+  thres_shift=0.10)`, exported): `still_short_rate` (still at least 0.10 µm short of rest at the end of a cycle),
+  `starts_long_rate` (at least 0.10 µm longer than rest at its start) and `lengthens_first_rate` (the first 0.10 µm
+  move is a lengthening, in the first half of the cycle). Only cycles holding one beat count: one dip of the group
+  mean, at most 1.5 x the median cycle. On the 2022 acute panel they repeat between odd and even beats (0.91-0.97),
+  hold at half the frame rate (rho >= 0.96) and barely depend on beat period (|rho| <= 0.17).
 - `sarc.motion.track(fill_gaps=True, fill_min_coverage=0.5)`: the gap frames of well-covered tracks are measured at
   the track's own position, kept if the Z-band profile is clean, and stored apart in `motion.tracks.slen_filled` and
   `motion.tracks.filled`. Gaps are mostly flickering M-band pixels, not missing sarcomeres. `motion.tracks.slen`,

@@ -114,7 +114,7 @@ MOTION_TIERS: TierSections = {
             'slen_std', 'equ_std',
             'corr_delta_slen_serial', 'corr_delta_slen_mutual', 'ratio_delta_slen_mutual_serial',
             'corr_vel_serial', 'corr_vel_mutual', 'ratio_vel_mutual_serial',
-            'popping_rate',
+            'popping_rate', 'still_short_rate', 'starts_long_rate', 'lengthens_first_rate',
         ],
         'Oscillations': [
             'oscill_peak_avg', 'oscill_peak_1_single', 'oscill_peak_2_single',

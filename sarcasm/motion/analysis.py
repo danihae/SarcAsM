@@ -63,6 +63,7 @@ class AnalysisMixin:
         min_valid_frames: float = 0.5,
         filter_params: Tuple[int, int] = (13, 5),
         thres_popping: float = 0.25,
+        thres_shift: float = 0.10,
         reference_frame: Any = _STORED,
         min_coverage: Any = _STORED,
         min_group_size: Any = _STORED,
@@ -124,6 +125,11 @@ class AnalysisMixin:
             A member sarcomere pops in a cycle when it lengthens more than this (µm) beyond its
             resting length while the group contracts (``popping_rate``, ``popping_rate_contr``,
             ``track_popping``; see :func:`heterogeneity.popping_events`). Default is 0.25.
+        thres_shift : float, optional
+            Length change (µm) that counts for the beat start/end states: still this much shorter
+            than rest at the end of a cycle (``still_short_rate``), this much longer at its start
+            (``starts_long_rate``), or a first move of this size that is a lengthening
+            (``lengthens_first_rate``); see :func:`heterogeneity.window_states`. Default is 0.10.
         reference_frame, min_coverage, min_group_size, max_drift_slen
             Grouping arguments, see :meth:`group_tracks`. Left out, the stored grouping of
             ``by`` is used; given, ``by`` is grouped again with them (the arguments left out
@@ -199,7 +205,7 @@ class AnalysisMixin:
             tracks_slen, gid, n_groups, engine['contr'], engine['labels_contr'],
             engine['beating_rate'], frametime=self.metadata.frametime,
             filter_params=filter_params, slen_lims=slen_lims,
-            contr_complete=engine['contr_complete'], thres_popping=thres_popping)
+            contr_complete=engine['contr_complete'], thres_popping=thres_popping, thres_shift=thres_shift)
         # The aggregate, engine and heterogeneity dicts use bare feature names, so
         # the store key is just the path: every kind lands under motion/<kind>/
         # with identical members, with no per-kind special cases.
@@ -221,6 +227,7 @@ class AnalysisMixin:
             'min_valid_frames': min_valid_frames,
             'filter_params': filter_params,
             'thres_popping': thres_popping,
+            'thres_shift': thres_shift,
         }
         result.update({f'params.motion.analyze.{kind}.{name}': value for name, value in params.items()})
         self.data.update(result)

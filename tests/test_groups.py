@@ -83,6 +83,36 @@ def test_popping_events_per_member_and_cycle():
     assert np.isnan(events[:, 1]).all()                # an incomplete cycle is not scored
 
 
+def _pulse(L):
+    return -0.3 * np.sin(np.pi * np.linspace(0, 1, L)) ** 2
+
+
+def test_window_states_per_member_and_cycle():
+    labels = np.zeros(60, int)
+    labels[5:25], labels[35:55] = 1, 2
+    delta = np.zeros((5, 60))
+    delta[:, 5:25] = delta[:, 35:55] = _pulse(20)
+    delta[1, 20:25] = -0.15                            # cycle 1: still short at its end
+    delta[2, 35] = 0.15                                # cycle 2: starts lengthened
+    delta[3, 6:9] = 0.2                                # cycle 1: lengthens first, early
+    delta[4, 5:25] = 0.05 * _pulse(20) / 0.3           # cycle 1: small shortening, then a late pop:
+    delta[4, 21] = 0.3                                 # its first move is a lengthening, but late
+    s = heterogeneity.window_states(delta, labels, np.array([True, True]))
+    assert s == pytest.approx({'still_short_rate': 0.1, 'starts_long_rate': 0.1, 'lengthens_first_rate': 0.1})
+
+
+def test_window_states_skip_cycles_holding_more_than_one_beat():
+    labels = np.zeros(140, int)
+    labels[5:25], labels[35:55], labels[65:85], labels[90:130] = 1, 2, 3, 4
+    delta = np.zeros((3, 140))
+    delta[:, 5:25] = delta[:, 35:55] = _pulse(20)
+    delta[:, 65:85] = np.r_[_pulse(10), _pulse(10)]   # two beats merged into one cycle
+    delta[:, 90:130] = _pulse(40)                      # 2 x the median cycle
+    delta[0, 82:85] = delta[0, 127:130] = -0.15        # still short only in those two
+    s = heterogeneity.window_states(delta, labels, np.ones(4, bool))
+    assert s['still_short_rate'] == 0.0
+
+
 class TestSarc21OnRealTracks:
     """SARC-21: the per-group view reports the group's own contractions, small groups included."""
 

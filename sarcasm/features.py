@@ -1009,6 +1009,28 @@ motion_feature_dict = {
         'data type': np.ndarray,
         'function': 'sarc.motion.analyze',
         'name': 'Popping per sarcomere and cycle'},
+    'still_short_rate': {
+        'description': 'Fraction of member sarcomeres and single-beat contraction cycles in which a sarcomere is '
+                       'still at least thres_shift (0.10 µm) shorter than its resting length at the last frame of '
+                       'the cycle: it has not relaxed when the group has. Cycles holding more than one beat are '
+                       'skipped. np.ndarray with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Still short at cycle end'},
+    'starts_long_rate': {
+        'description': 'Fraction of member sarcomeres and single-beat contraction cycles in which a sarcomere is '
+                       'at least thres_shift (0.10 µm) longer than its resting length at the first frame of the '
+                       'cycle: still lengthened from the previous beat. np.ndarray with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Lengthened at cycle start'},
+    'lengthens_first_rate': {
+        'description': 'Fraction of member sarcomeres and single-beat contraction cycles in which the first move '
+                       'of at least thres_shift (0.10 µm) away from the length at the first frame of the cycle is '
+                       'a lengthening and comes in the first half of the cycle. np.ndarray with shape (n_groups,).',
+        'data type': np.ndarray,
+        'function': 'sarc.motion.analyze',
+        'name': 'Lengthens first'},
     'corr_delta_slen_serial': {
         'description': 'Serial correlation r_s of dSL: mean Pearson correlation of the same sarcomere between '
                        'different contraction cycles (cycle-to-cycle consistency), per group.',
