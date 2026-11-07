@@ -14,6 +14,11 @@ All notable changes to SarcAsM are documented here. The format follows
   bar. Rows are 0.4 µm apart; `y_lim` applies to the overlay only. The GUI's group detail and
   `plot_group_summary` show the new rows.
 
+### Fixed
+
+- Writing an `.mp4` with an ffmpeg on the `PATH` that does not start (e.g. a shared library removed by an update)
+  said "No ffmpeg found". The error now names that ffmpeg and quotes the first line it printed.
+
 ## [1.0.0b5] — 2026-11-07
 
 ### Added

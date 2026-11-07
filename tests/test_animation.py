@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import types
 from pathlib import Path
 
@@ -154,3 +155,18 @@ def test_auto_group_members_fully_observed(tracked_store):
     kind, gid, members = Animations._parse_group(tracked_store, f'mband:{g}', frames)
     obs = np.asarray(tracked_store.data['motion.tracks.observed'])[members][:, frames]
     assert kind == "mband" and gid == g and members.size >= 8 and obs.mean(axis=1).min() >= 0.8
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='a shell script stands in for the broken ffmpeg')
+def test_broken_ffmpeg_on_path_is_named(tmp_path, monkeypatch):
+    """An ffmpeg on PATH that cannot start (a shared library removed by an update) was reported as missing."""
+    fake = tmp_path / 'ffmpeg'
+    fake.write_text('#!/bin/sh\necho "dyld: Library not loaded: libjxl.0.10.dylib" >&2\nexit 1\n')
+    fake.chmod(0o755)
+    monkeypatch.setenv('PATH', str(tmp_path))
+    monkeypatch.setitem(sys.modules, 'imageio_ffmpeg', None)          # no fallback binary either
+    fig = plt.figure()
+    with pytest.raises(RuntimeError, match=r'ffmpeg at .*ffmpeg does not run \(dyld: Library not loaded'):
+        with Animations.movie_writer(fig, str(tmp_path / 'movie.mp4'), fps=10):
+            pass
+    plt.close(fig)

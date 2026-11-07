@@ -238,6 +238,17 @@ class Animations:
         if out.lower().endswith('.mp4'):
             exe = Animations.find_ffmpeg()
             if exe is None:
+                broken = shutil.which('ffmpeg')
+                if broken:
+                    # found, but it does not start (e.g. a shared library removed by an update): say so
+                    try:
+                        res = subprocess.run([broken, '-version'], capture_output=True, text=True, timeout=20)
+                        why = next((ln.strip() for ln in (res.stderr or res.stdout).splitlines() if ln.strip()),
+                                   f'exit code {res.returncode}')
+                    except (OSError, subprocess.SubprocessError) as e:
+                        why = str(e)
+                    raise RuntimeError(f'The ffmpeg at {broken} does not run ({why}). Reinstall it, or '
+                                       '`pip install imageio-ffmpeg`, or write a .gif instead.')
                 raise RuntimeError('No ffmpeg found. Install ffmpeg or `pip install imageio-ffmpeg`, '
                                    'or write a .gif instead.')
             plt.rcParams['animation.ffmpeg_path'] = exe
