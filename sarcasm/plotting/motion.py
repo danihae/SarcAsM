@@ -189,11 +189,16 @@ class MotionPlots:
         PlotUtils.polish_xticks(ax)
 
     @staticmethod
-    def _plot_delta_slen_stacked(ax: Axes, g: "Group", frame=None, t_lim=(0, None), y_lim=(-0.3, 0.4), n_rows=6,
-                                 n_start=0, show_contr=True):
-        """ΔSL of the members, one inset row per sarcomere (head to tail for the ordered kinds)."""
-        yticks = [-0.2, 0, 0.2]
-        delta_slen = g.tracks.delta_slen
+    def _plot_delta_slen_stacked(ax: Axes, g: "Group", frame=None, t_lim=(0, None), n_rows=6, n_start=0,
+                                 show_contr=True, show_mean=True):
+        """ΔSL of the members, one row per sarcomere in their order in the group, pops filled red.
+
+        Rows are 0.4 µm apart, each the raw ΔSL around a dotted resting line. Where a member pops in a
+        cycle (``g.track_popping``), its ΔSL above ``thres_popping`` is filled red; a red bar of that
+        height gives the scale. The group's ΔSL is the top row.
+        """
+        spacing = 0.4
+        delta_slen = np.asarray(g.tracks.delta_slen, dtype=float)
         time = MotionPlots._series(g)['time']
         n_sarc = len(delta_slen)
         if n_start >= n_sarc:
@@ -202,30 +207,46 @@ class MotionPlots:
         if n_rows <= 0:
             ax.text(0.5, 0.5, 'No sarcomeres', ha='center', va='center', transform=ax.transAxes)
             return
-        for i, y in enumerate(np.linspace(0, 1, num=n_rows, endpoint=False)):
-            ax_i = ax.inset_axes((0., y, 1, 1 / n_rows - min(0.02, 0.3 / n_rows)))
-            ax_i.plot(time, delta_slen[i + n_start], c='k', lw=0.6)
-            ax_i.axhline(0, linewidth=1, linestyle=':', c='k')
-            if show_contr:
-                MotionPlots._shade_contr(ax_i, g)
-            if frame is not None:
-                ax_i.axvline(time[frame], linestyle='--', c='k')
-            ax_i.set_ylim(y_lim)
-            ax_i.set_xlim(t_lim)
-            if i > 0:
-                ax_i.set_xticks([])
-            else:
-                PlotUtils.polish_xticks(ax_i)
-                ax_i.tick_params(axis='x', labelsize='x-small')
-            ax_i.set_yticks(yticks)
-            ax_i.set_yticklabels(yticks, fontsize='x-small')
+        thres = float(g.sarc.data[f'params.motion.analyze.{g.kind}.thres_popping'])
+        labels = np.asarray(g.labels_contr).reshape(-1)
+        popped = np.asarray(g.track_popping, dtype=float) == 1
+        if show_contr:
+            MotionPlots._shade_contr(ax, g)
+        rows = delta_slen[n_start:n_start + n_rows]
+        for i, d in enumerate(rows):
+            y0 = i * spacing
+            ax.axhline(y0, lw=0.4, ls=':', c='0.6')
+            ax.plot(time, d + y0, c='k', lw=0.6)
+            for k in np.flatnonzero(popped[n_start + i]):
+                with np.errstate(invalid='ignore'):
+                    above = (labels == k + 1) & (d > thres)
+                ax.fill_between(time, y0 + thres, d + y0, where=above, color='crimson', lw=0, interpolate=True,
+                                zorder=3)
+        ticks = range(0, n_rows, max(1, n_rows // 6))
+        positions, names = [i * spacing for i in ticks], [str(n_start + i + 1) for i in ticks]
+        top = n_rows * spacing
+        if show_mean:
+            # above the top member's highest excursion, so that no pop reaches into the group's row
+            top = (n_rows - 1) * spacing + max(spacing, np.nanmax(rows[-1], initial=0) + 0.15) + 0.15
+            avg = np.asarray(g.slen_avg, dtype=float)
+            ax.plot(time, avg - grouped_motion.equilibrium_over_quiet(avg, np.asarray(g.contr, dtype=bool)) + top,
+                    c='tab:blue', lw=1.4)
+            ax.axhline(top, lw=0.4, ls=':', c='0.6')
+            positions.append(top)
+            names.append('mean')
+        if frame is not None:
+            ax.axvline(time[frame], ls='--', c='k')
+        blended = transforms.blended_transform_factory(ax.transAxes, ax.transData)
+        ax.plot([0.985, 0.985], [-0.8 * spacing, -0.8 * spacing + thres], c='crimson', lw=2, transform=blended,
+                clip_on=False)
+        ax.text(0.995, -0.8 * spacing + thres / 2, f'{thres:g} µm', transform=blended, va='center',
+                fontsize='x-small', color='crimson')
+        ax.set_yticks(positions, names, fontsize='x-small')
+        ax.set_ylim(-spacing, top + spacing)
+        ax.set_xlim(t_lim)
         ax.set_xlabel(_LABEL_TIME)
-        ax.set_ylabel(_LABEL_DELTA_SL)
-        ax.spines['bottom'].set_color('w')
-        ax.spines['top'].set_color('w')
-        ax.xaxis.label.set_color('k')
-        ax.tick_params(axis='x', colors='w')
-        ax.tick_params(axis='y', colors='w')
+        ax.set_ylabel('Sarcomere [#]')
+        PlotUtils.polish_xticks(ax)
 
     @staticmethod
     def _plot_members_over_cycle(ax: Axes, g: "Group", values: np.ndarray, number_contr, t_lim, show_contr):
@@ -661,9 +682,11 @@ class MotionPlots:
         Plot the length change ΔSL of the members of one group.
 
         By default the members are overlaid (grey) with the ΔSL of the group average (bold);
-        ``stacked=True`` draws one row per member instead (``n_rows`` rows from ``n_start``, head to tail
-        for the ordered kinds). ΔSL is the change from each member's resting length, its median over the
-        group's quiet frames, without smoothing.
+        ``stacked=True`` draws one row per member instead (``n_rows`` rows from ``n_start``, in their order in
+        the group, which follows the line for myofibril and LOI groups), fills each pop red (ΔSL above
+        ``thres_popping`` in a cycle the member pops in, as in ``g.track_popping``) and draws the group's ΔSL
+        as the top row. ΔSL is the change from each member's resting length, its median over the group's quiet
+        frames, without smoothing.
 
         Parameters
         ----------
@@ -677,11 +700,11 @@ class MotionPlots:
             The time limits in seconds; ``None`` on either side means the recording boundary.
             Default is (0, None).
         y_lim : tuple of float, optional
-            The y-axis limits in µm. Default is (-0.4, 0.4).
+            Overlay: the y-axis limits in µm; stacked rows are 0.4 µm apart. Default is (-0.4, 0.4).
         show_contr : bool, optional
             Whether to shade the contractions. Default is True.
         show_mean : bool, optional
-            Overlay: whether to draw the group's ΔSL. Default is True.
+            Whether to draw the group's ΔSL (stacked: as the top row). Default is True.
         max_lines : int, optional
             Overlay: draw at most this many members; None draws all. Default is 300.
         qc_only : bool, optional
@@ -699,7 +722,7 @@ class MotionPlots:
             Stacked: index of the first member shown. Default is 0.
         """
         if stacked:
-            return MotionPlots._plot_delta_slen_stacked(ax, g, frame=frame, t_lim=t_lim, y_lim=y_lim,
-                                                        n_rows=n_rows, n_start=n_start, show_contr=show_contr)
+            return MotionPlots._plot_delta_slen_stacked(ax, g, frame=frame, t_lim=t_lim, n_rows=n_rows,
+                                                        n_start=n_start, show_contr=show_contr, show_mean=show_mean)
         MotionPlots._plot_members(ax, g, mode='delta', t_lim=t_lim, y_lim=y_lim, show_contr=show_contr, qc_only=qc_only,
                                   show_mean=show_mean, max_lines=max_lines, color=color, mean_color=mean_color)

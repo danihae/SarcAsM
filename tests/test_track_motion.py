@@ -144,6 +144,17 @@ class TestGroupOnRealTracks:
         Plots.plot_popping_events(group)
         plt.close('all')
 
+    def test_stacked_delta_slen_fills_every_pop(self, sarc):
+        """The stacked rows fill one red patch per member and cycle that the group counts as a pop."""
+        g = max(sarc.motion.groups('myofibril'), key=lambda g: np.sum(np.asarray(g.track_popping) == 1))
+        n_pops = int(np.sum(np.asarray(g.track_popping) == 1))
+        assert n_pops > 0
+        fig, ax = plt.subplots()
+        Plots.plot_delta_slen(ax, g, stacked=True, n_rows=g.n_members)
+        red = matplotlib.colors.to_rgba('crimson')
+        assert sum(np.allclose(c.get_facecolor()[0], red) for c in ax.collections) == n_pops
+        plt.close(fig)
+
 
 # ---------------------------------------------------------------------------
 # per-track kinematics + raster (20 kPa reference store)

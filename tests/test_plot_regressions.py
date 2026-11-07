@@ -17,5 +17,5 @@ def test_stacked_delta_slen_with_fewer_sarcomeres_than_rows():
     g = next(g for g in groups if g.n_members == 2)
     fig, ax = plt.subplots()
     Plots.plot_delta_slen(ax, g, stacked=True, n_rows=6, n_start=1)
-    assert len(ax.child_axes) == 1                      # sarcomere 1, the only one after n_start
+    assert [t.get_text() for t in ax.get_yticklabels()] == ['2', 'mean']   # the only sarcomere after n_start
     plt.close(fig)

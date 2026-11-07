@@ -4,6 +4,16 @@ All notable changes to SarcAsM are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `Plots.plot_delta_slen(ax, g, stacked=True)` draws the members as rows of one plot instead of one small axis
+  per row, and clips nothing. It fills each pop red (ΔSL above `thres_popping` in a cycle the member pops in, the
+  events of `g.track_popping` and `plot_popping_events`), draws the group's ΔSL as the top row and adds a scale
+  bar. Rows are 0.4 µm apart; `y_lim` applies to the overlay only. The GUI's group detail and
+  `plot_group_summary` show the new rows.
+
 ## [1.0.0b5] — 2026-11-07
 
 ### Added
