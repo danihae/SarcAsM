@@ -1,0 +1,11 @@
+/* Feature tables (feature_dict.py): the RTD theme keeps every cell on one line, so the description and type
+   columns ran off the page. Wrap the text, and widen the page body where a feature table is shown. */
+.wy-nav-content:has(table.feature-table) { max-width: 1150px; }
+table.feature-table { width: 100%; }
+table.feature-table td, table.feature-table th { white-space: normal !important; vertical-align: top; }
+table.feature-table td:first-child code { white-space: normal; overflow-wrap: anywhere; font-size: 80%; }
+table.feature-table td:nth-child(2) p { line-height: 1.45; }
+/* Phones: keep each key on one line and let the table scroll sideways (the theme's wrapper does that). */
+@media (max-width: 768px) {
+  table.feature-table td:first-child code { white-space: nowrap; overflow-wrap: normal; }
+}

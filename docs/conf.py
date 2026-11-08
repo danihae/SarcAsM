@@ -73,7 +73,8 @@ html_theme_options = {
     'vcs_pageview_mode': '',
 }
 html_logo = 'images/logo.png'
-html_static_path = []
+html_static_path = ['_static']
+html_css_files = ['feature_tables.css']   # wraps the feature tables
 
 # GitHub integration for "Edit on GitHub" links
 html_context = {
