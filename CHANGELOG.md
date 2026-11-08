@@ -6,6 +6,11 @@ All notable changes to SarcAsM are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `pip install "sarc-asm[movies]"` installs `imageio-ffmpeg`, an ffmpeg for `.mp4` movies (about 50 MB, so it is
+  not in the default install). The "no ffmpeg" errors name it.
+
 ### Changed
 
 - `Plots.plot_delta_slen(ax, g, stacked=True)` draws the members as rows of one plot instead of one small axis

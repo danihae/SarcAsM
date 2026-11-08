@@ -58,6 +58,7 @@ sarcasm = "sarcasm.cli:main"
 
 [project.optional-dependencies]
 app = ["pyinstaller>=6.0.0"]
+movies = ["imageio-ffmpeg>=0.4"]
 docs = [
   "sphinx>=7.0,<8.0",
   "sphinx-rtd-theme>=2.0.0,<3.0.0",

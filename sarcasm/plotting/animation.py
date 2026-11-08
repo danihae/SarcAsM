@@ -5,7 +5,7 @@ composite results movies with grouped time series and a time cursor.
 The public entry points are the static methods of :class:`Animations`. They build a figure with
 the usual :class:`~sarcasm.plotting.plots.Plots` functions, update a small set of artists frame by
 frame and write an ``.mp4`` (H.264 via ffmpeg) or ``.gif`` (Pillow). ffmpeg is looked up on the
-``PATH`` first and then in the optional ``imageio-ffmpeg`` package.
+``PATH`` first and then in the optional ``imageio-ffmpeg`` package (``pip install "sarc-asm[movies]"``).
 """
 from __future__ import annotations
 
@@ -248,8 +248,8 @@ class Animations:
                     except (OSError, subprocess.SubprocessError) as e:
                         why = str(e)
                     raise RuntimeError(f'The ffmpeg at {broken} does not run ({why}). Reinstall it, or '
-                                       '`pip install imageio-ffmpeg`, or write a .gif instead.')
-                raise RuntimeError('No ffmpeg found. Install ffmpeg or `pip install imageio-ffmpeg`, '
+                                       '`pip install "sarc-asm[movies]"`, or write a .gif instead.')
+                raise RuntimeError('No ffmpeg found. Install ffmpeg or `pip install "sarc-asm[movies]"`, '
                                    'or write a .gif instead.')
             plt.rcParams['animation.ffmpeg_path'] = exe
             w, h = fig.get_size_inches()

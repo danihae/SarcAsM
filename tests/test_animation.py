@@ -166,7 +166,8 @@ def test_broken_ffmpeg_on_path_is_named(tmp_path, monkeypatch):
     monkeypatch.setenv('PATH', str(tmp_path))
     monkeypatch.setitem(sys.modules, 'imageio_ffmpeg', None)          # no fallback binary either
     fig = plt.figure()
-    with pytest.raises(RuntimeError, match=r'ffmpeg at .*ffmpeg does not run \(dyld: Library not loaded'):
+    with pytest.raises(RuntimeError,
+                       match=r'ffmpeg at .*ffmpeg does not run \(dyld: Library not loaded.*sarc-asm\[movies\]'):
         with Animations.movie_writer(fig, str(tmp_path / 'movie.mp4'), fps=10):
             pass
     plt.close(fig)

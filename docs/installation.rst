@@ -92,4 +92,14 @@ Using conda
    .. note::
       PyTorch will be installed automatically with CUDA support if available. For specific CUDA versions or CPU-only installation, see the `PyTorch installation guide <https://pytorch.org/get-started/locally/>`_.
 
+Movies
+======
+
+Writing ``.mp4`` movies (``Animations``) needs ffmpeg. If it is not installed on your system, add the ``movies``
+extra, which brings its own ffmpeg (about 50 MB)::
+
+        uv pip install "sarc-asm[movies]"
+
+``.gif`` movies work without it.
+
 The full installation usually takes less than 2 min, depending on internet connection.
